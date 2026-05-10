@@ -15,6 +15,7 @@
  */
 
 import { validateSpec } from "./schema";
+import { mirrorRemoveSpec, mirrorSaveSpec } from "./specs-sync";
 
 const STORAGE_KEY = "espace-devhub:goal-specs";
 const CHANGE_EVENT = "goal-specs:change";
@@ -78,6 +79,9 @@ export function saveSpec(spec) {
   const state = readRaw();
   state.specs = { ...state.specs, [res.spec.goalId]: res.spec };
   writeRaw(state);
+  // Mirror — server's validateSpec uses the same algorithm so a
+  // locally-accepted spec passes server validation.
+  void mirrorSaveSpec(res.spec);
   return res;
 }
 
@@ -89,6 +93,7 @@ export function removeSpec(goalId) {
   delete next[goalId];
   state.specs = next;
   writeRaw(state);
+  void mirrorRemoveSpec(goalId);
 }
 
 /** Wipe all specs (used by "Re-analyze all" after the user confirms). */

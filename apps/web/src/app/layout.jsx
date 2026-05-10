@@ -6,6 +6,7 @@ import { GradingSync } from "@/features/grading";
 import { SnapshotsSync } from "@/features/snapshots";
 import { ContextSync } from "@/features/goal-context";
 import { InputsSync } from "@/features/goal-inputs";
+import { SpecsSync } from "@/features/goal-specs";
 
 const interTight = Inter_Tight({
   subsets: ["latin"],
@@ -44,6 +45,7 @@ export default function RootLayout({ children }) {
           <SnapshotsSync />
           <ContextSync />
           <InputsSync />
+          <SpecsSync />
           {children}
         </SessionProvider>
         <Toaster

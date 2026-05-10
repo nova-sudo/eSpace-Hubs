@@ -45,3 +45,4 @@ export {
 } from "./specs-store";
 
 export { useGoalSpecs } from "./use-goal-specs";
+export { SpecsSync } from "./specs-sync-mount";
