@@ -26,7 +26,9 @@ import { env, isDev } from "./config/env.js";
 import { logger } from "./lib/logger.js";
 import { requestId } from "./middleware/request-id.js";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
+import { sessionMiddleware } from "./middleware/session.js";
 import { healthRouter } from "./modules/health/routes.js";
+import { authRouter } from "./modules/auth/routes.js";
 
 /**
  * Cast a connect-style middleware to Express's RequestHandler. helmet,
@@ -94,13 +96,19 @@ export function buildApp(): Application {
     ),
   );
 
+  // Resolve session from the signed cookie BEFORE any route runs, so
+  // controllers can read `req.session` without each one repeating the
+  // lookup. Doesn't gate access — that's `requireAuth`'s job.
+  app.use((req, res, next) => {
+    sessionMiddleware(req, res, next).catch(next);
+  });
+
   // ─── routes ────────────────────────────────────────────────────────
   // Health is unversioned — it's infra, not API contract.
   app.use(healthRouter);
 
-  // /api/v1/* routes mount here as modules land in M2.2+.
-  // Example, M2.3:
-  //   app.use("/api/v1/auth", authRouter);
+  // /api/v1/* — versioned API surface.
+  app.use("/api/v1/auth", authRouter);
 
   // ─── tail handlers ─────────────────────────────────────────────────
   app.use(notFoundHandler);
