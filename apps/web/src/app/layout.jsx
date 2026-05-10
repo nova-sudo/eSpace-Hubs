@@ -3,6 +3,7 @@ import { Inter_Tight, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { SessionProvider } from "@/features/auth";
 import { GradingSync } from "@/features/grading";
+import { SnapshotsSync } from "@/features/snapshots";
 
 const interTight = Inter_Tight({
   subsets: ["latin"],
@@ -38,6 +39,7 @@ export default function RootLayout({ children }) {
             localStorage. M7.2 mirror-mode rollout. */}
         <SessionProvider>
           <GradingSync />
+          <SnapshotsSync />
           {children}
         </SessionProvider>
         <Toaster

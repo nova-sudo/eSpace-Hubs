@@ -37,6 +37,11 @@
  * `goalReadings: {}`, etc.). New writes carry the full v2 shape.
  */
 
+import {
+  mirrorPatchSnapshotNote,
+  mirrorSaveSnapshot,
+} from "./snapshots-sync";
+
 const STORAGE_KEY = "espace-devhub:snapshots";
 const CHANGE_EVENT = "snapshots:change";
 
@@ -109,12 +114,20 @@ export function saveSnapshot(snapshot) {
     .sort((a, b) => b.week.localeCompare(a.week))
     .slice(0, 60); // ~14mo cap (60 weeks)
   writeAll(next);
+  // Mirror to API — fire-and-forget. The server enforces its OWN
+  // manual-wins rule, so an auto write that should be ignored gets
+  // ignored on both sides independently. Local already wrote what
+  // it accepted; the mirror is just keeping the server in sync.
+  void mirrorSaveSnapshot(incoming);
 }
 
 export function updateSnapshotNote(week, note) {
   const all = readSnapshots();
   const next = all.map((s) => (s.week === week ? { ...s, note } : s));
   writeAll(next);
+  // Mirror note edits through PATCH — much smaller than re-sending
+  // the whole snapshot, and matches the existing patch endpoint shape.
+  void mirrorPatchSnapshotNote(week, note);
 }
 
 export function clearSnapshots() {

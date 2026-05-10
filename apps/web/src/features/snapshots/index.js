@@ -7,3 +7,4 @@ export { goalCompliance } from "./compliance";
 export { useSnapshotCompliance } from "./use-snapshot-compliance";
 export { useBackfill } from "./use-backfill";
 export { BackfillBanner } from "./backfill-banner";
+export { SnapshotsSync } from "./snapshots-sync-mount";
