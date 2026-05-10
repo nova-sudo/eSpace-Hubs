@@ -32,6 +32,8 @@ import {
   getGoalInputsCollection,
   getGoalSpecsCollection,
   getGoalsCollection,
+  getGradingVerdictsCollection,
+  getSnapshotsCollection,
 } from "../../db/collections.js";
 import {
   GOALS_SCHEMA_VERSION,
@@ -40,7 +42,10 @@ import {
   type GoalInputSource,
   type GoalInputValue,
   type GoalL1,
+  type GoalReading,
   type GoalSpecRecord,
+  type GradingVerdict,
+  type Snapshot,
 } from "../../db/types.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { HttpError } from "../../middleware/error-handler.js";
@@ -85,6 +90,51 @@ const importSchema = z.object({
       ),
     )
     .optional(),
+  // Array because the localStorage snapshot store stores the most-
+  // recent capture per week, in an array. Migration accepts the same
+  // shape — duplicates by week collapse via the unique index.
+  snapshots: z
+    .array(
+      z
+        .object({
+          week: z.string().min(2).max(32),
+          capturedAt: z.string().optional(),
+          capturedBy: z.enum(["auto", "manual"]).optional(),
+          merged: z.number().optional(),
+          reviews: z.number().optional(),
+          turnaround: z.number().optional(),
+          linkage: z.number().optional(),
+          rounds: z.number().optional(),
+          note: z.string().max(8_000).optional(),
+          goalReadings: z.record(z.string(), z.unknown()).optional(),
+          partial: z.boolean().optional(),
+          gaps: z.array(z.string()).optional(),
+        })
+        .passthrough(),
+    )
+    .max(500)
+    .optional(),
+  // {[cacheKey]: {prId, rubricHash, verdict, gradedAt}} — the
+  // localStorage shape. cacheKey is `${prId}::${rubricHash}` and we
+  // ignore it; (prId, rubricHash) drives the upsert.
+  gradingVerdicts: z
+    .record(
+      z.string().min(1).max(500),
+      z.object({
+        prId: z.union([
+          z.string().min(1).max(200),
+          z.number().int().positive(),
+        ]),
+        rubricHash: z.string().min(4).max(128),
+        verdict: z.object({
+          pass: z.boolean(),
+          reasoning: z.string().optional(),
+          violations: z.array(z.string()).optional(),
+        }),
+        gradedAt: z.number().int().positive().optional(),
+      }),
+    )
+    .optional(),
 });
 
 interface ImportCounts {
@@ -92,6 +142,8 @@ interface ImportCounts {
   goalSpecs: { imported: number; skipped: number; errors: string[] };
   goalContext: number;
   goalInputs: { imported: number; skipped: number };
+  snapshots: { imported: number; skipped: number };
+  gradingVerdicts: { imported: number; skipped: number };
 }
 
 export async function importHandler(
@@ -111,6 +163,8 @@ export async function importHandler(
       goalSpecs: { imported: 0, skipped: 0, errors: [] },
       goalContext: 0,
       goalInputs: { imported: 0, skipped: 0 },
+      snapshots: { imported: 0, skipped: 0 },
+      gradingVerdicts: { imported: 0, skipped: 0 },
     };
 
     const now = new Date();
@@ -274,6 +328,115 @@ export async function importHandler(
           ordered: false,
         });
         counts.goalInputs.imported = r.insertedCount ?? 0;
+      }
+    }
+
+    // ── snapshots ────────────────────────────────────────────────
+    if (payload.snapshots && payload.snapshots.length > 0) {
+      const col = await getSnapshotsCollection();
+      const ops: AnyBulkWriteOperation<Snapshot>[] = [];
+      for (const s of payload.snapshots) {
+        if (typeof s.week !== "string" || s.week.length === 0) {
+          counts.snapshots.skipped += 1;
+          continue;
+        }
+        // Parse capturedAt; fall back to now() if missing/invalid.
+        let capturedAt = new Date();
+        if (typeof s.capturedAt === "string") {
+          const d = new Date(s.capturedAt);
+          if (!Number.isNaN(d.getTime())) capturedAt = d;
+        }
+        ops.push({
+          updateOne: {
+            filter: {
+              orgId: session.orgId,
+              userId: session.userId,
+              week: s.week,
+            },
+            update: {
+              $set: {
+                capturedAt,
+                capturedBy: s.capturedBy === "auto" ? "auto" : "manual",
+                merged: typeof s.merged === "number" ? s.merged : 0,
+                reviews: typeof s.reviews === "number" ? s.reviews : 0,
+                turnaround:
+                  typeof s.turnaround === "number" ? s.turnaround : 0,
+                linkage: typeof s.linkage === "number" ? s.linkage : 0,
+                rounds: typeof s.rounds === "number" ? s.rounds : 0,
+                note: typeof s.note === "string" ? s.note : "",
+                // goalReadings shape varies; trust the payload and
+                // let the route-layer / Mongo validator catch
+                // anything truly malformed.
+                goalReadings: (s.goalReadings ?? {}) as unknown as Record<
+                  string,
+                  GoalReading
+                >,
+                partial: Boolean(s.partial),
+                gaps: Array.isArray(s.gaps) ? s.gaps : [],
+              },
+              $setOnInsert: {
+                orgId: session.orgId,
+                userId: session.userId,
+                week: s.week,
+              },
+            },
+            upsert: true,
+          },
+        });
+      }
+      if (ops.length > 0) {
+        const r = await col.bulkWrite(ops, { ordered: false });
+        counts.snapshots.imported =
+          (r.upsertedCount ?? 0) + (r.modifiedCount ?? 0);
+      }
+    }
+
+    // ── grading_verdicts ─────────────────────────────────────────
+    if (payload.gradingVerdicts) {
+      const col = await getGradingVerdictsCollection();
+      const ops: AnyBulkWriteOperation<GradingVerdict>[] = [];
+      const now = new Date();
+      for (const entry of Object.values(payload.gradingVerdicts)) {
+        const prId = String(entry.prId);
+        let gradedAt = now;
+        if (typeof entry.gradedAt === "number") {
+          const d = new Date(entry.gradedAt);
+          if (!Number.isNaN(d.getTime())) gradedAt = d;
+        }
+        ops.push({
+          updateOne: {
+            filter: {
+              orgId: session.orgId,
+              userId: session.userId,
+              prId,
+              rubricHash: entry.rubricHash,
+            },
+            update: {
+              $set: {
+                verdict: {
+                  pass: entry.verdict.pass,
+                  reasoning: entry.verdict.reasoning ?? "",
+                  violations: entry.verdict.violations ?? [],
+                },
+                gradedAt,
+                model: null,
+                provider: null,
+              },
+              $setOnInsert: {
+                orgId: session.orgId,
+                userId: session.userId,
+                prId,
+                rubricHash: entry.rubricHash,
+              },
+            },
+            upsert: true,
+          },
+        });
+      }
+      if (ops.length > 0) {
+        const r = await col.bulkWrite(ops, { ordered: false });
+        counts.gradingVerdicts.imported =
+          (r.upsertedCount ?? 0) + (r.modifiedCount ?? 0);
       }
     }
 
