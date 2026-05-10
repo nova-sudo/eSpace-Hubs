@@ -64,6 +64,16 @@ export const passwordResetSchema = z.object({
 });
 export type PasswordResetInput = z.infer<typeof passwordResetSchema>;
 
+// 6-digit TOTP code. Strict — the controller never logs/echoes a
+// malformed code, so any leniency would just produce more 401s.
+const totpCode = z.string().regex(/^\d{6}$/, "code must be 6 digits");
+
+export const totpVerifySchema = z.object({ code: totpCode });
+export type TotpVerifyInput = z.infer<typeof totpVerifySchema>;
+
+export const totpDisableSchema = z.object({ code: totpCode });
+export type TotpDisableInput = z.infer<typeof totpDisableSchema>;
+
 /**
  * Public-facing user shape. Strips passwordHash, totpSecret, and any
  * field a client has no business knowing. The login + me endpoints

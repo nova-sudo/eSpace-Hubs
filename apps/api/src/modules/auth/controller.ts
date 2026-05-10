@@ -23,6 +23,7 @@ import {
 import type { User } from "../../db/types.js";
 import { hashPassword, verifyPassword } from "../../lib/argon2.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
+import { encryptSecret, decryptSecret } from "../../lib/crypto-secret.js";
 import { emailService } from "../../lib/email.js";
 import {
   INVITE_TTL_MS,
@@ -31,11 +32,18 @@ import {
   mintToken,
   redeemToken,
 } from "../../lib/tokens.js";
+import { logger } from "../../lib/logger.js";
+import {
+  buildProvisioningUri,
+  generateTotpSecret,
+  verifyTotpCode,
+} from "../../lib/totp.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import {
   destroySession,
   destroySessionsForUser,
   mintSession,
+  setSessionTotpVerified,
 } from "./session.js";
 import {
   clearSessionCookie,
@@ -47,6 +55,8 @@ import {
   loginSchema,
   passwordResetRequestSchema,
   passwordResetSchema,
+  totpDisableSchema,
+  totpVerifySchema,
   type PublicUser,
 } from "./schemas.js";
 
@@ -155,16 +165,20 @@ export async function loginHandler(
     );
 
     const meta = networkMeta(req);
+
+    // Two-step login when TOTP is enrolled: mint a partial session
+    // (totpVerified=false), let the client know via `needsTotp: true`,
+    // and require a /totp/verify call before this session can reach
+    // protected routes.
+    const needsTotp = u.totpEnrolledAt !== null && u.totpSecret !== null;
+
     const { sessionId } = await mintSession({
       userId: u._id,
       orgId: u.orgId,
       role: u.role,
       ip: meta.ip,
       userAgent: meta.ua,
-      // M2.3c will compute this based on whether the user has TOTP
-      // enrolled. For now (M2.3a, no TOTP enforcement yet), every
-      // session is fully verified at mint.
-      totpVerified: true,
+      totpVerified: !needsTotp,
     });
     setSessionCookie(res, sessionId);
 
@@ -175,10 +189,14 @@ export async function loginHandler(
       action: "auth.login",
       targetType: "user",
       targetId: u._id.toHexString(),
+      after: { needsTotp },
       ...meta,
     });
 
-    res.json({ user: toPublicUser({ ...u, lastLoginAt: now }) });
+    res.json({
+      user: toPublicUser({ ...u, lastLoginAt: now }),
+      needsTotp,
+    });
   } catch (err) {
     next(err);
   }
@@ -596,6 +614,313 @@ export async function passwordResetHandler(
       targetType: "user",
       targetId: user._id.toHexString(),
       ...meta,
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── POST /api/v1/auth/totp/enrol ────────────────────────────────────
+
+/**
+ * Begin a TOTP enrolment. Generates a fresh base32 secret, encrypts
+ * it, and persists it as PENDING (totpSecret set, totpEnrolledAt
+ * still null). Login flow treats `totpEnrolledAt !== null` as the gate
+ * — pending enrolments don't yet require a code at sign-in.
+ *
+ * Rejects (409) if the user is already enrolled. Rotation is a
+ * disable-then-enrol sequence so the request is intentional.
+ *
+ * Returns the otpauth:// provisioning URI for the frontend to render
+ * as a QR code AND the raw base32 secret as a fallback for manual
+ * entry into authenticator apps that don't take URIs.
+ */
+export async function totpEnrolHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+
+    const users = await getUsersCollection();
+    const user = await users.findOne({ _id: session.userId });
+    if (!user) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+
+    if (user.totpEnrolledAt !== null) {
+      throw new HttpError(
+        409,
+        "totp_already_enrolled",
+        "Two-factor is already enabled. Disable it first to rotate the secret.",
+      );
+    }
+
+    const secret = generateTotpSecret();
+    const encrypted = encryptSecret(secret);
+    const now = new Date();
+
+    await users.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          totpSecret: encrypted,
+          // explicit null — overwrites any earlier pending enrolment
+          totpEnrolledAt: null,
+          updatedAt: now,
+        },
+      },
+    );
+
+    const otpauthUrl = buildProvisioningUri(user.email, secret);
+
+    await writeAudit({
+      orgId: user.orgId,
+      actorUserId: user._id,
+      actorRole: user.role,
+      action: "user.totp_enrol_started",
+      targetType: "user",
+      targetId: user._id.toHexString(),
+      ...networkMeta(req),
+    });
+
+    // Return BOTH the raw secret (for manual entry) and the URI (for
+    // QR rendering). The secret stays in the response body — we send
+    // it once. The user types it into their authenticator app, then
+    // the only DB-resident copy is encrypted.
+    res.json({ secret, otpauthUrl });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── POST /api/v1/auth/totp/verify-enrolment ─────────────────────────
+
+/**
+ * Confirm enrolment by submitting a code generated from the pending
+ * secret. On success, sets totpEnrolledAt and from now on every login
+ * for this user requires a 6-digit code.
+ */
+export async function totpVerifyEnrolmentHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const { code } = totpVerifySchema.parse(req.body);
+
+    const users = await getUsersCollection();
+    const user = await users.findOne({ _id: session.userId });
+    if (!user) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    if (user.totpEnrolledAt !== null) {
+      throw new HttpError(
+        409,
+        "totp_already_enrolled",
+        "Two-factor is already enabled.",
+      );
+    }
+    if (user.totpSecret === null) {
+      throw new HttpError(
+        400,
+        "invalid_state",
+        "No pending enrolment. Start a new one with /totp/enrol.",
+      );
+    }
+
+    let plainSecret: string;
+    try {
+      plainSecret = decryptSecret(user.totpSecret);
+    } catch (err) {
+      logger.error(
+        {
+          userId: user._id.toHexString(),
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "[totp] decrypt failed during verify-enrolment",
+      );
+      throw new HttpError(
+        500,
+        "totp_secret_corrupted",
+        "Stored secret could not be read. Start a new enrolment.",
+      );
+    }
+
+    if (!verifyTotpCode(code, plainSecret)) {
+      throw new HttpError(401, "invalid_totp_code", "Code did not match.");
+    }
+
+    const now = new Date();
+    await users.updateOne(
+      { _id: user._id },
+      { $set: { totpEnrolledAt: now, updatedAt: now } },
+    );
+
+    await writeAudit({
+      orgId: user.orgId,
+      actorUserId: user._id,
+      actorRole: user.role,
+      action: "user.totp_enrolled",
+      targetType: "user",
+      targetId: user._id.toHexString(),
+      ...networkMeta(req),
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── POST /api/v1/auth/totp/verify ───────────────────────────────────
+
+/**
+ * Step 2 of the two-step login flow. The session was minted with
+ * `totpVerified: false` because the user has TOTP enrolled. Submitting
+ * a valid code flips it to true so subsequent requests pass the
+ * default `requireAuth({ requireTotp: true })`.
+ *
+ * Routed with `requireAuth({ requireTotp: false })` so the partial
+ * session can reach this handler.
+ */
+export async function totpVerifyLoginHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const { code } = totpVerifySchema.parse(req.body);
+
+    const users = await getUsersCollection();
+    const user = await users.findOne({ _id: session.userId });
+    if (!user || user.totpEnrolledAt === null || user.totpSecret === null) {
+      // Session somehow points at a user without TOTP. Treat as an
+      // auth state error — likely the user was disabled or TOTP was
+      // removed admin-side mid-session.
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+
+    let plainSecret: string;
+    try {
+      plainSecret = decryptSecret(user.totpSecret);
+    } catch (err) {
+      logger.error(
+        {
+          userId: user._id.toHexString(),
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "[totp] decrypt failed during verify",
+      );
+      throw new HttpError(500, "totp_secret_corrupted", "Internal error.");
+    }
+
+    if (!verifyTotpCode(code, plainSecret)) {
+      throw new HttpError(401, "invalid_totp_code", "Code did not match.");
+    }
+
+    await setSessionTotpVerified(session._id, true);
+
+    await writeAudit({
+      orgId: user.orgId,
+      actorUserId: user._id,
+      actorRole: user.role,
+      action: "auth.totp_verified",
+      targetType: "session",
+      targetId: session._id,
+      ...networkMeta(req),
+    });
+
+    res.json({ user: toPublicUser(user) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── POST /api/v1/auth/totp/disable ──────────────────────────────────
+
+/**
+ * Turn TOTP off. Requires the current code as proof of possession —
+ * a stolen session cookie alone shouldn't be able to remove the
+ * second factor. Clears both `totpSecret` and `totpEnrolledAt`.
+ */
+export async function totpDisableHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const { code } = totpDisableSchema.parse(req.body);
+
+    const users = await getUsersCollection();
+    const user = await users.findOne({ _id: session.userId });
+    if (!user) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    if (user.totpEnrolledAt === null || user.totpSecret === null) {
+      throw new HttpError(
+        409,
+        "totp_not_enrolled",
+        "Two-factor is not enabled.",
+      );
+    }
+
+    let plainSecret: string;
+    try {
+      plainSecret = decryptSecret(user.totpSecret);
+    } catch (err) {
+      logger.error(
+        {
+          userId: user._id.toHexString(),
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "[totp] decrypt failed during disable",
+      );
+      throw new HttpError(500, "totp_secret_corrupted", "Internal error.");
+    }
+
+    if (!verifyTotpCode(code, plainSecret)) {
+      throw new HttpError(401, "invalid_totp_code", "Code did not match.");
+    }
+
+    const now = new Date();
+    await users.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          totpSecret: null,
+          totpEnrolledAt: null,
+          updatedAt: now,
+        },
+      },
+    );
+
+    await writeAudit({
+      orgId: user.orgId,
+      actorUserId: user._id,
+      actorRole: user.role,
+      action: "user.totp_disabled",
+      targetType: "user",
+      targetId: user._id.toHexString(),
+      ...networkMeta(req),
     });
 
     res.json({ ok: true });

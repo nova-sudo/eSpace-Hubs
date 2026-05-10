@@ -125,6 +125,23 @@ export async function destroySession(sessionId: string): Promise<void> {
   await col.deleteOne({ _id: sessionId });
 }
 
+/**
+ * Flip a session's `totpVerified` flag. Called after a successful
+ * second-factor challenge. The session middleware re-reads the row on
+ * every request, so the next request after this update sees the new
+ * value — no need to mint a fresh session.
+ */
+export async function setSessionTotpVerified(
+  sessionId: string,
+  verified: boolean,
+): Promise<void> {
+  const col = await getSessionsCollection();
+  await col.updateOne(
+    { _id: sessionId },
+    { $set: { totpVerified: verified } },
+  );
+}
+
 /** Destroy every session belonging to a user (forced logout, password change). */
 export async function destroySessionsForUser(userId: ObjectId): Promise<number> {
   const col = await getSessionsCollection();
