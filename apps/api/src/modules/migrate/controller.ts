@@ -33,6 +33,7 @@ import {
   getGoalSpecsCollection,
   getGoalsCollection,
   getGradingVerdictsCollection,
+  getIntegrationsCollection,
   getSnapshotsCollection,
 } from "../../db/collections.js";
 import {
@@ -45,8 +46,10 @@ import {
   type GoalReading,
   type GoalSpecRecord,
   type GradingVerdict,
+  type Integration,
   type Snapshot,
 } from "../../db/types.js";
+import { encryptSecret } from "../../lib/crypto-secret.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import { logger } from "../../lib/logger.js";
@@ -135,6 +138,28 @@ const importSchema = z.object({
       }),
     )
     .optional(),
+  // {[providerId]: {accessToken?, apiToken?, refreshToken?, email?, …}} —
+  // the localStorage shape. Migration encrypts tokens before insert;
+  // the imported plaintext stays in memory only as long as this
+  // request handler runs.
+  integrations: z
+    .record(
+      z.string().min(1).max(64),
+      z
+        .object({
+          accessToken: z.string().min(1).max(2_048).optional(),
+          apiToken: z.string().min(1).max(2_048).optional(),
+          refreshToken: z.string().min(1).max(2_048).optional(),
+          email: z.string().max(320).optional(),
+          endpointUrl: z.string().max(1_000).optional(),
+          scopes: z.array(z.string().max(200)).max(50).optional(),
+          label: z.string().max(200).optional(),
+          connectedAt: z.number().int().positive().optional(),
+          expiresAt: z.number().int().positive().optional(),
+        })
+        .passthrough(),
+    )
+    .optional(),
 });
 
 interface ImportCounts {
@@ -144,6 +169,7 @@ interface ImportCounts {
   goalInputs: { imported: number; skipped: number };
   snapshots: { imported: number; skipped: number };
   gradingVerdicts: { imported: number; skipped: number };
+  integrations: { imported: number; skipped: number };
 }
 
 export async function importHandler(
@@ -165,6 +191,7 @@ export async function importHandler(
       goalInputs: { imported: 0, skipped: 0 },
       snapshots: { imported: 0, skipped: 0 },
       gradingVerdicts: { imported: 0, skipped: 0 },
+      integrations: { imported: 0, skipped: 0 },
     };
 
     const now = new Date();
@@ -436,6 +463,78 @@ export async function importHandler(
       if (ops.length > 0) {
         const r = await col.bulkWrite(ops, { ordered: false });
         counts.gradingVerdicts.imported =
+          (r.upsertedCount ?? 0) + (r.modifiedCount ?? 0);
+      }
+    }
+
+    // ── integrations ─────────────────────────────────────────────
+    // Encrypt tokens BEFORE insert. Plaintext lives in memory only
+    // for the duration of this request handler — never on disk,
+    // never in the audit log.
+    if (payload.integrations) {
+      const col = await getIntegrationsCollection();
+      const ops: AnyBulkWriteOperation<Integration>[] = [];
+      const importedAt = new Date();
+
+      for (const [providerId, raw] of Object.entries(payload.integrations)) {
+        if (!raw.accessToken && !raw.apiToken) {
+          // Skip rows with no usable token — the localStorage shape
+          // sometimes carries metadata-only entries from half-finished
+          // OAuth flows.
+          counts.integrations.skipped += 1;
+          continue;
+        }
+        const encryptedToken = raw.accessToken
+          ? encryptSecret(raw.accessToken)
+          : null;
+        const encryptedApiToken = raw.apiToken
+          ? encryptSecret(raw.apiToken)
+          : null;
+        const refreshToken = raw.refreshToken
+          ? encryptSecret(raw.refreshToken)
+          : null;
+        const connectedAt =
+          typeof raw.connectedAt === "number"
+            ? new Date(raw.connectedAt)
+            : importedAt;
+        const expiresAt =
+          typeof raw.expiresAt === "number" ? new Date(raw.expiresAt) : null;
+
+        ops.push({
+          updateOne: {
+            filter: {
+              orgId: session.orgId,
+              userId: session.userId,
+              providerId,
+            },
+            update: {
+              $set: {
+                label: raw.label ?? providerId,
+                encryptedToken,
+                encryptedApiToken,
+                refreshToken,
+                email: raw.email ?? null,
+                endpointUrl: raw.endpointUrl ?? null,
+                scopes: raw.scopes ?? [],
+                connectedAt,
+                expiresAt,
+                lastErrorAt: null,
+                lastError: null,
+              },
+              $setOnInsert: {
+                orgId: session.orgId,
+                userId: session.userId,
+                providerId,
+                lastUsedAt: null,
+              },
+            },
+            upsert: true,
+          },
+        });
+      }
+      if (ops.length > 0) {
+        const r = await col.bulkWrite(ops, { ordered: false });
+        counts.integrations.imported =
           (r.upsertedCount ?? 0) + (r.modifiedCount ?? 0);
       }
     }

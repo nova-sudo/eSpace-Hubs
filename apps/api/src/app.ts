@@ -36,6 +36,7 @@ import { goalContextRouter } from "./modules/goal-context/routes.js";
 import { goalInputsRouter } from "./modules/goal-inputs/routes.js";
 import { snapshotsRouter } from "./modules/snapshots/routes.js";
 import { gradingVerdictsRouter } from "./modules/grading-verdicts/routes.js";
+import { integrationsRouter } from "./modules/integrations/routes.js";
 import { migrateRouter } from "./modules/migrate/routes.js";
 
 /**
@@ -124,6 +125,7 @@ export function buildApp(): Application {
   app.use("/api/v1/goal-inputs", goalInputsRouter);
   app.use("/api/v1/snapshots", snapshotsRouter);
   app.use("/api/v1/grading-verdicts", gradingVerdictsRouter);
+  app.use("/api/v1/integrations", integrationsRouter);
   app.use("/api/v1/migrate", migrateRouter);
 
   // ─── tail handlers ─────────────────────────────────────────────────
