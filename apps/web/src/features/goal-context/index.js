@@ -15,3 +15,4 @@ export {
   clearContextFor,
   isContextComplete,
 } from "./context-store";
+export { ContextSync } from "./context-sync-mount";

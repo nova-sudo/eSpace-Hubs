@@ -19,6 +19,8 @@
  *   }
  */
 
+import { mirrorClearContext, mirrorSaveContext } from "./context-sync";
+
 const STORAGE_KEY = "espace-devhub:goal-context";
 const CHANGE_EVENT = "goal-context:change";
 
@@ -62,6 +64,10 @@ export function saveContextFor(goalId, answers) {
   current.__updatedAt = Date.now();
   all[goalId] = current;
   writeAll(all);
+  // Mirror to API — partial-merge semantics match (null deletes a key
+  // on both sides). The mirror strips __updatedAt; the server owns its
+  // own timestamp.
+  void mirrorSaveContext(goalId, answers);
 }
 
 /** Clear all context answers for one goal (leaves the spec untouched). */
@@ -71,6 +77,8 @@ export function clearContextFor(goalId) {
   if (!(goalId in all)) return;
   delete all[goalId];
   writeAll(all);
+  // Mirror DELETE /goal-context/:goalId. Auth failures absorbed.
+  void mirrorClearContext(goalId);
 }
 
 /**

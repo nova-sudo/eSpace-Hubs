@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import { SessionProvider } from "@/features/auth";
 import { GradingSync } from "@/features/grading";
 import { SnapshotsSync } from "@/features/snapshots";
+import { ContextSync } from "@/features/goal-context";
 
 const interTight = Inter_Tight({
   subsets: ["latin"],
@@ -40,6 +41,7 @@ export default function RootLayout({ children }) {
         <SessionProvider>
           <GradingSync />
           <SnapshotsSync />
+          <ContextSync />
           {children}
         </SessionProvider>
         <Toaster
