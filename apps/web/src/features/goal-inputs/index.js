@@ -11,3 +11,4 @@ export {
 } from "./inputs-store";
 export { useGoalInputs } from "./use-goal-inputs";
 export { computeCompliance, cadenceWindowLabel } from "./compliance";
+export { InputsSync } from "./inputs-sync-mount";

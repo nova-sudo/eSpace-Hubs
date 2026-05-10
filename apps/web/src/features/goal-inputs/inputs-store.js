@@ -16,6 +16,11 @@
  */
 
 import { validateInput } from "./schema";
+import {
+  mirrorAppendEntry,
+  mirrorClearGoal,
+  mirrorRemoveEntry,
+} from "./inputs-sync";
 
 const STORAGE_KEY = "espace-devhub:goal-inputs";
 const CHANGE_EVENT = "goal-inputs:change";
@@ -65,6 +70,9 @@ export function appendEntry({ goalId, value, note, ts = Date.now() }) {
   const next = [...current, res.entry].sort((a, b) => a.ts - b.ts);
   state[goalId] = next;
   writeRaw(state);
+  // Mirror to API — fire-and-forget. The local has already accepted
+  // the entry; the mirror catches up async.
+  void mirrorAppendEntry(res.entry);
   return res;
 }
 
@@ -81,6 +89,10 @@ export function removeEntry(goalId, ts) {
   if (next.length === list.length) return;
   state[goalId] = next;
   writeRaw(state);
+  // Mirror — translates (goalId, ts) to the API's _id via a list-find-
+  // delete. Two API calls; only fires on user-initiated removes which
+  // are rare.
+  void mirrorRemoveEntry(goalId, ts);
 }
 
 /** Wipe every entry for a single goal — used when re-analyzing. */
@@ -91,6 +103,40 @@ export function clearGoalEntries(goalId) {
   const next = { ...state };
   delete next[goalId];
   writeRaw(next);
+  // Mirror: list entries for this goal + delete each. Wasteful but
+  // rare (user-initiated re-analyze).
+  void mirrorClearGoal(goalId);
+}
+
+/**
+ * Bulk-merge entries pulled from the API. Dedupes by (goalId, ts) —
+ * if the local already has an entry at that exact ts, the API's
+ * version replaces it (server is the source of truth for the value
+ * when both sides have the same key).
+ *
+ * Only called by inputs-sync-mount.jsx after a successful pull;
+ * not part of the public CRUD surface. NO mirror call here — this
+ * is the receiver side of a mirror operation, not an initiator.
+ */
+export function mergeRemoteEntries(remoteEntries) {
+  if (!Array.isArray(remoteEntries) || remoteEntries.length === 0) return;
+  const state = readRaw();
+  for (const e of remoteEntries) {
+    if (!e?.goalId || typeof e.ts !== "number") continue;
+    const list = Array.isArray(state[e.goalId]) ? [...state[e.goalId]] : [];
+    const idx = list.findIndex((x) => x.ts === e.ts);
+    const normalised = {
+      goalId: e.goalId,
+      ts: e.ts,
+      value: e.value,
+      ...(e.note ? { note: e.note } : {}),
+    };
+    if (idx >= 0) list[idx] = normalised;
+    else list.push(normalised);
+    list.sort((a, b) => a.ts - b.ts);
+    state[e.goalId] = list;
+  }
+  writeRaw(state);
 }
 
 /** Replace all entries for a single goal (used for imports). */
