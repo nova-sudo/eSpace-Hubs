@@ -23,6 +23,7 @@
     "lint": "npm run lint --workspaces --if-present",
     "services:up": "docker compose up -d",
     "services:down": "docker compose down",
-    "services:reset": "docker compose down -v"
+    "services:reset": "docker compose down -v",
+    "admin:create": "npm run admin:create --workspace=@espace-devhub/api --"
   }
 }

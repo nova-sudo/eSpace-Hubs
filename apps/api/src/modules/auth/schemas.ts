@@ -26,6 +26,44 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
+const role = z.enum(["admin", "manager", "member", "hr", "qa", "po"]);
+const displayName = z.string().min(1).max(200);
+
+export const inviteSchema = z.object({
+  email,
+  role,
+  displayName,
+});
+export type InviteInput = z.infer<typeof inviteSchema>;
+
+// Token shape: 32-byte random base64url (43 chars). Liberal on length
+// to allow URL escaping, but the chars must be base64url-safe.
+const oneTimeToken = z
+  .string()
+  .min(32)
+  .max(128)
+  .regex(/^[A-Za-z0-9_-]+$/, "malformed token");
+
+export const acceptInviteSchema = z.object({
+  token: oneTimeToken,
+  password,
+  // Optional displayName override — admin's invite display might be a
+  // placeholder ("Yara R."), the user can refine on accept.
+  displayName: displayName.optional(),
+});
+export type AcceptInviteInput = z.infer<typeof acceptInviteSchema>;
+
+export const passwordResetRequestSchema = z.object({ email });
+export type PasswordResetRequestInput = z.infer<
+  typeof passwordResetRequestSchema
+>;
+
+export const passwordResetSchema = z.object({
+  token: oneTimeToken,
+  password,
+});
+export type PasswordResetInput = z.infer<typeof passwordResetSchema>;
+
 /**
  * Public-facing user shape. Strips passwordHash, totpSecret, and any
  * field a client has no business knowing. The login + me endpoints

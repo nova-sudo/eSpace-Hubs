@@ -18,6 +18,7 @@ import { getDb } from "./client.js";
 import { logger } from "../lib/logger.js";
 import type {
   AuditLogEntry,
+  AuthToken,
   Org,
   Session,
   User,
@@ -46,6 +47,11 @@ export async function getAuditLogCollection(): Promise<
 > {
   const db = await getDb();
   return db.collection<AuditLogEntry>("audit_log");
+}
+
+export async function getAuthTokensCollection(): Promise<Collection<AuthToken>> {
+  const db = await getDb();
+  return db.collection<AuthToken>("auth_tokens");
 }
 
 // ─── bootstrap: validators + indexes ─────────────────────────────────
@@ -161,7 +167,22 @@ async function ensureIndexes(): Promise<void> {
     },
   ]);
 
-  logger.debug("[db] indexes ensured for orgs, users, sessions, audit_log");
+  const authTokens = await getAuthTokensCollection();
+  await authTokens.createIndexes([
+    { key: { userId: 1, kind: 1 }, name: "auth_tokens_user_kind" },
+    {
+      key: { expiresAt: 1 },
+      // TTL — Mongo evicts past expiresAt. Means consumed-and-expired
+      // rows clean themselves up; the application explicitly deletes
+      // on use too, but this is the safety net.
+      expireAfterSeconds: 0,
+      name: "auth_tokens_ttl",
+    },
+  ]);
+
+  logger.debug(
+    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens",
+  );
 }
 
 /**

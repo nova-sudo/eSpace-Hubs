@@ -16,20 +16,39 @@
 
 import type { Request, Response, NextFunction } from "express";
 import type { ObjectId } from "mongodb";
-import { getUsersCollection } from "../../db/collections.js";
+import {
+  getOrgsCollection,
+  getUsersCollection,
+} from "../../db/collections.js";
 import type { User } from "../../db/types.js";
-import { verifyPassword } from "../../lib/argon2.js";
+import { hashPassword, verifyPassword } from "../../lib/argon2.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
+import { emailService } from "../../lib/email.js";
+import {
+  INVITE_TTL_MS,
+  PASSWORD_RESET_TTL_MS,
+  deleteTokensFor,
+  mintToken,
+  redeemToken,
+} from "../../lib/tokens.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import {
   destroySession,
+  destroySessionsForUser,
   mintSession,
 } from "./session.js";
 import {
   clearSessionCookie,
   setSessionCookie,
 } from "./cookies.js";
-import { loginSchema, type PublicUser } from "./schemas.js";
+import {
+  acceptInviteSchema,
+  inviteSchema,
+  loginSchema,
+  passwordResetRequestSchema,
+  passwordResetSchema,
+  type PublicUser,
+} from "./schemas.js";
 
 const LOCKOUT_THRESHOLD = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
@@ -236,6 +255,351 @@ const DUMMY_HASH =
 // shape mismatch and our wrapper returns false — that's fine, the
 // goal is wall-clock parity, not a cryptographic match.
 
-// Unused imports satisfied: ObjectId is referenced indirectly via User
-// types. Suppress lint by exporting nothing extra.
+// Re-export so consumers can type-import without reaching into mongodb.
 export { type ObjectId };
+
+// ─── POST /api/v1/auth/invite (admin-only) ───────────────────────────
+
+/**
+ * Public URL the user clicks to accept an invite. Frontend renders the
+ * page; the page POSTs the token to /api/v1/auth/accept-invite.
+ */
+function buildInviteUrl(token: string): string {
+  return `/accept-invite?token=${encodeURIComponent(token)}`;
+}
+
+function buildPasswordResetUrl(token: string): string {
+  return `/password-reset?token=${encodeURIComponent(token)}`;
+}
+
+export async function inviteHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    // Guarded by requireAuth + requireRole("admin") — session present.
+    const session = req.session;
+    if (!session) throw new HttpError(401, "unauthenticated", "Login required.");
+
+    const { email, role, displayName } = inviteSchema.parse(req.body);
+
+    const users = await getUsersCollection();
+    const orgs = await getOrgsCollection();
+    const org = await orgs.findOne({ _id: session.orgId });
+    if (!org) {
+      // Should be unreachable — sessions can't outlive their org.
+      throw new HttpError(500, "internal_error", "Org missing.");
+    }
+
+    const now = new Date();
+    const existing = await users.findOne({ orgId: org._id, email });
+
+    let user: User;
+    if (existing) {
+      // Re-inviting an existing user only makes sense if they never
+      // accepted (status="invited"). Otherwise refuse — admin should
+      // disable + re-invite as separate steps.
+      if (existing.status !== "invited") {
+        throw new HttpError(
+          409,
+          "user_already_active",
+          "An active or disabled user with that email already exists.",
+        );
+      }
+      user = existing;
+    } else {
+      const draft = {
+        orgId: org._id,
+        email,
+        passwordHash: null,
+        role,
+        status: "invited" as const,
+        totpSecret: null,
+        totpEnrolledAt: null,
+        zohoEmployeeId: null,
+        managerId: null,
+        level: null,
+        hireDate: null,
+        displayName,
+        createdAt: now,
+        updatedAt: now,
+        invitedBy: session.userId,
+        invitedAt: now,
+        lastLoginAt: null,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      } as unknown as User;
+      await users.insertOne(draft);
+      user = draft;
+    }
+
+    const meta = networkMeta(req);
+    const plaintext = await mintToken({
+      userId: user._id,
+      orgId: org._id,
+      kind: "invite",
+      ttlMs: INVITE_TTL_MS,
+      ip: meta.ip,
+      userAgent: meta.ua,
+    });
+
+    await emailService.send({
+      to: email,
+      subject: `You're invited to ${org.name}`,
+      body: [
+        `Hi ${displayName},`,
+        ``,
+        `You've been invited to join ${org.name} on eSpace Dev Hub.`,
+        `Click the link below to set your password and activate your account:`,
+        ``,
+        buildInviteUrl(plaintext),
+        ``,
+        `This link expires in 7 days.`,
+      ].join("\n"),
+    });
+
+    await writeAudit({
+      orgId: org._id,
+      actorUserId: session.userId,
+      actorRole: session.role,
+      action: "user.invite",
+      targetType: "user",
+      targetId: user._id.toHexString(),
+      after: { email, role, displayName, status: user.status },
+      ...meta,
+    });
+
+    res.status(201).json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── POST /api/v1/auth/accept-invite (public) ────────────────────────
+
+export async function acceptInviteHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { token, password, displayName } = acceptInviteSchema.parse(req.body);
+
+    const redeemed = await redeemToken(token, "invite");
+    if (!redeemed) {
+      throw new HttpError(
+        400,
+        "invalid_token",
+        "Invite link is invalid or expired.",
+      );
+    }
+
+    const users = await getUsersCollection();
+    const user = await users.findOne({ _id: redeemed.userId });
+    if (!user) {
+      // User got deleted between invite + accept. Token's already
+      // consumed; treat as a hard failure.
+      throw new HttpError(
+        400,
+        "invalid_token",
+        "Invite link is invalid or expired.",
+      );
+    }
+    if (user.status !== "invited") {
+      // Defensive — token shouldn't have been live in this state.
+      throw new HttpError(
+        400,
+        "invalid_token",
+        "Invite link is invalid or expired.",
+      );
+    }
+
+    const passwordHash = await hashPassword(password);
+    const now = new Date();
+    await users.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          passwordHash,
+          status: "active",
+          updatedAt: now,
+          ...(displayName ? { displayName } : {}),
+        },
+      },
+    );
+
+    // Mint a session so the user lands logged-in. Better UX than
+    // bouncing through /login after just typing the password.
+    const meta = networkMeta(req);
+    const { sessionId } = await mintSession({
+      userId: user._id,
+      orgId: user.orgId,
+      role: user.role,
+      ip: meta.ip,
+      userAgent: meta.ua,
+      totpVerified: true,
+    });
+    setSessionCookie(res, sessionId);
+
+    await writeAudit({
+      orgId: user.orgId,
+      actorUserId: user._id,
+      actorRole: user.role,
+      action: "user.accept_invite",
+      targetType: "user",
+      targetId: user._id.toHexString(),
+      ...meta,
+    });
+
+    res.json({
+      user: toPublicUser({
+        ...user,
+        passwordHash,
+        status: "active",
+        ...(displayName ? { displayName } : {}),
+      }),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── POST /api/v1/auth/password/reset-request (public) ───────────────
+
+/**
+ * Note: ALWAYS returns 200 ok, even when the email is unknown. Tells
+ * an attacker nothing about which emails are registered. Real ops
+ * signal lives in the audit log.
+ */
+export async function passwordResetRequestHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { email } = passwordResetRequestSchema.parse(req.body);
+
+    const users = await getUsersCollection();
+    const user = await users.findOne({ email });
+
+    // Only mint if the user exists AND can actually reset (not
+    // disabled, has set up a password). Either way, return ok.
+    if (
+      user &&
+      user.status === "active" &&
+      user.passwordHash !== null
+    ) {
+      const meta = networkMeta(req);
+      const plaintext = await mintToken({
+        userId: user._id,
+        orgId: user.orgId,
+        kind: "password_reset",
+        ttlMs: PASSWORD_RESET_TTL_MS,
+        ip: meta.ip,
+        userAgent: meta.ua,
+      });
+
+      await emailService.send({
+        to: email,
+        subject: "Reset your eSpace Dev Hub password",
+        body: [
+          `Hi ${user.displayName},`,
+          ``,
+          `A password reset was requested for your account.`,
+          `Click the link below to choose a new password:`,
+          ``,
+          buildPasswordResetUrl(plaintext),
+          ``,
+          `This link expires in 1 hour. If you didn't request this, ignore this email — your password will stay unchanged.`,
+        ].join("\n"),
+      });
+
+      await writeAudit({
+        orgId: user.orgId,
+        actorUserId: user._id,
+        actorRole: user.role,
+        action: "user.password_reset_requested",
+        targetType: "user",
+        targetId: user._id.toHexString(),
+        ...meta,
+      });
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── POST /api/v1/auth/password/reset (public) ───────────────────────
+
+export async function passwordResetHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { token, password } = passwordResetSchema.parse(req.body);
+
+    const redeemed = await redeemToken(token, "password_reset");
+    if (!redeemed) {
+      throw new HttpError(
+        400,
+        "invalid_token",
+        "Reset link is invalid or expired.",
+      );
+    }
+
+    const users = await getUsersCollection();
+    const user = await users.findOne({ _id: redeemed.userId });
+    if (!user || user.status !== "active") {
+      throw new HttpError(
+        400,
+        "invalid_token",
+        "Reset link is invalid or expired.",
+      );
+    }
+
+    const passwordHash = await hashPassword(password);
+    const now = new Date();
+    await users.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          passwordHash,
+          updatedAt: now,
+          // A password change resets the lockout state — gives the
+          // legitimate user immediate access without waiting for the
+          // lockout window.
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+        },
+      },
+    );
+
+    // Force-logout every existing session for this user. The current
+    // request has no session (public endpoint), so we don't mint a
+    // new one — the user lands at /login.
+    await destroySessionsForUser(user._id);
+
+    // Wipe any stray reset/invite tokens for this user — successful
+    // reset invalidates pending links.
+    await deleteTokensFor(user._id);
+
+    const meta = networkMeta(req);
+    await writeAudit({
+      orgId: user.orgId,
+      actorUserId: user._id,
+      actorRole: user.role,
+      action: "user.password_reset",
+      targetType: "user",
+      targetId: user._id.toHexString(),
+      ...meta,
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}

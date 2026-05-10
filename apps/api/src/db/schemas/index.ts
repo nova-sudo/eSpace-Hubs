@@ -8,6 +8,7 @@ import { orgsValidator } from "./orgs.schema.js";
 import { usersValidator } from "./users.schema.js";
 import { sessionsValidator } from "./sessions.schema.js";
 import { auditLogValidator } from "./audit-log.schema.js";
+import { authTokensValidator } from "./auth-tokens.schema.js";
 import type { Document } from "mongodb";
 
 export interface CollectionDef {
@@ -20,4 +21,5 @@ export const COLLECTION_DEFS: readonly CollectionDef[] = [
   { name: "users", validator: usersValidator },
   { name: "sessions", validator: sessionsValidator },
   { name: "audit_log", validator: auditLogValidator },
+  { name: "auth_tokens", validator: authTokensValidator },
 ] as const;

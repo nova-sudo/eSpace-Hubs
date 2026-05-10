@@ -139,6 +139,34 @@ export interface Session {
   totpVerified: boolean;
 }
 
+// ─── auth tokens (invites + password resets) ────────────────────────
+
+export type AuthTokenKind = "invite" | "password_reset";
+
+export const ALL_AUTH_TOKEN_KINDS: readonly AuthTokenKind[] = [
+  "invite",
+  "password_reset",
+] as const;
+
+export interface AuthToken {
+  /**
+   * SHA-256 hash of the plaintext token (base64url, 43 chars). The
+   * plaintext goes in the email link; only the hash hits Mongo so a
+   * DB-only compromise can't replay live tokens.
+   */
+  _id: string;
+  userId: ObjectId;
+  orgId: ObjectId;
+  kind: AuthTokenKind;
+  createdAt: Date;
+  /** TTL — Mongo evicts past this. Index covers it. */
+  expiresAt: Date;
+  /** Set on first successful redemption; second use rejects. */
+  usedAt: Date | null;
+  createdByIp: string | null;
+  createdByUa: string | null;
+}
+
 // ─── audit log ───────────────────────────────────────────────────────
 
 export interface AuditLogEntry {
