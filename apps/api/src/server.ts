@@ -15,7 +15,8 @@ import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
 import { logger } from "./lib/logger.js";
 import { connect, disconnect } from "./db/client.js";
-import { ensureIndexes } from "./db/collections.js";
+import { bootstrap } from "./db/collections.js";
+import { seedDefaultOrg } from "./db/seed.js";
 
 const SHUTDOWN_DEADLINE_MS = 10_000;
 
@@ -23,13 +24,16 @@ async function main(): Promise<void> {
   const app = buildApp();
 
   // Non-blocking — the HTTP server starts even if Mongo is unreachable.
-  // /readyz reports the truth so probes stay accurate.
+  // /readyz reports the truth so probes stay accurate. The DB pipeline
+  // runs in series (validators → indexes → seed) so each step's
+  // preconditions are met before the next.
   void connect()
-    .then(() => ensureIndexes())
+    .then(() => bootstrap())
+    .then(() => seedDefaultOrg())
     .catch((err) => {
       logger.warn(
         { err: err instanceof Error ? err.message : String(err) },
-        "[boot] mongo not reachable yet — service is up; readyz will fail until mongo is available",
+        "[boot] mongo bootstrap failed — service is up; readyz will fail until mongo is available + healthy",
       );
     });
 
