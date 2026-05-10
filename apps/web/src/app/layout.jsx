@@ -1,6 +1,7 @@
 import "./globals.css";
 import { Inter_Tight, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+import { SessionProvider } from "@/features/auth";
 
 const interTight = Inter_Tight({
   subsets: ["latin"],
@@ -26,7 +27,11 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${interTight.variable} ${jetbrainsMono.variable}`}>
       <body>
-        {children}
+        {/* SessionProvider kicks off the initial /auth/me lookup so
+            useSession() reads from a populated store on first render.
+            It's a no-op when the user has no cookie (returns 401 →
+            user: null, loading: false). */}
+        <SessionProvider>{children}</SessionProvider>
         <Toaster
           theme="light"
           richColors
