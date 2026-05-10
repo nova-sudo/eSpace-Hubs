@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>eSpace Dev Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    html, body, #root { margin: 0; padding: 0; min-height: 100%; background: #f1eee6; }
+    body { font-family: 'Inter Tight', system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    .tweak-panel { font-family: 'Inter Tight', system-ui, sans-serif; }
+  </style>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="data.jsx"></script>
+  <script type="text/babel" src="primitives.jsx"></script>
+  <script type="text/babel" src="screens-shared.jsx"></script>
+  <script type="text/babel" src="screen-evidence.jsx"></script>
+  <script type="text/babel" src="screen-snapshots.jsx"></script>
+  <script type="text/babel" src="screen-settings.jsx"></script>
+  <script type="text/babel" src="screen-onboarding.jsx"></script>
+  <script type="text/babel" src="v1.jsx"></script>
+
+  <script type="text/babel">
+    const TWEAKS = /*EDITMODE-BEGIN*/{
+      "showTexture": true,
+      "dark": false,
+      "accent": "#3826ff",
+      "accent2": "#f59e0b",
+      "density": "balanced",
+      "hiddenTiles": {}
+    }/*EDITMODE-END*/;
+
+    const ACCENT_SWATCHES = [
+      { name: "Electric", v: "#3826ff" },
+      { name: "Cobalt",   v: "#1d4ed8" },
+      { name: "Plum",     v: "#6b21d9" },
+      { name: "Poppy",    v: "#e23a2d" },
+      { name: "Ink",      v: "#111827" },
+    ];
+    const ACCENT2_SWATCHES = [
+      { name: "Amber", v: "#f59e0b" },
+      { name: "Mint",  v: "#00c48a" },
+      { name: "Lime",  v: "#c6f050" },
+      { name: "Lilac", v: "#c4b5fd" },
+      { name: "Slate", v: "#94a3b8" },
+    ];
+    const TILE_LIST = [
+      "integrations","merged","rounds","linkage","tickets","prs",
+      "activity","turnaround","reviews","snapshots","export","commits"
+    ];
+
+    const VALID_ROUTES = ["dashboard", "evidence", "snapshots", "settings", "onboarding"];
+    function getRoute() {
+      const h = (window.location.hash || "").replace(/^#\/?/, "");
+      return VALID_ROUTES.includes(h) ? h : "dashboard";
+    }
+
+    function App() {
+      const [tw, setTw] = React.useState(TWEAKS);
+      const [editMode, setEditMode] = React.useState(false);
+      const [route, setRoute] = React.useState(getRoute());
+
+      React.useEffect(() => {
+        const onHash = () => { setRoute(getRoute()); window.scrollTo(0, 0); };
+        window.addEventListener("hashchange", onHash);
+        return () => window.removeEventListener("hashchange", onHash);
+      }, []);
+
+      const navigate = (r) => {
+        window.location.hash = "/" + r;
+      };
+
+      React.useEffect(() => {
+        const onMsg = (e) => {
+          const d = e.data || {};
+          if (d.type === "__activate_edit_mode") setEditMode(true);
+          if (d.type === "__deactivate_edit_mode") setEditMode(false);
+        };
+        window.addEventListener("message", onMsg);
+        window.parent?.postMessage({ type: "__edit_mode_available" }, "*");
+        return () => window.removeEventListener("message", onMsg);
+      }, []);
+
+      const patch = (k, v) => {
+        const next = { ...tw, [k]: v };
+        setTw(next);
+        window.parent?.postMessage({ type: "__edit_mode_set_keys", edits: { [k]: v } }, "*");
+      };
+
+      const toggleTile = (id) => {
+        const hidden = { ...(tw.hiddenTiles || {}) };
+        hidden[id] = !hidden[id];
+        patch("hiddenTiles", hidden);
+      };
+
+      const connectedCount = route === "onboarding" ? 0 : 3;
+
+      return (
+        <>
+          <V1.Shell {...tw} route={route} onNavigate={navigate} connectedCount={connectedCount} />
+          {editMode && <TweakPanel tw={tw} patch={patch} toggleTile={toggleTile} route={route} onNavigate={navigate} />}
+        </>
+      );
+    }
+
+    function TweakPanel({ tw, patch, toggleTile, route, onNavigate }) {
+      const screens = [["dashboard","Dashboard"],["evidence","Evidence"],["snapshots","Snapshots"],["settings","Settings"],["onboarding","Onboarding"]];
+      return (
+        <div className="tweak-panel" style={{
+          position: "fixed", right: 20, bottom: 20, zIndex: 1000,
+          width: 300, background: "#ffffff", color: "#0b0b14",
+          border: "1px solid rgba(0,0,0,0.12)", borderRadius: 8,
+          boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+          fontSize: 12, overflow: "hidden",
+        }}>
+          <div style={{ padding: "10px 14px", background: "#0b0b14", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", fontWeight: 700 }}>Tweaks</span>
+            <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 10, opacity: 0.6 }}>eSpace/DevHub</span>
+          </div>
+          <div style={{ padding: 14, maxHeight: "72vh", overflowY: "auto" }}>
+            <Row label="Screen">
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {screens.map(([v, l]) => (
+                  <button key={v} onClick={() => onNavigate(v)} style={{
+                    padding: "4px 8px", border: "1px solid rgba(0,0,0,0.12)",
+                    background: route === v ? "#0b0b14" : "transparent",
+                    color: route === v ? "#fff" : "rgba(0,0,0,0.7)",
+                    fontFamily: "JetBrains Mono, monospace", fontSize: 10,
+                    borderRadius: 3, cursor: "pointer", textTransform: "uppercase", letterSpacing: 0.4,
+                  }}>{l}</button>
+                ))}
+              </div>
+            </Row>
+            <Row label="Theme">
+              <Seg value={tw.dark ? "dark" : "light"} opts={[["light","Light"],["dark","Dark"]]} onChange={(v) => patch("dark", v === "dark")} />
+            </Row>
+            <Row label="Density">
+              <Seg value={tw.density} opts={[["airy","Airy"],["balanced","Balanced"],["dense","Dense"]]} onChange={(v) => patch("density", v)} />
+            </Row>
+            <Row label="Signature texture">
+              <Seg value={tw.showTexture ? "on" : "off"} opts={[["on","On"],["off","Off"]]} onChange={(v) => patch("showTexture", v === "on")} />
+            </Row>
+            <Row label="Primary accent">
+              <Swatches value={tw.accent} options={ACCENT_SWATCHES} onChange={(v) => patch("accent", v)} />
+            </Row>
+            <Row label="Secondary accent">
+              <Swatches value={tw.accent2} options={ACCENT2_SWATCHES} onChange={(v) => patch("accent2", v)} />
+            </Row>
+            <Row label="Visible tiles">
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {TILE_LIST.map((t) => {
+                  const hidden = tw.hiddenTiles?.[t];
+                  return (
+                    <button key={t} onClick={() => toggleTile(t)} style={{
+                      padding: "4px 8px", border: "1px solid rgba(0,0,0,0.12)", background: hidden ? "transparent" : "#0b0b14",
+                      color: hidden ? "rgba(0,0,0,0.5)" : "#fff", fontFamily: "JetBrains Mono, monospace", fontSize: 10,
+                      borderRadius: 3, cursor: "pointer", textTransform: "uppercase", letterSpacing: 0.4, textDecoration: hidden ? "line-through" : "none",
+                    }}>{t}</button>
+                  );
+                })}
+              </div>
+            </Row>
+          </div>
+        </div>
+      );
+    }
+
+    function Row({ label, children }) {
+      return (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 10, letterSpacing: 0.6, textTransform: "uppercase", color: "rgba(0,0,0,0.55)", marginBottom: 6 }}>{label}</div>
+          {children}
+        </div>
+      );
+    }
+
+    function Seg({ value, opts, onChange }) {
+      return (
+        <div style={{ display: "flex", border: "1px solid rgba(0,0,0,0.12)", borderRadius: 4, overflow: "hidden" }}>
+          {opts.map(([v, label]) => (
+            <button key={v} onClick={() => onChange(v)} style={{
+              flex: 1, padding: "6px 8px", border: "none", cursor: "pointer",
+              background: value === v ? "#0b0b14" : "#fff",
+              color: value === v ? "#fff" : "rgba(0,0,0,0.7)",
+              fontFamily: "Inter Tight, sans-serif", fontSize: 11, fontWeight: 600,
+            }}>{label}</button>
+          ))}
+        </div>
+      );
+    }
+
+    function Swatches({ value, options, onChange }) {
+      return (
+        <div style={{ display: "flex", gap: 6 }}>
+          {options.map((o) => (
+            <button key={o.v} onClick={() => onChange(o.v)} title={o.name} style={{
+              width: 28, height: 28, borderRadius: 14, border: value === o.v ? "2px solid #0b0b14" : "1px solid rgba(0,0,0,0.12)",
+              background: o.v, cursor: "pointer", padding: 0, boxShadow: value === o.v ? "0 0 0 2px #fff inset" : "none",
+            }} />
+          ))}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

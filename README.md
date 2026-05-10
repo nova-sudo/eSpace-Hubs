@@ -32,8 +32,8 @@ integrations.
 | Provider | Auth mode | Where the token lives |
 |----------|-----------|-----------------------|
 | Jira | Personal API token (user pastes) | `localStorage` |
-| GitLab (self-hosted) | OAuth 2.0 with PKCE | `localStorage` |
-| GitHub | OAuth 2.0 with PKCE (device + redirect) | `localStorage` |
+| GitLab (self-hosted) | Personal Access Token (user pastes) | `localStorage` |
+| GitHub | OAuth 2.0 (redirect flow) | `localStorage` |
 
 All API calls are proxied through `/api/{jira,gitlab,github}/...` so the browser
 never talks directly to the provider (avoids CORS issues on self-hosted GitLab

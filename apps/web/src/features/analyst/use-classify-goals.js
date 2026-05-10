@@ -1,0 +1,282 @@
+"use client";
+
+/**
+ * Client-side orchestrator for a classification run.
+ *
+ * Responsibilities:
+ *   - POST the current goal tree to /api/classify-goals
+ *   - Parse the NDJSON stream line-by-line
+ *   - Push each event into local React state (so the analyst page can
+ *     render a live process log)
+ *   - Persist each GOAL_CLASSIFIED into the specs-store so the dashboard
+ *     section and the widget grid update in real time
+ *   - Expose `abort()` so the user can bail out of a long run
+ *
+ * Deliberately does NOT own the goal tree — callers pass the goals in
+ * when they call `start(goals)`. That keeps the hook reusable for partial
+ * re-analysis (one goal, one L1, whatever).
+ */
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useGoals } from "@/features/goals";
+import { markAnalyzedAt, saveSpec } from "@/features/goal-specs";
+import { ANALYSIS } from "./ai/analysis-events";
+
+/**
+ * Flatten the L1/L2 tree into the classifier's input shape.
+ *
+ * The `description` field we ship is a RICHLY-STRUCTURED block that
+ * concatenates every piece of user-supplied context the AI needs to make
+ * a good widget decision. Format (markdown-ish, stable sections):
+ *
+ *   Category: delivery
+ *   Priority: high
+ *   Weightage: 20%
+ *   Window: 2026-01-01 → 2026-06-30
+ *
+ *   Context:
+ *   <the user's free-text `description` field>
+ *
+ *   Rubric:
+ *   <Not achieved / Achieved / Over / Role model criteria>
+ *
+ * L1s also get their L2 titles appended as a hint that the goal is a
+ * parent; L2s get their parent L1 title as a separate field.
+ *
+ * Empty sections are skipped so the model doesn't see noise headers.
+ */
+export function flattenGoalsForClassification(tree) {
+  const out = [];
+  for (const l1 of tree?.l1s || []) {
+    const id = l1.id;
+    if (!id || !l1.title?.trim()) continue;
+    out.push({
+      id,
+      kind: "L1",
+      title: l1.title.trim(),
+      description: buildL1Description(l1),
+    });
+    for (const l2 of l1.l2s || []) {
+      if (!l2.id || !l2.title?.trim()) continue;
+      out.push({
+        id: l2.id,
+        kind: "L2",
+        title: l2.title.trim(),
+        description: buildL2Description(l2),
+        parentL1Title: l1.title.trim(),
+      });
+    }
+  }
+  return out;
+}
+
+function buildL1Description(l1) {
+  const meta = metaLine({
+    Category: l1.category,
+    Weightage: l1.weightage ? `${l1.weightage}%` : "",
+  });
+  const childTitles = (l1.l2s || [])
+    .map((l) => l?.title?.trim())
+    .filter(Boolean);
+  return joinSections([
+    meta,
+    sec("Context", l1.description),
+    sec("Rubric", l1.rubric),
+    childTitles.length > 0
+      ? sec("Mapped L2 sub-goals", childTitles.map((t) => `· ${t}`).join("\n"))
+      : "",
+  ]);
+}
+
+function buildL2Description(l2) {
+  const window =
+    l2.startDate || l2.dueDate
+      ? `${l2.startDate || "?"} → ${l2.dueDate || "?"}`
+      : "";
+  const meta = metaLine({
+    Category: l2.category,
+    Priority: l2.priority,
+    Weightage: l2.weightage ? `${l2.weightage}%` : "",
+    Window: window,
+  });
+  return joinSections([
+    meta,
+    sec("Context", l2.description),
+    sec("Rubric", l2.rubric),
+  ]);
+}
+
+function metaLine(map) {
+  const entries = Object.entries(map)
+    .map(([k, v]) => [k, typeof v === "string" ? v.trim() : v])
+    .filter(([, v]) => v);
+  if (entries.length === 0) return "";
+  return entries.map(([k, v]) => `${k}: ${v}`).join("\n");
+}
+
+function sec(header, body) {
+  const v = typeof body === "string" ? body.trim() : "";
+  if (!v) return "";
+  return `${header}:\n${v}`;
+}
+
+function joinSections(sections) {
+  return sections.filter(Boolean).join("\n\n");
+}
+
+const PHASES = Object.freeze({
+  IDLE: "idle",
+  RUNNING: "running",
+  COMPLETE: "complete",
+  ERROR: "error",
+});
+
+export const CLASSIFY_PHASES = PHASES;
+
+/**
+ * Read a ReadableStream of NDJSON into an async iterator of parsed events.
+ * Kept local to the hook — classifier-index.js is server-only because it
+ * holds an env var.
+ */
+async function* readNdjson(stream) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if (!line) continue;
+        try {
+          yield JSON.parse(line);
+        } catch {
+          /* skip bad line */
+        }
+      }
+    }
+    const tail = buffer.trim();
+    if (tail) {
+      try {
+        yield JSON.parse(tail);
+      } catch {
+        /* ignore */
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+export function useClassifyGoals() {
+  const { goals } = useGoals();
+  const [events, setEvents] = useState([]);
+  const [phase, setPhase] = useState(PHASES.IDLE);
+  const [error, setError] = useState(null);
+  const abortRef = useRef(null);
+  const mountedRef = useRef(true);
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+      if (abortRef.current) abortRef.current.abort();
+    },
+    [],
+  );
+
+  const reset = useCallback(() => {
+    setEvents([]);
+    setPhase(PHASES.IDLE);
+    setError(null);
+  }, []);
+
+  const abort = useCallback(() => {
+    if (abortRef.current) abortRef.current.abort();
+  }, []);
+
+  /**
+   * Kick off a classification run. Pass `subset` to re-analyze a single
+   * goal (or a filtered list) — defaults to every L1 + every L2.
+   */
+  const start = useCallback(
+    async (subset) => {
+      if (phase === PHASES.RUNNING) return;
+      const list = subset && Array.isArray(subset)
+        ? subset
+        : flattenGoalsForClassification(goals);
+      if (list.length === 0) {
+        setError("No goals to classify. Add goals in Settings first.");
+        setPhase(PHASES.ERROR);
+        return;
+      }
+      setEvents([]);
+      setError(null);
+      setPhase(PHASES.RUNNING);
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+      try {
+        const provider =
+          typeof localStorage !== "undefined"
+            ? localStorage.getItem("espace-devhub:ai-provider") || "mistral"
+            : "mistral";
+        const res = await fetch("/api/classify-goals", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-ai-provider": provider,
+          },
+          body: JSON.stringify({ goals: list, provider }),
+          signal: ctrl.signal,
+        });
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(
+            errBody?.error || `Classifier responded ${res.status}`,
+          );
+        }
+        if (!res.body) {
+          throw new Error("Classifier returned an empty stream.");
+        }
+        for await (const evt of readNdjson(res.body)) {
+          if (!mountedRef.current) break;
+          // Persist classified specs immediately so downstream consumers
+          // (dashboard section 5, analyst grid) update in real time.
+          if (evt.type === ANALYSIS.GOAL_CLASSIFIED && evt.payload?.spec) {
+            saveSpec(evt.payload.spec);
+          }
+          setEvents((prev) => [...prev, evt]);
+          if (evt.type === ANALYSIS.COMPLETE) {
+            markAnalyzedAt(Date.now());
+          }
+        }
+        if (mountedRef.current) setPhase(PHASES.COMPLETE);
+      } catch (err) {
+        if (err?.name === "AbortError") {
+          if (mountedRef.current) setPhase(PHASES.IDLE);
+          return;
+        }
+        if (mountedRef.current) {
+          setError(err?.message || String(err));
+          setPhase(PHASES.ERROR);
+        }
+      } finally {
+        abortRef.current = null;
+      }
+    },
+    [goals, phase],
+  );
+
+  return {
+    events,
+    phase,
+    error,
+    inProgress: phase === PHASES.RUNNING,
+    start,
+    abort,
+    reset,
+  };
+}

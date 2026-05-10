@@ -1,0 +1,1623 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>eSpace Dev Hub — Demo Prep</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+/* ─────────────── HexaCore tokens (lifted from app's globals.css) ─────────────── */
+:root {
+  --bg: #f1eee6;
+  --fg: #0b0b14;
+  --card: #ffffff;
+  --card-alt: #faf8f2;
+  --muted-fg: rgba(11, 11, 20, 0.55);
+  --dim-fg: rgba(11, 11, 20, 0.38);
+  --border: rgba(10, 11, 22, 0.10);
+  --border-strong: rgba(10, 11, 22, 0.18);
+  --accent: #3826ff;
+  --accent-on: #ffffff;
+  --accent-dim: rgba(56, 38, 255, 0.10);
+  --accent-2: #00c48a;
+  --good: #047857;
+  --bad: #b91c1c;
+
+  --radius-tile: 4px;
+  --radius-sub: 3px;
+  --radius-pill: 999px;
+
+  --font-display: "Inter Tight", "Inter", system-ui, sans-serif;
+  --font-sans: "Inter Tight", "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  --font-serif: ui-serif, "Iowan Old Style", Georgia, serif;
+
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv02","cv03","cv04","cv11","ss01";
+  overflow-x: hidden;
+}
+
+em.accent {
+  font-style: italic;
+  font-family: var(--font-serif);
+  color: var(--accent);
+  font-weight: 500;
+  display: inline-block;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted-fg);
+  font-weight: 500;
+}
+
+/* Subtle grain overlay (matches app) */
+.grain {
+  position: fixed; inset: 0; pointer-events: none; z-index: 1;
+  opacity: 0.35; mix-blend-mode: multiply;
+  background-image: radial-gradient(rgba(10,11,22,0.3) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
+
+/* ─────────────── Brand mark (top-left) ─────────────── */
+.brand {
+  position: fixed; top: 24px; left: 32px; z-index: 25;
+  display: flex; align-items: baseline; gap: 8px;
+  font-family: var(--font-display); font-size: 14px;
+  font-weight: 600; letter-spacing: -0.3px;
+  color: var(--fg); transition: color 240ms var(--ease);
+  text-decoration: none;
+}
+.brand .slash { color: var(--accent); }
+.brand .ver {
+  font-family: var(--font-mono);
+  font-size: 9px; color: var(--dim-fg); border: 1px solid var(--border);
+  border-radius: 3px; padding: 1px 5px; margin-left: 2px;
+  letter-spacing: 0.4px;
+}
+body.inverse .brand { color: #fff; }
+body.inverse .brand .slash { color: rgba(255,255,255,0.7); }
+body.inverse .brand .ver {
+  color: rgba(255,255,255,0.6);
+  border-color: rgba(255,255,255,0.25);
+}
+
+/* ─────────────── Counter ─────────────── */
+.counter {
+  position: fixed; bottom: 22px; right: 28px; z-index: 25;
+  font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: 0.6px;
+  color: var(--muted-fg);
+  background: rgba(255,255,255,0.7);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sub);
+  padding: 6px 10px;
+  backdrop-filter: blur(8px);
+  transition: color 240ms var(--ease), background 240ms var(--ease), border-color 240ms var(--ease);
+}
+.counter .cur { color: var(--accent); font-weight: 700; }
+body.inverse .counter {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.18);
+  color: rgba(255,255,255,0.7);
+}
+body.inverse .counter .cur { color: #fff; }
+
+/* ─────────────── Right-rail navigation ─────────────── */
+.rail {
+  position: fixed; top: 50%; right: 22px; transform: translateY(-50%);
+  z-index: 25;
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 14px 10px;
+  background: rgba(255,255,255,0.55);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  backdrop-filter: blur(10px);
+  transition: background 240ms var(--ease), border-color 240ms var(--ease);
+}
+body.inverse .rail {
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.22);
+}
+.rail-item {
+  position: relative; width: 14px; height: 14px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; cursor: pointer; padding: 0;
+}
+.rail-bubble {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--border-strong);
+  transition: width .2s ease, height .2s ease, background .2s ease, box-shadow .2s ease;
+}
+body.inverse .rail-bubble { background: rgba(255,255,255,0.45); }
+.rail-item:hover .rail-bubble { width: 9px; height: 9px; background: var(--muted-fg); }
+body.inverse .rail-item:hover .rail-bubble { background: rgba(255,255,255,0.85); }
+.rail-item.active .rail-bubble {
+  width: 8px; height: 8px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+body.inverse .rail-item.active .rail-bubble {
+  background: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,0.25);
+}
+.rail-tip {
+  position: absolute; right: 22px; top: 50%;
+  transform: translateY(-50%) translateX(4px);
+  opacity: 0; pointer-events: none; white-space: nowrap;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--fg);
+  background: var(--card); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sub); padding: 5px 9px;
+  transition: opacity .15s ease, transform .15s ease;
+  box-shadow: 0 2px 8px rgba(10,11,22,0.06);
+}
+.rail-tip .hash { color: var(--accent); }
+.rail-item:hover .rail-tip,
+.rail-item.active .rail-tip {
+  opacity: 1; transform: translateY(-50%) translateX(0);
+}
+body.inverse .rail-tip {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.3);
+  color: #fff;
+}
+body.inverse .rail-tip .hash { color: #fff; opacity: 0.7; }
+
+/* ─────────────── Scroll container ─────────────── */
+.deck {
+  height: 100vh; overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+}
+.deck::-webkit-scrollbar { display: none; }
+
+.slide {
+  position: relative; z-index: 2;
+  scroll-snap-align: start; scroll-snap-stop: always;
+  height: 100vh; min-height: 100vh;
+  padding: 80px 64px 80px;
+  display: flex; flex-direction: column;
+  gap: 24px;
+  overflow: hidden;
+}
+.slide.inverse {
+  background: var(--accent);
+  color: #fff;
+}
+.slide.inverse em.accent { color: #fff; }
+.slide.inverse .mono { color: rgba(255,255,255,0.7); }
+
+/* ─────────────── Slide head ─────────────── */
+.slide-head {
+  display: flex; align-items: baseline; gap: 18px;
+  border-bottom: 1px solid var(--border); padding-bottom: 12px;
+}
+.slide.inverse .slide-head { border-color: rgba(255,255,255,0.18); }
+.slide-num {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: 24px; font-weight: 500; color: var(--accent);
+}
+.slide.inverse .slide-num { color: #fff; }
+.slide-num-label {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.6px;
+  text-transform: uppercase; color: var(--muted-fg);
+}
+.slide.inverse .slide-num-label { color: rgba(255,255,255,0.7); }
+
+/* ─────────────── Headline ─────────────── */
+.headline {
+  margin: 0;
+  font-family: var(--font-display); font-weight: 600;
+  font-size: clamp(40px, 5.4vw, 78px);
+  letter-spacing: -2.4px; line-height: 0.96;
+  text-wrap: balance;
+}
+.headline .dim { color: var(--muted-fg); }
+.slide.inverse .headline .dim { color: rgba(255,255,255,0.65); }
+.subhead {
+  font-family: var(--font-sans);
+  font-size: clamp(15px, 1.2vw, 18px); line-height: 1.5;
+  color: var(--muted-fg); max-width: 720px; margin: 0;
+}
+.slide.inverse .subhead { color: rgba(255,255,255,0.75); }
+
+/* ─────────────── Cards ─────────────── */
+.card {
+  position: relative;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 24px 26px;
+}
+.card.accent { background: var(--accent); color: #fff; border-color: var(--accent); }
+.card .card-num {
+  font-family: var(--font-serif); font-style: italic; font-weight: 500;
+  font-size: 22px; color: var(--accent);
+}
+.card.accent .card-num { color: #fff; }
+.card-title {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 19px; letter-spacing: -0.4px;
+  margin-top: 10px; margin-bottom: 6px;
+}
+.card-body {
+  font-size: 13.5px; line-height: 1.5; color: var(--muted-fg);
+  margin: 0;
+}
+.card.accent .card-body { color: rgba(255,255,255,0.85); }
+
+.slide.inverse .card {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.18);
+  color: #fff;
+}
+.slide.inverse .card .card-num { color: #fff; }
+.slide.inverse .card-body { color: rgba(255,255,255,0.85); }
+
+/* ─────────────── Pills ─────────────── */
+.pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  background: var(--card-alt); color: var(--muted-fg);
+  border: 1px solid var(--border);
+}
+.pill.accent { background: var(--accent-dim); color: var(--accent); border-color: transparent; }
+.pill.ok { background: rgba(4,120,87,0.08); color: var(--good); border-color: transparent; }
+.pill.warn { background: rgba(185,28,28,0.08); color: var(--bad); border-color: transparent; }
+.pill.inverse { background: rgba(255,255,255,0.18); color: #fff; border-color: transparent; }
+
+/* ─────────────── Slide-level entrance animation ─────────────── */
+.slide [data-anim] {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 600ms var(--ease), transform 700ms var(--ease);
+  transition-delay: calc(var(--stagger, 0) * 70ms);
+}
+.slide.in [data-anim] { opacity: 1; transform: translateY(0); }
+.headline em.accent {
+  display: inline-block;
+  transform: translateY(20px) scale(0.96);
+  opacity: 0;
+  transition: opacity 700ms var(--ease) 200ms, transform 700ms var(--ease) 200ms;
+}
+.slide.in .headline em.accent { transform: translateY(0) scale(1); opacity: 1; }
+
+/* ─────────────── Dither field ─────────────── */
+.dither {
+  position: absolute; pointer-events: none; z-index: 0;
+  opacity: 0; transition: opacity 1000ms var(--ease) 400ms;
+}
+.slide.in .dither { opacity: 0.55; }
+.slide.inverse.in .dither { opacity: 0.32; }
+.dither circle { fill: currentColor; }
+
+/* ─────────────── Layouts ─────────────── */
+.three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; flex: 1; min-height: 0; }
+.four-col  { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; flex: 1; min-height: 0; }
+.two-col   { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; flex: 1; min-height: 0; }
+
+/* — Title slide */
+.slide-01 .body-wrap { display: grid; grid-template-rows: 1fr auto auto; gap: 28px; flex: 1; min-height: 0; padding-top: 30px; }
+.slide-01 .headline {
+  font-size: clamp(56px, 8vw, 132px);
+  letter-spacing: -3.5px; line-height: 0.92;
+}
+.slide-01 .footer {
+  display: flex; justify-content: space-between;
+  padding-top: 20px; border-top: 1px solid var(--border);
+}
+.slide-01 .signal-tile {
+  position: absolute; right: 64px; top: 130px;
+  width: 320px; height: 200px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 18px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  overflow: hidden;
+}
+.slide-01 .signal-tile .big {
+  font-family: var(--font-display); font-size: 56px; font-weight: 600;
+  letter-spacing: -1.6px; line-height: 1;
+}
+.slide-01 .signal-tile .dither {
+  position: absolute; right: -30px; top: -30px; width: 240px; height: 240px;
+  color: var(--accent);
+  -webkit-mask-image: linear-gradient(to left, #000 40%, transparent);
+          mask-image: linear-gradient(to left, #000 40%, transparent);
+}
+
+/* — Status columns (shipped / out of scope) */
+.status-cols {
+  display: grid; grid-template-columns: repeat(2, 1fr);
+  gap: 18px; flex: 1; min-height: 0;
+}
+.status-col {
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-tile); padding: 22px 24px;
+}
+.status-col .heading { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.status-col ul { padding: 0; margin: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.status-col li {
+  display: grid; grid-template-columns: 14px 1fr; gap: 10px;
+  align-items: start;
+  font-size: 13.5px; line-height: 1.5; color: var(--fg);
+  padding: 6px 0;
+}
+.status-col li::before {
+  content: ""; width: 6px; height: 6px; margin-top: 7px;
+  border-radius: 50%; background: var(--dim-fg);
+  display: block;
+}
+.status-col.shipped li::before { background: var(--accent-2); }
+.status-col.out li::before { background: var(--dim-fg); }
+
+/* — Step strip (demo flow rail) */
+.step-strip {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;
+  flex: 1; min-height: 0;
+}
+.step-card {
+  position: relative;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 18px 18px 22px;
+  display: flex; flex-direction: column; gap: 10px;
+  transition: border-color 240ms var(--ease), transform 240ms var(--ease);
+}
+.step-card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
+.step-card .step-num {
+  font-family: var(--font-serif); font-style: italic; font-weight: 500;
+  font-size: 22px; color: var(--accent); line-height: 1;
+}
+.step-card .step-time {
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--muted-fg);
+  display: flex; align-items: center; gap: 5px;
+}
+.step-card .step-time::before {
+  content: ""; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--accent-2); display: inline-block;
+}
+.step-card.optional .step-time::before { background: var(--dim-fg); }
+.step-card .step-name {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 16px; letter-spacing: -0.3px;
+}
+.step-card .step-body {
+  font-size: 12.5px; line-height: 1.5; color: var(--muted-fg);
+  margin: 0;
+}
+.step-card.accent {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.step-card.accent .step-num,
+.step-card.accent .step-time,
+.step-card.accent .step-body { color: rgba(255,255,255,0.85); }
+.step-card.accent .step-time::before { background: #fff; }
+
+/* — Demo step (2-col detail) */
+.demo-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 24px; flex: 1; min-height: 0; }
+.demo-grid > .left, .demo-grid > .right { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.kv-list {
+  display: flex; flex-direction: column; gap: 0;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  overflow: hidden;
+}
+.kv-row {
+  display: grid; grid-template-columns: 110px 1fr; gap: 14px;
+  padding: 12px 18px;
+  border-bottom: 1px dashed var(--border);
+  font-size: 13px; line-height: 1.45;
+  align-items: start;
+}
+.kv-row:last-child { border-bottom: 0; }
+.kv-row .kv-key {
+  font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--muted-fg);
+  padding-top: 2px;
+}
+.kv-row .kv-val { color: var(--fg); }
+.kv-row .kv-val code,
+code.inline {
+  font-family: var(--font-mono); font-size: 11.5px;
+  background: var(--accent-dim); color: var(--accent);
+  padding: 1px 6px; border-radius: 3px;
+}
+.kv-row .kv-val kbd {
+  font-family: var(--font-mono); font-size: 10px;
+  background: var(--card-alt);
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  padding: 2px 6px;
+  margin: 0 2px;
+  color: var(--fg);
+}
+
+/* Mock surface / preview pane on demo slides — sits on the right side */
+.preview {
+  position: relative;
+  background: var(--card-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 18px;
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column; gap: 12px;
+  overflow: hidden;
+}
+.preview-label {
+  display: flex; align-items: center; justify-content: space-between;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--muted-fg);
+}
+.preview-label .live {
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.preview-label .live::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent-2);
+  box-shadow: 0 0 0 3px rgba(0,196,138,0.22);
+  animation: livePulse 1.6s ease-in-out infinite;
+}
+@keyframes livePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.85); }
+}
+
+/* timing badge trio (TTFR / ATTNR / Idle) */
+.timing-trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.timing-trio .stat {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-sub);
+  padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.timing-trio .stat .label {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.5px;
+  color: var(--muted-fg); text-transform: uppercase;
+}
+.timing-trio .stat .v {
+  font-family: var(--font-display); font-weight: 600; font-size: 26px;
+  letter-spacing: -0.7px; line-height: 1; color: var(--fg);
+}
+.timing-trio .stat .sub {
+  font-family: var(--font-mono); font-size: 9px;
+  color: var(--muted-fg); letter-spacing: 0.3px;
+}
+
+/* timeline diagram (Push → TTFR → 1st → ATTNR → 2nd) */
+.timeline-row {
+  display: grid; grid-template-columns: auto 1fr auto 1fr auto;
+  align-items: center; gap: 0;
+  padding: 14px 6px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-sub);
+}
+.timeline-marker {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 0 8px;
+}
+.timeline-marker .dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  border: 2px solid var(--accent); background: var(--card);
+}
+.timeline-marker .label {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--muted-fg);
+  white-space: nowrap;
+}
+.timeline-seg {
+  position: relative;
+  height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 3px;
+  font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.4px; text-transform: uppercase;
+}
+.timeline-seg.primary { background: var(--accent); color: #fff; }
+.timeline-seg.alt     { background: var(--accent-dim); color: var(--accent); }
+
+/* PR row mini list (review-timing demo) */
+.pr-mini-list {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.pr-mini-row {
+  display: grid; grid-template-columns: 50px 1fr 70px;
+  gap: 10px; align-items: center;
+  padding: 6px 0;
+  border-top: 1px dashed var(--border);
+  font-size: 12px;
+}
+.pr-mini-row:first-child { border-top: 0; }
+.pr-mini-row .num {
+  font-family: var(--font-mono); font-weight: 700; font-size: 10.5px;
+  color: var(--accent);
+}
+.pr-mini-row .bar-wrap {
+  height: 5px; border-radius: 99px; background: var(--border); overflow: hidden;
+}
+.pr-mini-row .bar-fill {
+  height: 100%; background: var(--accent); border-radius: 99px;
+}
+.pr-mini-row .idle {
+  font-family: var(--font-mono); font-size: 10.5px;
+  text-align: right;
+}
+
+/* console-like token stream (analyst preview) */
+.console-pane {
+  background: var(--fg);
+  border-radius: var(--radius-sub);
+  padding: 14px 16px;
+  font-family: var(--font-mono); font-size: 11.5px;
+  color: rgba(255,255,255,0.92);
+  line-height: 1.6;
+  overflow: hidden;
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.console-pane .line { display: grid; grid-template-columns: 80px 1fr; gap: 10px; }
+.console-pane .ev   { color: var(--accent-2); font-weight: 700; letter-spacing: 0.3px; }
+.console-pane .ev.muted { color: rgba(255,255,255,0.45); }
+.console-pane .body { color: #fff; }
+.console-pane .body .key { color: rgba(135,150,255,1); }
+
+/* paragraph card (evidence demo) */
+.para-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-sub);
+  padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.para-card .meta {
+  display: flex; align-items: baseline; justify-content: space-between;
+  font-family: var(--font-mono); font-size: 10px; color: var(--muted-fg);
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.para-card .body {
+  font-family: var(--font-serif); font-size: 14.5px; line-height: 1.6;
+}
+.para-card .actions { display: flex; gap: 8px; }
+.btn-mock {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.4px; text-transform: uppercase;
+  background: var(--accent); color: #fff;
+  border: 0; border-radius: var(--radius-sub);
+}
+.btn-mock.ghost {
+  background: transparent; color: var(--accent);
+  border: 1px solid var(--accent-dim);
+}
+
+/* architecture stack (talking-points slide) */
+.arch-stack { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+.arch-row {
+  display: grid; grid-template-columns: 200px 110px 1fr;
+  gap: 16px; align-items: center;
+  padding: 14px 20px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  transition: border-color 240ms var(--ease);
+}
+.arch-row:hover { border-color: var(--border-strong); }
+.arch-row.inverse { background: var(--accent); color: #fff; border-color: var(--accent); }
+.arch-row .name {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 17px; letter-spacing: -0.3px;
+}
+.arch-row .body {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--muted-fg); line-height: 1.5;
+}
+.arch-row.inverse .body { color: rgba(255,255,255,0.85); }
+
+/* before/after table (talking points) */
+.ba-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 0;
+  flex: 1; min-height: 0;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-tile); overflow: hidden;
+}
+.ba-col { display: flex; flex-direction: column; }
+.ba-col.right { background: var(--accent); color: #fff; }
+.ba-col .head {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-display); font-weight: 600; font-size: 17px;
+}
+.ba-col.right .head { border-color: rgba(255,255,255,0.18); }
+.ba-col .head .tag {
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.5px;
+  text-transform: uppercase; color: var(--muted-fg);
+}
+.ba-col.right .head .tag { color: rgba(255,255,255,0.7); }
+.ba-col ul { padding: 6px 0; margin: 0; list-style: none; flex: 1; }
+.ba-col li {
+  display: grid; grid-template-columns: 18px 1fr; gap: 8px;
+  align-items: start;
+  padding: 9px 22px;
+  font-size: 13px; line-height: 1.5;
+}
+.ba-col.left  li::before {
+  content: "—"; color: var(--muted-fg); font-family: var(--font-mono);
+  font-size: 11px; text-align: center;
+}
+.ba-col.right li::before {
+  content: "✓"; color: #fff; font-family: var(--font-mono);
+  font-size: 11px; font-weight: 700; opacity: 0.85;
+}
+
+/* questions list (open questions slide) */
+.q-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; flex: 1; min-height: 0; }
+.q-block {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 18px 20px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.q-block .h {
+  display: flex; align-items: baseline; gap: 8px;
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 16px; letter-spacing: -0.3px;
+}
+.q-block ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.q-block li {
+  font-size: 12.5px; line-height: 1.45; color: var(--fg);
+  padding: 4px 0; padding-left: 14px; position: relative;
+}
+.q-block li::before {
+  content: "·"; position: absolute; left: 0; top: 4px;
+  color: var(--accent); font-weight: 700;
+}
+
+/* next-steps timeline */
+.next-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+  flex: 1; min-height: 0;
+}
+.next-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 18px 20px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.next-card.now { border-color: var(--accent); }
+.next-card .when {
+  font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--muted-fg);
+}
+.next-card.now .when { color: var(--accent); }
+.next-card .h {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 16px; letter-spacing: -0.3px;
+}
+.next-card ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.next-card li {
+  font-size: 12.5px; line-height: 1.45; color: var(--fg);
+  padding: 4px 0; padding-left: 14px; position: relative;
+}
+.next-card li::before {
+  content: ""; width: 4px; height: 4px; border-radius: 50%;
+  background: var(--accent); position: absolute; left: 0; top: 9px;
+}
+.next-card.future li::before { background: var(--dim-fg); }
+
+/* Closing slide */
+.slide-fin .headline {
+  font-size: clamp(54px, 7vw, 110px);
+  letter-spacing: -3px;
+  margin: 0 0 28px;
+}
+.slide-fin .closer {
+  font-size: 18px; line-height: 1.55; color: var(--muted-fg);
+  max-width: 700px;
+}
+
+/* Hint */
+.hint {
+  position: fixed; bottom: 22px; left: 32px; z-index: 25;
+  font-family: var(--font-mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--muted-fg);
+  opacity: 0; transition: opacity 600ms var(--ease) 1000ms;
+}
+.hint.show { opacity: 1; }
+body.inverse .hint { color: rgba(255,255,255,0.65); }
+
+@media (max-width: 1100px) {
+  .slide { padding: 80px 36px 80px; }
+  .step-strip { grid-template-columns: repeat(3, 1fr); }
+  .four-col { grid-template-columns: repeat(2, 1fr); }
+  .three-col { grid-template-columns: 1fr; gap: 12px; }
+  .demo-grid { grid-template-columns: 1fr; }
+  .next-grid { grid-template-columns: repeat(2, 1fr); }
+  .slide-01 .signal-tile { display: none; }
+}
+@media (max-width: 720px) {
+  .slide { padding: 70px 24px 70px; }
+  .rail { display: none; }
+  .step-strip, .next-grid, .q-grid { grid-template-columns: 1fr; }
+  .ba-grid { grid-template-columns: 1fr; }
+  .arch-row { grid-template-columns: 140px 1fr; }
+  .arch-row .pill { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="grain" aria-hidden="true"></div>
+
+<a class="brand" href="#sec-overview">
+  <span>eSpace</span><span class="slash">/</span><span>DevHub</span>
+  <span class="ver">DEMO PREP</span>
+</a>
+
+<nav class="rail" aria-label="Slides"></nav>
+
+<div class="counter"><span class="cur" id="counter-cur">01</span> <span style="color: inherit; opacity: 0.5;">/</span> <span id="counter-total">14</span></div>
+<div class="hint" id="hint">↓ Scroll · ← → Arrow keys · Click rail dots</div>
+
+<main class="deck" id="deck" tabindex="0">
+
+<!-- ═══ SLIDE 01 — Title ═══ -->
+<section class="slide slide-01" id="sec-overview" data-label="overview">
+  <div class="dither" id="dither-title" style="right: 80px; top: 80px; width: 440px; height: 440px; color: var(--accent);"></div>
+
+  <div class="signal-tile" data-anim style="--stagger: 4;">
+    <div class="dither" id="dither-signal"></div>
+    <div class="mono">DEMO · 12-15 MIN</div>
+    <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px; position: relative; z-index: 2;">
+      <div class="big" data-counter data-target="14">0</div>
+      <div class="mono" style="text-align: right; font-size: 10px;">slides<br>this deck</div>
+    </div>
+  </div>
+
+  <div class="body-wrap">
+    <div>
+      <div class="mono" data-anim style="--stagger: 0;">WK 02 · INTERNAL DEMO REHEARSAL</div>
+      <h1 class="headline" data-anim style="--stagger: 1; margin-top: 18px;">
+        <span class="dim">Walkthrough.</span> <span class="dim">Talk track.</span> Make the <em class="accent">case</em>.
+      </h1>
+    </div>
+    <p class="subhead" data-anim style="--stagger: 2;">
+      Demo prep for eSpace Dev Hub — what to show, what to say, what to ask the room.
+      Built for a 12-minute slot with 3 minutes of Q&amp;A.
+    </p>
+    <div class="footer mono" data-anim style="--stagger: 3;">
+      <span>ESPACE.DEV / DEVHUB</span>
+      <span>WEEK 2 · STAKEHOLDER REVIEW</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 02 — App overview ═══ -->
+<section class="slide" id="sec-what" data-label="what">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">02</span>
+    <span class="slide-num-label">App overview</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">A quiet dashboard for <em class="accent">loud</em> review seasons.</h2>
+
+  <div class="three-col" style="margin-top: 24px;">
+    <div class="card" data-anim style="--stagger: 2;">
+      <span class="card-num">01</span>
+      <div class="card-title">Problem solved</div>
+      <p class="card-body">Engineers reconstruct review evidence by hand from 3-4 tools every cycle. By April nobody remembers February — and the strongest receipts get forgotten.</p>
+    </div>
+    <div class="card" data-anim style="--stagger: 3;">
+      <span class="card-num">02</span>
+      <div class="card-title">Primary users</div>
+      <p class="card-body">L1-L3 engineers prepping reviews and 1:1s today. Tech leads scanning 30/90-day pictures of teammates next. Eng managers running portfolio reviews after that.</p>
+    </div>
+    <div class="card accent" data-anim style="--stagger: 4;">
+      <span class="card-num">03</span>
+      <div class="card-title">Value</div>
+      <p class="card-body">One receipts-ready view across Jira + GitLab + GitHub. AI classifies your goals into trackable widgets. The output is a paste-ready review paragraph — not a spreadsheet.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 03 — Status (week 2) ═══ -->
+<section class="slide" id="sec-status" data-label="status">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">03</span>
+    <span class="slide-num-label">Status · week 2</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Two weeks in, <em class="accent">most</em> of the spine ships.</h2>
+
+  <div class="status-cols" data-anim style="--stagger: 2; margin-top: 18px;">
+    <div class="status-col shipped">
+      <div class="heading">
+        <span class="pill ok">SHIPPED</span>
+        <span class="mono">Real, in the worktree, built &amp; verified</span>
+      </div>
+      <ul>
+        <li>6-section scroll-snap dashboard (Overview · Review timing · Glance · Goals · Trends · Goal tracking)</li>
+        <li>TTFR / ATTNR / total-idle review-timing engine + drill-down at <code class="inline">/reviews</code></li>
+        <li>AI Analyst — streaming goal classifier with 12-widget catalog</li>
+        <li>Code-rubric grading per PR, cached by <code class="inline">(prId, rubricHash)</code></li>
+        <li>Evidence page → paste-ready paragraph + Markdown / Print-PDF export</li>
+        <li>Weekly snapshots store with compare-two-weeks diff</li>
+        <li>Command palette (⌘K) + global shortcuts (1-6, j/k, g+x chords)</li>
+        <li>Three AI providers (Mistral · GLM · OpenRouter), switchable per session</li>
+        <li>Demo mode — deterministic synthetic dataset (14 PRs, 4 reviewers, 90d)</li>
+      </ul>
+    </div>
+    <div class="status-col out">
+      <div class="heading">
+        <span class="pill">OUT OF SCOPE · WEEK 2</span>
+        <span class="mono">Deliberately deferred</span>
+      </div>
+      <ul>
+        <li>No backend — localStorage-only state across the entire app</li>
+        <li>No team / multi-user views — single engineer protagonist</li>
+        <li>No mobile or tablet UX — desktop-first scroll-snap layout</li>
+        <li>No Zoho Goals integration — role permissions block the API</li>
+        <li>No automated test suite (yet)</li>
+        <li>No write-side actions on integrations — strictly read-only</li>
+        <li>No SSO / org-level auth — per-user PATs and OAuth clients</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 04 — Demo flow ═══ -->
+<section class="slide" id="sec-flow" data-label="flow">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">04</span>
+    <span class="slide-num-label">Demo flow</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Twelve minutes. <em class="accent">Five</em> beats.</h2>
+
+  <div class="step-strip" style="margin-top: 16px;">
+    <div class="step-card" data-anim style="--stagger: 2;">
+      <span class="step-num">01</span>
+      <span class="step-time">~1 min · setup</span>
+      <span class="step-name">Demo data on</span>
+      <p class="step-body">Toggle demo mode before opening the laptop. Synthetic dataset, no tokens needed.</p>
+    </div>
+    <div class="step-card accent" data-anim style="--stagger: 3;">
+      <span class="step-num">02</span>
+      <span class="step-time">~3 min · headline</span>
+      <span class="step-name">Review timing</span>
+      <p class="step-body">TTFR · ATTNR · idle. Click an idle PR → drill into <code style="color: #fff;">/reviews</code>. Grade with AI.</p>
+    </div>
+    <div class="step-card" data-anim style="--stagger: 4;">
+      <span class="step-num">03</span>
+      <span class="step-time">~4 min · differentiator</span>
+      <span class="step-name">AI Analyst</span>
+      <p class="step-body">Streaming goal classifier. Watch tokens land. Switch provider mid-flight.</p>
+    </div>
+    <div class="step-card" data-anim style="--stagger: 5;">
+      <span class="step-num">04</span>
+      <span class="step-time">~3 min · payoff</span>
+      <span class="step-name">Evidence → paragraph</span>
+      <p class="step-body">Deterministic draft → AI polish → copy → paste-ready for Workday / Lattice.</p>
+    </div>
+    <div class="step-card optional" data-anim style="--stagger: 6;">
+      <span class="step-num">05</span>
+      <span class="step-time">~1.5 min · optional</span>
+      <span class="step-name">Cmd+K + keys</span>
+      <p class="step-body">Every action in 3 keystrokes. Fallback if running long: skip and wrap.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 05 — Setup (1 min) ═══ -->
+<section class="slide" id="sec-setup" data-label="setup">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">05</span>
+    <span class="slide-num-label">01 / Setup</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Five seconds to a <em class="accent">populated</em> dashboard.</h2>
+
+  <div class="demo-grid" style="margin-top: 16px;">
+    <div class="left">
+      <div class="kv-list" data-anim style="--stagger: 2;">
+        <div class="kv-row">
+          <span class="kv-key">Goal</span>
+          <span class="kv-val">Avoid the "no integrations connected" empty-state. Audience sees real-looking data from second one.</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Path</span>
+          <span class="kv-val">Open <code class="inline">localhost:3000</code> from the <code class="inline">improvements</code> worktree</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Action</span>
+          <span class="kv-val">Press <kbd>⌘</kbd><kbd>K</kbd> → type <em>demo</em> → <kbd>↵</kbd></span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Result</span>
+          <span class="kv-val">Blue banner at top — 14 PRs, 4 reviewers, 90 days populated everywhere</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Watch out</span>
+          <span class="kv-val">Verify the banner is visible. If <code class="inline">.env.local</code> is missing, AI features will error — hard-link from main worktree.</span>
+        </div>
+      </div>
+    </div>
+    <div class="right">
+      <div class="preview" data-anim style="--stagger: 3;">
+        <div class="preview-label"><span>Demo banner</span><span class="live">live</span></div>
+        <div style="background: var(--accent); color: #fff; padding: 10px 14px; border-radius: 3px; display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; gap: 8px; align-items: baseline;">
+            <span style="font-family: var(--font-mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;">DEMO MODE</span>
+            <span style="font-family: var(--font-mono); font-size: 10px; opacity: 0.85;">Synthetic dataset · 14 PRs · 4 reviewers · TTFR/ATTNR/idle filled</span>
+          </div>
+          <span style="font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.4px; text-transform: uppercase; border: 1px solid rgba(255,255,255,0.4); padding: 3px 8px; border-radius: 3px;">Turn off ↗</span>
+        </div>
+        <div class="preview-label" style="margin-top: 4px;"><span>Constraints to mention</span></div>
+        <ul style="padding-left: 16px; margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--muted-fg);">
+          <li>Synthetic <em>by design</em> — GitHub stamps comment timestamps server-side, can't fake "comment 3d after open"</li>
+          <li><strong style="color: var(--fg);">localStorage-only</strong> — zero backend cost, zero PII surface</li>
+          <li>AI providers (Mistral · GLM · OpenRouter) all OpenAI-compatible — same code path, switchable in the header pill</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 06 — Review timing (the headline feature) ═══ -->
+<section class="slide" id="sec-review" data-label="review-timing">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">06</span>
+    <span class="slide-num-label">02 / Review timing</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Reviews aren't <em class="accent">one</em> number.</h2>
+
+  <div class="demo-grid" style="margin-top: 16px;">
+    <div class="left">
+      <div class="kv-list" data-anim style="--stagger: 2;">
+        <div class="kv-row">
+          <span class="kv-key">Goal</span>
+          <span class="kv-val">Show that splitting "first review" from "subsequent rounds" reveals which side is the blocker — different fixes.</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Path</span>
+          <span class="kv-val">Press <kbd>2</kbd> from dashboard → Section 02</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Action</span>
+          <span class="kv-val">Read 3 numbers · point at the timeline · click the most-idle PR row · open <code class="inline">/reviews</code> · click <em>Grade with provider</em></span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Result</span>
+          <span class="kv-val">PR detail loads with timing summary, per-round bars, full comment thread with rendered diff hunks. AI grade returns PASS/REVIEW + violations in ~3s.</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Watch out</span>
+          <span class="kv-val">Pick PR <code class="inline">#240 RFC reconciliation</code> (5 reviewers, 10 comments) for max wow.</span>
+        </div>
+      </div>
+    </div>
+    <div class="right">
+      <div class="preview" data-anim style="--stagger: 3;">
+        <div class="preview-label">
+          <span>Section 02 · review timing</span>
+          <span style="font-family: var(--font-mono); font-size: 9px;">11/14 PRs reviewed</span>
+        </div>
+        <div class="timing-trio">
+          <div class="stat">
+            <span class="label">TTFR median</span>
+            <span class="v">1h</span>
+            <span class="sub">push → first review</span>
+          </div>
+          <div class="stat">
+            <span class="label">ATTNR median</span>
+            <span class="v">4h</span>
+            <span class="sub">between rounds</span>
+          </div>
+          <div class="stat">
+            <span class="label">Total idle</span>
+            <span class="v" style="color: var(--accent);">2.1d</span>
+            <span class="sub">Σ TTNthRs · 11 PRs</span>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <div class="timeline-marker"><span class="dot"></span><span class="label">Push</span></div>
+          <div class="timeline-seg primary" style="margin: 0 4px;">TTFR · 1h</div>
+          <div class="timeline-marker"><span class="dot"></span><span class="label">1st</span></div>
+          <div class="timeline-seg alt" style="margin: 0 4px;">ATTNR · 4h</div>
+          <div class="timeline-marker"><span class="dot"></span><span class="label">2nd</span></div>
+        </div>
+        <div class="preview-label">
+          <span>Most idle PRs →</span>
+        </div>
+        <div class="pr-mini-list">
+          <div class="pr-mini-row">
+            <span class="num">#51</span>
+            <div class="bar-wrap"><div class="bar-fill" style="width: 100%;"></div></div>
+            <span class="idle">5d</span>
+          </div>
+          <div class="pr-mini-row">
+            <span class="num">#154</span>
+            <div class="bar-wrap"><div class="bar-fill" style="width: 64%;"></div></div>
+            <span class="idle">2.3d</span>
+          </div>
+          <div class="pr-mini-row">
+            <span class="num">#240</span>
+            <div class="bar-wrap"><div class="bar-fill" style="width: 38%;"></div></div>
+            <span class="idle">15h</span>
+          </div>
+          <div class="pr-mini-row">
+            <span class="num">#161</span>
+            <div class="bar-wrap"><div class="bar-fill" style="width: 28%;"></div></div>
+            <span class="idle">22h</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 07 — AI Analyst (inverse) ═══ -->
+<section class="slide inverse" id="sec-analyst" data-label="analyst">
+  <div class="dither" id="dither-analyst" style="right: 60px; top: 80px; width: 460px; height: 460px; color: #fff;"></div>
+
+  <div class="slide-head" data-anim>
+    <span class="slide-num">07</span>
+    <span class="slide-num-label">03 / AI Analyst</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Goal in. <em class="accent">Widget</em> out.</h2>
+
+  <div class="demo-grid" style="margin-top: 16px;">
+    <div class="left">
+      <div class="kv-list" data-anim style="--stagger: 2; background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.18);">
+        <div class="kv-row" style="border-color: rgba(255,255,255,0.18);">
+          <span class="kv-key" style="color: rgba(255,255,255,0.65);">Goal</span>
+          <span class="kv-val" style="color: #fff;">Vague human prose ("demonstrate growth across skill") gets classified into a trackable widget with visible reasoning. No black box.</span>
+        </div>
+        <div class="kv-row" style="border-color: rgba(255,255,255,0.18);">
+          <span class="kv-key" style="color: rgba(255,255,255,0.65);">Path</span>
+          <span class="kv-val" style="color: #fff;">Header → Analyst activator (or <kbd style="background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.3); color: #fff;">⌘</kbd><kbd style="background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.3); color: #fff;">K</kbd> → analyst)</span>
+        </div>
+        <div class="kv-row" style="border-color: rgba(255,255,255,0.18);">
+          <span class="kv-key" style="color: rgba(255,255,255,0.65);">Action</span>
+          <span class="kv-val" style="color: #fff;">Click <em>Analyze all goals</em>. Narrate: GOAL_STARTED → GOAL_REASONING (token-by-token) → GOAL_CLASSIFIED. Switch provider mid-flight.</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key" style="color: rgba(255,255,255,0.65);">Result</span>
+          <span class="kv-val" style="color: #fff;">12 goals stream in 15-20s. Each gets a widget kind + reasoning. CODE_RUBRIC widgets need user-defined criteria.</span>
+        </div>
+      </div>
+    </div>
+    <div class="right">
+      <div class="console-pane" data-anim style="--stagger: 3;">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.12); margin-bottom: 10px; font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.6px; text-transform: uppercase; color: rgba(255,255,255,0.5);">
+          <span>NDJSON · streaming</span>
+          <div style="display: flex; gap: 6px;">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: rgba(185,28,28,0.6);"></span>
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: rgba(255,200,0,0.6);"></span>
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: rgba(0,196,138,0.6);"></span>
+          </div>
+        </div>
+        <div class="line"><span class="ev muted">→ START</span><span class="body"><span class="key">total_goals:</span> 12</span></div>
+        <div class="line"><span class="ev">▶ STARTED</span><span class="body"><span class="key">title:</span> "Ship at least 8 merged PRs"</span></div>
+        <div class="line"><span class="ev muted">  reason</span><span class="body" style="font-style: italic; color: rgba(255,255,255,0.78);">"Goal mentions PR count, fits MERGED_COUNT widget with target=8 and 90d window…"</span></div>
+        <div class="line"><span class="ev">✓ CLASSIFIED</span><span class="body"><span class="key">kind:</span> auto · <span class="key">widget:</span> MERGED_COUNT</span></div>
+        <div class="line"><span class="ev">▶ STARTED</span><span class="body"><span class="key">title:</span> "Mentor 3 hours per week"</span></div>
+        <div class="line"><span class="ev muted">  reason</span><span class="body" style="font-style: italic; color: rgba(255,255,255,0.78);">"No API tracks mentoring — needs self-report. COUNTER widget, weekly cadence…"</span></div>
+        <div class="line"><span class="ev">✓ CLASSIFIED</span><span class="body"><span class="key">kind:</span> manual · <span class="key">widget:</span> COUNTER</span></div>
+        <div class="line"><span class="ev">▶ STARTED</span><span class="body"><span class="key">title:</span> "Code meets agreed quality standards"</span></div>
+        <div class="line"><span class="ev muted">  reason</span><span class="body" style="font-style: italic; color: rgba(255,255,255,0.78);">"Quality standards must be user-defined. CODE_RUBRIC, context.required, 1 list-question…"</span></div>
+        <div class="line"><span class="ev">✓ CLASSIFIED</span><span class="body"><span class="key">kind:</span> auto · <span class="key">widget:</span> CODE_RUBRIC <span style="color: rgba(255,255,255,0.45);">▌</span></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 08 — Evidence → paragraph ═══ -->
+<section class="slide" id="sec-evidence" data-label="evidence">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">08</span>
+    <span class="slide-num-label">04 / Evidence</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">From metrics to <em class="accent">paste-ready</em>.</h2>
+
+  <div class="demo-grid" style="margin-top: 16px;">
+    <div class="left">
+      <div class="kv-list" data-anim style="--stagger: 2;">
+        <div class="kv-row">
+          <span class="kv-key">Goal</span>
+          <span class="kv-val">Close the loop. The whole system has one job: turn 90d of work into a Workday-paste-ready paragraph.</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Path</span>
+          <span class="kv-val">Chord <kbd>g</kbd> <kbd>e</kbd> from dashboard (or palette → <em>evidence</em>)</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Action</span>
+          <span class="kv-val">Read deterministic draft · click <em>Polish with provider</em> · click <em>Copy paragraph</em> · scroll preview · export <code class="inline">.md</code> / <code class="inline">.pdf</code></span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Result</span>
+          <span class="kv-val">5-sentence paragraph with real numbers — copy-paste into review form. AI polish only smooths transitions, never invents numbers.</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Watch out</span>
+          <span class="kv-val">Lead with "this works fully offline" before clicking Polish. The deterministic draft is the core value.</span>
+        </div>
+      </div>
+    </div>
+    <div class="right">
+      <div class="preview" data-anim style="--stagger: 3;">
+        <div class="preview-label">
+          <span>Paste-ready paragraph</span>
+          <span style="font-family: var(--font-mono); font-size: 9px;">487c · deterministic</span>
+        </div>
+        <div class="para-card">
+          <div class="meta">
+            <span>L1 → L2 · last 90 days</span>
+            <span class="pill ok" style="font-size: 8.5px; padding: 2px 7px;">ready</span>
+          </div>
+          <div class="body">
+            Over this window, I merged 11 pull requests over the last 90 days.
+            Median review turnaround held at 1.2h with ~2.4 reviewer comments per
+            MR on average. Jira linkage stayed at 92% across merged work, so every
+            change traces back to a tracked ticket. Outside my own work, I left
+            23 comments on teammates' MRs — review load shared, not just consumed.
+          </div>
+          <div class="actions">
+            <button class="btn-mock">Copy paragraph</button>
+            <button class="btn-mock ghost">Polish with mistral</button>
+          </div>
+        </div>
+        <div class="preview-label" style="margin-top: 4px;"><span>Then export</span></div>
+        <div style="display: flex; gap: 8px;">
+          <span class="pill accent">.MD</span>
+          <span class="pill accent">.PDF (browser print)</span>
+          <span class="pill">↵ direct paste into Workday</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 09 — Architecture & talking points ═══ -->
+<section class="slide" id="sec-arch" data-label="architecture">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">09</span>
+    <span class="slide-num-label">Architecture · talking points</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">The bets behind the <em class="accent">UI</em>.</h2>
+
+  <div class="arch-stack" style="margin-top: 16px;">
+    <div class="arch-row" data-anim style="--stagger: 2;">
+      <span class="name">Next.js 16 · Turbopack</span>
+      <span class="pill accent">stack</span>
+      <span class="body">App Router · JSX (not TS) for week-2 velocity · Tailwind v4 with CSS variables — the design system <em>is</em> the variables, no theme switcher needed</span>
+    </div>
+    <div class="arch-row inverse" data-anim style="--stagger: 3;">
+      <span class="name">localStorage-only state</span>
+      <span class="pill inverse">key bet</span>
+      <span class="body">Zero infra cost · zero security review · instant offline · custom-event subscriptions + useSyncExternalStore for cross-tile reactivity</span>
+    </div>
+    <div class="arch-row" data-anim style="--stagger: 4;">
+      <span class="name">OpenAI-compatible AI proxy</span>
+      <span class="pill accent">stack</span>
+      <span class="body">Mistral · GLM · OpenRouter all share /chat/completions shape · adding a 4th provider is a one-line registry entry · keys server-side only</span>
+    </div>
+    <div class="arch-row" data-anim style="--stagger: 5;">
+      <span class="name">SOLID feature folders</span>
+      <span class="pill accent">stack</span>
+      <span class="body">src/features/{integrations, goal-specs, goal-widgets, analyst, grading, evidence, snapshots…}/ · each owns its store, hooks, components · no cross-feature reaches</span>
+    </div>
+    <div class="arch-row inverse" data-anim style="--stagger: 6;">
+      <span class="name">Streaming everywhere</span>
+      <span class="pill inverse">key bet</span>
+      <span class="body">Classifier streams NDJSON over fetch · UI re-flows per token · no "spinner-then-dump" · failures surface inline, never silently</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 10 — Before/after ═══ -->
+<section class="slide" id="sec-ba" data-label="before-after">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">10</span>
+    <span class="slide-num-label">Before vs. after</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Six rituals, <em class="accent">collapsed</em>.</h2>
+
+  <div class="ba-grid" data-anim style="--stagger: 2; margin-top: 16px;">
+    <div class="ba-col left">
+      <div class="head">
+        <span>Before</span>
+        <span class="tag">today, every review cycle</span>
+      </div>
+      <ul>
+        <li>Open Jira → screenshot tickets → tally manually</li>
+        <li>"Was that PR slow because of me or the reviewer?" — no data</li>
+        <li>Scroll Slack threads to remember PR feedback</li>
+        <li>Re-write the same self-review paragraph every cycle</li>
+        <li>Forget which PRs to highlight by Friday afternoon</li>
+        <li>Spreadsheet across 3 review windows of varying definitions</li>
+      </ul>
+    </div>
+    <div class="ba-col right">
+      <div class="head" style="color: #fff;">
+        <span>With Dev Hub</span>
+        <span class="tag">today's improvements branch</span>
+      </div>
+      <ul>
+        <li>One scroll-snap section, real numbers vs. previous period</li>
+        <li>TTFR vs ATTNR vs idle, ranked by worst PRs</li>
+        <li>/reviews shows every comment with its diff hunk</li>
+        <li>Paste-ready paragraph generated from current metrics</li>
+        <li>"Star" evidence as you go; export bundle with one click</li>
+        <li>"Since last review" preset — same window for every artifact</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 11 — Open questions ═══ -->
+<section class="slide" id="sec-questions" data-label="questions">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">11</span>
+    <span class="slide-num-label">Open questions</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Decisions I want from <em class="accent">the room</em>.</h2>
+
+  <div class="q-grid" style="margin-top: 16px;">
+    <div class="q-block" data-anim style="--stagger: 2;">
+      <div class="h"><span style="font-family: var(--font-serif); font-style: italic; color: var(--accent);">a.</span> <span>Product scope</span></div>
+      <ul>
+        <li>Stay with the 12-widget catalog or let users define custom kinds?</li>
+        <li>Snapshot auto-capture every Monday, or stay manual?</li>
+        <li>"Stale PR" threshold — currently 7 days; team norms vary</li>
+        <li>Group <code class="inline">/reviews</code> by repo or keep flat sorted-by-idle?</li>
+      </ul>
+    </div>
+    <div class="q-block" data-anim style="--stagger: 3;">
+      <div class="h"><span style="font-family: var(--font-serif); font-style: italic; color: var(--accent);">b.</span> <span>Technical</span></div>
+      <ul>
+        <li>localStorage → IndexedDB → Postgres-sync — when do we cross which line?</li>
+        <li>Wire Anthropic Claude directly, or stay on OpenRouter for it?</li>
+        <li>Auth model when we go multi-user — SSO via existing GitHub OAuth?</li>
+        <li>CI/CD — Vercel preview environments, or stay local for now?</li>
+      </ul>
+    </div>
+    <div class="q-block" data-anim style="--stagger: 4;">
+      <div class="h"><span style="font-family: var(--font-serif); font-style: italic; color: var(--accent);">c.</span> <span>Security &amp; compliance</span></div>
+      <ul>
+        <li>Tokens in browser localStorage — accept the risk, or move to server?</li>
+        <li>SOC 2 / ISO marketing claims — when, by whom?</li>
+        <li>Rotation guidance — surface in onboarding or document separately?</li>
+        <li>Cross-team data when we eventually add team views?</li>
+      </ul>
+    </div>
+    <div class="q-block" data-anim style="--stagger: 5;">
+      <div class="h"><span style="font-family: var(--font-serif); font-style: italic; color: var(--accent);">d.</span> <span>Performance &amp; metrics</span></div>
+      <ul>
+        <li>First paint &lt; 1.5s on Wi-Fi — measure properly post-demo</li>
+        <li>AI classifier &lt; 30s for 12-goal tree — currently 15-20s on Mistral</li>
+        <li>Adoption metric: # active engineers per week, post-pilot</li>
+        <li>Self-reported time saved — survey after first review cycle</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 12 — Demo blockers / contingencies ═══ -->
+<section class="slide" id="sec-blockers" data-label="blockers">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">12</span>
+    <span class="slide-num-label">Blockers · contingencies</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">If <em class="accent">something</em> breaks live.</h2>
+
+  <div class="three-col" style="margin-top: 24px;">
+    <div class="card" data-anim style="--stagger: 2;">
+      <span class="card-num">!</span>
+      <div class="card-title">Missing AI key</div>
+      <p class="card-body"><code style="font-family: var(--font-mono); font-size: 11.5px;">.env.local</code> not in worktree → "no API key" error. Fix: hard-link from main worktree before demo. Verify by clicking Grade once during setup.</p>
+    </div>
+    <div class="card" data-anim style="--stagger: 3;">
+      <span class="card-num">!</span>
+      <div class="card-title">Network flake</div>
+      <p class="card-body">AI provider rate-limits or times out mid-demo. Fall back to deterministic paragraph — it's the headline value anyway. Pre-record the streaming classifier as a 10s MP4 backup.</p>
+    </div>
+    <div class="card" data-anim style="--stagger: 4;">
+      <span class="card-num">!</span>
+      <div class="card-title">Data scrambled</div>
+      <p class="card-body">User accidentally clicks something destructive mid-demo. Fix: ⌘K → "demo off" → "demo on" reseeds deterministically — same numbers every time.</p>
+    </div>
+    <div class="card" data-anim style="--stagger: 5;">
+      <span class="card-num">!</span>
+      <div class="card-title">Print dialog quirks</div>
+      <p class="card-body">Browser print dialog varies by host. Rehearse on the actual demo machine. Keep <code style="font-family: var(--font-mono); font-size: 11.5px;">.md</code> export as primary path; PDF is the bonus.</p>
+    </div>
+    <div class="card" data-anim style="--stagger: 6;">
+      <span class="card-num">!</span>
+      <div class="card-title">Free-tier OpenRouter</div>
+      <p class="card-body">Free model rate-limits during peak. If demoing OpenRouter, queue a paid Mistral fallback in the pill. Switching is one click.</p>
+    </div>
+    <div class="card accent" data-anim style="--stagger: 7;">
+      <span class="card-num">!</span>
+      <div class="card-title">Running long</div>
+      <p class="card-body">Skip step 5 (Cmd+K). The first 4 carry the story alone. Better to land the wrap-up than rush the keyboard demo.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 13 — Next steps ═══ -->
+<section class="slide" id="sec-next" data-label="next-steps">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">13</span>
+    <span class="slide-num-label">Next steps</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">What lands <em class="accent">after</em> this room.</h2>
+
+  <div class="next-grid" style="margin-top: 16px;">
+    <div class="next-card now" data-anim style="--stagger: 2;">
+      <span class="when">24-48 hours</span>
+      <span class="h">Immediate fixes</span>
+      <ul>
+        <li>P0 bugs surfaced today</li>
+        <li>README setup pass — env vars more visible</li>
+        <li>Toast reminder when demo mode is on</li>
+      </ul>
+    </div>
+    <div class="next-card" data-anim style="--stagger: 3;">
+      <span class="when">week 3</span>
+      <span class="h">Volunteer pilot</span>
+      <ul>
+        <li>Real-data validation with one engineer's history</li>
+        <li>Edge cases the synthetic data missed</li>
+        <li>4 more tiles → shared <code class="inline">&lt;TileState&gt;</code></li>
+      </ul>
+    </div>
+    <div class="next-card" data-anim style="--stagger: 4;">
+      <span class="when">week 4</span>
+      <span class="h">Beta cohort</span>
+      <ul>
+        <li>5-8 engineers across 2 teams</li>
+        <li>Inline diff rendering in PR detail pane</li>
+        <li>Test suite for metrics-layer pure functions</li>
+      </ul>
+    </div>
+    <div class="next-card future" data-anim style="--stagger: 5;">
+      <span class="when">week 5+</span>
+      <span class="h">Architecture deep-dive</span>
+      <ul>
+        <li>Platform team review · localStorage → backend plan</li>
+        <li>ADRs for key bets (state, AI, schema)</li>
+        <li>Internal demo replay for non-attendees</li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="subhead" data-anim style="--stagger: 6; margin-top: 18px;">
+    Adoption metric: # active engineers (1+ session per week) over 4 weeks.
+    Snapshot capture rate. Self-reported time saved post-cycle.
+  </p>
+</section>
+
+<!-- ═══ SLIDE 14 — Closing / CTA ═══ -->
+<section class="slide slide-fin" id="sec-fin" data-label="fin">
+  <div class="dither" id="dither-fin" style="right: 60px; bottom: 80px; width: 480px; height: 480px; color: var(--accent);"></div>
+
+  <div class="mono" data-anim>WK 02 · WRAP</div>
+  <h2 class="headline" data-anim style="--stagger: 1;">A quiet dashboard for <em class="accent">loud</em> review seasons.</h2>
+  <p class="closer" data-anim style="--stagger: 2;">
+    What you saw: ~12 minutes of dashboard work that today takes engineers 4-6 hours of manual archeology before every review cycle.
+    Week 2. The data layer is real, the AI layer is real, the UX is opinionated.
+  </p>
+
+  <div class="three-col" data-anim style="--stagger: 3; margin-top: 20px;">
+    <div class="card">
+      <span class="card-num">→</span>
+      <div class="card-title">Engineers</div>
+      <p class="card-body">Turn it on Monday with a 30-day window — share what's missing in your evidence story.</p>
+    </div>
+    <div class="card">
+      <span class="card-num">→</span>
+      <div class="card-title">Tech leads</div>
+      <p class="card-body">Which two metrics from your team's last review cycle do you wish were on this dashboard?</p>
+    </div>
+    <div class="card accent">
+      <span class="card-num">→</span>
+      <div class="card-title">Eng managers</div>
+      <p class="card-body">Is "review-load shared" a fair signal? What would make it fairer?</p>
+    </div>
+  </div>
+
+  <div style="margin-top: auto; display: flex; justify-content: space-between; padding-top: 22px; border-top: 1px solid var(--border);" data-anim style="--stagger: 4;">
+    <span class="mono">ESPACE.DEV / DEVHUB</span>
+    <span class="mono">QUESTIONS WELCOME</span>
+  </div>
+</section>
+
+</main>
+
+<script>
+(() => {
+  /* ─────────────── Build the rail from the slides ─────────────── */
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const rail = document.querySelector('.rail');
+  const counterCur = document.getElementById('counter-cur');
+  const counterTotal = document.getElementById('counter-total');
+  counterTotal.textContent = String(slides.length).padStart(2, '0');
+
+  slides.forEach((s) => {
+    const btn = document.createElement('button');
+    btn.className = 'rail-item';
+    btn.dataset.target = s.id;
+    btn.setAttribute('aria-label', `#${s.dataset.label}`);
+    btn.innerHTML = `
+      <span class="rail-bubble"></span>
+      <span class="rail-tip"><span class="hash">#</span>${s.dataset.label}</span>
+    `;
+    btn.addEventListener('click', () => {
+      s.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    rail.appendChild(btn);
+  });
+  const railItems = Array.from(rail.children);
+  railItems[0].classList.add('active');
+
+  /* ─────────────── IntersectionObserver: which slide is active? ─────────────── */
+  const root = document.getElementById('deck');
+  const io = new IntersectionObserver((entries) => {
+    let best = null, bestRatio = 0;
+    entries.forEach(e => {
+      if (e.intersectionRatio > bestRatio) { best = e; bestRatio = e.intersectionRatio; }
+    });
+    if (!best) return;
+    const idx = slides.indexOf(best.target);
+    if (idx < 0) return;
+
+    railItems.forEach((b, i) => b.classList.toggle('active', i === idx));
+    counterCur.textContent = String(idx + 1).padStart(2, '0');
+    document.body.classList.toggle('inverse', best.target.classList.contains('inverse'));
+  }, { root, threshold: [0.25, 0.5, 0.75] });
+  slides.forEach(s => io.observe(s));
+
+  /* ─────────────── Slide entrance animations ─────────────── */
+  const animObserver = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.intersectionRatio > 0.35) {
+        e.target.classList.add('in');
+        animateCounters(e.target);
+      }
+    });
+  }, { root, threshold: [0.35, 0.55] });
+  slides.forEach(s => animObserver.observe(s));
+
+  /* ─────────────── Big-number count-up ─────────────── */
+  function animateCounters(slide) {
+    slide.querySelectorAll('[data-counter]').forEach(el => {
+      if (el.dataset.played) return;
+      el.dataset.played = '1';
+      const target = Number(el.dataset.target || 0);
+      const suffix = el.dataset.suffix || '';
+      const start = performance.now();
+      const dur = 900 + target * 1.2;
+      const ease = (t) => 1 - Math.pow(1 - t, 3);
+      function tick(now) {
+        const t = Math.min(1, (now - start) / dur);
+        const v = Math.round(target * ease(t));
+        el.textContent = `${v}${suffix}`;
+        if (t < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    });
+  }
+
+  /* ─────────────── Dither field renderer ─────────────── */
+  function renderDither(el, opts) {
+    const { width, height, cell = 6, falloff, jitter = 0.4, seed = 1 } = opts;
+    const cols = Math.floor(width / cell);
+    const rows = Math.floor(height / cell);
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+
+    let s = seed >>> 0;
+    function rand() { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const u = c / (cols - 1);
+        const v = r / (rows - 1);
+        const f = falloff(u, v);
+        if (f <= 0.05) continue;
+        const cx = c * cell + cell / 2;
+        const cy = r * cell + cell / 2;
+        const baseR = (cell / 2) * 0.6 * f;
+        const jitterAmt = (rand() - 0.5) * jitter;
+        const radius = Math.max(0.4, baseR * (1 + jitterAmt));
+        const dot = document.createElementNS(svgNS, 'circle');
+        dot.setAttribute('cx', cx.toFixed(2));
+        dot.setAttribute('cy', cy.toFixed(2));
+        dot.setAttribute('r', radius.toFixed(2));
+        svg.appendChild(dot);
+      }
+    }
+    el.innerHTML = '';
+    el.appendChild(svg);
+  }
+  function radialFalloff(cu, cv, k = 1.5) {
+    return (u, v) => Math.max(0, 1 - Math.sqrt((u - cu) ** 2 + (v - cv) ** 2) * k);
+  }
+
+  const ditherDefs = [
+    { id: 'dither-title',    w: 440, h: 440, fall: radialFalloff(0.6, 0.4, 1.4), seed: 11 },
+    { id: 'dither-signal',   w: 240, h: 240, fall: radialFalloff(0.55, 0.4, 1.7), seed: 7 },
+    { id: 'dither-analyst',  w: 460, h: 460, fall: radialFalloff(0.55, 0.4, 1.4), seed: 13 },
+    { id: 'dither-fin',      w: 480, h: 480, fall: radialFalloff(0.5, 0.5, 1.4), seed: 17 },
+  ];
+  ditherDefs.forEach(d => {
+    const el = document.getElementById(d.id);
+    if (!el) return;
+    renderDither(el, { width: d.w, height: d.h, cell: 6, falloff: d.fall, seed: d.seed });
+  });
+
+  /* ─────────────── Keyboard navigation ─────────────── */
+  function go(idx) {
+    if (idx < 0 || idx >= slides.length) return;
+    slides[idx].scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function currentIdx() {
+    return Math.max(0, railItems.findIndex(r => r.classList.contains('active')));
+  }
+  document.addEventListener('keydown', (e) => {
+    const tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    switch (e.key) {
+      case 'ArrowDown': case 'ArrowRight': case 'PageDown': case ' ':
+        e.preventDefault(); go(currentIdx() + 1); break;
+      case 'ArrowUp': case 'ArrowLeft': case 'PageUp':
+        e.preventDefault(); go(currentIdx() - 1); break;
+      case 'Home':
+        e.preventDefault(); go(0); break;
+      case 'End':
+        e.preventDefault(); go(slides.length - 1); break;
+    }
+  });
+
+  /* ─────────────── First-load hint ─────────────── */
+  const hint = document.getElementById('hint');
+  setTimeout(() => hint.classList.add('show'), 1500);
+  setTimeout(() => hint.classList.remove('show'), 6500);
+
+  setTimeout(() => {
+    slides[0].classList.add('in');
+    animateCounters(slides[0]);
+  }, 60);
+})();
+</script>
+</body>
+</html>

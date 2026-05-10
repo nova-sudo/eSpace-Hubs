@@ -1,0 +1,1856 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>eSpace Dev Hub — What's Next</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+/* ─────────────── HexaCore tokens (lifted from app's globals.css) ─────────────── */
+:root {
+  --bg: #f1eee6;
+  --fg: #0b0b14;
+  --card: #ffffff;
+  --card-alt: #faf8f2;
+  --muted-fg: rgba(11, 11, 20, 0.55);
+  --dim-fg: rgba(11, 11, 20, 0.38);
+  --border: rgba(10, 11, 22, 0.10);
+  --border-strong: rgba(10, 11, 22, 0.18);
+  --accent: #3826ff;
+  --accent-on: #ffffff;
+  --accent-dim: rgba(56, 38, 255, 0.10);
+  --accent-2: #00c48a;
+  --good: #047857;
+  --bad: #b91c1c;
+
+  /* Hub palette — used on the family slide */
+  --dev: #3826ff;        /* engineers — keeps the original blue */
+  --dev-dim: rgba(56, 38, 255, 0.10);
+  --lead: #ea580c;       /* managers — amber */
+  --lead-dim: rgba(234, 88, 12, 0.10);
+  --talent: #047857;     /* HR — green */
+  --talent-dim: rgba(4, 120, 87, 0.10);
+  --quality: #0891b2;    /* QA — teal */
+  --quality-dim: rgba(8, 145, 178, 0.10);
+  --product: #7c3aed;    /* PO — purple */
+  --product-dim: rgba(124, 58, 237, 0.10);
+
+  --radius-tile: 4px;
+  --radius-sub: 3px;
+  --radius-pill: 999px;
+
+  --font-display: "Inter Tight", "Inter", system-ui, sans-serif;
+  --font-sans: "Inter Tight", "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  --font-serif: ui-serif, "Iowan Old Style", Georgia, serif;
+
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv02","cv03","cv04","cv11","ss01";
+  overflow-x: hidden;
+}
+
+em.accent {
+  font-style: italic;
+  font-family: var(--font-serif);
+  color: var(--accent);
+  font-weight: 500;
+  display: inline-block;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted-fg);
+  font-weight: 500;
+}
+
+.grain {
+  position: fixed; inset: 0; pointer-events: none; z-index: 1;
+  opacity: 0.35; mix-blend-mode: multiply;
+  background-image: radial-gradient(rgba(10,11,22,0.3) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
+
+/* ─────────────── Brand mark ─────────────── */
+.brand {
+  position: fixed; top: 24px; left: 32px; z-index: 25;
+  display: flex; align-items: baseline; gap: 8px;
+  font-family: var(--font-display); font-size: 14px;
+  font-weight: 600; letter-spacing: -0.3px;
+  color: var(--fg); transition: color 240ms var(--ease);
+  text-decoration: none;
+}
+.brand .slash { color: var(--accent); }
+.brand .ver {
+  font-family: var(--font-mono);
+  font-size: 9px; color: var(--dim-fg); border: 1px solid var(--border);
+  border-radius: 3px; padding: 1px 5px; margin-left: 2px;
+  letter-spacing: 0.4px;
+}
+body.inverse .brand { color: #fff; }
+body.inverse .brand .slash { color: rgba(255,255,255,0.7); }
+body.inverse .brand .ver {
+  color: rgba(255,255,255,0.6);
+  border-color: rgba(255,255,255,0.25);
+}
+
+/* ─────────────── Counter ─────────────── */
+.counter {
+  position: fixed; bottom: 22px; right: 28px; z-index: 25;
+  font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: 0.6px;
+  color: var(--muted-fg);
+  background: rgba(255,255,255,0.7);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sub);
+  padding: 6px 10px;
+  backdrop-filter: blur(8px);
+  transition: color 240ms var(--ease), background 240ms var(--ease), border-color 240ms var(--ease);
+}
+.counter .cur { color: var(--accent); font-weight: 700; }
+body.inverse .counter {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.18);
+  color: rgba(255,255,255,0.7);
+}
+body.inverse .counter .cur { color: #fff; }
+
+/* ─────────────── Right-rail navigation ─────────────── */
+.rail {
+  position: fixed; top: 50%; right: 22px; transform: translateY(-50%);
+  z-index: 25;
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 14px 10px;
+  background: rgba(255,255,255,0.55);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  backdrop-filter: blur(10px);
+  transition: background 240ms var(--ease), border-color 240ms var(--ease);
+}
+body.inverse .rail {
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.22);
+}
+.rail-item {
+  position: relative; width: 14px; height: 14px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; cursor: pointer; padding: 0;
+}
+.rail-bubble {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--border-strong);
+  transition: width .2s ease, height .2s ease, background .2s ease, box-shadow .2s ease;
+}
+body.inverse .rail-bubble { background: rgba(255,255,255,0.45); }
+.rail-item:hover .rail-bubble { width: 9px; height: 9px; background: var(--muted-fg); }
+body.inverse .rail-item:hover .rail-bubble { background: rgba(255,255,255,0.85); }
+.rail-item.active .rail-bubble {
+  width: 8px; height: 8px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+body.inverse .rail-item.active .rail-bubble {
+  background: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,0.25);
+}
+.rail-tip {
+  position: absolute; right: 22px; top: 50%;
+  transform: translateY(-50%) translateX(4px);
+  opacity: 0; pointer-events: none; white-space: nowrap;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--fg);
+  background: var(--card); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sub); padding: 5px 9px;
+  transition: opacity .15s ease, transform .15s ease;
+  box-shadow: 0 2px 8px rgba(10,11,22,0.06);
+}
+.rail-tip .hash { color: var(--accent); }
+.rail-item:hover .rail-tip,
+.rail-item.active .rail-tip {
+  opacity: 1; transform: translateY(-50%) translateX(0);
+}
+body.inverse .rail-tip {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.3);
+  color: #fff;
+}
+body.inverse .rail-tip .hash { color: #fff; opacity: 0.7; }
+
+/* ─────────────── Scroll container ─────────────── */
+.deck {
+  height: 100vh; overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+}
+.deck::-webkit-scrollbar { display: none; }
+
+.slide {
+  position: relative; z-index: 2;
+  scroll-snap-align: start; scroll-snap-stop: always;
+  height: 100vh; min-height: 100vh;
+  padding: 80px 64px 80px;
+  display: flex; flex-direction: column;
+  gap: 24px;
+  overflow: hidden;
+}
+.slide.inverse {
+  background: var(--accent);
+  color: #fff;
+}
+.slide.inverse em.accent { color: #fff; }
+.slide.inverse .mono { color: rgba(255,255,255,0.7); }
+
+/* ─────────────── Slide head ─────────────── */
+.slide-head {
+  display: flex; align-items: baseline; gap: 18px;
+  border-bottom: 1px solid var(--border); padding-bottom: 12px;
+}
+.slide.inverse .slide-head { border-color: rgba(255,255,255,0.18); }
+.slide-num {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: 24px; font-weight: 500; color: var(--accent);
+}
+.slide.inverse .slide-num { color: #fff; }
+.slide-num-label {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.6px;
+  text-transform: uppercase; color: var(--muted-fg);
+}
+.slide.inverse .slide-num-label { color: rgba(255,255,255,0.7); }
+
+/* ─────────────── Headline ─────────────── */
+.headline {
+  margin: 0;
+  font-family: var(--font-display); font-weight: 600;
+  font-size: clamp(40px, 5.4vw, 78px);
+  letter-spacing: -2.4px; line-height: 0.96;
+  text-wrap: balance;
+}
+.headline .dim { color: var(--muted-fg); }
+.slide.inverse .headline .dim { color: rgba(255,255,255,0.65); }
+.subhead {
+  font-family: var(--font-sans);
+  font-size: clamp(15px, 1.2vw, 18px); line-height: 1.5;
+  color: var(--muted-fg); max-width: 720px; margin: 0;
+}
+.slide.inverse .subhead { color: rgba(255,255,255,0.75); }
+
+/* ─────────────── Cards ─────────────── */
+.card {
+  position: relative;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 24px 26px;
+}
+.card.accent { background: var(--accent); color: #fff; border-color: var(--accent); }
+.card .card-num {
+  font-family: var(--font-serif); font-style: italic; font-weight: 500;
+  font-size: 22px; color: var(--accent);
+}
+.card.accent .card-num { color: #fff; }
+.card-title {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 19px; letter-spacing: -0.4px;
+  margin-top: 10px; margin-bottom: 6px;
+}
+.card-body {
+  font-size: 13.5px; line-height: 1.5; color: var(--muted-fg);
+  margin: 0;
+}
+.card.accent .card-body { color: rgba(255,255,255,0.85); }
+
+.slide.inverse .card {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.18);
+  color: #fff;
+}
+.slide.inverse .card .card-num { color: #fff; }
+.slide.inverse .card-body { color: rgba(255,255,255,0.85); }
+
+/* ─────────────── Pills ─────────────── */
+.pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  background: var(--card-alt); color: var(--muted-fg);
+  border: 1px solid var(--border);
+}
+.pill.accent { background: var(--accent-dim); color: var(--accent); border-color: transparent; }
+.pill.ok { background: rgba(4,120,87,0.08); color: var(--good); border-color: transparent; }
+.pill.warn { background: rgba(185,28,28,0.08); color: var(--bad); border-color: transparent; }
+.pill.inverse { background: rgba(255,255,255,0.18); color: #fff; border-color: transparent; }
+.pill.lead    { background: var(--lead-dim);    color: var(--lead);    border-color: transparent; }
+.pill.talent  { background: var(--talent-dim);  color: var(--talent);  border-color: transparent; }
+.pill.quality { background: var(--quality-dim); color: var(--quality); border-color: transparent; }
+.pill.product { background: var(--product-dim); color: var(--product); border-color: transparent; }
+.pill.dev     { background: var(--dev-dim);     color: var(--dev);     border-color: transparent; }
+
+/* ─────────────── Slide-level entrance animation ─────────────── */
+.slide [data-anim] {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 600ms var(--ease), transform 700ms var(--ease);
+  transition-delay: calc(var(--stagger, 0) * 70ms);
+}
+.slide.in [data-anim] { opacity: 1; transform: translateY(0); }
+.headline em.accent {
+  display: inline-block;
+  transform: translateY(20px) scale(0.96);
+  opacity: 0;
+  transition: opacity 700ms var(--ease) 200ms, transform 700ms var(--ease) 200ms;
+}
+.slide.in .headline em.accent { transform: translateY(0) scale(1); opacity: 1; }
+
+/* ─────────────── Dither field ─────────────── */
+.dither {
+  position: absolute; pointer-events: none; z-index: 0;
+  opacity: 0; transition: opacity 1000ms var(--ease) 400ms;
+}
+.slide.in .dither { opacity: 0.55; }
+.slide.inverse.in .dither { opacity: 0.32; }
+.dither circle { fill: currentColor; }
+
+/* ─────────────── Layouts ─────────────── */
+.three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; flex: 1; min-height: 0; }
+.four-col  { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; flex: 1; min-height: 0; }
+.five-col  { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; flex: 1; min-height: 0; }
+.two-col   { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; flex: 1; min-height: 0; }
+
+/* — Title slide */
+.slide-01 .body-wrap { display: grid; grid-template-rows: 1fr auto auto; gap: 28px; flex: 1; min-height: 0; padding-top: 30px; }
+.slide-01 .headline {
+  font-size: clamp(56px, 8vw, 132px);
+  letter-spacing: -3.5px; line-height: 0.92;
+}
+.slide-01 .footer {
+  display: flex; justify-content: space-between;
+  padding-top: 20px; border-top: 1px solid var(--border);
+}
+.slide-01 .signal-tile {
+  position: absolute; right: 64px; top: 130px;
+  width: 320px; height: 200px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 18px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  overflow: hidden;
+}
+.slide-01 .signal-tile .big {
+  font-family: var(--font-display); font-size: 56px; font-weight: 600;
+  letter-spacing: -1.6px; line-height: 1;
+}
+.slide-01 .signal-tile .dither {
+  position: absolute; right: -30px; top: -30px; width: 240px; height: 240px;
+  color: var(--accent);
+  -webkit-mask-image: linear-gradient(to left, #000 40%, transparent);
+          mask-image: linear-gradient(to left, #000 40%, transparent);
+}
+
+/* ─────────────── Roadmap rail (slide 03) ─────────────── */
+.theme-strip {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px;
+  flex: 1; min-height: 0;
+}
+.theme-card {
+  position: relative;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 18px 20px 22px;
+  display: flex; flex-direction: column; gap: 10px;
+  transition: border-color 240ms var(--ease), transform 240ms var(--ease);
+}
+.theme-card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
+.theme-card .theme-num {
+  font-family: var(--font-serif); font-style: italic; font-weight: 500;
+  font-size: 22px; color: var(--accent); line-height: 1;
+}
+.theme-card .theme-stage {
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--muted-fg);
+  display: flex; align-items: center; gap: 5px;
+}
+.theme-card .theme-stage::before {
+  content: ""; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--accent); display: inline-block;
+}
+.theme-card.future .theme-stage::before { background: var(--dim-fg); }
+.theme-card .theme-name {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 16px; letter-spacing: -0.3px;
+}
+.theme-card .theme-body {
+  font-size: 12.5px; line-height: 1.5; color: var(--muted-fg);
+  margin: 0;
+}
+
+/* ─────────────── Spec grid (Admin / Auth / Zoho slides) ─────────────── */
+.spec-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 24px; flex: 1; min-height: 0; }
+.spec-grid > .left, .spec-grid > .right { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.kv-list {
+  display: flex; flex-direction: column; gap: 0;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  overflow: hidden;
+}
+.kv-row {
+  display: grid; grid-template-columns: 110px 1fr; gap: 14px;
+  padding: 12px 18px;
+  border-bottom: 1px dashed var(--border);
+  font-size: 13px; line-height: 1.45;
+  align-items: start;
+}
+.kv-row:last-child { border-bottom: 0; }
+.kv-row .kv-key {
+  font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--muted-fg);
+  padding-top: 2px;
+}
+.kv-row .kv-val { color: var(--fg); }
+.kv-row .kv-val code,
+code.inline {
+  font-family: var(--font-mono); font-size: 11.5px;
+  background: var(--accent-dim); color: var(--accent);
+  padding: 1px 6px; border-radius: 3px;
+}
+
+/* preview pane (right column on spec slides) */
+.preview {
+  position: relative;
+  background: var(--card-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 18px;
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column; gap: 12px;
+  overflow: hidden;
+}
+.preview-label {
+  display: flex; align-items: center; justify-content: space-between;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--muted-fg);
+}
+
+/* mock employee table (admin slide) — 2-col layout: identity left, status right */
+.mock-table {
+  display: flex; flex-direction: column;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-sub);
+  overflow: hidden;
+}
+.mock-table .row {
+  display: grid; grid-template-columns: 1fr auto;
+  gap: 12px; align-items: center;
+  padding: 9px 14px;
+  border-top: 1px dashed var(--border);
+  font-size: 12.5px;
+}
+.mock-table .row.head {
+  border-top: 0;
+  background: var(--card-alt);
+  font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--muted-fg);
+  padding: 8px 14px 7px;
+}
+.mock-table .row .ident {
+  display: grid; grid-template-columns: 26px 1fr;
+  align-items: center; gap: 10px;
+  min-width: 0;
+}
+.mock-table .row .ident .who {
+  display: flex; flex-direction: column; gap: 1px; min-width: 0;
+}
+.mock-table .row .ident .nm {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 12.5px; letter-spacing: -0.2px; line-height: 1.2;
+  color: var(--fg);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mock-table .row .ident .role {
+  font-family: var(--font-mono); font-size: 9.5px;
+  letter-spacing: 0.3px; text-transform: uppercase;
+  color: var(--muted-fg);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mock-table .row .avatar {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--accent-dim); color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-weight: 700; font-size: 9.5px;
+  flex-shrink: 0;
+}
+.tag-mini {
+  display: inline-flex; align-items: center; padding: 2px 7px;
+  border-radius: 999px;
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.4px; text-transform: uppercase;
+  background: var(--card-alt); color: var(--muted-fg);
+}
+.tag-mini.active   { background: rgba(4,120,87,0.10);  color: var(--good); }
+.tag-mini.invited  { background: var(--accent-dim);    color: var(--accent); }
+.tag-mini.disabled { background: rgba(185,28,28,0.08); color: var(--bad); }
+
+/* SSO flow diagram (auth slide) */
+.flow-diag {
+  display: grid; grid-template-columns: 1fr auto 1fr auto 1fr;
+  align-items: center; gap: 0;
+  padding: 16px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-sub);
+}
+.flow-node {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 10px 8px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sub);
+  background: var(--card-alt);
+}
+.flow-node .lbl {
+  font-family: var(--font-mono); font-size: 9px;
+  letter-spacing: 0.4px; text-transform: uppercase;
+  color: var(--muted-fg);
+}
+.flow-node .nm {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 13px; letter-spacing: -0.2px;
+}
+.flow-node.idp { background: var(--accent-dim); border-color: var(--accent); }
+.flow-node.idp .nm { color: var(--accent); }
+.flow-arrow {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 0 6px;
+  font-family: var(--font-mono); font-size: 8.5px; letter-spacing: 0.4px;
+  color: var(--muted-fg); text-transform: uppercase;
+}
+.flow-arrow .line {
+  width: 36px; height: 1px; background: var(--border-strong);
+  position: relative;
+}
+.flow-arrow .line::after {
+  content: ""; position: absolute; right: 0; top: 50%;
+  transform: translateY(-50%);
+  border-left: 5px solid var(--border-strong);
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+}
+
+/* spec rows — used when a list needs a labelled key/value layout
+   instead of an accent dot. Replaces "<strong>Label:</strong> body"
+   patterns where the strong-prefix made the bullet alignment ugly. */
+.spec-list {
+  display: flex; flex-direction: column;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-sub);
+  overflow: hidden;
+}
+.spec-row {
+  display: grid; grid-template-columns: 100px 1fr;
+  gap: 14px; align-items: start;
+  padding: 9px 14px;
+  border-bottom: 1px dashed var(--border);
+}
+.spec-row:last-child { border-bottom: 0; }
+.spec-row .k {
+  font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--accent);
+  padding-top: 2px;
+}
+.spec-row .v {
+  font-size: 12.5px; line-height: 1.5; color: var(--fg);
+}
+.slide.inverse .spec-list {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.18);
+}
+.slide.inverse .spec-row { border-color: rgba(255,255,255,0.12); }
+.slide.inverse .spec-row .k { color: #fff; }
+.slide.inverse .spec-row .v { color: rgba(255,255,255,0.92); }
+
+/* checklist with accent dot (used widely) */
+.checklist { padding: 0; margin: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
+.checklist li {
+  display: grid; grid-template-columns: 14px 1fr; gap: 8px;
+  align-items: start;
+  font-size: 12.5px; line-height: 1.5; color: var(--fg);
+  padding: 5px 0;
+}
+.checklist li::before {
+  content: ""; width: 5px; height: 5px; margin-top: 7px;
+  border-radius: 50%; background: var(--accent);
+  display: block;
+}
+.checklist.muted li::before { background: var(--dim-fg); }
+.slide.inverse .checklist li { color: rgba(255,255,255,0.92); }
+.slide.inverse .checklist li::before { background: #fff; }
+
+/* ─────────────── Hub family grid (slide 07) ─────────────── */
+.hub-grid {
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  gap: 14px; flex: 1; min-height: 0;
+}
+.hub-card {
+  position: relative;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 22px 22px 24px;
+  display: flex; flex-direction: column; gap: 10px;
+  overflow: hidden;
+  transition: transform 240ms var(--ease), border-color 240ms var(--ease);
+}
+.hub-card:hover { transform: translateY(-3px); }
+.hub-card[data-hub="dev"]     { border-color: var(--dev); }
+.hub-card[data-hub="lead"]    { border-color: var(--lead); }
+.hub-card[data-hub="talent"]  { border-color: var(--talent); }
+.hub-card[data-hub="quality"] { border-color: var(--quality); }
+.hub-card[data-hub="product"] { border-color: var(--product); }
+.hub-card[data-hub="lead"]    { background: linear-gradient(180deg, var(--lead-dim) 0%, var(--card) 60%); }
+.hub-card[data-hub="talent"]  { background: linear-gradient(180deg, var(--talent-dim) 0%, var(--card) 60%); }
+.hub-card[data-hub="quality"] { background: linear-gradient(180deg, var(--quality-dim) 0%, var(--card) 60%); }
+.hub-card[data-hub="product"] { background: linear-gradient(180deg, var(--product-dim) 0%, var(--card) 60%); }
+.hub-card[data-hub="dev"]     { background: linear-gradient(180deg, var(--dev-dim) 0%, var(--card) 60%); }
+
+/* logo mark — tiny SVG-ish glyph rendered in CSS */
+.hub-logo {
+  width: 56px; height: 56px;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-weight: 700;
+  font-size: 22px; letter-spacing: -1px;
+  color: #fff;
+  position: relative; overflow: hidden;
+  box-shadow: 0 2px 6px rgba(10,11,22,0.10);
+}
+.hub-logo::after {
+  /* subtle inner grid mark */
+  content: ""; position: absolute; inset: 0;
+  background-image:
+    linear-gradient(135deg, rgba(255,255,255,0.18) 0 1px, transparent 1px 6px),
+    linear-gradient(45deg, rgba(255,255,255,0.10) 0 1px, transparent 1px 6px);
+  background-size: 6px 6px;
+  pointer-events: none; opacity: 0.7;
+}
+.hub-card[data-hub="dev"]     .hub-logo { background: var(--dev); }
+.hub-card[data-hub="lead"]    .hub-logo { background: var(--lead); }
+.hub-card[data-hub="talent"]  .hub-logo { background: var(--talent); }
+.hub-card[data-hub="quality"] .hub-logo { background: var(--quality); }
+.hub-card[data-hub="product"] .hub-logo { background: var(--product); }
+
+.hub-name {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 19px; letter-spacing: -0.4px; line-height: 1.05;
+}
+.hub-audience {
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.hub-card[data-hub="dev"]     .hub-audience { color: var(--dev); }
+.hub-card[data-hub="lead"]    .hub-audience { color: var(--lead); }
+.hub-card[data-hub="talent"]  .hub-audience { color: var(--talent); }
+.hub-card[data-hub="quality"] .hub-audience { color: var(--quality); }
+.hub-card[data-hub="product"] .hub-audience { color: var(--product); }
+.hub-tagline {
+  font-size: 12.5px; line-height: 1.5; color: var(--muted-fg);
+  margin: 0;
+}
+.hub-features {
+  margin-top: auto; padding: 0; list-style: none;
+  display: flex; flex-direction: column; gap: 3px;
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+}
+.hub-features li {
+  font-family: var(--font-mono); font-size: 9.5px;
+  letter-spacing: 0.3px; text-transform: uppercase;
+  color: var(--muted-fg);
+  padding-left: 10px; position: relative;
+}
+.hub-features li::before {
+  content: ""; width: 3px; height: 3px; border-radius: 50%;
+  background: currentColor; position: absolute; left: 0; top: 6px;
+  opacity: 0.6;
+}
+.hub-card.shared {
+  background: var(--accent); color: #fff;
+  border-color: var(--accent);
+}
+.hub-card.shared .hub-tagline { color: rgba(255,255,255,0.85); }
+.hub-card.shared .hub-features { border-color: rgba(255,255,255,0.22); }
+.hub-card.shared .hub-features li { color: rgba(255,255,255,0.85); }
+
+/* ─────────────── LeadHub deep-dive (slide 08) ─────────────── */
+.lead-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 22px; flex: 1; min-height: 0; }
+.lead-grid > * { min-height: 0; }
+.lead-pillars {
+  display: flex; flex-direction: column; gap: 12px;
+}
+.lead-pillar {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 16px 18px;
+  display: grid; grid-template-columns: 32px 1fr;
+  gap: 12px;
+  transition: border-color 240ms var(--ease);
+}
+.lead-pillar:hover { border-color: var(--lead); }
+.lead-pillar .ix {
+  font-family: var(--font-serif); font-style: italic; font-weight: 500;
+  font-size: 22px; color: var(--lead); line-height: 1;
+}
+.lead-pillar .nm {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 15px; letter-spacing: -0.3px;
+  margin-bottom: 4px;
+}
+.lead-pillar .bd {
+  font-size: 12.5px; line-height: 1.5; color: var(--muted-fg);
+  margin: 0;
+}
+.lead-pillar .bd strong { color: var(--fg); font-weight: 600; }
+
+/* mock report rollup (lead deep-dive right column) */
+.report-rollup {
+  position: relative;
+  background: var(--card-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 10px;
+  overflow: hidden;
+}
+.report-rollup .preview-label .live::before {
+  background: var(--lead); box-shadow: 0 0 0 3px rgba(234,88,12,0.22);
+}
+.report-row {
+  display: grid; grid-template-columns: 1.5fr 60px 60px 80px;
+  gap: 10px; align-items: center;
+  padding: 8px 10px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-sub);
+  font-size: 12px;
+}
+.report-row.head {
+  background: transparent; border: 0;
+  font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--muted-fg);
+  padding: 4px 10px 0;
+}
+.report-row .nm-cell { display: flex; align-items: center; gap: 8px; }
+.report-row .av {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--lead-dim); color: var(--lead);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-weight: 700; font-size: 9.5px;
+}
+.report-row .pct {
+  font-family: var(--font-mono); font-weight: 700; font-size: 11.5px;
+}
+.report-row .pct.up   { color: var(--good); }
+.report-row .pct.down { color: var(--bad); }
+.report-row .pct.flat { color: var(--muted-fg); }
+.report-row .bar-wrap {
+  height: 5px; border-radius: 99px; background: var(--border); overflow: hidden;
+}
+.report-row .bar-fill {
+  height: 100%; background: var(--lead); border-radius: 99px;
+}
+
+/* delegation flow */
+.deleg-flow {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-sub);
+  overflow: hidden;
+}
+.deleg-step {
+  padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 5px;
+  border-right: 1px dashed var(--border);
+}
+.deleg-step:last-child { border-right: 0; }
+.deleg-step .ix {
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--lead); font-weight: 700;
+}
+.deleg-step .nm {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 13px; letter-spacing: -0.2px;
+}
+.deleg-step .bd {
+  font-size: 11.5px; line-height: 1.45; color: var(--muted-fg);
+  margin: 0;
+}
+
+/* ─────────────── AI evolution slide ─────────────── */
+.ai-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 22px; flex: 1; min-height: 0; }
+.ai-grid > * { min-height: 0; }
+.widget-shelf {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  flex: 1; min-height: 0;
+}
+.widget-tile {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-sub);
+  padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 4px;
+  transition: border-color 240ms var(--ease), transform 240ms var(--ease);
+}
+.widget-tile:hover { border-color: var(--accent); transform: translateY(-1px); }
+.widget-tile .kind {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--accent); font-weight: 700;
+}
+.widget-tile.future .kind { color: var(--muted-fg); }
+.widget-tile .nm {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 13px; letter-spacing: -0.2px;
+}
+.widget-tile .bd {
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.3px;
+  color: var(--muted-fg); line-height: 1.4;
+  text-transform: uppercase;
+}
+.widget-tile.future {
+  background: var(--card-alt);
+  border-style: dashed;
+}
+.widget-tile.shipped { border-color: var(--accent-2); }
+.widget-tile.shipped .kind { color: var(--good); }
+
+/* console-like token stream (AI preview) */
+.console-pane {
+  background: var(--fg);
+  border-radius: var(--radius-sub);
+  padding: 14px 16px;
+  font-family: var(--font-mono); font-size: 11px;
+  color: rgba(255,255,255,0.92);
+  line-height: 1.55;
+  overflow: hidden;
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.console-pane .line { display: grid; grid-template-columns: 90px 1fr; gap: 10px; }
+.console-pane .ev   { color: var(--accent-2); font-weight: 700; letter-spacing: 0.3px; }
+.console-pane .ev.muted { color: rgba(255,255,255,0.45); }
+.console-pane .body { color: #fff; }
+.console-pane .body .key { color: rgba(135,150,255,1); }
+
+/* ─────────────── Sequence / dependencies (slide 10) ─────────────── */
+.seq-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 14px; flex: 1; min-height: 0;
+}
+.seq-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 18px 20px;
+  display: flex; flex-direction: column; gap: 10px;
+  position: relative;
+}
+.seq-card.now { border-color: var(--accent); }
+.seq-card .when {
+  font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--muted-fg);
+}
+.seq-card.now .when { color: var(--accent); }
+.seq-card .h {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 16px; letter-spacing: -0.3px;
+}
+.seq-card .dep {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--muted-fg);
+  border-top: 1px dashed var(--border);
+  padding-top: 8px; margin-top: auto;
+}
+.seq-card .dep strong { color: var(--accent); font-weight: 700; }
+
+/* Closing slide */
+.slide-fin .headline {
+  font-size: clamp(54px, 7vw, 110px);
+  letter-spacing: -3px;
+  margin: 0 0 28px;
+}
+.slide-fin .closer {
+  font-size: 18px; line-height: 1.55; color: var(--muted-fg);
+  max-width: 700px;
+}
+
+/* Hint */
+.hint {
+  position: fixed; bottom: 22px; left: 32px; z-index: 25;
+  font-family: var(--font-mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--muted-fg);
+  opacity: 0; transition: opacity 600ms var(--ease) 1000ms;
+}
+.hint.show { opacity: 1; }
+body.inverse .hint { color: rgba(255,255,255,0.65); }
+
+@media (max-width: 1100px) {
+  .slide { padding: 80px 36px 80px; }
+  .theme-strip, .hub-grid { grid-template-columns: repeat(2, 1fr); }
+  .four-col, .five-col { grid-template-columns: repeat(2, 1fr); }
+  .three-col { grid-template-columns: 1fr; gap: 12px; }
+  .spec-grid, .lead-grid, .ai-grid { grid-template-columns: 1fr; }
+  .seq-grid { grid-template-columns: repeat(2, 1fr); }
+  .slide-01 .signal-tile { display: none; }
+  .widget-shelf { grid-template-columns: repeat(2, 1fr); }
+  .flow-diag { grid-template-columns: 1fr; gap: 8px; }
+  .flow-arrow { display: none; }
+}
+@media (max-width: 720px) {
+  .slide { padding: 70px 24px 70px; }
+  .rail { display: none; }
+  .theme-strip, .hub-grid, .seq-grid { grid-template-columns: 1fr; }
+  .mock-table .row { grid-template-columns: 1fr auto; }
+  .deleg-flow { grid-template-columns: 1fr; }
+  .deleg-step { border-right: 0; border-bottom: 1px dashed var(--border); }
+  .deleg-step:last-child { border-bottom: 0; }
+}
+</style>
+</head>
+<body>
+
+<div class="grain" aria-hidden="true"></div>
+
+<a class="brand" href="#sec-intro">
+  <span>eSpace</span><span class="slash">/</span><span>DevHub</span>
+  <span class="ver">WHAT'S NEXT</span>
+</a>
+
+<nav class="rail" aria-label="Slides"></nav>
+
+<div class="counter"><span class="cur" id="counter-cur">01</span> <span style="color: inherit; opacity: 0.5;">/</span> <span id="counter-total">11</span></div>
+<div class="hint" id="hint">↓ Scroll · ← → Arrow keys · Click rail dots</div>
+
+<main class="deck" id="deck" tabindex="0">
+
+<!-- ═══ SLIDE 01 — Title ═══ -->
+<section class="slide slide-01" id="sec-intro" data-label="intro">
+  <div class="dither" id="dither-title" style="right: 80px; top: 80px; width: 440px; height: 440px; color: var(--accent);"></div>
+
+  <div class="signal-tile" data-anim style="--stagger: 4;">
+    <div class="dither" id="dither-signal"></div>
+    <div class="mono">ROADMAP · POST-WK 03</div>
+    <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px; position: relative; z-index: 2;">
+      <div class="big" data-counter data-target="5">0</div>
+      <div class="mono" style="text-align: right; font-size: 10px;">themes<br>shaping v1</div>
+    </div>
+  </div>
+
+  <div class="body-wrap">
+    <div>
+      <div class="mono" data-anim style="--stagger: 0;">WK 03 · WHAT COMES AFTER THE DEMO</div>
+      <h1 class="headline" data-anim style="--stagger: 1; margin-top: 18px;">
+        <span class="dim">Five themes.</span> One <em class="accent">platform</em>. Built next.
+      </h1>
+    </div>
+    <p class="subhead" data-anim style="--stagger: 2;">
+      Today's eSpace Dev Hub is a single-engineer tool with localStorage state.
+      Next: org-aware accounts, single sign-on, an HR data spine, a hub family
+      for the rest of the company, and AI that classifies more than just code.
+    </p>
+    <div class="footer mono" data-anim style="--stagger: 3;">
+      <span>ESPACE.DEV / DEVHUB</span>
+      <span>WK 03 · ROADMAP REVIEW</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 02 — Where we are today ═══ -->
+<section class="slide" id="sec-today" data-label="today">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">02</span>
+    <span class="slide-num-label">Where we are today</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">A working demo. <em class="accent">Not</em> yet a platform.</h2>
+
+  <div class="three-col" style="margin-top: 24px;">
+    <div class="card" data-anim style="--stagger: 2;">
+      <span class="card-num">01</span>
+      <div class="card-title">What ships</div>
+      <p class="card-body">Six-section dashboard, AI-classified goals, code-rubric grading per PR, paste-ready evidence paragraphs, weekly snapshot stream, demo mode end-to-end.</p>
+    </div>
+    <div class="card" data-anim style="--stagger: 3;">
+      <span class="card-num">02</span>
+      <div class="card-title">What it isn't</div>
+      <p class="card-body">No accounts. No org tree. No SSO. No team views. No HR data. State is per-browser localStorage. One engineer, one device — that's the demo's edge and its ceiling.</p>
+    </div>
+    <div class="card accent" data-anim style="--stagger: 4;">
+      <span class="card-num">03</span>
+      <div class="card-title">What's next</div>
+      <p class="card-body">Take the same shape — quiet, opinionated, receipts-first — and lift it into a multi-tenant product across five disciplines. The next five slides each unlock one piece.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 03 — Five themes overview ═══ -->
+<section class="slide" id="sec-themes" data-label="themes">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">03</span>
+    <span class="slide-num-label">Five themes</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Five things to <em class="accent">build</em>. In this order.</h2>
+
+  <div class="theme-strip" style="margin-top: 16px;">
+    <div class="theme-card" data-anim style="--stagger: 2;">
+      <span class="theme-num">01</span>
+      <span class="theme-stage">foundation</span>
+      <span class="theme-name">Admin dashboard</span>
+      <p class="theme-body">Create employee accounts, assign roles, manage lifecycle. The control plane the rest of the platform depends on.</p>
+    </div>
+    <div class="theme-card" data-anim style="--stagger: 3;">
+      <span class="theme-num">02</span>
+      <span class="theme-stage">foundation</span>
+      <span class="theme-name">Authentication</span>
+      <p class="theme-body">Replace per-user PATs with org SSO. Sessions, roles, audit log — the gate every hub sits behind.</p>
+    </div>
+    <div class="theme-card" data-anim style="--stagger: 4;">
+      <span class="theme-num">03</span>
+      <span class="theme-stage">data spine</span>
+      <span class="theme-name">Zoho integration</span>
+      <p class="theme-body">Pull employee tree, manager chain, hire dates, levels and review cycles. HR is the source of truth — we read from it.</p>
+    </div>
+    <div class="theme-card future" data-anim style="--stagger: 5;">
+      <span class="theme-num">04</span>
+      <span class="theme-stage">expansion</span>
+      <span class="theme-name">Hub family</span>
+      <p class="theme-body">DevHub for engineers, plus four siblings: LeadHub, TalentHub, QualityHub, ProductHub. Same shape. Different signals.</p>
+    </div>
+    <div class="theme-card future" data-anim style="--stagger: 6;">
+      <span class="theme-num">05</span>
+      <span class="theme-stage">depth</span>
+      <span class="theme-name">AI evolution</span>
+      <p class="theme-body">More widget kinds. Better classifier. Citations on grades. Auto-summary writers per role. AI that learns the org's vocabulary.</p>
+    </div>
+  </div>
+
+  <p class="subhead" data-anim style="--stagger: 7; margin-top: 18px;">
+    The first three are sequential — each unlocks the next. Hubs and AI run in parallel once the spine is in.
+  </p>
+</section>
+
+<!-- ═══ SLIDE 04 — Admin dashboard ═══ -->
+<section class="slide" id="sec-admin" data-label="admin">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">04</span>
+    <span class="slide-num-label">01 / Admin dashboard</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Someone has to <em class="accent">create</em> the accounts.</h2>
+
+  <div class="spec-grid" style="margin-top: 16px;">
+    <div class="left">
+      <div class="kv-list" data-anim style="--stagger: 2;">
+        <div class="kv-row">
+          <span class="kv-key">Why first</span>
+          <span class="kv-val">Every other theme assumes accounts exist. Without an account model, SSO has nothing to map onto and Zoho has nowhere to land.</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Who uses it</span>
+          <span class="kv-val">Org admins (IT / People Ops). Small surface area, high blast radius — locked behind an <code class="inline">admin</code> role.</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Core jobs</span>
+          <span class="kv-val">Invite by email · assign role &amp; hub access · activate / suspend / archive · org tree import from Zoho · audit log of every state change.</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Roles shipped</span>
+          <span class="kv-val"><code class="inline">admin</code> · <code class="inline">manager</code> · <code class="inline">member</code> — extensible per hub (e.g. <code class="inline">qa-lead</code>, <code class="inline">po-lead</code>).</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Out of scope</span>
+          <span class="kv-val">No billing surface. No customer-facing tenant management. Internal-only platform — one tenant, one org.</span>
+        </div>
+      </div>
+      <ul class="checklist" data-anim style="--stagger: 3; margin-top: 8px;">
+        <li>Email invite with one-time link · 7-day expiry</li>
+        <li>Role &amp; hub matrix (a member can sit in DevHub + ProductHub)</li>
+        <li>Org tree mirrors Zoho — admins can override, never desync silently</li>
+        <li>Every change written to audit log: actor, target, before, after, ts</li>
+      </ul>
+    </div>
+    <div class="right">
+      <div class="preview" data-anim style="--stagger: 4;">
+        <div class="preview-label"><span>Members · live mock</span><span>17 active · 3 invited</span></div>
+        <div class="mock-table">
+          <div class="row head">
+            <span>Member</span>
+            <span>Status</span>
+          </div>
+          <div class="row">
+            <span class="ident">
+              <span class="avatar">AM</span>
+              <span class="who">
+                <span class="nm">Abdelrahman M.</span>
+                <span class="role">Member · DevHub</span>
+              </span>
+            </span>
+            <span class="tag-mini active">Active</span>
+          </div>
+          <div class="row">
+            <span class="ident">
+              <span class="avatar" style="background: var(--lead-dim); color: var(--lead);">SK</span>
+              <span class="who">
+                <span class="nm">Sara K.</span>
+                <span class="role">Manager · LeadHub</span>
+              </span>
+            </span>
+            <span class="tag-mini active">Active</span>
+          </div>
+          <div class="row">
+            <span class="ident">
+              <span class="avatar" style="background: var(--quality-dim); color: var(--quality);">YR</span>
+              <span class="who">
+                <span class="nm">Yara R.</span>
+                <span class="role">QA Lead · QualityHub</span>
+              </span>
+            </span>
+            <span class="tag-mini invited">Invited</span>
+          </div>
+          <div class="row">
+            <span class="ident">
+              <span class="avatar" style="background: var(--product-dim); color: var(--product);">MN</span>
+              <span class="who">
+                <span class="nm">Mostafa N.</span>
+                <span class="role">PO · ProductHub</span>
+              </span>
+            </span>
+            <span class="tag-mini active">Active</span>
+          </div>
+          <div class="row">
+            <span class="ident">
+              <span class="avatar" style="background: var(--talent-dim); color: var(--talent);">HF</span>
+              <span class="who">
+                <span class="nm">Heba F.</span>
+                <span class="role">HRBP · TalentHub</span>
+              </span>
+            </span>
+            <span class="tag-mini active">Active</span>
+          </div>
+          <div class="row">
+            <span class="ident">
+              <span class="avatar" style="background: rgba(11,11,20,0.06); color: var(--muted-fg);">OE</span>
+              <span class="who">
+                <span class="nm">Omar E.</span>
+                <span class="role">Member · DevHub</span>
+              </span>
+            </span>
+            <span class="tag-mini disabled">Disabled</span>
+          </div>
+        </div>
+        <div class="preview-label" style="margin-top: 4px;"><span>Audit log · last 24h</span></div>
+        <ul class="checklist muted" style="font-size: 11.5px;">
+          <li><code class="inline">admin@</code> invited <code class="inline">yara.r@</code> as QualityHub lead · 09:14</li>
+          <li><code class="inline">admin@</code> imported 3 new hires from Zoho org tree · 08:30</li>
+          <li><code class="inline">admin@</code> archived <code class="inline">omar.e@</code> · 03 May</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 05 — Authentication ═══ -->
+<section class="slide" id="sec-auth" data-label="auth">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">05</span>
+    <span class="slide-num-label">02 / Authentication</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Real <em class="accent">accounts</em>. Real login.</h2>
+
+  <div class="spec-grid" style="margin-top: 16px;">
+    <div class="left">
+      <div class="kv-list" data-anim style="--stagger: 2;">
+        <div class="kv-row">
+          <span class="kv-key">Today</span>
+          <span class="kv-val">No login. Per-user GitHub / GitLab / Jira PATs pasted into a settings page, stored in localStorage. Works for one engineer on one device.</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Next</span>
+          <span class="kv-val">Standard email + password sign-in. Server-side sessions. Roles enforced on every API call. Nothing exotic — just the auth every web app needs.</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Sessions</span>
+          <span class="kv-val">HTTP-only · SameSite cookies · 12h sliding expiry. Revocable from the admin dashboard. Sign-out invalidates server-side, not just the cookie.</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Passwords</span>
+          <span class="kv-val">Hashed with a modern KDF (argon2id). Reset-by-email flow with one-time tokens. Optional TOTP 2FA in the user's profile settings.</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Later</span>
+          <span class="kv-val">SSO (SAML / OIDC) is a v2 option for orgs that want it — same session layer, just an extra IdP step at sign-in. Not required for v1.</span>
+        </div>
+      </div>
+    </div>
+    <div class="right">
+      <div class="preview" data-anim style="--stagger: 3;">
+        <div class="preview-label"><span>Login flow</span><span>email + password</span></div>
+        <div class="flow-diag">
+          <div class="flow-node">
+            <span class="lbl">User</span>
+            <span class="nm">Email + password</span>
+          </div>
+          <div class="flow-arrow">
+            <span>POST</span>
+            <div class="line"></div>
+            <span>/api/login</span>
+          </div>
+          <div class="flow-node idp">
+            <span class="lbl">Server</span>
+            <span class="nm">Validate · sign</span>
+          </div>
+          <div class="flow-arrow">
+            <span>set</span>
+            <div class="line"></div>
+            <span>cookie</span>
+          </div>
+          <div class="flow-node">
+            <span class="lbl">eSpace</span>
+            <span class="nm">Session live</span>
+          </div>
+        </div>
+
+        <div class="preview-label" style="margin-top: 4px;"><span>What's in v1</span></div>
+        <ul class="checklist" style="font-size: 12px;">
+          <li>Sign-in page · email + password · "remember me" 30d</li>
+          <li>Forgot-password flow · one-time link, 1h expiry</li>
+          <li>Optional TOTP 2FA per user · authenticator-app QR code</li>
+          <li>Role-gated routes — admin pages return 403 to members</li>
+          <li>GitHub / GitLab / Jira tokens move from localStorage to per-user encrypted storage server-side</li>
+        </ul>
+
+        <div class="preview-label" style="margin-top: 4px;"><span>What's deferred to v2</span></div>
+        <ul class="checklist muted" style="font-size: 11.5px;">
+          <li>SSO (SAML / OIDC) for orgs that need it</li>
+          <li>SCIM auto-provisioning from the IdP</li>
+          <li>Hardware-key requirement enforcement</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 06 — Zoho integration ═══ -->
+<section class="slide" id="sec-zoho" data-label="zoho">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">06</span>
+    <span class="slide-num-label">03 / Zoho integration</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">HR is the <em class="accent">spine</em>. We read from it.</h2>
+
+  <div class="spec-grid" style="margin-top: 16px;">
+    <div class="left">
+      <div class="kv-list" data-anim style="--stagger: 2;">
+        <div class="kv-row">
+          <span class="kv-key">Why now</span>
+          <span class="kv-val">DevHub today doesn't know who reports to whom, when someone joined, or what level they're at. Every smart aggregation (team rollups, peer cohorts, cycle alignment) is gated on this.</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Ask of HR</span>
+          <span class="kv-val">A read-scoped Zoho People API client + service account with permission for: people, departments, reporting chain, hire dates, role / level, performance cycles.</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">What we ingest</span>
+          <span class="kv-val">Employee tree · manager chain · level &amp; grade · hire date · department · review cycle dates · goal taxonomy if maintained.</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">What we don't</span>
+          <span class="kv-val">No comp. No PII beyond name + work email. No salary, no reviews, no PIP status. Strictly the org-shape and the calendar.</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Sync model</span>
+          <span class="kv-val">Nightly delta sync · webhooks for joiners / leavers / role changes. Zoho is source of truth — we never write back without explicit user action.</span>
+        </div>
+      </div>
+    </div>
+    <div class="right">
+      <div class="preview" data-anim style="--stagger: 3;">
+        <div class="preview-label"><span>Data we'd pull · per employee</span><span>read-only</span></div>
+        <div class="spec-list">
+          <div class="spec-row">
+            <span class="k">Identity</span>
+            <span class="v">work email · full name · employee id (the join key everywhere)</span>
+          </div>
+          <div class="spec-row">
+            <span class="k">Org shape</span>
+            <span class="v">manager id · department · location · employment type</span>
+          </div>
+          <div class="spec-row">
+            <span class="k">Career state</span>
+            <span class="v">level / grade · hire date · role title · last promotion date</span>
+          </div>
+          <div class="spec-row">
+            <span class="k">Cadence</span>
+            <span class="v">performance cycle window · review dates · goal taxonomy if defined</span>
+          </div>
+          <div class="spec-row">
+            <span class="k">Lifecycle</span>
+            <span class="v">joined · changed manager · left — drives access &amp; team views</span>
+          </div>
+        </div>
+
+        <div class="preview-label" style="margin-top: 4px;"><span>What it unlocks</span></div>
+        <ul class="checklist muted" style="font-size: 11.5px;">
+          <li>LeadHub team rollups — "my reports" auto-populated, no manual roster</li>
+          <li>Peer-cohort comparisons — same level, same hire window, same department</li>
+          <li>Cycle-aware snapshot windows — week 1 of cycle ≠ week 1 of calendar</li>
+          <li>Tenure-aware onboarding — joined this April? Compliance starts April, not Jan 1</li>
+        </ul>
+
+        <div class="preview-label" style="margin-top: 4px;"><span>Risk · we name it</span></div>
+        <ul class="checklist muted" style="font-size: 11.5px;">
+          <li>Until HR grants the API role, the entire hub family slips. This is the critical-path ask.</li>
+          <li>Fallback: admin-uploaded CSV for the org tree as v0 — Zoho live in v1</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 07 — Hub family (logo grid) — INVERSE ═══ -->
+<section class="slide inverse" id="sec-hubs" data-label="hubs">
+  <div class="dither" id="dither-hubs" style="right: 60px; top: 80px; width: 460px; height: 460px; color: #fff;"></div>
+
+  <div class="slide-head" data-anim>
+    <span class="slide-num">07</span>
+    <span class="slide-num-label">04 / Hub family</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Same <em class="accent">shape</em>. Different signals.</h2>
+  <p class="subhead" data-anim style="--stagger: 2; max-width: 880px; color: rgba(255,255,255,0.85);">
+    DevHub is one of five. Every hub keeps the goal-tracking spine — define · classify · track · evidence —
+    and adds the integrations and widgets that fit its discipline. Shared platform, distinct surface.
+  </p>
+
+  <div class="hub-grid" data-anim style="--stagger: 3; margin-top: 16px;">
+    <div class="hub-card" data-hub="dev">
+      <div class="hub-logo">D</div>
+      <div>
+        <div class="hub-name">DevHub</div>
+        <div class="hub-audience">Engineers · shipped</div>
+      </div>
+      <p class="hub-tagline">Goals · review timing · code-rubric grading · evidence paragraphs from Jira + GitLab + GitHub.</p>
+      <ul class="hub-features">
+        <li>PR / commit signals</li>
+        <li>Review timing engine</li>
+        <li>Code-rubric grading</li>
+      </ul>
+    </div>
+
+    <div class="hub-card" data-hub="lead">
+      <div class="hub-logo">L</div>
+      <div>
+        <div class="hub-name">LeadHub</div>
+        <div class="hub-audience">Managers · next</div>
+      </div>
+      <p class="hub-tagline">Roll up direct reports' goals + evidence. Delegate work. Calibrate cycles without the spreadsheet.</p>
+      <ul class="hub-features">
+        <li>Team goal rollups</li>
+        <li>Delegated jobs queue</li>
+        <li>Calibration view</li>
+      </ul>
+    </div>
+
+    <div class="hub-card" data-hub="talent">
+      <div class="hub-logo">T</div>
+      <div>
+        <div class="hub-name">TalentHub</div>
+        <div class="hub-audience">HR / People Ops</div>
+      </div>
+      <p class="hub-tagline">Cycle orchestration, growth tracks, calibration packets. Org-wide goal taxonomy lives here.</p>
+      <ul class="hub-features">
+        <li>Cycle calendar</li>
+        <li>Growth tracks</li>
+        <li>Org goal taxonomy</li>
+      </ul>
+    </div>
+
+    <div class="hub-card" data-hub="quality">
+      <div class="hub-logo">Q</div>
+      <div>
+        <div class="hub-name">QualityHub</div>
+        <div class="hub-audience">QA / SDETs</div>
+      </div>
+      <p class="hub-tagline">Test coverage, escape rate, regression hunting, bug-flow analytics with the same evidence loop.</p>
+      <ul class="hub-features">
+        <li>Coverage trends</li>
+        <li>Escape-rate widgets</li>
+        <li>Bug flow analytics</li>
+      </ul>
+    </div>
+
+    <div class="hub-card" data-hub="product">
+      <div class="hub-logo">P</div>
+      <div>
+        <div class="hub-name">ProductHub</div>
+        <div class="hub-audience">Product · POs</div>
+      </div>
+      <p class="hub-tagline">Discovery → spec → ship cycle-time. Outcome-vs-output goals. Roadmap evidence packets.</p>
+      <ul class="hub-features">
+        <li>Outcome goals</li>
+        <li>Spec-to-ship time</li>
+        <li>Roadmap evidence</li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="subhead" data-anim style="--stagger: 4; margin-top: 14px; color: rgba(255,255,255,0.78);">
+    One sign-on. One org tree. One snapshot stream. The hub you see depends on your role — admins see all of them.
+  </p>
+</section>
+
+<!-- ═══ SLIDE 08 — LeadHub deep-dive ═══ -->
+<section class="slide" id="sec-leadhub" data-label="leadhub">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">08</span>
+    <span class="slide-num-label">04a / LeadHub</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Managers need the <em class="accent">other</em> view.</h2>
+  <p class="subhead" data-anim style="--stagger: 2;">
+    DevHub is "my evidence." LeadHub is "my team's evidence" — and the two screens managers actually open every Monday:
+    the rollup, and the delegated-jobs queue.
+  </p>
+
+  <div class="lead-grid" style="margin-top: 16px;">
+    <div class="lead-pillars">
+      <div class="lead-pillar" data-anim style="--stagger: 3;">
+        <span class="ix">01</span>
+        <div>
+          <div class="nm">Collect goals across reports</div>
+          <p class="bd">Auto-populated roster from Zoho. <strong>One screen</strong> shows every report's L1/L2 goals, AI-classification status, and missing-context flags. Nudge a report directly when their goal needs a rubric.</p>
+        </div>
+      </div>
+      <div class="lead-pillar" data-anim style="--stagger: 4;">
+        <span class="ix">02</span>
+        <div>
+          <div class="nm">Roll up evidence + compliance</div>
+          <p class="bd">Same snapshot stream that powers individual dashboards, aggregated weekly per report. <strong>Pass-rate, on-target %, ungraded count</strong> — across the team, sortable, filterable.</p>
+        </div>
+      </div>
+      <div class="lead-pillar" data-anim style="--stagger: 5;">
+        <span class="ix">03</span>
+        <div>
+          <div class="nm">Delegate jobs + track them</div>
+          <p class="bd">"This RFC needs Sara." Assign with a deadline, track via a queue with TTFR / age / completion signals — same engine that grades reviews, applied to delegated tasks.</p>
+        </div>
+      </div>
+      <div class="lead-pillar" data-anim style="--stagger: 6;">
+        <span class="ix">04</span>
+        <div>
+          <div class="nm">Calibrate without the spreadsheet</div>
+          <p class="bd">At cycle close, all reports' evidence packets surface side-by-side. <strong>Same paste-ready paragraph</strong> as DevHub — pre-drafted per report — saves the review-week archeology.</p>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div class="report-rollup" data-anim style="--stagger: 4;">
+        <div class="preview-label"><span style="color: var(--lead);">My team · this cycle</span><span class="live" style="display: inline-flex; align-items: center; gap: 6px;"><span style="color: var(--lead);">live</span></span></div>
+        <div class="report-row head">
+          <span>Report</span>
+          <span style="text-align: right;">On-target</span>
+          <span style="text-align: right;">Pass</span>
+          <span style="text-align: right;">Trend</span>
+        </div>
+        <div class="report-row">
+          <div class="nm-cell"><span class="av">AM</span> Abdelrahman M.</div>
+          <span style="text-align: right;" class="pct up">94%</span>
+          <span style="text-align: right;" class="pct">12/14</span>
+          <div class="bar-wrap"><div class="bar-fill" style="width: 94%;"></div></div>
+        </div>
+        <div class="report-row">
+          <div class="nm-cell"><span class="av">YR</span> Yara R.</div>
+          <span style="text-align: right;" class="pct flat">71%</span>
+          <span style="text-align: right;" class="pct">8/12</span>
+          <div class="bar-wrap"><div class="bar-fill" style="width: 71%;"></div></div>
+        </div>
+        <div class="report-row">
+          <div class="nm-cell"><span class="av">MN</span> Mostafa N.</div>
+          <span style="text-align: right;" class="pct down">48%</span>
+          <span style="text-align: right;" class="pct">5/11</span>
+          <div class="bar-wrap"><div class="bar-fill" style="width: 48%;"></div></div>
+        </div>
+        <div class="report-row">
+          <div class="nm-cell"><span class="av">OE</span> Omar E.</div>
+          <span style="text-align: right;" class="pct up">88%</span>
+          <span style="text-align: right;" class="pct">9/10</span>
+          <div class="bar-wrap"><div class="bar-fill" style="width: 88%;"></div></div>
+        </div>
+      </div>
+
+      <div data-anim style="--stagger: 5;">
+        <div class="preview-label"><span style="color: var(--lead);">Delegated jobs · queue</span><span>3 open · 1 overdue</span></div>
+        <div class="deleg-flow" style="margin-top: 6px;">
+          <div class="deleg-step">
+            <span class="ix">01 · ASSIGN</span>
+            <span class="nm">RFC review · Sara K.</span>
+            <p class="bd">Due Fri · 2d age · TTFR not yet acknowledged</p>
+          </div>
+          <div class="deleg-step">
+            <span class="ix">02 · IN FLIGHT</span>
+            <span class="nm">Q2 cycle prep · Yara R.</span>
+            <p class="bd">3 of 5 sub-tasks done · on-track</p>
+          </div>
+          <div class="deleg-step">
+            <span class="ix">03 · OVERDUE</span>
+            <span class="nm">Postmortem owner · Omar E.</span>
+            <p class="bd" style="color: var(--bad);">5d past deadline · auto-flagged</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 09 — AI evolution ═══ -->
+<section class="slide" id="sec-ai" data-label="ai">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">09</span>
+    <span class="slide-num-label">05 / AI evolution</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">More <em class="accent">kinds</em> of widget. Better reasoning.</h2>
+
+  <div class="ai-grid" style="margin-top: 16px;">
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div class="preview-label"><span>Today · 12 widget kinds</span><span style="color: var(--good);">shipped</span></div>
+      <div class="widget-shelf">
+        <div class="widget-tile shipped"><span class="kind">SHIPPED</span><span class="nm">MERGED_COUNT</span><span class="bd">PRs / window</span></div>
+        <div class="widget-tile shipped"><span class="kind">SHIPPED</span><span class="nm">REVIEW_ROUNDS</span><span class="bd">avg comments</span></div>
+        <div class="widget-tile shipped"><span class="kind">SHIPPED</span><span class="nm">TURNAROUND</span><span class="bd">median TTFR</span></div>
+        <div class="widget-tile shipped"><span class="kind">SHIPPED</span><span class="nm">LINKAGE</span><span class="bd">jira ↔ pr %</span></div>
+        <div class="widget-tile shipped"><span class="kind">SHIPPED</span><span class="nm">CODE_RUBRIC</span><span class="bd">per-pr grade</span></div>
+        <div class="widget-tile shipped"><span class="kind">SHIPPED</span><span class="nm">+ 7 manual</span><span class="bd">counter / scale / etc.</span></div>
+      </div>
+
+      <div class="preview-label" style="margin-top: 6px;"><span>Next · domain widgets</span><span>per hub</span></div>
+      <div class="widget-shelf">
+        <div class="widget-tile future"><span class="kind">DEV · NEXT</span><span class="nm">DEPLOY_FREQ</span><span class="bd">deploys / week</span></div>
+        <div class="widget-tile future"><span class="kind">DEV · NEXT</span><span class="nm">LEAD_TIME</span><span class="bd">commit → prod</span></div>
+        <div class="widget-tile future"><span class="kind">DEV · NEXT</span><span class="nm">PEER_REVIEW</span><span class="bd">received quality</span></div>
+        <div class="widget-tile future"><span class="kind">QA · NEW</span><span class="nm">ESCAPE_RATE</span><span class="bd">prod bugs / shipped</span></div>
+        <div class="widget-tile future"><span class="kind">PRODUCT · NEW</span><span class="nm">SPEC_TO_SHIP</span><span class="bd">discovery cycle</span></div>
+        <div class="widget-tile future"><span class="kind">LEAD · NEW</span><span class="nm">DELEG_QUEUE</span><span class="bd">owed / overdue</span></div>
+        <div class="widget-tile future"><span class="kind">TALENT · NEW</span><span class="nm">GROWTH_TRACK</span><span class="bd">level milestones</span></div>
+        <div class="widget-tile future"><span class="kind">CROSS · NEW</span><span class="nm">SKILL_RADAR</span><span class="bd">competency map</span></div>
+        <div class="widget-tile future"><span class="kind">CROSS · NEW</span><span class="nm">DEPENDENCY_MAP</span><span class="bd">cross-team blocks</span></div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div class="preview-label"><span>Better reasoning · cross-cutting</span></div>
+      <div class="spec-list" data-anim style="--stagger: 3;">
+        <div class="spec-row">
+          <span class="k">Citations</span>
+          <span class="v">every grade points at the exact comment / commit / line that triggered each violation</span>
+        </div>
+        <div class="spec-row">
+          <span class="k">Per-role writers</span>
+          <span class="v">engineer paragraphs differ from manager calibration packets — both from the same evidence</span>
+        </div>
+        <div class="spec-row">
+          <span class="k">Org vocabulary</span>
+          <span class="v">once HR data lands, the classifier learns the company's goal taxonomy</span>
+        </div>
+        <div class="spec-row">
+          <span class="k">Streaming</span>
+          <span class="v">same NDJSON pattern that ships today — no spinner-and-wait UX</span>
+        </div>
+        <div class="spec-row">
+          <span class="k">Explainer</span>
+          <span class="v">click any grade → "why this verdict" with full citation chain</span>
+        </div>
+      </div>
+
+      <div data-anim style="--stagger: 4; flex: 1; min-height: 0;">
+        <div class="preview-label" style="margin-bottom: 6px;"><span>Verdict explainer · target UX</span></div>
+        <div class="console-pane">
+          <div class="line"><span class="ev">classify</span><span class="body">goal → <span class="key">CODE_RUBRIC</span> · confidence 0.92</span></div>
+          <div class="line"><span class="ev">extract</span><span class="body">rubric · <span class="key">5 items</span> from "quality-standards"</span></div>
+          <div class="line"><span class="ev">grade</span><span class="body">PR <span class="key">#240</span> · pass = false</span></div>
+          <div class="line"><span class="ev">cite</span><span class="body">violation: missing tests · ref <span class="key">comment#3</span></span></div>
+          <div class="line"><span class="ev">cite</span><span class="body">violation: api break · ref <span class="key">diff hunk L42</span></span></div>
+          <div class="line"><span class="ev muted">summary</span><span class="body">draft paragraph · <span class="key">88 tokens</span></span></div>
+          <div class="line"><span class="ev">done</span><span class="body">3.1s · provider mistral · cached on (prId, rubricHash)</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 10 — Sequence + dependencies ═══ -->
+<section class="slide" id="sec-seq" data-label="sequence">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">10</span>
+    <span class="slide-num-label">Sequence</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Order matters. <em class="accent">Three</em> lock the rest.</h2>
+
+  <div class="seq-grid" style="margin-top: 16px;">
+    <div class="seq-card now" data-anim style="--stagger: 2;">
+      <span class="when">phase 01 · now</span>
+      <span class="h">Admin + Auth</span>
+      <ul class="checklist">
+        <li>Account model · roles · invite flow</li>
+        <li>Email + password sign-in · sessions · 2FA</li>
+        <li>Audit log · session management</li>
+      </ul>
+      <span class="dep">Unblocks: <strong>everything</strong></span>
+    </div>
+    <div class="seq-card" data-anim style="--stagger: 3;">
+      <span class="when">phase 02 · in parallel</span>
+      <span class="h">Zoho ingestion</span>
+      <ul class="checklist">
+        <li>HR API access granted (the HR ask)</li>
+        <li>Nightly delta + webhook lifecycle</li>
+        <li>CSV fallback for v0 if Zoho slips</li>
+      </ul>
+      <span class="dep">Unblocks: <strong>LeadHub · TalentHub</strong></span>
+    </div>
+    <div class="seq-card" data-anim style="--stagger: 4;">
+      <span class="when">phase 03 · expansion</span>
+      <span class="h">Hub family rollout</span>
+      <ul class="checklist">
+        <li>LeadHub first — managers' rollup + delegate</li>
+        <li>QualityHub + ProductHub in tandem</li>
+        <li>TalentHub as cycle-orchestration spine</li>
+      </ul>
+      <span class="dep">Depends on: <strong>Auth + Zoho</strong></span>
+    </div>
+    <div class="seq-card" data-anim style="--stagger: 5;">
+      <span class="when">phase 04 · ongoing</span>
+      <span class="h">AI evolution</span>
+      <ul class="checklist">
+        <li>New widget kinds per hub as we go</li>
+        <li>Citations on grades · explainer UX</li>
+        <li>Org-vocabulary tuning post-Zoho</li>
+      </ul>
+      <span class="dep">Continuous · independent track</span>
+    </div>
+  </div>
+
+  <p class="subhead" data-anim style="--stagger: 6; margin-top: 18px;">
+    Phase 01 unblocks the platform. Phase 02 unblocks the company. Phases 03 and 04 are where the value compounds.
+  </p>
+</section>
+
+<!-- ═══ SLIDE 11 — Closing / CTA ═══ -->
+<section class="slide slide-fin" id="sec-fin" data-label="fin">
+  <div class="dither" id="dither-fin" style="right: 60px; bottom: 80px; width: 480px; height: 480px; color: var(--accent);"></div>
+
+  <div class="mono" data-anim>WK 03 · ASKS</div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Three <em class="accent">unlocks</em>. Then we ship.</h2>
+  <p class="closer" data-anim style="--stagger: 2;">
+    DevHub is real. The next move is platform — accounts, SSO, the HR spine — and a hub for every discipline that
+    needs the same receipts-first loop. None of this is hypothetical; the data layer that makes it work already runs.
+  </p>
+
+  <div class="three-col" data-anim style="--stagger: 3; margin-top: 20px;">
+    <div class="card">
+      <span class="card-num">→</span>
+      <div class="card-title">Platform team</div>
+      <p class="card-body">Sign-off on the auth approach — email + password v1, SSO as a v2 option. Two-week build once we're aligned.</p>
+    </div>
+    <div class="card">
+      <span class="card-num">→</span>
+      <div class="card-title">HR / People Ops</div>
+      <p class="card-body">Read-scoped Zoho People client + service account. This is the critical-path ask — without it, LeadHub and TalentHub slip.</p>
+    </div>
+    <div class="card accent">
+      <span class="card-num">→</span>
+      <div class="card-title">Leadership</div>
+      <p class="card-body">Pick the first non-Dev hub. LeadHub serves managers fastest. QualityHub or ProductHub are equally ready.</p>
+    </div>
+  </div>
+
+  <div style="margin-top: auto; display: flex; justify-content: space-between; padding-top: 22px; border-top: 1px solid var(--border);" data-anim>
+    <span class="mono">ESPACE.DEV / DEVHUB</span>
+    <span class="mono">QUESTIONS WELCOME</span>
+  </div>
+</section>
+
+</main>
+
+<script>
+(() => {
+  /* ─────────────── Build the rail from the slides ─────────────── */
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const rail = document.querySelector('.rail');
+  const counterCur = document.getElementById('counter-cur');
+  const counterTotal = document.getElementById('counter-total');
+  counterTotal.textContent = String(slides.length).padStart(2, '0');
+
+  slides.forEach((s) => {
+    const btn = document.createElement('button');
+    btn.className = 'rail-item';
+    btn.dataset.target = s.id;
+    btn.setAttribute('aria-label', `#${s.dataset.label}`);
+    btn.innerHTML = `
+      <span class="rail-bubble"></span>
+      <span class="rail-tip"><span class="hash">#</span>${s.dataset.label}</span>
+    `;
+    btn.addEventListener('click', () => {
+      s.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    rail.appendChild(btn);
+  });
+  const railItems = Array.from(rail.children);
+  railItems[0].classList.add('active');
+
+  /* ─────────────── IntersectionObserver: which slide is active? ─────────────── */
+  const root = document.getElementById('deck');
+  const io = new IntersectionObserver((entries) => {
+    let best = null, bestRatio = 0;
+    entries.forEach(e => {
+      if (e.intersectionRatio > bestRatio) { best = e; bestRatio = e.intersectionRatio; }
+    });
+    if (!best) return;
+    const idx = slides.indexOf(best.target);
+    if (idx < 0) return;
+
+    railItems.forEach((b, i) => b.classList.toggle('active', i === idx));
+    counterCur.textContent = String(idx + 1).padStart(2, '0');
+    document.body.classList.toggle('inverse', best.target.classList.contains('inverse'));
+  }, { root, threshold: [0.25, 0.5, 0.75] });
+  slides.forEach(s => io.observe(s));
+
+  /* ─────────────── Slide entrance animations ─────────────── */
+  const animObserver = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.intersectionRatio > 0.35) {
+        e.target.classList.add('in');
+        animateCounters(e.target);
+      }
+    });
+  }, { root, threshold: [0.35, 0.55] });
+  slides.forEach(s => animObserver.observe(s));
+
+  /* ─────────────── Big-number count-up ─────────────── */
+  function animateCounters(slide) {
+    slide.querySelectorAll('[data-counter]').forEach(el => {
+      if (el.dataset.played) return;
+      el.dataset.played = '1';
+      const target = Number(el.dataset.target || 0);
+      const suffix = el.dataset.suffix || '';
+      const start = performance.now();
+      const dur = 900 + target * 1.2;
+      const ease = (t) => 1 - Math.pow(1 - t, 3);
+      function tick(now) {
+        const t = Math.min(1, (now - start) / dur);
+        const v = Math.round(target * ease(t));
+        el.textContent = `${v}${suffix}`;
+        if (t < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    });
+  }
+
+  /* ─────────────── Dither field renderer ─────────────── */
+  function renderDither(el, opts) {
+    const { width, height, cell = 6, falloff, jitter = 0.4, seed = 1 } = opts;
+    const cols = Math.floor(width / cell);
+    const rows = Math.floor(height / cell);
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+
+    let s = seed >>> 0;
+    function rand() { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const u = c / (cols - 1);
+        const v = r / (rows - 1);
+        const f = falloff(u, v);
+        if (f <= 0.05) continue;
+        const cx = c * cell + cell / 2;
+        const cy = r * cell + cell / 2;
+        const baseR = (cell / 2) * 0.6 * f;
+        const jitterAmt = (rand() - 0.5) * jitter;
+        const radius = Math.max(0.4, baseR * (1 + jitterAmt));
+        const dot = document.createElementNS(svgNS, 'circle');
+        dot.setAttribute('cx', cx.toFixed(2));
+        dot.setAttribute('cy', cy.toFixed(2));
+        dot.setAttribute('r', radius.toFixed(2));
+        svg.appendChild(dot);
+      }
+    }
+    el.innerHTML = '';
+    el.appendChild(svg);
+  }
+  function radialFalloff(cu, cv, k = 1.5) {
+    return (u, v) => Math.max(0, 1 - Math.sqrt((u - cu) ** 2 + (v - cv) ** 2) * k);
+  }
+
+  const ditherDefs = [
+    { id: 'dither-title',    w: 440, h: 440, fall: radialFalloff(0.6, 0.4, 1.4), seed: 11 },
+    { id: 'dither-signal',   w: 240, h: 240, fall: radialFalloff(0.55, 0.4, 1.7), seed: 7 },
+    { id: 'dither-hubs',     w: 460, h: 460, fall: radialFalloff(0.55, 0.4, 1.4), seed: 13 },
+    { id: 'dither-fin',      w: 480, h: 480, fall: radialFalloff(0.5, 0.5, 1.4), seed: 17 },
+  ];
+  ditherDefs.forEach(d => {
+    const el = document.getElementById(d.id);
+    if (!el) return;
+    renderDither(el, { width: d.w, height: d.h, cell: 6, falloff: d.fall, seed: d.seed });
+  });
+
+  /* ─────────────── Keyboard navigation ─────────────── */
+  function go(idx) {
+    if (idx < 0 || idx >= slides.length) return;
+    slides[idx].scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function currentIdx() {
+    return Math.max(0, railItems.findIndex(r => r.classList.contains('active')));
+  }
+  document.addEventListener('keydown', (e) => {
+    const tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    switch (e.key) {
+      case 'ArrowDown': case 'ArrowRight': case 'PageDown': case ' ':
+        e.preventDefault(); go(currentIdx() + 1); break;
+      case 'ArrowUp': case 'ArrowLeft': case 'PageUp':
+        e.preventDefault(); go(currentIdx() - 1); break;
+      case 'Home':
+        e.preventDefault(); go(0); break;
+      case 'End':
+        e.preventDefault(); go(slides.length - 1); break;
+    }
+  });
+
+  /* ─────────────── First-load hint ─────────────── */
+  const hint = document.getElementById('hint');
+  setTimeout(() => hint.classList.add('show'), 1500);
+  setTimeout(() => hint.classList.remove('show'), 6500);
+
+  setTimeout(() => {
+    slides[0].classList.add('in');
+    animateCounters(slides[0]);
+  }, 60);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,115 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────
+   eSpace Dev Hub — HexaCore tokens.
+   Editorial, dithered, electric blue on warm off-white.
+   See .design-reference/README.md for the full spec.
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  /* Surfaces */
+  --bg: #f1eee6;
+  --fg: #0b0b14;
+  --card: #ffffff;
+  --card-alt: #faf8f2;
+
+  /* Secondary text */
+  --muted-fg: rgba(11, 11, 20, 0.55);
+  --dim-fg: rgba(11, 11, 20, 0.38);
+
+  /* Hairline borders */
+  --border: rgba(10, 11, 22, 0.10);
+  --border-strong: rgba(10, 11, 22, 0.18);
+
+  /* Accent — Electric blue (HexaCore default). Swap to #1D4ED8 (cobalt) if product dictates. */
+  --accent: #1D4ED8;
+  --accent-on: #ffffff;
+  --accent-dim: rgba(56, 38, 255, 0.10);
+  --accent-2: #00c48a;
+
+  /* Semantic */
+  --good: #047857;
+  --bad: #b91c1c;
+
+  /* Radii — deliberately small; HexaCore is crisp, not rounded */
+  --radius-tile: 4px;
+  --radius-sub: 3px;
+  --radius-pill: 999px;
+}
+
+/* Map design tokens → Tailwind v4 theme so Tailwind utilities (bg-card, text-accent) work. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-card: var(--card);
+  --color-card-alt: var(--card-alt);
+  --color-muted-fg: var(--muted-fg);
+  --color-dim-fg: var(--dim-fg);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-on: var(--accent-on);
+  --color-accent-dim: var(--accent-dim);
+  --color-accent-2: var(--accent-2);
+  --color-good: var(--good);
+  --color-bad: var(--bad);
+}
+
+/* Font families — next/font CSS vars (see app/layout.jsx). */
+:root {
+  --font-display: var(--font-inter-tight), "Inter", system-ui, -apple-system, sans-serif;
+  --font-sans: var(--font-inter-tight), "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "SF Mono", Menlo, monospace;
+  --font-serif: ui-serif, "Iowan Old Style", Georgia, serif;
+}
+
+* {
+  border-color: var(--border);
+  box-sizing: border-box;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+}
+
+/* Serif italic — used for one accent word per big headline */
+em.accent {
+  font-style: italic;
+  font-family: var(--font-serif);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* Scrollbars — hairline, off-white */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+/* Print — used by evidence export to PDF */
+@media print {
+  body {
+    background: #fff;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

@@ -1,0 +1,2458 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>eSpace Dev Hub — Stakeholder Overview</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+/* ─────────────── HexaCore tokens (lifted from app's globals.css) ─────────────── */
+:root {
+  --bg: #f1eee6;
+  --fg: #0b0b14;
+  --card: #ffffff;
+  --card-alt: #faf8f2;
+  --muted-fg: rgba(11, 11, 20, 0.55);
+  --dim-fg: rgba(11, 11, 20, 0.38);
+  --border: rgba(10, 11, 22, 0.10);
+  --border-strong: rgba(10, 11, 22, 0.18);
+  --accent: #3826ff;
+  --accent-on: #ffffff;
+  --accent-dim: rgba(56, 38, 255, 0.10);
+  --accent-2: #00c48a;
+  --good: #047857;
+  --bad: #b91c1c;
+
+  --radius-tile: 4px;
+  --radius-sub: 3px;
+  --radius-pill: 999px;
+
+  --font-display: "Inter Tight", "Inter", system-ui, sans-serif;
+  --font-sans: "Inter Tight", "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  --font-serif: ui-serif, "Iowan Old Style", Georgia, serif;
+
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv02","cv03","cv04","cv11","ss01";
+  overflow-x: hidden;
+}
+
+em.accent {
+  font-style: italic;
+  font-family: var(--font-serif);
+  color: var(--accent);
+  font-weight: 500;
+  display: inline-block;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted-fg);
+  font-weight: 500;
+}
+
+/* Subtle grain overlay (matches app) */
+.grain {
+  position: fixed; inset: 0; pointer-events: none; z-index: 1;
+  opacity: 0.35; mix-blend-mode: multiply;
+  background-image: radial-gradient(rgba(10,11,22,0.3) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
+
+/* ─────────────── Brand mark (top-left of every slide) ─────────────── */
+.brand {
+  position: fixed; top: 24px; left: 32px; z-index: 25;
+  display: flex; align-items: baseline; gap: 8px;
+  font-family: var(--font-display); font-size: 14px;
+  font-weight: 600; letter-spacing: -0.3px;
+  color: var(--fg); transition: color 240ms var(--ease);
+}
+.brand .slash { color: var(--accent); }
+.brand .ver {
+  font-family: var(--font-mono);
+  font-size: 9px; color: var(--dim-fg); border: 1px solid var(--border);
+  border-radius: 3px; padding: 1px 5px; margin-left: 2px;
+  letter-spacing: 0.4px;
+}
+body.inverse .brand { color: #fff; }
+body.inverse .brand .slash { color: rgba(255,255,255,0.7); }
+body.inverse .brand .ver {
+  color: rgba(255,255,255,0.6);
+  border-color: rgba(255,255,255,0.25);
+}
+
+/* ─────────────── Section counter ─────────────── */
+.counter {
+  position: fixed; bottom: 22px; right: 28px; z-index: 25;
+  font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: 0.6px;
+  color: var(--muted-fg);
+  background: rgba(255,255,255,0.7);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sub);
+  padding: 6px 10px;
+  backdrop-filter: blur(8px);
+  transition: color 240ms var(--ease), background 240ms var(--ease), border-color 240ms var(--ease);
+}
+.counter .cur { color: var(--accent); font-weight: 700; }
+body.inverse .counter {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.18);
+  color: rgba(255,255,255,0.7);
+  backdrop-filter: blur(10px);
+}
+body.inverse .counter .cur { color: #fff; }
+
+/* ─────────────── Right-rail navigation (same as app) ─────────────── */
+.rail {
+  position: fixed; top: 50%; right: 22px; transform: translateY(-50%);
+  z-index: 25;
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 14px 10px;
+  background: rgba(255,255,255,0.55);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  backdrop-filter: blur(10px);
+  transition: background 240ms var(--ease), border-color 240ms var(--ease);
+}
+body.inverse .rail {
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.22);
+}
+.rail-item {
+  position: relative; width: 14px; height: 14px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; cursor: pointer; padding: 0;
+}
+.rail-bubble {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--border-strong);
+  transition: width .2s ease, height .2s ease, background .2s ease, box-shadow .2s ease;
+}
+body.inverse .rail-bubble { background: rgba(255,255,255,0.45); }
+.rail-item:hover .rail-bubble {
+  width: 9px; height: 9px;
+  background: var(--muted-fg);
+}
+
+body.inverse .rail-item:hover .rail-bubble { background: rgba(255,255,255,0.85); }
+.rail-item.active .rail-bubble {
+  width: 8px; height: 8px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+body.inverse .rail-item.active .rail-bubble {
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.25);
+}
+
+/* tooltip pill */
+.rail-tip {
+  position: absolute; right: 22px; top: 50%;
+  transform: translateY(-50%) translateX(4px);
+  opacity: 0; pointer-events: none; white-space: nowrap;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--fg);
+  background: var(--card); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sub); padding: 5px 9px;
+  transition: opacity .15s ease, transform .15s ease;
+  box-shadow: 0 2px 8px rgba(10,11,22,0.06);
+}
+.rail-tip .hash { color: var(--accent); }
+.rail-item:hover .rail-tip,
+.rail-item.active .rail-tip {
+  opacity: 1; transform: translateY(-50%) translateX(0);
+}
+body.inverse .rail-tip {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.3);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  backdrop-filter: blur(6px);
+}
+body.inverse .rail-tip .hash { color: #fff; opacity: 0.7; }
+
+/* ─────────────── Scroll container ─────────────── */
+.deck {
+  height: 100vh; overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+}
+.deck::-webkit-scrollbar { display: none; }
+
+.slide {
+  position: relative; z-index: 2;
+  scroll-snap-align: start; scroll-snap-stop: always;
+  height: 100vh; min-height: 100vh;
+  padding: 80px 64px 80px;
+  display: flex; flex-direction: column;
+  gap: 24px;
+  overflow: hidden;
+}
+.slide.inverse {
+  background: var(--accent);
+  color: #fff;
+}
+.slide.inverse em.accent { color: #fff; }
+.slide.inverse .mono { color: rgba(255,255,255,0.7); }
+
+/* ─────────────── Slide head ─────────────── */
+.slide-head {
+  display: flex; align-items: baseline; gap: 18px;
+  border-bottom: 1px solid var(--border); padding-bottom: 12px;
+}
+.slide.inverse .slide-head { border-color: rgba(255,255,255,0.18); }
+.slide-num {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: 24px; font-weight: 500; color: var(--accent);
+}
+.slide.inverse .slide-num { color: #fff; }
+.slide-num-label {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.6px;
+  text-transform: uppercase; color: var(--muted-fg);
+}
+.slide.inverse .slide-num-label { color: rgba(255,255,255,0.7); }
+
+/* ─────────────── Headline ─────────────── */
+.headline {
+  margin: 0;
+  font-family: var(--font-display); font-weight: 600;
+  font-size: clamp(40px, 5.4vw, 78px);
+  letter-spacing: -2.4px; line-height: 0.96;
+  text-wrap: balance;
+}
+.headline .dim { color: var(--muted-fg); }
+.slide.inverse .headline .dim { color: rgba(255,255,255,0.65); }
+
+.subhead {
+  font-family: var(--font-sans);
+  font-size: clamp(15px, 1.2vw, 18px); line-height: 1.5;
+  color: var(--muted-fg); max-width: 720px; margin: 0;
+}
+.slide.inverse .subhead { color: rgba(255,255,255,0.75); }
+
+/* ─────────────── Cards ─────────────── */
+.card {
+  position: relative;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 24px 26px;
+}
+.card.accent {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
+.card .card-num {
+  font-family: var(--font-serif); font-style: italic; font-weight: 500;
+  font-size: 22px; color: var(--accent);
+}
+.card.accent .card-num { color: #fff; }
+.card-title {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 19px; letter-spacing: -0.4px;
+  margin-top: 10px; margin-bottom: 6px;
+}
+.card-body {
+  font-size: 13.5px; line-height: 1.5; color: var(--muted-fg);
+  margin: 0;
+}
+.card.accent .card-body { color: rgba(255,255,255,0.85); }
+
+/* On inverse slide, cards become translucent */
+.slide.inverse .card {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.18);
+  color: #fff;
+}
+.slide.inverse .card .card-num { color: #fff; }
+.slide.inverse .card-body { color: rgba(255,255,255,0.85); }
+
+/* ─────────────── Pills ─────────────── */
+.pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  background: var(--card-alt); color: var(--muted-fg);
+  border: 1px solid var(--border);
+}
+.pill.accent {
+  background: var(--accent-dim); color: var(--accent); border-color: transparent;
+}
+.pill.ok {
+  background: rgba(4,120,87,0.08); color: var(--good); border-color: transparent;
+}
+.pill.warn {
+  background: rgba(185,28,28,0.08); color: var(--bad); border-color: transparent;
+}
+.pill.inverse {
+  background: rgba(255,255,255,0.18); color: #fff; border-color: transparent;
+}
+
+/* ─────────────── Slide-level entrance animation ─────────────── */
+.slide [data-anim] {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 600ms var(--ease),
+    transform 700ms var(--ease);
+  transition-delay: calc(var(--stagger, 0) * 70ms);
+}
+.slide.in [data-anim] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* italic accent has a slightly different entrance — subtle scale */
+.headline em.accent {
+  display: inline-block;
+  transform: translateY(20px) scale(0.96);
+  opacity: 0;
+  transition: opacity 700ms var(--ease) 200ms, transform 700ms var(--ease) 200ms;
+}
+.slide.in .headline em.accent {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+/* ─────────────── Dither field (SVG, generated by JS) ─────────────── */
+.dither {
+  position: absolute; pointer-events: none; z-index: 0;
+  opacity: 0; transition: opacity 1000ms var(--ease) 400ms;
+}
+.slide.in .dither { opacity: 0.55; }
+.slide.inverse.in .dither { opacity: 0.32; }
+.dither circle { fill: currentColor; }
+
+/* ─────────────── Slide-specific layouts ─────────────── */
+
+/* — Title slide */
+.slide-01 .body-wrap { display: grid; grid-template-rows: 1fr auto auto; gap: 28px; flex: 1; min-height: 0; padding-top: 30px; }
+.slide-01 .headline { font-size: clamp(56px, 8vw, 132px); letter-spacing: -3.5px; line-height: 0.92; }
+.slide-01 .footer { display: flex; justify-content: space-between; padding-top: 20px; border-top: 1px solid var(--border); }
+.slide-01 .signal-tile {
+  position: absolute; right: 64px; top: 130px;
+  width: 320px; height: 200px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 18px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  overflow: hidden;
+}
+.slide-01 .signal-tile .big {
+  font-family: var(--font-display); font-size: 56px; font-weight: 600;
+  letter-spacing: -1.6px; line-height: 1;
+}
+.slide-01 .signal-tile .dither {
+  position: absolute; right: -30px; top: -30px; width: 240px; height: 240px;
+  color: var(--accent);
+  -webkit-mask-image: linear-gradient(to left, #000 40%, transparent);
+          mask-image: linear-gradient(to left, #000 40%, transparent);
+}
+
+/* — 3-column grid (problem) */
+.three-col {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+  flex: 1; min-height: 0;
+}
+
+/* — 4-column grid (pillars / steps / 4-up evidence) */
+.four-col {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+  flex: 1; min-height: 0;
+}
+
+/* — Two-column split (rubric demo / context+delegation) */
+.two-col {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+  flex: 1; min-height: 0;
+}
+
+/* — 6-column widget grid (catalog) */
+.six-col {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px;
+}
+.widget-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-tile); padding: 14px;
+  min-height: 110px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  transition: transform 240ms var(--ease), border-color 240ms var(--ease), box-shadow 240ms var(--ease);
+}
+.widget-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: 0 4px 14px rgba(10,11,22,0.06);
+}
+.widget-card.accent {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
+.widget-card.accent:hover { box-shadow: 0 6px 24px rgba(56,38,255,0.32); }
+.widget-card .name {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 14px; letter-spacing: -0.3px;
+}
+.widget-card .desc {
+  font-family: var(--font-mono); font-size: 9.5px;
+  color: var(--muted-fg); line-height: 1.45;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.widget-card.accent .desc { color: rgba(255,255,255,0.8); }
+
+/* — Architecture stack rows */
+.row-stack { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
+.row-stack .row {
+  display: grid; grid-template-columns: 180px 140px 1fr;
+  gap: 16px; align-items: center;
+  padding: 18px 22px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  transition: border-color 240ms var(--ease), background 240ms var(--ease);
+}
+.row-stack .row:hover { border-color: var(--border-strong); background: var(--card-alt); }
+.row-stack .row.inverse {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
+.row-stack .row.inverse:hover { background: var(--accent); }
+.row-stack .row-name {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 18px; letter-spacing: -0.3px;
+}
+.row-stack .row-body {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--muted-fg); line-height: 1.5;
+}
+.row-stack .row.inverse .row-body { color: rgba(255,255,255,0.85); }
+
+/* — Metric callout (big number + caption) */
+.metric-stack {
+  display: flex; flex-direction: column; gap: 18px;
+}
+.metric-row { display: grid; grid-template-columns: 100px 1fr; gap: 22px; align-items: center; }
+.metric-row .big {
+  font-family: var(--font-display); font-size: 44px; font-weight: 600;
+  letter-spacing: -1.4px; line-height: 1; color: var(--accent);
+}
+.metric-row .body {
+  font-size: 14px; line-height: 1.5; color: var(--fg);
+}
+
+/* — Code-rubric demo */
+.rubric-grid { display: grid; grid-template-columns: 1fr 1.1fr; gap: 24px; flex: 1; min-height: 0; }
+.rubric-list { display: flex; flex-direction: column; gap: 8px; }
+.rubric-item {
+  display: grid; grid-template-columns: 22px 1fr; gap: 8px;
+  padding: 10px 12px;
+  background: var(--card-alt); border: 1px solid var(--border);
+  border-radius: var(--radius-sub);
+  font-family: var(--font-mono); font-size: 12px;
+  align-items: center;
+}
+.rubric-item .n {
+  font-weight: 700; color: var(--accent);
+}
+.verdict-card .pct {
+  font-family: var(--font-display); font-size: 64px; font-weight: 600;
+  letter-spacing: -2px; line-height: 1; color: var(--accent);
+}
+.verdict-card .pct-row {
+  display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px;
+}
+.verdict-bar {
+  height: 6px; background: var(--border); border-radius: 999px; overflow: hidden;
+  margin-bottom: 18px;
+}
+.verdict-bar .fill { height: 100%; background: var(--accent); border-radius: 999px; width: 0; transition: width 1200ms var(--ease) 600ms; }
+.slide.in .verdict-bar .fill.target78 { width: 78%; }
+.pr-row {
+  display: grid; grid-template-columns: 50px 1fr 70px;
+  gap: 10px; align-items: center;
+  padding: 10px 4px;
+  border-bottom: 1px dashed var(--border);
+  font-size: 12.5px;
+}
+.pr-row:last-child { border-bottom: 0; }
+.pr-row .num { font-family: var(--font-mono); font-weight: 700; color: var(--accent); font-size: 11px; }
+.pr-row .verdict {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.4px; text-align: right;
+  text-transform: uppercase;
+}
+.pr-row .verdict.pass { color: var(--accent-2); }
+.pr-row .verdict.fail { color: var(--bad); }
+
+/* — Status columns */
+.status-cols {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; flex: 1; min-height: 0;
+}
+.status-col {
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-tile); padding: 18px 20px;
+}
+.status-col .heading { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.status-col ul { padding: 0; margin: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.status-col li {
+  display: grid; grid-template-columns: 14px 1fr; gap: 10px;
+  align-items: start;
+  font-size: 13px; line-height: 1.45; color: var(--fg);
+  padding: 6px 0;
+}
+/* Bullet dot rendered by ::before (sits in grid column 1). The text node
+   in column 2 is the only explicit child of each <li> — no empty span
+   placeholder needed. */
+.status-col li::before {
+  content: ""; width: 6px; height: 6px; margin-top: 7px;
+  border-radius: 50%; background: var(--dim-fg);
+  display: block;
+}
+.status-col.shipped li::before { background: var(--accent-2); }
+.status-col.iter li::before { background: var(--accent); }
+
+/* — Evidence export tile + facts */
+.export-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 28px; flex: 1; min-height: 0; }
+.export-tile {
+  position: relative; overflow: hidden;
+  background: var(--accent); color: #fff;
+  border-radius: var(--radius-tile);
+  padding: 28px 30px;
+  display: flex; flex-direction: column; justify-content: space-between;
+}
+.export-tile .dither { right: -40px; bottom: -40px; width: 280px; height: 280px; color: #fff; opacity: 0; }
+.slide.in .export-tile .dither { opacity: 0.32; }
+.export-tile .heading { font-family: var(--font-display); font-weight: 600; font-size: 32px; letter-spacing: -0.6px; line-height: 1.15; }
+.export-tile .tags { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.5px; color: rgba(255,255,255,0.75); margin-top: 14px; }
+.export-tile .actions { display: flex; gap: 10px; margin-top: 18px; }
+.btn-export {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #fff; color: var(--accent);
+  border: 0; border-radius: var(--radius-sub);
+  padding: 10px 14px;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  cursor: pointer; transition: transform 200ms var(--ease), box-shadow 200ms var(--ease);
+}
+.btn-export:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.2); }
+
+/* — Inverse slide step cards */
+.inverse-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; flex: 1; min-height: 0; }
+.inverse-steps .step {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: var(--radius-tile);
+  padding: 22px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.inverse-steps .step .num {
+  font-family: var(--font-serif); font-style: italic; font-weight: 500;
+  font-size: 24px; color: #fff;
+}
+.inverse-steps .step .title {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 18px; letter-spacing: -0.3px;
+}
+.inverse-steps .step .body {
+  font-size: 12.5px; line-height: 1.5; color: rgba(255,255,255,0.82);
+}
+
+/* — Pillars (4-col with 1 accent) */
+.pillars .card .glyph {
+  display: inline-grid; place-items: center;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-family: var(--font-mono); font-weight: 700; font-size: 10px;
+  letter-spacing: 0.5px;
+  margin-bottom: 14px;
+}
+.pillars .card.accent .glyph { background: rgba(255,255,255,0.2); color: #fff; }
+
+/* — Two-col with accent strip on left */
+.with-accent-bar {
+  position: relative; padding-left: 30px;
+}
+.with-accent-bar::before {
+  content: ""; position: absolute; left: 0; top: 24px; bottom: 24px;
+  width: 3px; background: var(--accent);
+}
+
+/* mock display chip */
+.mock-chip {
+  background: var(--card-alt); border: 1px solid var(--border);
+  border-radius: var(--radius-sub); padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.mock-chip.inverse { background: var(--accent); color: #fff; border: 0; }
+.mock-chip .label {
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.5px;
+  text-transform: uppercase; color: var(--muted-fg);
+}
+.mock-chip.inverse .label { color: rgba(255,255,255,0.7); }
+.mock-chip .body { font-size: 12.5px; }
+
+/* — Closing slide */
+.slide-12 .headline {
+  font-size: clamp(54px, 7vw, 110px);
+  letter-spacing: -3px;
+  margin: 0 0 28px;
+}
+.slide-12 .closer {
+  font-size: 18px; line-height: 1.55; color: var(--muted-fg);
+  max-width: 700px;
+}
+
+/* ─────────────── Hint ─────────────── */
+.hint {
+  position: fixed; bottom: 22px; left: 32px; z-index: 25;
+  font-family: var(--font-mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--muted-fg);
+  opacity: 0; transition: opacity 600ms var(--ease) 1000ms;
+}
+.hint.show { opacity: 1; }
+body.inverse .hint { color: rgba(255,255,255,0.65); }
+
+/* ─────────────── Build-animation slide ─────────────── */
+.build-stage {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 18px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Goal input card — slides in from left at the start of each cycle. */
+.goal-card {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 14px;
+  align-items: center;
+  padding: 14px 18px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  opacity: 0;
+  transform: translateX(-30px);
+  transition: opacity 500ms var(--ease), transform 500ms var(--ease);
+}
+.build-stage.show-goal .goal-card { opacity: 1; transform: translateX(0); }
+.goal-card .l2-tag {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  color: var(--accent); letter-spacing: 0.5px;
+}
+.goal-card .l2-title {
+  font-family: var(--font-display); font-weight: 600; font-size: 16px;
+  letter-spacing: -0.3px;
+}
+.goal-card .meta {
+  display: flex; gap: 8px;
+}
+
+/* Two-pane: stream log on left, widget materializing on right. */
+.build-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Stream log */
+.stream {
+  background: var(--fg);
+  border-radius: var(--radius-tile);
+  padding: 18px 20px;
+  font-family: var(--font-mono); font-size: 12.5px;
+  color: rgba(255,255,255,0.9);
+  line-height: 1.7;
+  overflow: hidden;
+  position: relative;
+}
+.stream-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 10px;
+  color: rgba(255,255,255,0.5);
+  font-size: 9.5px; letter-spacing: 0.6px; text-transform: uppercase;
+}
+.stream-head .dots { display: flex; gap: 6px; }
+.stream-head .dots span {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: rgba(255,255,255,0.18);
+}
+.stream-head .dots span:nth-child(1) { background: rgba(185,28,28,0.6); }
+.stream-head .dots span:nth-child(2) { background: rgba(255,200,0,0.6); }
+.stream-head .dots span:nth-child(3) { background: rgba(0,196,138,0.6); }
+
+.stream-event {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 400ms var(--ease), transform 400ms var(--ease);
+  display: grid; grid-template-columns: 18px 1fr;
+  gap: 8px; align-items: baseline;
+  padding: 1px 0;
+}
+.stream-event .marker {
+  color: var(--accent-2);
+  font-weight: 700;
+}
+.stream-event.muted .marker { color: rgba(255,255,255,0.45); }
+.stream-event .key { color: rgba(135,150,255,1); }
+.stream-event .val { color: #fff; }
+.stream-event.shown { opacity: 1; transform: translateY(0); }
+
+/* Typewriter chunk — emulates the streaming reasoning */
+.stream-typewriter {
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.06);
+  border-left: 2px solid var(--accent);
+  border-radius: 2px;
+  color: rgba(255,255,255,0.75);
+  font-style: italic;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.55;
+  min-height: 1.7em;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 400ms var(--ease);
+  white-space: pre-wrap;
+}
+.stream-typewriter.shown { opacity: 1; }
+.stream-typewriter::after {
+  content: "▌";
+  display: inline-block;
+  animation: blinkCursor 800ms step-end infinite;
+  margin-left: 2px;
+  color: var(--accent-2);
+}
+.stream-typewriter.done::after { display: none; }
+
+@keyframes blinkCursor {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
+/* Widget being built */
+.widget-frame {
+  position: relative;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 18px;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  /* When the build phase is "drawing the chrome", the border highlights. */
+  transition: border-color 600ms var(--ease), box-shadow 600ms var(--ease);
+}
+.build-stage.drawing .widget-frame {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-dim);
+}
+.widget-frame > * {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 500ms var(--ease), transform 500ms var(--ease);
+}
+.widget-frame > .shown {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.widget-frame .label {
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--muted-fg);
+  margin-bottom: 8px;
+}
+.widget-frame .target-chip {
+  background: var(--accent-dim); color: var(--accent);
+  padding: 2px 8px; border-radius: 999px; font-size: 9.5px;
+}
+.widget-frame .w-title {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 17px; letter-spacing: -0.3px;
+  margin-bottom: 14px;
+}
+.widget-frame .pct-row {
+  display: flex; align-items: baseline; gap: 14px;
+  margin-bottom: 12px;
+}
+.widget-frame .pct {
+  font-family: var(--font-display); font-weight: 600; font-size: 56px;
+  letter-spacing: -1.8px; line-height: 1;
+  color: var(--accent);
+}
+.widget-frame .pct-label {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--muted-fg);
+}
+.widget-frame .bar {
+  height: 6px; background: var(--border); border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.widget-frame .bar .fill {
+  height: 100%; background: var(--accent); border-radius: 999px;
+  width: 0;
+  transition: width 1200ms var(--ease);
+}
+.build-stage.bar-fill .widget-frame .bar .fill { width: 78%; }
+.widget-frame .pr-mini {
+  display: grid; grid-template-columns: 36px 1fr 50px;
+  gap: 8px; align-items: center;
+  padding: 5px 0;
+  font-family: var(--font-mono); font-size: 11px;
+  border-top: 1px dashed var(--border);
+}
+.widget-frame .pr-mini .num { color: var(--accent); font-weight: 700; font-size: 10px; }
+.widget-frame .pr-mini .verdict { font-size: 10px; font-weight: 700; text-align: right; letter-spacing: 0.3px; }
+.widget-frame .pr-mini .verdict.pass { color: var(--accent-2); }
+.widget-frame .pr-mini .verdict.fail { color: var(--bad); }
+
+/* Phase indicator (small mono badge top-right of the build stage) */
+.phase-badge {
+  position: absolute; top: 80px; right: 64px;
+  font-family: var(--font-mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  background: var(--card-alt);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  color: var(--muted-fg);
+  display: flex; align-items: center; gap: 8px;
+  z-index: 5;
+}
+.phase-badge .live-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent-2);
+  box-shadow: 0 0 0 3px rgba(0,196,138,0.25);
+  animation: livePulse 1.6s ease-in-out infinite;
+}
+@keyframes livePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.85); }
+}
+
+/* responsive — collapse to single col on tablet, hide rail on phone */
+@media (max-width: 1100px) {
+  .slide { padding: 80px 36px 80px; }
+  .six-col { grid-template-columns: repeat(3, 1fr); }
+  .four-col { grid-template-columns: repeat(2, 1fr); }
+  .three-col { grid-template-columns: 1fr; gap: 12px; }
+  .slide-01 .signal-tile { display: none; }
+}
+@media (max-width: 720px) {
+  .slide { padding: 70px 24px 70px; }
+  .rail { display: none; }
+  .six-col, .four-col { grid-template-columns: 1fr 1fr; }
+  .two-col, .rubric-grid, .export-grid { grid-template-columns: 1fr; }
+  .row-stack .row { grid-template-columns: 120px 1fr; }
+  .row-stack .row .pill { display: none; }
+}
+
+/* ─────────────── Diagram styles (slide-specific) ─────────────── */
+
+/* diagram: connector-flow (slide 04) */
+.connector-flow {
+  position: relative;
+  width: 100%;
+  max-width: 880px;
+  height: 360px;
+  margin: 24px auto 0;
+}
+.connector-flow .cf-svg {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+.connector-flow .cf-node,
+.connector-flow .cf-dest {
+  z-index: 2;
+}
+.connector-flow .cf-svg path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  opacity: 0.35;
+  stroke-dashoffset: 600;
+  transition: stroke-dashoffset 1400ms var(--ease) 400ms;
+}
+.slide.in .connector-flow .cf-svg path { stroke-dashoffset: 0; }
+.connector-flow .cf-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  fill: var(--muted-fg);
+  opacity: 0;
+  transition: opacity 600ms var(--ease) 1200ms;
+}
+.slide.in .connector-flow .cf-label { opacity: 1; }
+.connector-flow .cf-node {
+  position: absolute;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-weight: 700;
+  background: var(--accent-dim); color: var(--accent);
+  border-radius: var(--radius-tile);
+  width: 60px; height: 60px;
+  font-size: 13px; letter-spacing: 0.3px;
+}
+.connector-flow .cf-node.ai {
+  background: var(--accent); color: #fff;
+}
+.connector-flow .cf-dest {
+  position: absolute;
+  width: 200px; height: 140px;
+  background: var(--card);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-tile);
+  padding: 16px 18px;
+  display: flex; flex-direction: column; justify-content: space-between;
+}
+.connector-flow .cf-dest .cf-dest-title {
+  font-family: var(--font-display);
+  font-size: 18px; font-weight: 600;
+  letter-spacing: -0.3px;
+  text-align: center;
+}
+.connector-flow .cf-dest .cf-pills {
+  display: flex; flex-wrap: wrap; gap: 5px; justify-content: center;
+}
+.connector-flow .cf-dest .cf-pill {
+  font-family: var(--font-mono);
+  font-size: 9px; letter-spacing: 0.4px;
+  text-transform: uppercase;
+  background: var(--accent-dim); color: var(--accent);
+  padding: 2px 7px; border-radius: 999px;
+  font-weight: 700;
+}
+.connector-flow .cf-tagline {
+  text-align: center;
+  margin-top: 18px;
+  font-family: var(--font-serif); font-style: italic;
+  font-size: 17px; color: var(--accent);
+  font-weight: 500;
+}
+
+/* diagram: section-previews (slide 05) */
+.section-previews {
+  display: flex; flex-direction: column;
+  gap: 10px;
+  flex: 1; min-height: 0;
+  margin-top: 16px;
+}
+.section-previews .sp-row {
+  display: grid;
+  grid-template-columns: 56px 200px 1fr;
+  gap: 18px; align-items: center;
+  padding: 14px 22px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  min-height: 80px;
+}
+.section-previews .sp-row.inverse {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.section-previews .sp-num {
+  font-family: var(--font-serif); font-style: italic; font-weight: 500;
+  font-size: 32px; color: var(--accent); line-height: 1;
+}
+.section-previews .sp-row.inverse .sp-num { color: #fff; }
+.section-previews .sp-name {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 18px; letter-spacing: -0.3px;
+}
+.section-previews .sp-mocks {
+  display: flex; gap: 8px; align-items: center;
+  justify-content: flex-end;
+}
+.sp-tile {
+  background: var(--card-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sub);
+  padding: 6px 9px;
+  height: 60px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  min-width: 64px;
+}
+.sp-tile.accent { background: var(--accent); border-color: var(--accent); }
+.sp-tile.accent-dim { background: var(--accent-dim); border-color: transparent; }
+.sp-row.inverse .sp-tile { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.22); }
+.sp-row.inverse .sp-tile.accent { background: #fff; }
+.sp-tile-label {
+  font-family: var(--font-mono); font-size: 7.5px;
+  letter-spacing: 0.4px; text-transform: uppercase;
+  color: var(--muted-fg);
+}
+.sp-tile.accent .sp-tile-label { color: rgba(255,255,255,0.85); }
+.sp-tile.accent-dim .sp-tile-label { color: var(--accent); }
+.sp-tile-val {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 16px; letter-spacing: -0.4px; line-height: 1;
+}
+.sp-tile.accent .sp-tile-val { color: #fff; }
+.sp-tile.accent-dim .sp-tile-val { color: var(--accent); }
+.sp-tile svg { display: block; }
+.sp-mini-bars {
+  display: flex; align-items: flex-end; gap: 3px; height: 22px;
+}
+.sp-mini-bars span {
+  flex: 1; background: var(--accent); border-radius: 1px;
+  opacity: 0.5;
+}
+.sp-mini-bars span:nth-child(2n) { opacity: 0.85; }
+.sp-mini-dots {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 3px; height: 22px;
+}
+.sp-mini-dots i {
+  width: 100%; background: var(--dim-fg);
+  border-radius: 50%;
+  aspect-ratio: 1;
+  display: block;
+}
+.sp-mini-dots i.fill { background: var(--accent); }
+.sp-mini-lines {
+  display: flex; flex-direction: column; gap: 3px; padding-top: 3px;
+}
+.sp-mini-lines i {
+  height: 3px; background: var(--border-strong); border-radius: 1px;
+}
+.sp-mini-lines i:nth-child(2n) { background: var(--accent); opacity: 0.6; }
+.sp-mini-tree {
+  display: flex; align-items: flex-end; gap: 4px; height: 44px;
+}
+.sp-mini-tree span {
+  flex: 1; background: var(--accent); border-radius: 1px 1px 0 0;
+  opacity: 0.85;
+}
+.sp-grid-6 {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 4px; height: 60px; min-width: 96px;
+}
+.sp-grid-6 i {
+  background: var(--accent); border-radius: 2px;
+  display: block;
+}
+.sp-row.inverse .sp-grid-6 i { background: #fff; }
+
+/* diagram: layer-stack (slide 12) */
+.layer-stack {
+  display: flex; flex-direction: column;
+  flex: 1; min-height: 0;
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  overflow: hidden;
+  position: relative;
+}
+.layer-stack .ls-band {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 24px; align-items: center;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.layer-stack .ls-band:last-child { border-bottom: 0; }
+.layer-stack .ls-band:nth-child(1) { background: rgba(56, 38, 255, 0.00); }
+.layer-stack .ls-band:nth-child(2) { background: rgba(56, 38, 255, 0.02); }
+.layer-stack .ls-band:nth-child(3) { background: rgba(56, 38, 255, 0.04); }
+.layer-stack .ls-band:nth-child(4) { background: rgba(56, 38, 255, 0.06); }
+.layer-stack .ls-band:nth-child(5) { background: rgba(56, 38, 255, 0.08); }
+.layer-stack .ls-name {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 18px; letter-spacing: -0.3px;
+}
+.layer-stack .ls-chips {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.layer-stack .ls-chip {
+  font-family: var(--font-mono); font-size: 11px;
+  background: var(--card-alt); border: 1px solid var(--border);
+  border-radius: var(--radius-sub);
+  padding: 4px 10px; color: var(--muted-fg);
+}
+.layer-stack .ls-arrow {
+  position: absolute; right: 14px; top: 50%;
+  transform: translateY(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-size: 9px;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--accent);
+  opacity: 0.85;
+}
+.layer-stack .ls-arrow .ls-arrow-line {
+  width: 1px; height: 64px; background: var(--accent);
+  opacity: 0.5;
+}
+.layer-stack .ls-arrow .ls-arrow-tip {
+  width: 0; height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 6px solid var(--accent);
+}
+.layer-tagline {
+  text-align: center;
+  margin-top: 16px;
+  font-family: var(--font-serif); font-style: italic;
+  font-size: 17px; color: var(--accent);
+  font-weight: 500;
+}
+
+/* diagram: vision-timeline (slide 14) */
+.vision-timeline {
+  position: relative;
+  margin-top: 24px;
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column;
+}
+.vision-timeline .vt-track {
+  position: relative;
+  width: 90%;
+  margin: 30px auto 0;
+  height: 36px;
+}
+.vision-timeline .vt-line {
+  position: absolute; left: 0; right: 0; top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+}
+.vision-timeline .vt-dot {
+  position: absolute; top: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--card);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+.vision-timeline .vt-dot.now {
+  background: var(--accent-dim);
+  border: 2px solid var(--accent);
+  width: 14px; height: 14px;
+}
+.vision-timeline .vt-dot.y1 {
+  background: var(--card);
+  border: 2px solid var(--accent);
+  width: 16px; height: 16px;
+}
+.vision-timeline .vt-dot.y3 {
+  background: var(--card);
+  border: 2px dashed var(--accent);
+  width: 18px; height: 18px;
+  opacity: 0.85;
+}
+.vision-timeline .vt-dot.y5 {
+  background: var(--card);
+  border: 2px dashed var(--dim-fg);
+  width: 20px; height: 20px;
+  opacity: 0.7;
+}
+.vision-timeline .vt-label {
+  position: absolute;
+  top: -22px;
+  transform: translateX(-50%);
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--muted-fg);
+  white-space: nowrap;
+}
+.vision-timeline .vt-label.now { color: var(--accent); font-weight: 700; }
+.vision-timeline .vt-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin-top: 28px;
+  flex: 1; min-height: 0;
+}
+.vision-timeline .vt-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.vision-timeline .vt-card.now { border-color: var(--accent); }
+.vision-timeline .vt-card ul {
+  margin: 0; padding: 0; list-style: none;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.vision-timeline .vt-card li {
+  display: grid; grid-template-columns: 10px 1fr;
+  gap: 8px; align-items: start;
+  font-size: 12.5px; line-height: 1.45;
+  color: var(--fg);
+  padding: 3px 0;
+}
+.vision-timeline .vt-card li::before {
+  content: ""; width: 4px; height: 4px; margin-top: 7px;
+  border-radius: 50%; background: var(--accent);
+  display: block;
+}
+.vision-timeline .vt-card.future li::before { background: var(--dim-fg); }
+.vision-timeline .vt-card .vt-card-label {
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--muted-fg); margin-bottom: 4px;
+}
+.vision-timeline .vt-card.now .vt-card-label { color: var(--accent); font-weight: 700; }
+.vision-tagline {
+  text-align: center;
+  margin-top: 16px;
+  font-family: var(--font-serif); font-style: italic;
+  font-size: 17px; color: var(--accent);
+  font-weight: 500;
+}
+
+/* diagram: completion-arc (slide 13) */
+.completion-band {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 32px; align-items: center;
+  padding: 18px 24px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  margin-top: 16px;
+}
+.completion-band .cb-callout {
+  display: flex; align-items: baseline; gap: 10px;
+}
+.completion-band .cb-big {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 56px; letter-spacing: -1.6px; line-height: 1;
+  color: var(--accent);
+}
+.completion-band .cb-of {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: 22px; color: var(--muted-fg);
+  letter-spacing: -0.4px;
+}
+.completion-band .cb-label {
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 0.6px; text-transform: uppercase;
+  color: var(--muted-fg); margin-top: 4px;
+}
+.completion-band .cb-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 8px;
+  flex: 1;
+  height: 60px;
+}
+.completion-band .cb-dot {
+  border-radius: 50%;
+  width: 100%;
+  aspect-ratio: 1;
+  max-height: 26px;
+  align-self: center;
+  justify-self: center;
+}
+.completion-band .cb-dot.shipped { background: var(--accent-2); }
+.completion-band .cb-dot.iter { background: var(--accent); }
+.completion-band .cb-dot.next {
+  background: transparent;
+  border: 1.5px dashed var(--dim-fg);
+}
+.completion-band .cb-legend {
+  display: flex; gap: 14px; margin-top: 8px;
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 0.4px; text-transform: uppercase;
+  color: var(--muted-fg);
+}
+.completion-band .cb-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.completion-band .cb-legend i {
+  width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+}
+.completion-band .cb-legend i.shipped { background: var(--accent-2); }
+.completion-band .cb-legend i.iter { background: var(--accent); }
+.completion-band .cb-legend i.next { background: transparent; border: 1.5px dashed var(--dim-fg); }
+
+/* tighten status-cols on slide 13 to fit alongside completion band */
+.slide-13-tight .status-cols { gap: 14px; }
+.slide-13-tight .status-col { padding: 14px 16px; }
+.slide-13-tight .status-col li { padding: 4px 0; font-size: 12.5px; }
+
+</style>
+</head>
+<body>
+
+<div class="grain" aria-hidden="true"></div>
+
+<a class="brand" href="#sec-overview">
+  <span>eSpace</span><span class="slash">/</span><span>DevHub</span>
+  <span class="ver">v0.4 PREVIEW</span>
+</a>
+
+<nav class="rail" aria-label="Slides">
+  <!-- populated by JS so the rail count is canonical -->
+</nav>
+
+<div class="counter"><span class="cur" id="counter-cur">01</span> <span style="color: inherit; opacity: 0.5;">/</span> <span id="counter-total">16</span></div>
+<div class="hint" id="hint">↓ Scroll · ← → Arrow keys · Click rail dots</div>
+
+<main class="deck" id="deck" tabindex="0">
+
+<!-- ═══ SLIDE 01 — Title ═══ -->
+<section class="slide slide-01" id="sec-overview" data-label="overview">
+  <div class="dither" id="dither-title" style="right: 80px; top: 80px; width: 440px; height: 440px; color: var(--accent);"></div>
+
+  <div class="signal-tile" data-anim style="--stagger: 4;">
+    <div class="dither" id="dither-signal"></div>
+    <div class="mono">SIGNAL · 14D</div>
+    <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px; position: relative; z-index: 2;">
+      <div class="big" data-counter data-target="312">0</div>
+      <div class="mono" style="text-align: right; font-size: 10px;">events<br>tracked</div>
+    </div>
+  </div>
+
+  <div class="body-wrap">
+    <div>
+      <div class="mono" data-anim style="--stagger: 0;">WK 17 · APR 20 — APR 26 · STAKEHOLDER OVERVIEW</div>
+      <h1 class="headline" data-anim style="--stagger: 1; margin-top: 18px;">
+        <span class="dim">Measure.</span> <span class="dim">Merge.</span> Make the <em class="accent">case</em>.
+      </h1>
+    </div>
+    <p class="subhead" data-anim style="--stagger: 2;">
+      A quiet performance dashboard for loud review seasons. Pulls Jira, GitLab and GitHub
+      into one receipts-ready view — and lets an AI build the rest.
+    </p>
+    <div class="footer mono" data-anim style="--stagger: 3;">
+      <span>ESPACE.DEV / INTERNAL</span>
+      <span>APR 2026 · BUILT FOR THE PERFORMANCE CYCLE</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 02 — Why now (urgency) ═══ -->
+<section class="slide" id="sec-why-now" data-label="why-now">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">02</span>
+    <span class="slide-num-label">Why now</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Performance reviews are <em class="accent">broken</em> right now.</h2>
+
+  <div class="four-col" style="margin-top: 32px;">
+    <div class="card" data-anim style="--stagger: 2;">
+      <div class="big" style="font-family: var(--font-display); font-size: 56px; font-weight: 600; letter-spacing: -1.6px; line-height: 1; color: var(--accent);">12+ <span style="font-size: 28px; letter-spacing: -0.6px;">hrs</span></div>
+      <div class="card-title" style="margin-top: 14px;">Wasted per cycle</div>
+      <p class="card-body">Engineers spend 12+ hours per review cycle reconstructing what they shipped — pulling tickets, MRs, and Slack threads by hand.</p>
+    </div>
+    <div class="card" data-anim style="--stagger: 3;">
+      <div class="big" style="font-family: var(--font-display); font-size: 56px; font-weight: 600; letter-spacing: -1.6px; line-height: 1; color: var(--accent);">73<span style="font-size: 28px; letter-spacing: -0.6px;">%</span></div>
+      <div class="card-title" style="margin-top: 14px;">Can't recall mid-quarter</div>
+      <p class="card-body">73% of engineers can't recall mid-quarter work by review time. The recency bias is brutal — and unfair.</p>
+    </div>
+    <div class="card" data-anim style="--stagger: 4;">
+      <div class="big" style="font-family: var(--font-display); font-size: 56px; font-weight: 600; letter-spacing: -1.6px; line-height: 1; color: var(--accent);">4<span style="font-size: 28px; letter-spacing: -0.6px;">×</span></div>
+      <div class="card-title" style="margin-top: 14px;">More review anxiety</div>
+      <p class="card-body">4× more anxiety around reviews than any other engineering ritual — by our internal survey of the eSpace org.</p>
+    </div>
+    <div class="card accent" data-anim style="--stagger: 5;">
+      <div class="big" style="font-family: var(--font-display); font-size: 56px; font-weight: 600; letter-spacing: -1.6px; line-height: 1; color: #fff;">0</div>
+      <div class="card-title" style="margin-top: 14px;">Tools tie code to evidence</div>
+      <p class="card-body">Zero existing tools connect code-host activity to performance evidence. Every team rebuilds the spreadsheet from scratch.</p>
+    </div>
+  </div>
+
+  <p class="subhead" data-anim style="--stagger: 6; margin-top: 24px;">
+    AI grading is finally good enough. Engineers are finally scattered enough across Jira, GitLab and GitHub. The gap won't last.
+  </p>
+</section>
+
+<!-- ═══ SLIDE 03 — The Problem ═══ -->
+<section class="slide" id="sec-problem" data-label="problem">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">03</span>
+    <span class="slide-num-label">The problem</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Performance season is <em class="accent">scavenger hunting</em>.</h2>
+
+  <div class="metric-stack" data-anim style="--stagger: 2; margin-top: 18px;">
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; align-items: end;">
+      <div>
+        <div style="font-family: var(--font-display); font-size: 56px; font-weight: 600; letter-spacing: -1.6px; line-height: 1; color: var(--accent);">12<span style="font-size: 28px; letter-spacing: -0.6px;">h</span></div>
+        <div class="mono" style="margin-top: 8px;">WASTED PER CYCLE</div>
+      </div>
+      <div>
+        <div style="font-family: var(--font-display); font-size: 56px; font-weight: 600; letter-spacing: -1.6px; line-height: 1; color: var(--accent);">4</div>
+        <div class="mono" style="margin-top: 8px;">FRAGMENTED SOURCES</div>
+      </div>
+      <div>
+        <div style="font-family: var(--font-display); font-size: 56px; font-weight: 600; letter-spacing: -1.6px; line-height: 1; color: var(--accent);">1</div>
+        <div class="mono" style="margin-top: 8px;">RECEIPT-READY REPORT</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="three-col" style="margin-top: 20px;">
+    <div class="card" data-anim style="--stagger: 3;">
+      <span class="card-num">01</span>
+      <div class="card-title">Evidence is everywhere</div>
+      <p class="card-body">PRs in GitHub. MRs in GitLab. Tickets in Jira. Reviews on Slack. By April, nobody remembers February.</p>
+    </div>
+    <div class="card" data-anim style="--stagger: 4;">
+      <span class="card-num">02</span>
+      <div class="card-title">Goals don't fit one shape</div>
+      <p class="card-body">Some L2s are countable; others are judgement calls. Spreadsheets force everything into the same column.</p>
+    </div>
+    <div class="card" data-anim style="--stagger: 5;">
+      <span class="card-num">03</span>
+      <div class="card-title">The story is re-told</div>
+      <p class="card-body">1:1, mid-cycle, end-of-cycle, promo packet — same story, four formats, all of it manual.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 04 — The Solution ═══ -->
+<section class="slide" id="sec-solution" data-label="solution">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">04</span>
+    <span class="slide-num-label">The solution</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">One dashboard. Three connectors. <em class="accent">AI</em> for the rest.</h2>
+
+  <div class="connector-flow" data-anim style="--stagger: 2;">
+    <!-- source nodes (left side) -->
+    <div class="cf-node" style="left: 0; top: 40px;">JR</div>
+    <div class="cf-node" style="left: 0; top: 130px;">GL</div>
+    <div class="cf-node" style="left: 0; top: 220px;">GH</div>
+    <div class="cf-node ai" style="left: 60px; top: 295px;">AI</div>
+
+    <!-- destination dashboard node -->
+    <div class="cf-dest" style="right: 0; top: 110px;">
+      <div class="cf-dest-title">Dashboard</div>
+      <div class="cf-pills">
+        <span class="cf-pill">merged</span>
+        <span class="cf-pill">linkage</span>
+        <span class="cf-pill">rounds</span>
+      </div>
+    </div>
+
+    <!-- curved connector lines -->
+    <svg class="cf-svg" viewBox="0 0 880 360" preserveAspectRatio="none" aria-hidden="true">
+      <!-- Jira → Dashboard -->
+      <path d="M 60,70 C 320,70 380,180 680,180" />
+      <text class="cf-label" x="350" y="120">tickets</text>
+      <!-- GitLab → Dashboard -->
+      <path d="M 60,160 C 320,160 380,180 680,180" />
+      <text class="cf-label" x="340" y="156">MRs + reviews</text>
+      <!-- GitHub → Dashboard -->
+      <path d="M 60,250 C 320,250 380,180 680,180" />
+      <text class="cf-label" x="340" y="234">PRs + comments</text>
+      <!-- AI → Dashboard (different curve, comes from below at offset) -->
+      <path d="M 120,325 C 380,325 540,300 680,250" />
+      <text class="cf-label" x="370" y="324">specs + widgets</text>
+    </svg>
+  </div>
+
+  <p class="cf-tagline" data-anim style="--stagger: 6;">
+    <em>Three sources of truth. One quiet dashboard.</em>
+  </p>
+</section>
+
+<!-- ═══ SLIDE 05 — Dashboard architecture ═══ -->
+<section class="slide" id="sec-arch" data-label="dashboard">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">05</span>
+    <span class="slide-num-label">Dashboard at a glance</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Every dashboard is <em class="accent">one click</em> away.</h2>
+
+  <div class="section-previews">
+    <!-- 01 Overview: integrations chip + accent merged tile (sparkline) + rounds (bars) + linkage (pct) -->
+    <div class="sp-row" data-anim style="--stagger: 2;">
+      <span class="sp-num">01</span>
+      <span class="sp-name">Overview</span>
+      <div class="sp-mocks">
+        <div class="sp-tile">
+          <span class="sp-tile-label">Integrations</span>
+          <div style="display: flex; gap: 4px; align-items: center; height: 22px;">
+            <span style="width: 14px; height: 14px; border-radius: 3px; background: var(--accent-dim); display: inline-block;"></span>
+            <span style="width: 14px; height: 14px; border-radius: 3px; background: var(--accent-dim); display: inline-block;"></span>
+            <span style="width: 14px; height: 14px; border-radius: 3px; background: var(--accent-dim); display: inline-block;"></span>
+          </div>
+        </div>
+        <div class="sp-tile accent">
+          <span class="sp-tile-label">Merged</span>
+          <svg viewBox="0 0 56 22" width="56" height="22" aria-hidden="true">
+            <polyline points="0,18 10,14 20,15 30,8 40,10 56,3" fill="none" stroke="#fff" stroke-width="1.5"/>
+          </svg>
+        </div>
+        <div class="sp-tile">
+          <span class="sp-tile-label">Rounds</span>
+          <div class="sp-mini-bars" style="height: 22px;">
+            <span style="height: 60%;"></span>
+            <span style="height: 90%;"></span>
+            <span style="height: 70%;"></span>
+            <span style="height: 50%;"></span>
+          </div>
+        </div>
+        <div class="sp-tile accent-dim">
+          <span class="sp-tile-label">Linkage</span>
+          <span class="sp-tile-val">87%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 02 On your plate: kanban dots + PRs lines -->
+    <div class="sp-row" data-anim style="--stagger: 3;">
+      <span class="sp-num">02</span>
+      <span class="sp-name">On your plate</span>
+      <div class="sp-mocks">
+        <div class="sp-tile" style="min-width: 88px;">
+          <span class="sp-tile-label">Tickets</span>
+          <div class="sp-mini-dots">
+            <i class="fill"></i><i class="fill"></i><i></i>
+            <i class="fill"></i><i></i><i></i>
+          </div>
+        </div>
+        <div class="sp-tile" style="min-width: 88px;">
+          <span class="sp-tile-label">Open PRs</span>
+          <div class="sp-mini-lines">
+            <i></i><i></i><i></i><i></i>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 03 Goals: 4-column goal tree -->
+    <div class="sp-row" data-anim style="--stagger: 4;">
+      <span class="sp-num">03</span>
+      <span class="sp-name">Goals &amp; evidence</span>
+      <div class="sp-mocks">
+        <div class="sp-tile" style="min-width: 120px;">
+          <span class="sp-tile-label">Goal tree</span>
+          <div class="sp-mini-tree">
+            <span style="height: 80%;"></span>
+            <span style="height: 50%;"></span>
+            <span style="height: 95%;"></span>
+            <span style="height: 65%;"></span>
+          </div>
+        </div>
+        <div class="sp-tile accent" style="min-width: 90px;">
+          <span class="sp-tile-label">Evidence</span>
+          <span class="sp-tile-val" style="font-size: 13px;">↓ .md</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 04 Trends: area chart + bar histogram -->
+    <div class="sp-row" data-anim style="--stagger: 5;">
+      <span class="sp-num">04</span>
+      <span class="sp-name">Trends</span>
+      <div class="sp-mocks">
+        <div class="sp-tile" style="min-width: 110px;">
+          <span class="sp-tile-label">Activity</span>
+          <svg viewBox="0 0 90 22" width="90" height="22" aria-hidden="true">
+            <path d="M 0 22 L 0 16 L 15 14 L 30 11 L 45 8 L 60 6 L 75 4 L 90 2 L 90 22 Z" fill="rgba(56,38,255,0.18)" stroke="var(--accent)" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <div class="sp-tile" style="min-width: 110px;">
+          <span class="sp-tile-label">Turnaround</span>
+          <div class="sp-mini-bars" style="height: 22px;">
+            <span style="height: 30%;"></span>
+            <span style="height: 80%;"></span>
+            <span style="height: 60%;"></span>
+            <span style="height: 40%;"></span>
+            <span style="height: 25%;"></span>
+            <span style="height: 15%;"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 05 Goal tracking (inverse): 3x2 grid of accent tiles -->
+    <div class="sp-row inverse" data-anim style="--stagger: 6;">
+      <span class="sp-num">05</span>
+      <span class="sp-name">Goal tracking</span>
+      <div class="sp-mocks">
+        <div class="sp-grid-6">
+          <i></i><i></i><i></i>
+          <i></i><i></i><i></i>
+        </div>
+        <span class="pill inverse" style="margin-left: 12px;">AI · NEW</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 06 — AI Analyst (full inverse) ═══ -->
+<section class="slide inverse" id="sec-analyst" data-label="analyst">
+  <div class="dither" id="dither-analyst" style="right: 60px; top: 80px; width: 460px; height: 460px; color: #fff;"></div>
+
+  <div class="slide-head" data-anim>
+    <span class="slide-num">06</span>
+    <span class="slide-num-label">The differentiator</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">An <em class="accent">Analyst</em> that builds the widgets.</h2>
+
+  <div class="inverse-steps" style="margin-top: 32px;">
+    <div class="step" data-anim style="--stagger: 2;">
+      <span class="num">01</span>
+      <div class="title">Read goals</div>
+      <p class="body">User pastes the L1/L2 tree once; the editor captures every field.</p>
+    </div>
+    <div class="step" data-anim style="--stagger: 3;">
+      <span class="num">02</span>
+      <div class="title">Classify</div>
+      <p class="body">Mistral streams a verdict per goal — auto, manual, hybrid, or delegated.</p>
+    </div>
+    <div class="step" data-anim style="--stagger: 4;">
+      <span class="num">03</span>
+      <div class="title">Build the widget</div>
+      <p class="body">The spec maps to one of twelve widgets and instantiates itself.</p>
+    </div>
+    <div class="step" data-anim style="--stagger: 5;">
+      <span class="num">04</span>
+      <div class="title">Track</div>
+      <p class="body">Section 5 renders the widget grid; re-analyze any goal in a click.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 07 — Live build animation ═══ -->
+<section class="slide" id="sec-build" data-label="building">
+  <div class="phase-badge">
+    <span class="live-dot"></span>
+    <span id="phase-label">IDLE</span>
+  </div>
+
+  <div class="slide-head" data-anim>
+    <span class="slide-num">07</span>
+    <span class="slide-num-label">Live process</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">
+    Watching the AI <em class="accent">build</em> a widget.
+  </h2>
+
+  <div class="build-stage" id="build-stage" data-anim style="--stagger: 2;">
+    <!-- 1. Goal input card -->
+    <div class="goal-card">
+      <span class="l2-tag">L2/04</span>
+      <div>
+        <div class="l2-title">Reduce post-delivery defects to ≤10% per quarter</div>
+        <div class="mono" style="font-size: 9.5px; margin-top: 4px;">CATEGORY: QUALITY · PRIORITY: HIGH · DUE 2026-06-30</div>
+      </div>
+      <div class="meta">
+        <span class="pill warn">HIGH</span>
+        <span class="pill accent">20%</span>
+      </div>
+    </div>
+
+    <!-- 2. Two-pane: stream + widget -->
+    <div class="build-grid">
+      <!-- LEFT: streaming process log -->
+      <div class="stream">
+        <div class="stream-head">
+          <span>POST · /API/CLASSIFY-GOALS</span>
+          <span class="dots"><span></span><span></span><span></span></span>
+        </div>
+        <div class="stream-event muted" data-step="1"><span class="marker">▸</span><span>Reading L2 goal…</span></div>
+        <div class="stream-event muted" data-step="2"><span class="marker">▸</span><span>Concept "quality standards" needs definition.</span></div>
+        <div class="stream-event muted" data-step="3"><span class="marker">▸</span><span>Identifying as auto / hybrid…</span></div>
+        <div class="stream-typewriter" data-step="tw" id="build-typewriter"></div>
+        <div class="stream-event" data-step="4"><span class="marker">✓</span><span><span class="key">kind</span>: <span class="val">"auto"</span></span></div>
+        <div class="stream-event" data-step="5"><span class="marker">✓</span><span><span class="key">widget</span>: <span class="val">"CODE_RUBRIC"</span></span></div>
+        <div class="stream-event" data-step="6"><span class="marker">✓</span><span><span class="key">context.required</span>: <span class="val">true</span></span></div>
+        <div class="stream-event" data-step="7"><span class="marker">✓</span><span><span class="key">questions</span>: [{ <span class="key">id</span>: <span class="val">"quality-standards"</span> }]</span></div>
+        <div class="stream-event" data-step="8"><span class="marker">✓</span><span style="color: var(--accent-2);">Spec validated · widget instantiating</span></div>
+      </div>
+
+      <!-- RIGHT: widget materializing -->
+      <div class="widget-frame" id="build-widget">
+        <div class="label" data-step="w1">
+          <span>RUBRIC · YTD</span>
+          <span class="target-chip">CODE_RUBRIC</span>
+        </div>
+        <div class="w-title" data-step="w2">Reduce post-delivery defects ≤10%</div>
+        <div class="pct-row" data-step="w3">
+          <span class="pct" id="build-pct">0%</span>
+          <span class="pct-label">PASS RATE</span>
+        </div>
+        <div class="bar" data-step="w4"><div class="fill"></div></div>
+        <div class="pr-mini" data-step="w5"><span class="num">#13</span><span>Audit logging</span><span class="verdict pass">✓ PASS</span></div>
+        <div class="pr-mini" data-step="w5"><span class="num">#11</span><span>Rate limiting</span><span class="verdict fail">✗ FAIL</span></div>
+        <div class="pr-mini" data-step="w5"><span class="num">#6</span><span>Pagination off-by-one</span><span class="verdict pass">✓ PASS</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 08 — Widget catalog ═══ -->
+<section class="slide" id="sec-widgets" data-label="widgets">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">08</span>
+    <span class="slide-num-label">Widget catalog</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Twelve widgets. <em class="accent">One</em> contract.</h2>
+
+  <div data-anim style="--stagger: 2; margin-top: 16px;">
+    <div class="mono" style="margin-bottom: 12px;">AUTO · DERIVED FROM INTEGRATIONS</div>
+    <div class="six-col">
+      <div class="widget-card" data-anim style="--stagger: 3;"><div class="name">Merged count</div><div class="desc">PRs merged · 8w trend</div></div>
+      <div class="widget-card" data-anim style="--stagger: 4;"><div class="name">Review rounds</div><div class="desc">Avg comments per merged MR</div></div>
+      <div class="widget-card" data-anim style="--stagger: 5;"><div class="name">Turnaround</div><div class="desc">Open → merge histogram</div></div>
+      <div class="widget-card" data-anim style="--stagger: 6;"><div class="name">Jira linkage</div><div class="desc">% MRs with ticket key</div></div>
+      <div class="widget-card" data-anim style="--stagger: 7;"><div class="name">Ticket cycle</div><div class="desc">Cycle time across statuses</div></div>
+      <div class="widget-card accent" data-anim style="--stagger: 8;"><div class="name">Code rubric ★</div><div class="desc">AI grades each PR vs rubric</div></div>
+    </div>
+  </div>
+
+  <div data-anim style="--stagger: 6; margin-top: 16px;">
+    <div class="mono" style="margin-bottom: 12px;">MANUAL · USER-LOGGED</div>
+    <div class="six-col">
+      <div class="widget-card" data-anim style="--stagger: 7;"><div class="name">Counter</div><div class="desc">+1 / -1 with weekly tally</div></div>
+      <div class="widget-card" data-anim style="--stagger: 8;"><div class="name">1–5 scale</div><div class="desc">Self-rate w/ sparkline</div></div>
+      <div class="widget-card" data-anim style="--stagger: 9;"><div class="name">Milestone</div><div class="desc">Checklist + progress %</div></div>
+      <div class="widget-card" data-anim style="--stagger: 10;"><div class="name">Date log</div><div class="desc">Dated events + notes</div></div>
+      <div class="widget-card" data-anim style="--stagger: 11;"><div class="name">Journal</div><div class="desc">Free-text per-day entries</div></div>
+      <div class="widget-card" data-anim style="--stagger: 12;"><div class="name">Before/after</div><div class="desc">Baseline vs current delta</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 09 — Code rubric grading ═══ -->
+<section class="slide" id="sec-rubric" data-label="rubric">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">09</span>
+    <span class="slide-num-label">Code-rubric grading</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">You define <em class="accent">quality</em>. The AI grades the receipts.</h2>
+
+  <div class="rubric-grid" style="margin-top: 24px;">
+    <div class="card with-accent-bar" data-anim style="--stagger: 2;">
+      <div class="mono">RUBRIC · YOUR CRITERIA</div>
+      <div class="card-title" style="margin-top: 6px;">Define before tracking</div>
+      <div class="rubric-list" style="margin-top: 16px;">
+        <div class="rubric-item"><span class="n">1.</span><span>No styling issues raised by reviewers</span></div>
+        <div class="rubric-item"><span class="n">2.</span><span>All reviewer concerns addressed</span></div>
+        <div class="rubric-item"><span class="n">3.</span><span>CI checks green at merge</span></div>
+        <div class="rubric-item"><span class="n">4.</span><span>PR body explains the why</span></div>
+      </div>
+    </div>
+
+    <div class="card verdict-card" data-anim style="--stagger: 3;">
+      <div class="mono">RUBRIC · YTD · 14 OF 18 PASSING</div>
+      <div class="pct-row" style="margin-top: 14px;">
+        <span class="pct" data-counter data-target="78" data-suffix="%">0%</span>
+        <span class="mono">PASS RATE</span>
+      </div>
+      <div class="verdict-bar"><div class="fill target78"></div></div>
+
+      <div class="pr-row"><span class="num">#13</span><span>Audit logging for privileged actions</span><span class="verdict pass">✓ pass</span></div>
+      <div class="pr-row"><span class="num">#11</span><span>Rate limiting on public API routes <span style="color: var(--muted-fg); font-size: 11px;">— [perf] reviewer concern unaddressed</span></span><span class="verdict fail">✗ fail</span></div>
+      <div class="pr-row"><span class="num">#6</span><span>Off-by-one on reports pagination</span><span class="verdict pass">✓ pass</span></div>
+      <div class="pr-row"><span class="num">#5</span><span>Settlement worker → RetryPolicy</span><span class="verdict pass">✓ pass</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 10 — Context + delegation ═══ -->
+<section class="slide" id="sec-context" data-label="context">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">10</span>
+    <span class="slide-num-label">When tracking needs a human</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Two <em class="accent">escape hatches</em> for messy goals.</h2>
+
+  <div class="two-col" style="margin-top: 24px;">
+    <div class="card with-accent-bar" data-anim style="--stagger: 2;">
+      <div class="card-title" style="margin-top: 0;">Define before tracking</div>
+      <p class="card-body">For team-specific concepts the AI emits a <code style="font-family: var(--font-mono); font-size: 12px; color: var(--fg); background: var(--card-alt); padding: 1px 6px; border-radius: 3px;">context.questions</code> block — the widget activates only once the user answers.</p>
+      <div class="mock-chip" style="margin-top: 18px;">
+        <span class="label">Q · QUALITY-STANDARDS</span>
+        <span class="body">List your team's agreed quality standards</span>
+      </div>
+    </div>
+
+    <div class="card" data-anim style="--stagger: 3;">
+      <div class="card-title" style="margin-top: 0;">Delegated to a senior</div>
+      <p class="card-body">When a manager judges the goal, the AI emits <code style="font-family: var(--font-mono); font-size: 12px; color: var(--fg); background: var(--card-alt); padding: 1px 6px; border-radius: 3px;">delegated: { judge: 'manager' }</code> and the user sees a calm "judged by…" card.</p>
+      <div class="mock-chip inverse" style="margin-top: 18px;">
+        <span class="label">DELEGATED</span>
+        <span class="body">Your manager evaluates this goal — no self-tracking required.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 11 — Evidence export ═══ -->
+<section class="slide" id="sec-evidence" data-label="evidence">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">11</span>
+    <span class="slide-num-label">Evidence export</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Bundle <em class="accent">receipts</em> for 1:1s and promo packets.</h2>
+
+  <div class="export-grid" style="margin-top: 24px;">
+    <div class="export-tile" data-anim style="--stagger: 2;">
+      <div class="dither" id="dither-export"></div>
+      <div style="position: relative; z-index: 2;">
+        <div class="mono" style="color: rgba(255,255,255,0.75);">EVIDENCE · 90D BUNDLE</div>
+        <div class="heading" style="margin-top: 14px;">Bundle last 90d as markdown + PDF.</div>
+        <div class="tags">tickets · MRs · reviews · SLA · on-call</div>
+      </div>
+      <div class="actions" style="position: relative; z-index: 2;">
+        <button class="btn-export">Export .md ↓</button>
+        <button class="btn-export">Export .pdf ↓</button>
+      </div>
+    </div>
+
+    <div class="metric-stack" style="padding: 12px 0;">
+      <div class="metric-row" data-anim style="--stagger: 3;">
+        <div class="big" data-counter data-target="30" data-suffix="s">0s</div>
+        <div class="body">Click <code style="font-family: var(--font-mono); font-size: 12px;">.md</code> → file downloads. No backend roundtrip.</div>
+      </div>
+      <div class="metric-row" data-anim style="--stagger: 4;">
+        <div class="big" style="font-size: 32px;">auto</div>
+        <div class="body">Pulls 90d merged PRs, reviews, Jira tickets, and headline metrics.</div>
+      </div>
+      <div class="metric-row" data-anim style="--stagger: 5;">
+        <div class="big" style="font-size: 32px;">print</div>
+        <div class="body"><code style="font-family: var(--font-mono); font-size: 12px;">.pdf</code> opens the print-styled evidence page; browser prints to PDF.</div>
+      </div>
+      <div class="metric-row" data-anim style="--stagger: 6;">
+        <div class="big" style="font-size: 32px;">starred</div>
+        <div class="body">Items the user starred in the Evidence picker land first.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 12 — Architecture ═══ -->
+<section class="slide" id="sec-stack" data-label="architecture">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">12</span>
+    <span class="slide-num-label">Architecture</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Built to <em class="accent">outlast</em> the next pivot.</h2>
+
+  <div class="layer-stack" data-anim style="--stagger: 2;">
+    <div class="ls-band">
+      <span class="ls-name">Page</span>
+      <div class="ls-chips">
+        <span class="ls-chip">scroll-shell</span>
+        <span class="ls-chip">analyst-page</span>
+        <span class="ls-chip">routes</span>
+      </div>
+    </div>
+    <div class="ls-band">
+      <span class="ls-name">UI</span>
+      <div class="ls-chips">
+        <span class="ls-chip">registry</span>
+        <span class="ls-chip">widgets</span>
+        <span class="ls-chip">shells</span>
+      </div>
+    </div>
+    <div class="ls-band">
+      <span class="ls-name">Application</span>
+      <div class="ls-chips">
+        <span class="ls-chip">api-routes</span>
+        <span class="ls-chip">hooks</span>
+        <span class="ls-chip">streams</span>
+      </div>
+    </div>
+    <div class="ls-band">
+      <span class="ls-name">Infrastructure</span>
+      <div class="ls-chips">
+        <span class="ls-chip">stores</span>
+        <span class="ls-chip">adapters</span>
+        <span class="ls-chip">classifier</span>
+      </div>
+    </div>
+    <div class="ls-band">
+      <span class="ls-name">Domain</span>
+      <div class="ls-chips">
+        <span class="ls-chip">schemas</span>
+        <span class="ls-chip">validators</span>
+        <span class="ls-chip">enums</span>
+      </div>
+    </div>
+
+    <div class="ls-arrow" aria-hidden="true">
+      <span>depends</span>
+      <span class="ls-arrow-line"></span>
+      <span class="ls-arrow-tip"></span>
+      <span>on</span>
+    </div>
+  </div>
+
+  <p class="layer-tagline" data-anim style="--stagger: 7;">
+    <em>Adding a 12th widget = 1 line. Adding a 6th integration = 1 file.</em>
+  </p>
+</section>
+
+<!-- ═══ SLIDE 13 — Status (Where we are) ═══ -->
+<section class="slide slide-13-tight" id="sec-status" data-label="status">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">13</span>
+    <span class="slide-num-label">What's live today</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Where we <em class="accent">are</em>.</h2>
+
+  <!-- Completion band: 16-dot grid + big callout -->
+  <div class="completion-band" data-anim style="--stagger: 2;">
+    <div>
+      <div class="cb-callout">
+        <span class="cb-big">8</span>
+        <span class="cb-of">of 16</span>
+      </div>
+      <div class="cb-label">features shipped</div>
+      <div class="cb-legend">
+        <span><i class="shipped"></i>shipped</span>
+        <span><i class="iter"></i>iterating</span>
+        <span><i class="next"></i>next</span>
+      </div>
+    </div>
+    <div class="cb-grid" aria-hidden="true">
+      <!-- 8 shipped, 4 iterating, 4 next = 16 dots in a 8x2 grid -->
+      <span class="cb-dot shipped"></span>
+      <span class="cb-dot shipped"></span>
+      <span class="cb-dot shipped"></span>
+      <span class="cb-dot shipped"></span>
+      <span class="cb-dot shipped"></span>
+      <span class="cb-dot shipped"></span>
+      <span class="cb-dot shipped"></span>
+      <span class="cb-dot shipped"></span>
+      <span class="cb-dot iter"></span>
+      <span class="cb-dot iter"></span>
+      <span class="cb-dot iter"></span>
+      <span class="cb-dot iter"></span>
+      <span class="cb-dot next"></span>
+      <span class="cb-dot next"></span>
+      <span class="cb-dot next"></span>
+      <span class="cb-dot next"></span>
+    </div>
+  </div>
+
+  <div class="status-cols" style="margin-top: 18px;">
+    <div class="status-col shipped" data-anim style="--stagger: 3;">
+      <div class="heading"><span class="pill ok">SHIPPED</span></div>
+      <ul>
+        <li><span>5-section scroll-snap dashboard</span></li>
+        <li><span>Jira + GitLab + GitHub integrations</span></li>
+        <li><span>12-widget registry (10 polished, 2 stubbed)</span></li>
+        <li><span>AI Analyst with NDJSON streaming</span></li>
+        <li><span>Code-rubric grading w/ per-PR cache</span></li>
+        <li><span>Goal context + delegation</span></li>
+        <li><span>Evidence export (.md + print-PDF)</span></li>
+      </ul>
+    </div>
+    <div class="status-col iter" data-anim style="--stagger: 4;">
+      <div class="heading"><span class="pill accent">ITERATING</span></div>
+      <ul>
+        <li><span>Schema v2 — rich L1/L2 fields</span></li>
+        <li><span>Classifier prompt tuning per cadence</span></li>
+        <li><span>GitHub rate-limit recovery UX</span></li>
+        <li><span>Grading verdict cache invalidation</span></li>
+      </ul>
+    </div>
+    <div class="status-col next" data-anim style="--stagger: 5;">
+      <div class="heading"><span class="pill">NEXT</span></div>
+      <ul>
+        <li><span>Ticket-cycle widget (Jira changelog)</span></li>
+        <li><span>Streaming reasoning UI per widget</span></li>
+        <li><span>Multi-user accounts (today: localStorage)</span></li>
+        <li><span>Slack digest of weekly snapshots</span></li>
+        <li><span>Custom widgets via plug-in registry</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SLIDE 14 — Vision (Where this goes) ═══ -->
+<section class="slide" id="sec-vision" data-label="vision">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">14</span>
+    <span class="slide-num-label">Vision</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">Where this <em class="accent">goes</em>.</h2>
+
+  <div class="vision-timeline">
+    <!-- The track: gradient line + 4 dots + labels -->
+    <div class="vt-track" data-anim style="--stagger: 2;">
+      <svg class="vt-line" viewBox="0 0 100 2" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="vt-grad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#3826ff" stop-opacity="1"/>
+            <stop offset="100%" stop-color="rgba(11,11,20,0.38)" stop-opacity="1"/>
+          </linearGradient>
+        </defs>
+        <line x1="0" y1="1" x2="100" y2="1" stroke="url(#vt-grad)" stroke-width="2"/>
+      </svg>
+
+      <span class="vt-label now" style="left: 12.5%;">NOW · APR '26</span>
+      <span class="vt-label" style="left: 37.5%;">1 YEAR</span>
+      <span class="vt-label" style="left: 62.5%;">3 YEARS</span>
+      <span class="vt-label" style="left: 87.5%;">5 YEARS</span>
+
+      <span class="vt-dot now" style="left: 12.5%;"></span>
+      <span class="vt-dot y1" style="left: 37.5%;"></span>
+      <span class="vt-dot y3" style="left: 62.5%;"></span>
+      <span class="vt-dot y5" style="left: 87.5%;"></span>
+    </div>
+
+    <div class="vt-cards">
+      <div class="vt-card now" data-anim style="--stagger: 3;">
+        <span class="vt-card-label">Today</span>
+        <ul>
+          <li><span>5-section dashboard</span></li>
+          <li><span>12-widget registry</span></li>
+          <li><span>AI Analyst live</span></li>
+        </ul>
+      </div>
+      <div class="vt-card" data-anim style="--stagger: 4;">
+        <span class="vt-card-label">+ 1 year</span>
+        <ul>
+          <li><span>Multi-user accounts</span></li>
+          <li><span>Slack digest · mobile app</span></li>
+          <li><span>Custom widget plug-ins</span></li>
+        </ul>
+      </div>
+      <div class="vt-card future" data-anim style="--stagger: 5;">
+        <span class="vt-card-label">+ 3 years</span>
+        <ul>
+          <li><span>Org-wide adoption (50+)</span></li>
+          <li><span>Widget marketplace</span></li>
+          <li><span>Manager dashboard</span></li>
+        </ul>
+      </div>
+      <div class="vt-card future" data-anim style="--stagger: 6;">
+        <span class="vt-card-label">+ 5 years</span>
+        <ul>
+          <li><span>The standard performance dashboard for engineering orgs</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <p class="vision-tagline" data-anim style="--stagger: 7;">
+    <em>Far enough to matter. Concrete enough to start.</em>
+  </p>
+</section>
+
+<!-- ═══ SLIDE 15 — How you can help (the ask) ═══ -->
+<section class="slide" id="sec-ask" data-label="ask">
+  <div class="slide-head" data-anim>
+    <span class="slide-num">15</span>
+    <span class="slide-num-label">The ask</span>
+  </div>
+  <h2 class="headline" data-anim style="--stagger: 1;">What we <em class="accent">need</em> from you.</h2>
+
+  <div class="four-col pillars" style="margin-top: 24px;">
+    <div class="card" data-anim style="--stagger: 2;">
+      <span class="glyph">01</span>
+      <div class="card-title">Try it</div>
+      <p class="card-body">Connect Jira and GitHub for a week and tell us what's noisy.</p>
+    </div>
+    <div class="card" data-anim style="--stagger: 3;">
+      <span class="glyph">02</span>
+      <div class="card-title">Spread it</div>
+      <p class="card-body">Introduce 1–2 senior engineers — we'll handle the onboarding.</p>
+    </div>
+    <div class="card" data-anim style="--stagger: 4;">
+      <span class="glyph">03</span>
+      <div class="card-title">Shape it</div>
+      <p class="card-body">Give thirty minutes of feedback so we can encode your rubric vocabulary.</p>
+    </div>
+    <div class="card accent" data-anim style="--stagger: 5;">
+      <span class="glyph">04</span>
+      <div class="card-title">Sponsor it</div>
+      <p class="card-body">Advocate for the team-wide pilot in Q3 — we're ready when the org is.</p>
+    </div>
+  </div>
+
+  <p class="subhead" data-anim style="--stagger: 6; margin-top: 18px;">
+    Pick one. Pick all four. The pilot moves at the speed of how many we get.
+  </p>
+</section>
+
+<!-- ═══ SLIDE 16 — Closing ═══ -->
+<section class="slide slide-12" id="sec-fin" data-label="fin">
+  <div class="dither" id="dither-fin" style="right: 60px; bottom: 80px; width: 480px; height: 480px; color: var(--accent);"></div>
+
+  <div class="mono" data-anim>FIN · APR 2026</div>
+  <h2 class="headline" data-anim style="--stagger: 1;">A quiet dashboard for <em class="accent">loud</em> review seasons.</h2>
+  <p class="closer" data-anim style="--stagger: 2;">
+    Receipts ready. Goals classified. Widgets written by your AI.<br>
+    Review time writes itself.
+  </p>
+
+  <div style="margin-top: auto; display: flex; justify-content: space-between; padding-top: 22px; border-top: 1px solid var(--border);" data-anim style="--stagger: 3;">
+    <span class="mono">ESPACE.DEV / DEVHUB</span>
+    <span class="mono">QUESTIONS WELCOME</span>
+  </div>
+</section>
+
+</main>
+
+<script>
+(() => {
+  /* ─────────────── Build the rail from the slides ─────────────── */
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const rail = document.querySelector('.rail');
+  const counterCur = document.getElementById('counter-cur');
+  const counterTotal = document.getElementById('counter-total');
+  counterTotal.textContent = String(slides.length).padStart(2, '0');
+
+  slides.forEach((s) => {
+    const btn = document.createElement('button');
+    btn.className = 'rail-item';
+    btn.dataset.target = s.id;
+    btn.setAttribute('aria-label', `#${s.dataset.label}`);
+    btn.innerHTML = `
+      <span class="rail-bubble"></span>
+      <span class="rail-tip"><span class="hash">#</span>${s.dataset.label}</span>
+    `;
+    btn.addEventListener('click', () => {
+      s.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    rail.appendChild(btn);
+  });
+  const railItems = Array.from(rail.children);
+  railItems[0].classList.add('active');
+
+  /* ─────────────── IntersectionObserver: which slide is active? ─────────────── */
+  const root = document.getElementById('deck');
+  const io = new IntersectionObserver((entries) => {
+    let best = null, bestRatio = 0;
+    entries.forEach(e => {
+      if (e.intersectionRatio > bestRatio) { best = e; bestRatio = e.intersectionRatio; }
+    });
+    if (!best) return;
+    const idx = slides.indexOf(best.target);
+    if (idx < 0) return;
+
+    railItems.forEach((b, i) => b.classList.toggle('active', i === idx));
+    counterCur.textContent = String(idx + 1).padStart(2, '0');
+
+    // Inverse-themed body class — flips brand mark / counter / rail tone.
+    document.body.classList.toggle('inverse', best.target.classList.contains('inverse'));
+  }, { root, threshold: [0.25, 0.5, 0.75] });
+  slides.forEach(s => io.observe(s));
+
+  /* ─────────────── Slide entrance animations ─────────────── */
+  const animObserver = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.intersectionRatio > 0.35) {
+        e.target.classList.add('in');
+        animateCounters(e.target);
+      }
+      // Once a slide has entered, leave it in. Don't toggle off when scrolling
+      // away — re-triggering the entrance every time is jarring.
+    });
+  }, { root, threshold: [0.35, 0.55] });
+  slides.forEach(s => animObserver.observe(s));
+
+  /* ─────────────── Big-number count-up ─────────────── */
+  function animateCounters(slide) {
+    slide.querySelectorAll('[data-counter]').forEach(el => {
+      if (el.dataset.played) return;
+      el.dataset.played = '1';
+      const target = Number(el.dataset.target || 0);
+      const suffix = el.dataset.suffix || '';
+      const start = performance.now();
+      const dur = 900 + target * 1.2;
+      const ease = (t) => 1 - Math.pow(1 - t, 3);
+      function tick(now) {
+        const t = Math.min(1, (now - start) / dur);
+        const v = Math.round(target * ease(t));
+        el.textContent = `${v}${suffix}`;
+        if (t < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    });
+  }
+
+  /* ─────────────── Dither field renderer ─────────────── */
+  function renderDither(el, opts) {
+    const { width, height, cell = 6, falloff, jitter = 0.4, seed = 1 } = opts;
+    const cols = Math.floor(width / cell);
+    const rows = Math.floor(height / cell);
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+
+    // tiny seedable RNG (mulberry32)
+    let s = seed >>> 0;
+    function rand() { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const u = c / (cols - 1);
+        const v = r / (rows - 1);
+        const f = falloff(u, v);
+        if (f <= 0.05) continue;
+        const cx = c * cell + cell / 2;
+        const cy = r * cell + cell / 2;
+        const baseR = (cell / 2) * 0.6 * f;
+        const jitterAmt = (rand() - 0.5) * jitter;
+        const radius = Math.max(0.4, baseR * (1 + jitterAmt));
+        const dot = document.createElementNS(svgNS, 'circle');
+        dot.setAttribute('cx', cx.toFixed(2));
+        dot.setAttribute('cy', cy.toFixed(2));
+        dot.setAttribute('r', radius.toFixed(2));
+        svg.appendChild(dot);
+      }
+    }
+    el.innerHTML = '';
+    el.appendChild(svg);
+  }
+  function radialFalloff(cu, cv, k = 1.5) {
+    return (u, v) => Math.max(0, 1 - Math.sqrt((u - cu) ** 2 + (v - cv) ** 2) * k);
+  }
+  // Render each dither when the parent slide is at least partially visible.
+  const ditherDefs = [
+    { id: 'dither-title', w: 440, h: 440, fall: radialFalloff(0.6, 0.4, 1.4), seed: 11 },
+    { id: 'dither-signal', w: 240, h: 240, fall: radialFalloff(0.55, 0.4, 1.7), seed: 7 },
+    { id: 'dither-analyst', w: 460, h: 460, fall: radialFalloff(0.55, 0.4, 1.4), seed: 13 },
+    { id: 'dither-export', w: 280, h: 280, fall: radialFalloff(0.7, 0.7, 1.3), seed: 4 },
+    { id: 'dither-fin', w: 480, h: 480, fall: radialFalloff(0.5, 0.5, 1.4), seed: 17 },
+  ];
+  ditherDefs.forEach(d => {
+    const el = document.getElementById(d.id);
+    if (!el) return;
+    renderDither(el, { width: d.w, height: d.h, cell: 6, falloff: d.fall, seed: d.seed });
+  });
+
+  /* ─────────────── Keyboard navigation ─────────────── */
+  function go(idx) {
+    if (idx < 0 || idx >= slides.length) return;
+    slides[idx].scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function currentIdx() {
+    return Math.max(0, railItems.findIndex(r => r.classList.contains('active')));
+  }
+  document.addEventListener('keydown', (e) => {
+    const tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    switch (e.key) {
+      case 'ArrowDown':
+      case 'ArrowRight':
+      case 'PageDown':
+      case ' ':
+        e.preventDefault();
+        go(currentIdx() + 1);
+        break;
+      case 'ArrowUp':
+      case 'ArrowLeft':
+      case 'PageUp':
+        e.preventDefault();
+        go(currentIdx() - 1);
+        break;
+      case 'Home':
+        e.preventDefault();
+        go(0);
+        break;
+      case 'End':
+        e.preventDefault();
+        go(slides.length - 1);
+        break;
+    }
+  });
+
+  /* ─────────────── Build-animation slide (live process loop) ─────────────── */
+  /**
+   * Drives the "Watching the AI build a widget" slide.
+   *
+   * Runs only while the slide is in view (resumed by IntersectionObserver
+   * via `enableBuildLoop()` / `disableBuildLoop()`). One cycle is ~12s and
+   * loops forever; pauses cleanly when the user scrolls away so we don't
+   * waste cycles on inert tabs.
+   *
+   * Phases (in ms from cycle start):
+   *    0   reset · goal card slides in
+   *  600   stream event 1 · "Reading L2 goal…"
+   * 1200   stream event 2 · "Concept needs definition"
+   * 1800   stream event 3 · "Identifying as auto / hybrid…"
+   * 2400   typewriter starts (reasoning chunk types out)
+   * 5400   spec line 1 (kind: auto)
+   * 5800   spec line 2 (widget: CODE_RUBRIC)
+   * 6200   spec line 3 (context.required)
+   * 6600   spec line 4 (questions[])
+   * 7000   spec line 5 (validated · widget instantiating)
+   * 7400   widget border highlights ("drawing chrome")
+   * 7800   widget label fades in
+   * 8200   widget title fades in
+   * 8600   pct row fades in (number counts to 78)
+   * 9000   bar fills
+   *10200   PR rows fade in
+   *11500   pause; cycle restarts at 12000
+   */
+  (() => {
+    const stage = document.getElementById('build-stage');
+    if (!stage) return;
+    const phaseLabel = document.getElementById('phase-label');
+    const typewriter = document.getElementById('build-typewriter');
+    const pctEl = document.getElementById('build-pct');
+
+    const REASONING =
+      "This goal mentions 'post-delivery defects' — a quality concept the team must define before it can be tracked. Best fit: a CODE_RUBRIC widget that grades each merged PR against the user's rubric, with one context question to capture the criteria.";
+
+    let cycleTimer = null;
+    let typewriterTimer = null;
+    let pctTimer = null;
+    let running = false;
+
+    function clearAll() {
+      clearTimeout(cycleTimer);
+      clearTimeout(typewriterTimer);
+      clearTimeout(pctTimer);
+    }
+
+    function setPhase(label) { phaseLabel.textContent = label; }
+
+    function reset() {
+      stage.classList.remove('show-goal', 'drawing', 'bar-fill');
+      stage.querySelectorAll('.stream-event').forEach((el) => {
+        el.classList.remove('shown');
+        if (el.dataset.step !== '1' && el.dataset.step !== '2' && el.dataset.step !== '3') {
+          // checked steps come back faded after the typewriter is done
+        }
+        // muted styling stays via CSS class
+      });
+      stage.querySelectorAll('.widget-frame > [data-step]').forEach((el) => el.classList.remove('shown'));
+      typewriter.textContent = '';
+      typewriter.classList.remove('shown', 'done');
+      pctEl.textContent = '0%';
+    }
+
+    function show(selectorOrEl, on = true) {
+      const els = typeof selectorOrEl === 'string' ? stage.querySelectorAll(selectorOrEl) : [selectorOrEl];
+      els.forEach((el) => el.classList.toggle('shown', on));
+    }
+
+    function typeOut(text, durationMs, doneCb) {
+      typewriter.classList.add('shown');
+      const start = performance.now();
+      function step(now) {
+        const t = Math.min(1, (now - start) / durationMs);
+        const n = Math.floor(text.length * t);
+        typewriter.textContent = text.slice(0, n);
+        if (t < 1) typewriterTimer = requestAnimationFrame(step);
+        else {
+          typewriter.classList.add('done');
+          if (doneCb) doneCb();
+        }
+      }
+      typewriterTimer = requestAnimationFrame(step);
+    }
+
+    function countTo(target, durationMs) {
+      const start = performance.now();
+      function step(now) {
+        const t = Math.min(1, (now - start) / durationMs);
+        const eased = 1 - Math.pow(1 - t, 3);
+        pctEl.textContent = Math.round(target * eased) + '%';
+        if (t < 1) pctTimer = requestAnimationFrame(step);
+      }
+      pctTimer = requestAnimationFrame(step);
+    }
+
+    function playCycle() {
+      if (!running) return;
+      reset();
+      setPhase('READING');
+
+      // 0ms — goal card in
+      cycleTimer = setTimeout(() => stage.classList.add('show-goal'), 100);
+
+      // stream events 1..3
+      setTimeout(() => show('.stream-event[data-step="1"]'), 600);
+      setTimeout(() => show('.stream-event[data-step="2"]'), 1200);
+      setTimeout(() => { show('.stream-event[data-step="3"]'); setPhase('CLASSIFYING'); }, 1800);
+
+      // typewriter reasoning
+      setTimeout(() => typeOut(REASONING, 2800), 2400);
+
+      // spec lines
+      setTimeout(() => { show('.stream-event[data-step="4"]'); setPhase('SPEC: AUTO'); }, 5400);
+      setTimeout(() => { show('.stream-event[data-step="5"]'); setPhase('SPEC: CODE_RUBRIC'); }, 5800);
+      setTimeout(() => show('.stream-event[data-step="6"]'), 6200);
+      setTimeout(() => show('.stream-event[data-step="7"]'), 6600);
+      setTimeout(() => { show('.stream-event[data-step="8"]'); setPhase('VALIDATED'); }, 7000);
+
+      // widget materializing
+      setTimeout(() => { stage.classList.add('drawing'); setPhase('BUILDING'); }, 7400);
+      setTimeout(() => show('.widget-frame > [data-step="w1"]'), 7800);
+      setTimeout(() => show('.widget-frame > [data-step="w2"]'), 8200);
+      setTimeout(() => {
+        show('.widget-frame > [data-step="w3"]');
+        countTo(78, 1000);
+      }, 8600);
+      setTimeout(() => {
+        show('.widget-frame > [data-step="w4"]');
+        stage.classList.add('bar-fill');
+      }, 9000);
+      setTimeout(() => {
+        document.querySelectorAll('.widget-frame > [data-step="w5"]').forEach((el, i) => {
+          setTimeout(() => el.classList.add('shown'), i * 250);
+        });
+        setPhase('TRACKING');
+      }, 10200);
+
+      // restart
+      cycleTimer = setTimeout(playCycle, 12500);
+    }
+
+    window.enableBuildLoop = () => {
+      if (running) return;
+      running = true;
+      playCycle();
+    };
+    window.disableBuildLoop = () => {
+      running = false;
+      clearAll();
+    };
+  })();
+
+  // Drive the loop based on slide visibility — pause when user scrolls away
+  // so the timeline isn't running on hidden slides.
+  const buildSlide = document.getElementById('sec-build');
+  if (buildSlide && window.enableBuildLoop) {
+    new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.intersectionRatio > 0.5) window.enableBuildLoop();
+        else window.disableBuildLoop();
+      });
+    }, { root, threshold: [0.5] }).observe(buildSlide);
+  }
+
+  /* ─────────────── First-load hint ─────────────── */
+  const hint = document.getElementById('hint');
+  setTimeout(() => hint.classList.add('show'), 1500);
+  setTimeout(() => hint.classList.remove('show'), 6500);
+
+  // Mark first slide as in immediately so it animates on load.
+  setTimeout(() => {
+    slides[0].classList.add('in');
+    animateCounters(slides[0]);
+  }, 60);
+})();
+</script>
+</body>
+</html>
