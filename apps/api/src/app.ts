@@ -30,6 +30,11 @@ import { sessionMiddleware } from "./middleware/session.js";
 import { healthRouter } from "./modules/health/routes.js";
 import { authRouter } from "./modules/auth/routes.js";
 import { aiRouter } from "./modules/ai/routes.js";
+import { goalsRouter } from "./modules/goals/routes.js";
+import { goalSpecsRouter } from "./modules/goal-specs/routes.js";
+import { goalContextRouter } from "./modules/goal-context/routes.js";
+import { goalInputsRouter } from "./modules/goal-inputs/routes.js";
+import { migrateRouter } from "./modules/migrate/routes.js";
 
 /**
  * Cast a connect-style middleware to Express's RequestHandler. helmet,
@@ -111,6 +116,11 @@ export function buildApp(): Application {
   // /api/v1/* — versioned API surface.
   app.use("/api/v1/auth", authRouter);
   app.use("/api/v1/ai", aiRouter);
+  app.use("/api/v1/goals", goalsRouter);
+  app.use("/api/v1/goal-specs", goalSpecsRouter);
+  app.use("/api/v1/goal-context", goalContextRouter);
+  app.use("/api/v1/goal-inputs", goalInputsRouter);
+  app.use("/api/v1/migrate", migrateRouter);
 
   // ─── tail handlers ─────────────────────────────────────────────────
   app.use(notFoundHandler);

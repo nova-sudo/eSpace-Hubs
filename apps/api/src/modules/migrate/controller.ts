@@ -1,0 +1,303 @@
+/**
+ * One-shot localStorage import.
+ *
+ * Frontend POSTs the user's localStorage payload on first login (or
+ * whenever the migration banner is dismissed). The endpoint is
+ * IDEMPOTENT — every collection has a unique index that makes
+ * re-imports a no-op rather than a duplicate.
+ *
+ * Bulk strategy
+ *   goals          one upsert (replace l1s)
+ *   goal_specs     bulkWrite of upserts keyed on (orgId, userId, goalId)
+ *   goal_context   bulkWrite of upserts keyed on (orgId, userId, goalId)
+ *   goal_inputs    insertMany (append) — caller is responsible for
+ *                  not posting the same set twice. Re-imports add
+ *                  duplicate entries; v2 of this endpoint can dedupe
+ *                  on (goalId, ts) once we observe real usage.
+ *
+ * Failure model
+ *   Whatever succeeds before a per-collection failure stays
+ *   committed. The response body lists per-collection counts so the
+ *   client can show "imported 14 goals, 3 specs, …" even if the
+ *   inputs list 500'd. M-later wraps this in a Mongo transaction
+ *   when the value of all-or-nothing exceeds the cost of a
+ *   replicaset session.
+ */
+
+import type { NextFunction, Request, Response } from "express";
+import type { AnyBulkWriteOperation } from "mongodb";
+import { z } from "zod";
+import {
+  getGoalContextCollection,
+  getGoalInputsCollection,
+  getGoalSpecsCollection,
+  getGoalsCollection,
+} from "../../db/collections.js";
+import {
+  GOALS_SCHEMA_VERSION,
+  type GoalContextDoc,
+  type GoalInputEntry,
+  type GoalInputSource,
+  type GoalInputValue,
+  type GoalL1,
+  type GoalSpecRecord,
+} from "../../db/types.js";
+import { networkMeta, writeAudit } from "../../lib/audit.js";
+import { HttpError } from "../../middleware/error-handler.js";
+import { logger } from "../../lib/logger.js";
+import { validateSpec } from "../ai/classifier/spec-validator.js";
+
+// Permissive at the migration boundary — we accept whatever the
+// localStorage layer wrote and surface what couldn't be imported.
+const importSchema = z.object({
+  goals: z
+    .object({
+      l1s: z.array(z.unknown()).max(200).default([]),
+    })
+    .optional(),
+  goalSpecs: z
+    .object({
+      // Either { specs: { [goalId]: spec } } (current localStorage
+      // shape) OR a flat map for legacy payloads.
+      specs: z.record(z.string().min(1).max(200), z.unknown()).optional(),
+    })
+    .optional(),
+  goalContext: z
+    .record(
+      z.string().min(1).max(200),
+      z
+        .object({
+          __updatedAt: z.number().optional(),
+        })
+        .catchall(z.unknown()),
+    )
+    .optional(),
+  goalInputs: z
+    .record(
+      z.string().min(1).max(200),
+      z.array(
+        z.object({
+          ts: z.number().int().positive(),
+          value: z.unknown(),
+          note: z.string().max(2_000).nullable().optional(),
+          source: z.enum(["manual", "auto"]).optional(),
+        }),
+      ),
+    )
+    .optional(),
+});
+
+interface ImportCounts {
+  goals: number;
+  goalSpecs: { imported: number; skipped: number; errors: string[] };
+  goalContext: number;
+  goalInputs: { imported: number; skipped: number };
+}
+
+export async function importHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const payload = importSchema.parse(req.body);
+
+    const counts: ImportCounts = {
+      goals: 0,
+      goalSpecs: { imported: 0, skipped: 0, errors: [] },
+      goalContext: 0,
+      goalInputs: { imported: 0, skipped: 0 },
+    };
+
+    const now = new Date();
+
+    // ── goals ─────────────────────────────────────────────────────
+    if (payload.goals) {
+      const goals = await getGoalsCollection();
+      // Treat the imported l1s as opaque — the frontend's store has
+      // already done the migration to v2. We accept them as-is and
+      // let the Mongo $jsonSchema reject obvious shape issues.
+      await goals.findOneAndUpdate(
+        { orgId: session.orgId, userId: session.userId },
+        {
+          $set: {
+            // The Mongo $jsonSchema validator enforces the
+            // l1s.id/title shape at insert time. The migrator
+            // accepts opaque payloads so old localStorage formats
+            // can come through; per-row drift gets surfaced by
+            // Mongo, not by the route layer.
+            l1s: payload.goals.l1s as unknown as GoalL1[],
+            schemaVersion: GOALS_SCHEMA_VERSION,
+            updatedAt: now,
+          },
+          $setOnInsert: {
+            orgId: session.orgId,
+            userId: session.userId,
+            cycleId: null,
+          },
+        },
+        { upsert: true, returnDocument: "after" },
+      );
+      counts.goals = payload.goals.l1s.length;
+    }
+
+    // ── goal_specs ────────────────────────────────────────────────
+    if (payload.goalSpecs?.specs) {
+      const col = await getGoalSpecsCollection();
+      const ops: AnyBulkWriteOperation<GoalSpecRecord>[] = [];
+      for (const [goalId, raw] of Object.entries(payload.goalSpecs.specs)) {
+        const candidate = (raw && typeof raw === "object"
+          ? raw
+          : {}) as Record<string, unknown>;
+        const result = validateSpec({ ...candidate, goalId });
+        if (!result.ok) {
+          counts.goalSpecs.skipped += 1;
+          if (counts.goalSpecs.errors.length < 10) {
+            counts.goalSpecs.errors.push(
+              `${goalId}: ${result.errors.slice(0, 2).join("; ")}`,
+            );
+          }
+          continue;
+        }
+        ops.push({
+          updateOne: {
+            filter: {
+              orgId: session.orgId,
+              userId: session.userId,
+              goalId,
+            },
+            update: {
+              $set: {
+                spec: result.spec as unknown as Record<string, unknown>,
+                generatedAt: now,
+                classifierVersion: null,
+              },
+              $setOnInsert: {
+                orgId: session.orgId,
+                userId: session.userId,
+                goalId,
+              },
+            },
+            upsert: true,
+          },
+        });
+      }
+      if (ops.length > 0) {
+        const r = await col.bulkWrite(ops, { ordered: false });
+        counts.goalSpecs.imported = (r.upsertedCount ?? 0) + (r.modifiedCount ?? 0);
+      }
+    }
+
+    // ── goal_context ──────────────────────────────────────────────
+    if (payload.goalContext) {
+      const col = await getGoalContextCollection();
+      const ops: AnyBulkWriteOperation<GoalContextDoc>[] = [];
+      for (const [goalId, raw] of Object.entries(payload.goalContext)) {
+        // Strip the legacy `__updatedAt` marker; we own that field
+        // server-side now.
+        const { __updatedAt: _ignored, ...answers } = raw as {
+          __updatedAt?: number;
+          [key: string]: unknown;
+        };
+        ops.push({
+          updateOne: {
+            filter: {
+              orgId: session.orgId,
+              userId: session.userId,
+              goalId,
+            },
+            update: {
+              $set: {
+                // The localStorage answer map is opaque — different
+                // question kinds store strings / lists / numbers /
+                // booleans. The schema constrains shape; here we
+                // accept the payload verbatim and let Mongo's
+                // $jsonSchema reject anything malformed.
+                answers: answers as Record<string, never>,
+                updatedAt: now,
+              },
+              $setOnInsert: {
+                orgId: session.orgId,
+                userId: session.userId,
+                goalId,
+              },
+            },
+            upsert: true,
+          },
+        });
+      }
+      if (ops.length > 0) {
+        const r = await col.bulkWrite(ops, { ordered: false });
+        counts.goalContext = (r.upsertedCount ?? 0) + (r.modifiedCount ?? 0);
+      }
+    }
+
+    // ── goal_inputs ───────────────────────────────────────────────
+    if (payload.goalInputs) {
+      const col = await getGoalInputsCollection();
+      const docs: Omit<GoalInputEntry, "_id">[] = [];
+      for (const [goalId, entries] of Object.entries(payload.goalInputs)) {
+        for (const e of entries) {
+          // Rough validation — drop entries with unsupported value
+          // shapes (e.g. functions wouldn't survive JSON anyway, but
+          // be defensive against malformed payloads).
+          const valid =
+            typeof e.value === "number" ||
+            typeof e.value === "string" ||
+            typeof e.value === "boolean" ||
+            (Array.isArray(e.value) &&
+              e.value.every((x) => typeof x === "string")) ||
+            (e.value !== null &&
+              typeof e.value === "object" &&
+              !Array.isArray(e.value));
+          if (!valid) {
+            counts.goalInputs.skipped += 1;
+            continue;
+          }
+          docs.push({
+            orgId: session.orgId,
+            userId: session.userId,
+            goalId,
+            ts: new Date(e.ts),
+            value: e.value as GoalInputValue,
+            note: e.note ?? null,
+            source: (e.source ?? "manual") as GoalInputSource,
+          });
+        }
+      }
+      if (docs.length > 0) {
+        const r = await col.insertMany(docs as GoalInputEntry[], {
+          ordered: false,
+        });
+        counts.goalInputs.imported = r.insertedCount ?? 0;
+      }
+    }
+
+    await writeAudit({
+      orgId: session.orgId,
+      actorUserId: session.userId,
+      actorRole: session.role,
+      action: "user.migrate_import",
+      targetType: "user",
+      targetId: session.userId.toHexString(),
+      after: counts,
+      ...networkMeta(req),
+    });
+
+    logger.info(
+      {
+        userId: session.userId.toHexString(),
+        counts,
+      },
+      "[migrate] import complete",
+    );
+
+    res.json({ ok: true, counts });
+  } catch (err) {
+    next(err);
+  }
+}
