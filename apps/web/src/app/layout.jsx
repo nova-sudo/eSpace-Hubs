@@ -2,6 +2,7 @@ import "./globals.css";
 import { Inter_Tight, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { SessionProvider } from "@/features/auth";
+import { GradingSync } from "@/features/grading";
 
 const interTight = Inter_Tight({
   subsets: ["latin"],
@@ -30,8 +31,15 @@ export default function RootLayout({ children }) {
         {/* SessionProvider kicks off the initial /auth/me lookup so
             useSession() reads from a populated store on first render.
             It's a no-op when the user has no cookie (returns 401 →
-            user: null, loading: false). */}
-        <SessionProvider>{children}</SessionProvider>
+            user: null, loading: false).
+            GradingSync sits inside the provider so it can read
+            useSession() — it pulls the user's verdict cache from
+            the API once on session establishment, merging into
+            localStorage. M7.2 mirror-mode rollout. */}
+        <SessionProvider>
+          <GradingSync />
+          {children}
+        </SessionProvider>
         <Toaster
           theme="light"
           richColors
