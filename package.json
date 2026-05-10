@@ -7,6 +7,9 @@
     "apps/*",
     "packages/*"
   ],
+  "overrides": {
+    "@types/express": "^4.17.23"
+  },
   "scripts": {
     "dev": "npm run dev --workspace=@espace-devhub/web",
     "dev:web": "npm run dev --workspace=@espace-devhub/web",
@@ -14,7 +17,12 @@
     "build": "npm run build --workspace=@espace-devhub/web",
     "build:web": "npm run build --workspace=@espace-devhub/web",
     "build:api": "npm run build --workspace=@espace-devhub/api",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck:api": "npm run typecheck --workspace=@espace-devhub/api",
     "start": "npm run start --workspace=@espace-devhub/web",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "services:up": "docker compose up -d",
+    "services:down": "docker compose down",
+    "services:reset": "docker compose down -v"
   }
 }

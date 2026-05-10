@@ -1,0 +1,50 @@
+# Local development services for the eSpace Dev Hub API.
+#
+# Usage:
+#   docker compose up -d          # start in background
+#   docker compose down           # stop containers (data persists in volumes)
+#   docker compose down -v        # stop + wipe data (full reset)
+#
+# Mongo lives at mongodb://localhost:27017/devhub-dev (configured in
+# apps/api/.env.local). Redis is reserved for milestone M4+ — sessions
+# fall back to in-process cache if Redis isn't running, so the container
+# is optional for early development.
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: devhub-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      # No auth in dev — the connection URI in apps/api/.env.local matches.
+      # Production deploys use a managed Atlas cluster with SCRAM auth.
+      MONGO_INITDB_DATABASE: devhub-dev
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: devhub-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mongo-data:
+  redis-data:
