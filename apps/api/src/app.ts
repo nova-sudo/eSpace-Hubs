@@ -29,6 +29,7 @@ import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
 import { sessionMiddleware } from "./middleware/session.js";
 import { healthRouter } from "./modules/health/routes.js";
 import { authRouter } from "./modules/auth/routes.js";
+import { aiRouter } from "./modules/ai/routes.js";
 
 /**
  * Cast a connect-style middleware to Express's RequestHandler. helmet,
@@ -109,6 +110,7 @@ export function buildApp(): Application {
 
   // /api/v1/* — versioned API surface.
   app.use("/api/v1/auth", authRouter);
+  app.use("/api/v1/ai", aiRouter);
 
   // ─── tail handlers ─────────────────────────────────────────────────
   app.use(notFoundHandler);
