@@ -390,6 +390,64 @@ export interface GradingVerdict {
   provider: string | null;
 }
 
+// ─── integrations (per-user provider tokens) ────────────────────────
+
+/**
+ * One row per (orgId, userId, providerId). The token bytes are
+ * NEVER stored in the clear — `encryptedToken`, `encryptedApiToken`,
+ * and `refreshToken` are envelope-encrypted via crypto-secret.ts
+ * (AES-256-GCM, key derived from INTEGRATION_TOKEN_KEY).
+ *
+ * `email`, `endpointUrl`, `scopes`, the timestamps, and the error
+ * fields are cleartext — they're either user-supplied identifiers
+ * or operational metadata, not secrets.
+ *
+ * v1 envelope is the same one TOTP secrets use. M-later upgrades to
+ * KMS-managed master + per-record DEK; the wire format `v1.<iv>.<tag>.<ct>`
+ * is versioned so an upgrade is backward-compatible.
+ *
+ * Provider ids match the frontend's:
+ *   "github" | "gitlab" | "jira" | "<future>"
+ */
+
+export const SUPPORTED_PROVIDER_IDS = [
+  "github",
+  "gitlab",
+  "jira",
+] as const;
+export type ProviderId = (typeof SUPPORTED_PROVIDER_IDS)[number];
+
+export interface Integration {
+  _id: ObjectId;
+  orgId: ObjectId;
+  userId: ObjectId;
+  providerId: string; // not narrowed to ProviderId — future providers ride along
+  /** Display name shown in the UI ("GitHub Personal", "Self-hosted GitLab"). */
+  label: string;
+  /**
+   * Envelope-encrypted access token. NULL when the provider doesn't
+   * use one (Jira: just an apiToken, no accessToken).
+   */
+  encryptedToken: string | null;
+  /** Envelope-encrypted API/PAT token (Jira pattern). */
+  encryptedApiToken: string | null;
+  /** Envelope-encrypted refresh token (OAuth providers). */
+  refreshToken: string | null;
+  /** Cleartext — the connected user's address on the provider. */
+  email: string | null;
+  /** Self-hosted GitLab / Jira instance base URL, when applicable. */
+  endpointUrl: string | null;
+  /** Granted scopes — provider-defined list of strings. */
+  scopes: string[];
+  connectedAt: Date;
+  /** Token expiry, when known. Frontend uses this to nudge re-connect. */
+  expiresAt: Date | null;
+  lastUsedAt: Date | null;
+  lastErrorAt: Date | null;
+  /** Last error message — short, for the "Reconnect" banner. */
+  lastError: string | null;
+}
+
 // ─── auth tokens (invites + password resets) ────────────────────────
 
 export type AuthTokenKind = "invite" | "password_reset";

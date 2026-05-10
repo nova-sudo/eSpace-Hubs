@@ -24,6 +24,7 @@ import type {
   GoalSpecRecord,
   GoalTree,
   GradingVerdict,
+  Integration,
   Org,
   Session,
   Snapshot,
@@ -96,6 +97,13 @@ export async function getGradingVerdictsCollection(): Promise<
 > {
   const db = await getDb();
   return db.collection<GradingVerdict>("grading_verdicts");
+}
+
+export async function getIntegrationsCollection(): Promise<
+  Collection<Integration>
+> {
+  const db = await getDb();
+  return db.collection<Integration>("integrations");
 }
 
 // ─── bootstrap: validators + indexes ─────────────────────────────────
@@ -330,8 +338,22 @@ async function ensureIndexes(): Promise<void> {
     },
   ]);
 
+  // ─── M6 collection ────────────────────────────────────────────────
+
+  const integrations = await getIntegrationsCollection();
+  await integrations.createIndex(
+    { orgId: 1, userId: 1, providerId: 1 },
+    {
+      unique: true,
+      name: "integrations_org_user_provider_uniq",
+      // One row per (user, provider). Reconnecting overwrites the
+      // existing row — there's only ever one active token per user
+      // per provider.
+    },
+  );
+
   logger.debug(
-    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs, snapshots, grading_verdicts",
+    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs, snapshots, grading_verdicts, integrations",
   );
 }
 
