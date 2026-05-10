@@ -43,6 +43,8 @@
  * disk).
  */
 
+import { mirrorPutTree } from "./goals-sync";
+
 const STORAGE_KEY = "espace-devhub:goals";
 const CHANGE_EVENT = "goals:change";
 
@@ -124,6 +126,26 @@ function promoteL2(l2) {
 function writeAll(next) {
   if (typeof window === "undefined") return;
   const stamped = { ...next, schemaVersion: GOALS_SCHEMA_VERSION };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(stamped));
+  window.dispatchEvent(new Event(CHANGE_EVENT));
+  // Mirror PUT /goals after every local write. Fire-and-forget; the
+  // local state is already persisted. The sync's pull path uses
+  // `_replaceLocalNoMirror` below to avoid a write→PUT→pull→write loop.
+  void mirrorPutTree(stamped);
+}
+
+/**
+ * Internal-ish: replace the local tree without firing a mirror PUT.
+ * Only used by goals-sync-mount.jsx on the pull path. Direct
+ * localStorage write — bypasses writeAll's mirror trigger.
+ */
+export function _replaceLocalNoMirror(next) {
+  if (typeof window === "undefined") return;
+  const stamped = {
+    ...next,
+    schemaVersion: GOALS_SCHEMA_VERSION,
+    l1s: Array.isArray(next.l1s) ? next.l1s : [],
+  };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(stamped));
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }

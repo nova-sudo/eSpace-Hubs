@@ -18,3 +18,4 @@ export {
   GOALS_SCHEMA_VERSION,
 } from "./goals-store";
 export { parseImportFile, mergeImport } from "./import-parser";
+export { GoalsSync } from "./goals-sync-mount";
