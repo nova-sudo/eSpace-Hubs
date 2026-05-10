@@ -15,14 +15,16 @@ import path from "node:path";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const apiRoot = path.resolve(__dirname, "..", "..");
 
-// .env.local overrides .env (matching Next.js convention so devs don't
-// have to learn two patterns).
+// Precedence (highest first):
+//   1. process.env       (real deployment env vars — always win)
+//   2. .env.local        (dev-only overrides, gitignored)
+//   3. .env              (committed defaults)
+//
+// dotenv's default (`override: false`) only fills MISSING keys, which
+// is exactly the layering we want — load .env.local first so its
+// values land before .env's defaults try to.
+loadDotenv({ path: path.join(apiRoot, ".env.local"), quiet: true });
 loadDotenv({ path: path.join(apiRoot, ".env"), quiet: true });
-loadDotenv({
-  path: path.join(apiRoot, ".env.local"),
-  override: true,
-  quiet: true,
-});
 
 const csv = z
   .string()

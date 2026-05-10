@@ -132,7 +132,13 @@ async function ensureIndexes(): Promise<void> {
     {
       key: { orgId: 1, zohoEmployeeId: 1 },
       unique: true,
-      sparse: true,
+      // partialFilterExpression (NOT sparse) — Mongo's `sparse:true`
+      // only skips MISSING fields, but our docs explicitly persist
+      // `zohoEmployeeId: null` for users not yet linked to Zoho. Two
+      // such users would collide on the index. The partial filter
+      // narrows the index to only docs where zohoEmployeeId is a
+      // string (i.e. actually linked).
+      partialFilterExpression: { zohoEmployeeId: { $type: "string" } },
       name: "users_org_zoho_uniq",
     },
     {
