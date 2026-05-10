@@ -1,0 +1,14 @@
+{
+  "name": "@espace-devhub/api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "eSpace Dev Hub — Express + MongoDB backend service. Skeleton — implementation begins in M2.",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "echo 'API service not yet implemented — see plan §5 milestone M2' && exit 0",
+    "build": "echo 'no build yet' && exit 0",
+    "start": "echo 'API service not yet implemented' && exit 0"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

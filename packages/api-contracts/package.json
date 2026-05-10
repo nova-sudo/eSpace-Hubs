@@ -1,0 +1,16 @@
+{
+  "name": "@espace-devhub/api-contracts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "OpenAPI spec + generated typed HTTP client. Filled in during M2.",
+  "main": "src/index.js",
+  "files": [
+    "src",
+    "openapi.yaml"
+  ],
+  "scripts": {
+    "build": "echo 'no build yet' && exit 0"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

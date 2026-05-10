@@ -1,0 +1,15 @@
+{
+  "name": "@espace-devhub/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pure utilities shared between web and api (date helpers, week labelling, etc.). Populated as code moves out of apps/web/src/lib in later milestones.",
+  "main": "src/index.js",
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "build": "echo 'no build yet' && exit 0"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

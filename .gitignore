@@ -1,7 +1,29 @@
+# Dependencies — npm workspaces hoists most to root, but workspace-local
+# node_modules can still appear during install resolution.
 node_modules
+**/node_modules
+
+# Next build output (now lives under apps/web/, but match anywhere)
 .next
+**/.next
+
+# Env files — never commit
 .env
 .env.local
+.env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
+
+# OS / editor
 .DS_Store
+Thumbs.db
+
+# Logs
 *.log
+
+# Tooling caches
 .turbo
+**/.turbo
+.tsbuildinfo
+**/*.tsbuildinfo
