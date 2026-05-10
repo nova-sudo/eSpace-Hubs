@@ -101,7 +101,76 @@ function toPublic(i: Integration): PublicIntegration {
   };
 }
 
-// ─── server-side internal helper ─────────────────────────────────────
+// ─── server-side internal helpers ────────────────────────────────────
+
+/**
+ * Best-effort update of `lastUsedAt` after a successful outbound
+ * call. Fire-and-forget — failure here mustn't break the proxy
+ * response the user already received.
+ */
+export async function markIntegrationUsed(input: {
+  orgId: ObjectId;
+  userId: ObjectId;
+  providerId: string;
+}): Promise<void> {
+  try {
+    const col = await getIntegrationsCollection();
+    await col.updateOne(
+      {
+        orgId: input.orgId,
+        userId: input.userId,
+        providerId: input.providerId,
+      },
+      { $set: { lastUsedAt: new Date(), lastErrorAt: null, lastError: null } },
+    );
+  } catch (err) {
+    logger.warn(
+      {
+        userId: input.userId.toHexString(),
+        providerId: input.providerId,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "[integrations] markIntegrationUsed failed",
+    );
+  }
+}
+
+/**
+ * Record a proxy failure on the integration row so the UI can show
+ * a "Reconnect" banner. Caps the message to 2 KB. Best-effort.
+ */
+export async function markIntegrationError(input: {
+  orgId: ObjectId;
+  userId: ObjectId;
+  providerId: string;
+  message: string;
+}): Promise<void> {
+  try {
+    const col = await getIntegrationsCollection();
+    await col.updateOne(
+      {
+        orgId: input.orgId,
+        userId: input.userId,
+        providerId: input.providerId,
+      },
+      {
+        $set: {
+          lastErrorAt: new Date(),
+          lastError: input.message.slice(0, 2_000),
+        },
+      },
+    );
+  } catch (err) {
+    logger.warn(
+      {
+        userId: input.userId.toHexString(),
+        providerId: input.providerId,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "[integrations] markIntegrationError failed",
+    );
+  }
+}
 
 /**
  * Load and decrypt tokens for outbound use.

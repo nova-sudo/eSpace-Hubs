@@ -1,15 +1,21 @@
 /**
  * /api/v1/integrations/* router.
  *
- *   GET     /                    authed — list public shape (no tokens)
- *   GET     /:providerId          authed — single resource (404 if not connected)
- *   POST    /                    authed — upsert (encrypts tokens server-side)
- *   DELETE  /:providerId          authed — disconnect
+ *   GET     /                            authed — list public shape (no tokens)
+ *   POST    /                            authed — upsert (encrypts tokens)
+ *   GET     /:providerId                  authed — single resource
+ *   DELETE  /:providerId                  authed — disconnect
  *
- * No public path returns ciphertext or plaintext tokens. Decrypted
- * tokens are loaded internally by the proxy module via
- * `loadDecryptedTokens` from controller.ts (called only inside the
- * API process, never exposed via a route).
+ *   ANY     /proxy/github/*                authed — proxy to api.github.com
+ *   ANY     /proxy/gitlab/*                authed — proxy to <user's GitLab>/api/v4
+ *   ANY     /proxy/jira/*                  authed — proxy to <user's Jira>/rest/api/3
+ *
+ * No public path returns ciphertext or plaintext tokens. The proxy
+ * module reads tokens via `loadDecryptedTokens` and uses them only
+ * for OUTBOUND HTTP — never echoed back to the caller.
+ *
+ * Proxy route ordering: `/proxy/...` must come BEFORE `/:providerId`,
+ * otherwise Express matches "proxy" as a providerId param.
  */
 
 import { Router } from "express";
@@ -20,11 +26,27 @@ import {
   listIntegrationsHandler,
   upsertIntegrationHandler,
 } from "./controller.js";
+import {
+  githubProxyHandler,
+  gitlabProxyHandler,
+  jiraProxyHandler,
+} from "./proxy.js";
 
 export const integrationsRouter: Router = Router();
 
+// Listing + upsert
 integrationsRouter.get("/", requireAuth(), listIntegrationsHandler);
 integrationsRouter.post("/", requireAuth(), upsertIntegrationHandler);
+
+// Proxy routes — register BEFORE the /:providerId catch-all below.
+// Each one accepts GET + POST (mirroring the legacy Next.js proxy).
+for (const method of ["get", "post"] as const) {
+  integrationsRouter[method]("/proxy/github/*", requireAuth(), githubProxyHandler);
+  integrationsRouter[method]("/proxy/gitlab/*", requireAuth(), gitlabProxyHandler);
+  integrationsRouter[method]("/proxy/jira/*", requireAuth(), jiraProxyHandler);
+}
+
+// Per-provider CRUD — order matters, must come after /proxy/*.
 integrationsRouter.get("/:providerId", requireAuth(), getIntegrationHandler);
 integrationsRouter.delete(
   "/:providerId",
