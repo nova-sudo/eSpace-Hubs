@@ -23,8 +23,10 @@ import type {
   GoalInputEntry,
   GoalSpecRecord,
   GoalTree,
+  GradingVerdict,
   Org,
   Session,
+  Snapshot,
   User,
 } from "./types.js";
 import { COLLECTION_DEFS } from "./schemas/index.js";
@@ -82,6 +84,18 @@ export async function getGoalInputsCollection(): Promise<
 > {
   const db = await getDb();
   return db.collection<GoalInputEntry>("goal_inputs");
+}
+
+export async function getSnapshotsCollection(): Promise<Collection<Snapshot>> {
+  const db = await getDb();
+  return db.collection<Snapshot>("snapshots");
+}
+
+export async function getGradingVerdictsCollection(): Promise<
+  Collection<GradingVerdict>
+> {
+  const db = await getDb();
+  return db.collection<GradingVerdict>("grading_verdicts");
 }
 
 // ─── bootstrap: validators + indexes ─────────────────────────────────
@@ -270,8 +284,54 @@ async function ensureIndexes(): Promise<void> {
     },
   ]);
 
+  // ─── M5 collections ───────────────────────────────────────────────
+
+  const snapshots = await getSnapshotsCollection();
+  await snapshots.createIndexes([
+    {
+      // One snapshot per (orgId, userId, week). Manual-wins-over-auto
+      // is enforced by the controller; this index just prevents
+      // duplicate writes for the same week.
+      key: { orgId: 1, userId: 1, week: 1 },
+      unique: true,
+      name: "snapshots_org_user_week_uniq",
+    },
+    {
+      // "snapshots since date" — dashboards that paginate by capture
+      // date instead of week label.
+      key: { orgId: 1, userId: 1, capturedAt: -1 },
+      name: "snapshots_org_user_captured",
+    },
+    {
+      // Org-wide weekly rollup — LeadHub (M10) reads "all snapshots
+      // for week X across the org" without scanning users.
+      key: { orgId: 1, week: 1 },
+      name: "snapshots_org_week",
+    },
+  ]);
+
+  const gradingVerdicts = await getGradingVerdictsCollection();
+  await gradingVerdicts.createIndexes([
+    {
+      // Cache lookup key: "have we already graded this PR against this
+      // rubric?" Unique so a rubric edit replaces the prior verdict
+      // cleanly.
+      key: { orgId: 1, userId: 1, prId: 1, rubricHash: 1 },
+      unique: true,
+      name: "grading_verdicts_pr_rubric_uniq",
+    },
+    {
+      // 180-day TTL — this is a CACHE, not a record. Verdicts the user
+      // wants long-term get promoted to evidence (later milestone).
+      // 180 days = 15,552,000 seconds.
+      key: { gradedAt: 1 },
+      expireAfterSeconds: 15_552_000,
+      name: "grading_verdicts_ttl",
+    },
+  ]);
+
   logger.debug(
-    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs",
+    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs, snapshots, grading_verdicts",
   );
 }
 

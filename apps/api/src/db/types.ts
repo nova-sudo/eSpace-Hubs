@@ -289,6 +289,107 @@ export interface GoalInputEntry {
   source: GoalInputSource;
 }
 
+// ─── snapshots (weekly frozen metrics + per-goal readings) ───────────
+
+/**
+ * One snapshot per (orgId, userId, week). Captured Thursday EOD by
+ * the auto-snapshotter, optionally re-captured manually with a note.
+ *
+ * "Manual wins over auto" precedence is enforced by the controller:
+ * when `capturedBy === "manual"` exists for a given week, an
+ * incoming `capturedBy === "auto"` for the same week is silently
+ * ignored. The frontend's saveSnapshot() applies the same rule
+ * locally; the server-side check protects against direct API writes.
+ *
+ * goalReadings is intentionally embedded — every dashboard render
+ * reads "snapshot + readings" together, splitting them would force
+ * a $lookup join. Inner keys are goalIds and the values match the
+ * GoalReading shape below.
+ */
+
+export type SnapshotCapturedBy = "auto" | "manual";
+export const ALL_SNAPSHOT_CAPTURED_BY: readonly SnapshotCapturedBy[] = [
+  "auto",
+  "manual",
+];
+
+export interface GoalReading {
+  /** "weekly" | "monthly" | "quarterly" | … — matches MANUAL_CADENCES. */
+  cadence: string;
+  /** Bucket id like "W16-2026" / "2026-04" / "2026-Q2". */
+  cadenceWindow: string;
+  /** What this week added to the cumulative. */
+  weekContribution: number | null;
+  /** Running total within the cadenceWindow. */
+  cumulative: number | null;
+  /** Target snapshot at capture time (null if the goal has no target). */
+  target: { op: string; value: number } | null;
+  /** Sticky for >= goals, recompute for <=. */
+  windowMet: boolean | null;
+  /** For cumulative goals — are we on pace? */
+  onPace: boolean | null;
+}
+
+export interface Snapshot {
+  _id: ObjectId;
+  orgId: ObjectId;
+  userId: ObjectId;
+  /** Sun-anchored week label, e.g. "W16-2026". */
+  week: string;
+  capturedAt: Date;
+  capturedBy: SnapshotCapturedBy;
+
+  // Headline metrics — v1 fields, still authoritative.
+  merged: number;
+  reviews: number;
+  turnaround: number;
+  linkage: number;
+  rounds: number;
+  note: string;
+
+  goalReadings: Record<string, GoalReading>;
+
+  /** True when one or more integration sources were unavailable. */
+  partial: boolean;
+  /** Names of missing sources, e.g. ["github", "jira"]. */
+  gaps: string[];
+}
+
+// ─── grading verdicts (PR rubric grade cache) ────────────────────────
+
+/**
+ * Cache of AI-graded PR verdicts, keyed by (prId, rubricHash). Same
+ * goal as the localStorage version: never re-grade an unchanged PR
+ * against an unchanged rubric.
+ *
+ * The key insight: this is a cache, not a record. The 180-day TTL on
+ * `gradedAt` lets Mongo evict stale entries automatically — when a
+ * user comes back to a year-old PR they'll just re-grade it (cost:
+ * one Mistral call). M-later raises the TTL once we observe real
+ * usage.
+ */
+
+export interface GradingVerdictBody {
+  pass: boolean;
+  reasoning: string;
+  violations: string[];
+}
+
+export interface GradingVerdict {
+  _id: ObjectId;
+  orgId: ObjectId;
+  userId: ObjectId;
+  /** PR identifier — string for cross-provider safety (GitHub uses
+   *  numbers, GitLab uses iid+project, future ones who knows). */
+  prId: string;
+  rubricHash: string;
+  verdict: GradingVerdictBody;
+  gradedAt: Date;
+  /** Echoed for ops / debugging / "this verdict is stale" UX. */
+  model: string | null;
+  provider: string | null;
+}
+
 // ─── auth tokens (invites + password resets) ────────────────────────
 
 export type AuthTokenKind = "invite" | "password_reset";
