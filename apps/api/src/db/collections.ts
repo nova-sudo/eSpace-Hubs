@@ -19,6 +19,10 @@ import { logger } from "../lib/logger.js";
 import type {
   AuditLogEntry,
   AuthToken,
+  GoalContextDoc,
+  GoalInputEntry,
+  GoalSpecRecord,
+  GoalTree,
   Org,
   Session,
   User,
@@ -52,6 +56,32 @@ export async function getAuditLogCollection(): Promise<
 export async function getAuthTokensCollection(): Promise<Collection<AuthToken>> {
   const db = await getDb();
   return db.collection<AuthToken>("auth_tokens");
+}
+
+export async function getGoalsCollection(): Promise<Collection<GoalTree>> {
+  const db = await getDb();
+  return db.collection<GoalTree>("goals");
+}
+
+export async function getGoalSpecsCollection(): Promise<
+  Collection<GoalSpecRecord>
+> {
+  const db = await getDb();
+  return db.collection<GoalSpecRecord>("goal_specs");
+}
+
+export async function getGoalContextCollection(): Promise<
+  Collection<GoalContextDoc>
+> {
+  const db = await getDb();
+  return db.collection<GoalContextDoc>("goal_context");
+}
+
+export async function getGoalInputsCollection(): Promise<
+  Collection<GoalInputEntry>
+> {
+  const db = await getDb();
+  return db.collection<GoalInputEntry>("goal_inputs");
 }
 
 // ─── bootstrap: validators + indexes ─────────────────────────────────
@@ -186,8 +216,62 @@ async function ensureIndexes(): Promise<void> {
     },
   ]);
 
+  // ─── M4 collections ───────────────────────────────────────────────
+  // Every index leads with orgId so per-tenant queries stay cheap as
+  // multi-tenancy unfolds. UNIQUE indexes prevent duplicate writes
+  // even if a buggy controller forgets the upsert path.
+
+  const goals = await getGoalsCollection();
+  await goals.createIndex(
+    { orgId: 1, userId: 1 },
+    {
+      unique: true,
+      name: "goals_org_user_uniq",
+      // When M9 adds cycles, extend the key with cycleId — for now
+      // there's exactly one tree per (org, user).
+    },
+  );
+
+  const goalSpecs = await getGoalSpecsCollection();
+  await goalSpecs.createIndexes([
+    {
+      key: { orgId: 1, userId: 1, goalId: 1 },
+      unique: true,
+      name: "goal_specs_org_user_goal_uniq",
+    },
+    {
+      // Hot path: dashboard load asks "all specs for me" and renders
+      // a widget per spec.
+      key: { orgId: 1, userId: 1 },
+      name: "goal_specs_org_user",
+    },
+  ]);
+
+  const goalContext = await getGoalContextCollection();
+  await goalContext.createIndex(
+    { orgId: 1, userId: 1, goalId: 1 },
+    { unique: true, name: "goal_context_org_user_goal_uniq" },
+  );
+
+  const goalInputs = await getGoalInputsCollection();
+  await goalInputs.createIndexes([
+    {
+      // "All entries for this goal, newest first" — every widget that
+      // shows a time series. Compound on (org, user, goal, ts desc)
+      // covers the query without an additional scan.
+      key: { orgId: 1, userId: 1, goalId: 1, ts: -1 },
+      name: "goal_inputs_org_user_goal_ts",
+    },
+    {
+      // "All entries for this user across goals" — backfill / export
+      // / activity feed.
+      key: { orgId: 1, userId: 1, ts: -1 },
+      name: "goal_inputs_org_user_ts",
+    },
+  ]);
+
   logger.debug(
-    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens",
+    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs",
   );
 }
 
