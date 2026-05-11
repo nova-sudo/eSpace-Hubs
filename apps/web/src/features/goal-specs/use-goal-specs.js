@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { SPECS_CHANGE_EVENT, readSpecs } from "./specs-store";
-import { validateSpec } from "./schema";
+import { validateSpec } from "@espace-devhub/shared/goal-specs";
 import { buildDemoSpecs, useDemoMode } from "@/features/demo-mode";
 
 function subscribe(callback) {

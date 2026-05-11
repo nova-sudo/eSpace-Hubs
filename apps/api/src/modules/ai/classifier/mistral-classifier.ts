@@ -27,8 +27,8 @@ import {
   SPEC_KIND_META,
   SPEC_VARIANTS,
   SPEC_KINDS,
-} from "./spec-types.js";
-import { validateSpec } from "./spec-validator.js";
+  validateSpec,
+} from "@espace-devhub/shared/goal-specs";
 import { AnalysisEvents, type AnalysisEvent } from "./events.js";
 
 export interface GoalForClassification {

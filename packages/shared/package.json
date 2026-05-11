@@ -2,13 +2,25 @@
   "name": "@espace-devhub/shared",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure utilities shared between web and api (date helpers, week labelling, etc.). Populated as code moves out of apps/web/src/lib in later milestones.",
+  "description": "Domain types and pure utilities shared between web and api. Goal-spec types/validator live here as of M7.9d; date / week helpers will move here as later milestones extract them.",
+  "type": "module",
   "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./goal-specs": {
+      "types": "./src/goal-specs/index.d.ts",
+      "default": "./src/goal-specs/index.js"
+    }
+  },
   "files": [
     "src"
   ],
   "scripts": {
-    "build": "echo 'no build yet' && exit 0"
+    "build": "echo 'pure-source package; no build step' && exit 0"
   },
   "dependencies": {},
   "devDependencies": {}

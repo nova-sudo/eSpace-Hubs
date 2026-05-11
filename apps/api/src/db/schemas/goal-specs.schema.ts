@@ -2,10 +2,9 @@
  * goal_specs collection — Mongo $jsonSchema validator.
  *
  * The `spec` blob is intentionally loosely typed at this layer. The
- * classifier has its own validator (apps/api/src/modules/ai/
- * classifier/spec-validator.ts) that shapes the spec; the route
- * controller runs that before insert. Mongo just enforces shell
- * containment.
+ * classifier has its own validator (`@espace-devhub/shared/goal-specs`)
+ * that shapes the spec; the route controller runs that before insert.
+ * Mongo just enforces shell containment.
  */
 
 import type { Document } from "mongodb";

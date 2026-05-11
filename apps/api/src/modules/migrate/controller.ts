@@ -53,7 +53,7 @@ import { encryptSecret } from "../../lib/crypto-secret.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import { logger } from "../../lib/logger.js";
-import { validateSpec } from "../ai/classifier/spec-validator.js";
+import { validateSpec } from "@espace-devhub/shared/goal-specs";
 
 // Permissive at the migration boundary — we accept whatever the
 // localStorage layer wrote and surface what couldn't be imported.

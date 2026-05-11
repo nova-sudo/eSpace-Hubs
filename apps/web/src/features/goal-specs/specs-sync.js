@@ -3,13 +3,12 @@
 /**
  * Mirror-mode sync for goal-specs (per-goal classifier output).
  *
- * Wire shape note: the server's PUT /goal-specs/:goalId runs the
- * incoming body through the same validateSpec the classifier uses
- * (apps/api/src/modules/ai/classifier/spec-validator.ts). The local
- * store already validates with the same algorithm before persist —
- * a spec the local accepts WILL pass server validation. The "id
- * must match URL" rule on the server is satisfied because we pass
- * spec.goalId in the URL.
+ * Wire shape note: both sides now import validateSpec from
+ * `@espace-devhub/shared/goal-specs` (hoisted in M7.9d), so the local
+ * and server algorithms are identical by construction. A spec the
+ * local accepts WILL pass server validation. The "id must match URL"
+ * rule on the server is satisfied because we pass spec.goalId in
+ * the URL.
  *
  * clearSpecs is a special case — it wipes the entire local store.
  * Mirroring as a single DELETE doesn't exist server-side (no

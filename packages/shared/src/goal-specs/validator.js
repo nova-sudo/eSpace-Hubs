@@ -1,13 +1,13 @@
 /**
- * GoalSpec validator. Pure (no IO, no side-effects), so it runs in both
- * the API and tests with no fixtures.
+ * GoalSpec validator — single source of truth for both web and api.
  *
- * ⚠ DUPLICATED from apps/web/src/features/goal-specs/schema.js for M3.2.
- *    M4 deletes the duplicate by hoisting both copies into
- *    packages/shared/. Mirror changes on both sides until then.
+ * Hoisted from apps/web/src/features/goal-specs/schema.js and
+ * apps/api/src/modules/ai/classifier/spec-validator.ts (which had
+ * drifted apart). Keeps the strict-on-required, permissive-on-optional
+ * stance: anything a widget needs to render is enforced; cosmetic
+ * fields are accepted or normalised silently.
  *
- * Permissive on optional fields (target, unit, filter), strict on
- * everything a widget needs to render.
+ * No deps. No IO. Pure function over a JSON object.
  */
 
 import {
@@ -24,39 +24,23 @@ import {
   SPEC_SCHEMA_VERSION,
   SPEC_VARIANTS,
   TARGET_OPS,
-  type SpecContext,
-  type SpecContextQuestion,
-  type SpecDelegated,
-  type SpecManual,
-  type SpecSource,
-  type SpecTarget,
-  type ValidatedSpec,
-} from "./spec-types.js";
+} from "./types.js";
 
-export type ValidationResult =
-  | { ok: true; spec: ValidatedSpec }
-  | { ok: false; errors: string[] };
-
-function isNonEmptyString(v: unknown): v is string {
+function isNonEmptyString(v) {
   return typeof v === "string" && v.trim().length > 0;
 }
 
-function isObject(v: unknown): v is Record<string, unknown> {
-  return v !== null && typeof v === "object" && !Array.isArray(v);
+function isObject(v) {
+  return v && typeof v === "object" && !Array.isArray(v);
 }
 
-function validateTarget(
-  target: unknown,
-  path: string,
-  errors: string[],
-): SpecTarget | null {
+function validateTarget(target, path, errors) {
   if (target == null) return null;
   if (!isObject(target)) {
     errors.push(`${path}: target must be an object`);
     return null;
   }
-  const op = target.op as unknown;
-  if (!TARGET_OPS.includes(op as never)) {
+  if (!TARGET_OPS.includes(target.op)) {
     errors.push(`${path}.op: must be one of ${TARGET_OPS.join(", ")}`);
     return null;
   }
@@ -64,47 +48,43 @@ function validateTarget(
     errors.push(`${path}.value: must be a number`);
     return null;
   }
-  const out: SpecTarget = { op: op as SpecTarget["op"], value: target.value };
+  const out = { op: target.op, value: target.value };
   if (typeof target.period === "string" && target.period.trim().length > 0) {
     out.period = target.period.trim();
   }
   return out;
 }
 
-function validateSource(
-  source: unknown,
-  errors: string[],
-): SpecSource | null {
+function validateSource(source, errors) {
   if (!isObject(source)) {
     errors.push("source: must be an object when kind is auto/hybrid");
     return null;
   }
-  const provider = source.provider as unknown;
-  if (!ALL_SOURCE_PROVIDERS.includes(provider as never)) {
+  if (!ALL_SOURCE_PROVIDERS.includes(source.provider)) {
     errors.push(
       `source.provider: must be one of ${ALL_SOURCE_PROVIDERS.join(", ")}`,
     );
     return null;
   }
-  const metric = source.metric as unknown;
-  if (!ALL_SOURCE_METRICS.includes(metric as never)) {
+  if (!ALL_SOURCE_METRICS.includes(source.metric)) {
     errors.push(
       `source.metric: must be one of ${ALL_SOURCE_METRICS.join(", ")}`,
     );
     return null;
   }
-  const window = source.window as unknown;
-  if (!SOURCE_WINDOWS.includes(window as never)) {
-    errors.push(`source.window: must be one of ${SOURCE_WINDOWS.join(", ")}`);
+  if (!SOURCE_WINDOWS.includes(source.window)) {
+    errors.push(
+      `source.window: must be one of ${SOURCE_WINDOWS.join(", ")}`,
+    );
     return null;
   }
-  const out: SpecSource = {
-    provider: provider as SpecSource["provider"],
-    metric: metric as SpecSource["metric"],
-    window: window as SpecSource["window"],
+  const out = {
+    provider: source.provider,
+    metric: source.metric,
+    window: source.window,
   };
   if (isObject(source.filter)) {
-    const filter: NonNullable<SpecSource["filter"]> = {};
+    const filter = {};
     if (isNonEmptyString(source.filter.label))
       filter.label = source.filter.label.trim();
     if (isNonEmptyString(source.filter.branch))
@@ -118,20 +98,15 @@ function validateSource(
   return out;
 }
 
-function validateContext(
-  context: unknown,
-  errors: string[],
-): SpecContext | null {
+function validateContext(context, errors) {
   if (context == null) return null;
   if (!isObject(context)) {
     errors.push("context: must be an object when present");
     return null;
   }
-  const questionsRaw = Array.isArray(context.questions)
-    ? context.questions
-    : [];
-  const out: SpecContextQuestion[] = [];
-  questionsRaw.forEach((q: unknown, i: number) => {
+  const questions = Array.isArray(context.questions) ? context.questions : [];
+  const out = [];
+  questions.forEach((q, i) => {
     if (!isObject(q)) {
       errors.push(`context.questions[${i}]: must be an object`);
       return;
@@ -140,33 +115,30 @@ function validateContext(
       errors.push(`context.questions[${i}].prompt: required string`);
       return;
     }
-    const kind = q.kind as unknown;
-    if (!CONTEXT_QUESTION_KINDS.includes(kind as never)) {
+    if (!CONTEXT_QUESTION_KINDS.includes(q.kind)) {
       errors.push(
         `context.questions[${i}].kind: must be one of ${CONTEXT_QUESTION_KINDS.join(", ")}`,
       );
       return;
     }
-    const normalised: SpecContextQuestion = {
+    const normalized = {
       id: isNonEmptyString(q.id) ? q.id.trim() : `q${i + 1}`,
       prompt: q.prompt.trim(),
-      kind: kind as SpecContextQuestion["kind"],
+      kind: q.kind,
     };
-    if (isNonEmptyString(q.placeholder)) {
-      normalised.placeholder = q.placeholder.trim();
-    }
-    if (kind === "select") {
+    if (isNonEmptyString(q.placeholder)) normalized.placeholder = q.placeholder.trim();
+    if (q.kind === "select") {
       if (!Array.isArray(q.options) || q.options.length === 0) {
         errors.push(
           `context.questions[${i}].options: required non-empty for kind "select"`,
         );
         return;
       }
-      normalised.options = (q.options as unknown[])
+      normalized.options = q.options
         .map((opt) => (typeof opt === "string" ? opt.trim() : ""))
         .filter(Boolean);
     }
-    out.push(normalised);
+    out.push(normalized);
   });
   return {
     required: Boolean(context.required),
@@ -174,35 +146,27 @@ function validateContext(
   };
 }
 
-function validateDelegated(
-  delegated: unknown,
-  errors: string[],
-): SpecDelegated | null {
+function validateDelegated(delegated, errors) {
   if (delegated == null) return null;
   if (!isObject(delegated)) {
     errors.push("delegated: must be an object when present");
     return null;
   }
-  const out: SpecDelegated = { delegated: Boolean(delegated.delegated) };
+  const out = { delegated: Boolean(delegated.delegated) };
   if (delegated.judge != null) {
-    if (!DELEGATED_JUDGES.includes(delegated.judge as never)) {
+    if (!DELEGATED_JUDGES.includes(delegated.judge)) {
       errors.push(
         `delegated.judge: must be one of ${DELEGATED_JUDGES.join(", ")}`,
       );
     } else {
-      out.judge = delegated.judge as SpecDelegated["judge"];
+      out.judge = delegated.judge;
     }
   }
-  if (isNonEmptyString(delegated.note)) {
-    out.note = delegated.note.trim();
-  }
+  if (isNonEmptyString(delegated.note)) out.note = delegated.note.trim();
   return out;
 }
 
-function validateManual(
-  manual: unknown,
-  errors: string[],
-): SpecManual | null {
+function validateManual(manual, errors) {
   if (!isObject(manual)) {
     errors.push("manual: must be an object when kind is manual/hybrid");
     return null;
@@ -218,13 +182,13 @@ function validateManual(
     );
     return null;
   }
-  const out: SpecManual = {
+  const out = {
     prompt: manual.prompt.trim(),
     cadence,
   };
   if (isNonEmptyString(manual.unit)) out.unit = manual.unit.trim();
   if (Array.isArray(manual.items)) {
-    out.items = (manual.items as unknown[])
+    out.items = manual.items
       .map((it) => (typeof it === "string" ? it.trim() : ""))
       .filter(Boolean);
   }
@@ -236,67 +200,62 @@ function validateManual(
 /**
  * Validate an incoming spec (from AI, from storage, from anywhere).
  * Normalises shapes so consumers can trust the output downstream.
+ *
+ * @returns {{ok: true, spec: object} | {ok: false, errors: string[]}}
  */
-export function validateSpec(obj: unknown): ValidationResult {
-  const errors: string[] = [];
+export function validateSpec(obj) {
+  const errors = [];
   if (!isObject(obj)) {
     return { ok: false, errors: ["spec: must be an object"] };
   }
 
   if (!isNonEmptyString(obj.goalId)) errors.push("goalId: required string");
   if (!isNonEmptyString(obj.title)) errors.push("title: required string");
-  const variant = obj.kind as unknown;
-  if (!ALL_SPEC_VARIANTS.includes(variant as never)) {
+  if (!ALL_SPEC_VARIANTS.includes(obj.kind)) {
     errors.push(`kind: must be one of ${ALL_SPEC_VARIANTS.join(", ")}`);
   }
-  const widget = obj.widget as unknown;
-  if (!ALL_SPEC_KINDS.includes(widget as never)) {
+  if (!ALL_SPEC_KINDS.includes(obj.widget)) {
     errors.push(`widget: must be one of ${ALL_SPEC_KINDS.join(", ")}`);
   }
 
   if (errors.length > 0) return { ok: false, errors };
 
-  const widgetTyped = widget as keyof typeof SPEC_KIND_META;
-  const variantTyped = variant as (typeof ALL_SPEC_VARIANTS)[number];
-  const widgetMeta = SPEC_KIND_META[widgetTyped];
+  const widgetMeta = SPEC_KIND_META[obj.widget];
 
-  // Soft cross-check: the spec's variant should align with the widget's
-  // declared variant, EXCEPT for hybrid where either side is allowed
-  // because the widget renders both.
+  // Soft cross-check: spec variant should align with the widget's
+  // declared variant, EXCEPT for hybrid (widget renders both halves).
   if (
     widgetMeta &&
-    variantTyped !== SPEC_VARIANTS.HYBRID &&
-    widgetMeta.variant !== variantTyped
+    obj.kind !== SPEC_VARIANTS.HYBRID &&
+    widgetMeta.variant !== obj.kind
   ) {
     errors.push(
-      `widget "${widgetTyped}" is a ${widgetMeta.variant} widget but spec kind is "${variantTyped}"`,
+      `widget "${obj.widget}" is a ${widgetMeta.variant} widget but spec kind is "${obj.kind}"`,
     );
   }
 
-  let source: SpecSource | null = null;
-  let manual: SpecManual | null = null;
-  const meta = widgetMeta;
+  let source = null;
+  let manual = null;
+  const meta = widgetMeta || {};
   const sourceRequired =
-    (variantTyped === SPEC_VARIANTS.AUTO ||
-      variantTyped === SPEC_VARIANTS.HYBRID) &&
-    meta?.requiresSource !== false;
+    (obj.kind === SPEC_VARIANTS.AUTO || obj.kind === SPEC_VARIANTS.HYBRID) &&
+    meta.requiresSource !== false;
   const manualRequired =
-    (variantTyped === SPEC_VARIANTS.MANUAL ||
-      variantTyped === SPEC_VARIANTS.HYBRID) &&
-    meta?.requiresManual !== false;
+    (obj.kind === SPEC_VARIANTS.MANUAL || obj.kind === SPEC_VARIANTS.HYBRID) &&
+    meta.requiresManual !== false;
 
   if (sourceRequired) {
     source = validateSource(obj.source, errors);
   } else if (obj.source != null) {
     // Optional pass-through: widget doesn't need it, accept silently.
-    const collected: string[] = [];
-    source = validateSource(obj.source, collected);
+    const collected = [];
+    source = validateSource(obj.source, collected) || null;
   }
   if (manualRequired) {
     manual = validateManual(obj.manual, errors);
   } else if (obj.manual != null) {
-    const collected: string[] = [];
-    manual = validateManual(obj.manual, collected);
+    const collected = [];
+    manual = validateManual(obj.manual, collected) || null;
   }
 
   const context = validateContext(obj.context, errors);
@@ -304,27 +263,58 @@ export function validateSpec(obj: unknown): ValidationResult {
 
   if (errors.length > 0) return { ok: false, errors };
 
-  const reasoning = isNonEmptyString(obj.reasoning) ? obj.reasoning.trim() : "";
-  const goalId = (obj.goalId as string).trim();
-  const title = (obj.title as string).trim();
-  const classifiedAt =
-    typeof obj.classifiedAt === "number" && obj.classifiedAt > 0
-      ? obj.classifiedAt
-      : Date.now();
+  const spec = {
+    schemaVersion: SPEC_SCHEMA_VERSION,
+    goalId: obj.goalId.trim(),
+    kind: obj.kind,
+    widget: obj.widget,
+    title: obj.title.trim(),
+    reasoning: isNonEmptyString(obj.reasoning) ? obj.reasoning.trim() : "",
+    source,
+    manual,
+    context,
+    delegated,
+    classifiedAt:
+      typeof obj.classifiedAt === "number" && obj.classifiedAt > 0
+        ? obj.classifiedAt
+        : Date.now(),
+  };
 
-  const spec: ValidatedSpec = {
+  return { ok: true, spec };
+}
+
+/** Predicate — is this value a validated spec? */
+export function isSpec(value) {
+  return validateSpec(value).ok;
+}
+
+/**
+ * Convenience: build a minimal spec object from a classification
+ * result so callers don't need to hand-assemble the nullable fields.
+ */
+export function buildSpec({
+  goalId,
+  title,
+  kind,
+  widget,
+  reasoning = "",
+  source = null,
+  manual = null,
+  context = null,
+  delegated = null,
+  classifiedAt = Date.now(),
+}) {
+  return validateSpec({
     schemaVersion: SPEC_SCHEMA_VERSION,
     goalId,
-    kind: variantTyped,
-    widget: widgetTyped,
     title,
+    kind,
+    widget,
     reasoning,
     source,
     manual,
     context,
     delegated,
     classifiedAt,
-  };
-
-  return { ok: true, spec };
+  });
 }

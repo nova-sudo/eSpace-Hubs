@@ -14,7 +14,7 @@
  * that want diff tracking should snapshot specs separately.
  */
 
-import { validateSpec } from "./schema";
+import { validateSpec } from "@espace-devhub/shared/goal-specs";
 import { mirrorRemoveSpec, mirrorSaveSpec } from "./specs-sync";
 
 const STORAGE_KEY = "espace-devhub:goal-specs";
