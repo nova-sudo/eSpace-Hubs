@@ -8,6 +8,7 @@ import { ContextSync } from "@/features/goal-context";
 import { InputsSync } from "@/features/goal-inputs";
 import { SpecsSync } from "@/features/goal-specs";
 import { GoalsSync } from "@/features/goals";
+import { MigrateOnce } from "@/features/migrate";
 
 const interTight = Inter_Tight({
   subsets: ["latin"],
@@ -42,6 +43,13 @@ export default function RootLayout({ children }) {
             the API once on session establishment, merging into
             localStorage. M7.2 mirror-mode rollout. */}
         <SessionProvider>
+          {/* MigrateOnce runs the first-session localStorage→API upload
+              for devices that carry pre-M7 legacy data. It's silent
+              on devices with no legacy data and idempotent on the
+              server side. Sits alongside the per-store <*Sync /> pulls,
+              which only replace local state when the server has
+              content — so the pull/migrate race is safe. */}
+          <MigrateOnce />
           <GradingSync />
           <SnapshotsSync />
           <ContextSync />
