@@ -1,6 +1,8 @@
 /**
- * Type signatures for the hub registry. Runtime lives in registry.js.
+ * Type signatures for the hub registry. Runtime in registry.js.
  */
+
+import type { Capability } from "../capabilities/capabilities.js";
 
 export interface HubTheme {
   /** Primary brand colour for the hub (text, borders, badges). */
@@ -18,32 +20,30 @@ export type HubPageSlot =
   | "snapshots"
   | "reviews"
   | "settings"
-  | "analyst";
+  | "analyst"
+  // Admin-specific
+  | "hub-config"
+  | "users"
+  | "audit"
+  // Manager-specific
+  | "team"
+  | "employees";
 
 export interface HubDefinition {
-  /** Stable URL slug + storage key. */
   id: string;
-  /** Human-readable name shown in switchers, page titles, emails. */
   label: string;
-  /** One-line description for admin UI + onboarding hover state. */
   description: string;
-  /** Hub-level theme overrides merged on top of the base palette. */
   theme: HubTheme;
-  /** Integration provider ids the hub UI exposes. */
   allowedIntegrations: readonly string[];
-  /**
-   * Page slots the hub mounts. Values are symbolic — apps/web resolves
-   * them to React components at render time. Missing slots aren't
-   * routable for that hub.
-   */
   pages: Readonly<Partial<Record<HubPageSlot, string>>>;
-  /** Widget ids the hub's dashboard can mount. */
   widgets: readonly string[];
-  /**
-   * Lowercased, whitespace-trimmed department strings that route to
-   * this hub during onboarding.
-   */
   departments: readonly string[];
+  /**
+   * Capabilities a user must hold (intersection — must satisfy every
+   * one) to access this hub. Empty array means "no gate" (open hub —
+   * reserved for future public surfaces; no hub today is open).
+   */
+  requires: readonly Capability[];
 }
 
 export const ALL_PROVIDERS: readonly ["github", "gitlab", "jira"];
@@ -55,6 +55,21 @@ export const DEFAULT_HUB_ID: string;
 
 export function findHubById(id: unknown): HubDefinition | null;
 export function getHubIdForDepartment(department: unknown): string | null;
+
+/**
+ * @deprecated Pre-capability path. Use resolveHubsForCapabilities
+ * for new code. Kept for backward compatibility during the M-CAP
+ * migration; will be removed once all callers migrate.
+ */
 export function resolveAllowedHubs(
   allowedHubIds: readonly string[] | null | undefined,
+): HubDefinition[];
+
+/**
+ * Capability-driven resolver. Given a user's capability Set, returns
+ * the HubDefinition objects whose `requires` is fully satisfied.
+ * Preserves HUB_ORDER.
+ */
+export function resolveHubsForCapabilities(
+  userCaps: Set<Capability>,
 ): HubDefinition[];

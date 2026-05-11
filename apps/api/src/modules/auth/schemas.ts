@@ -26,14 +26,31 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
-const role = z.enum(["admin", "manager", "member", "hr", "qa", "po"]);
+const role = z.enum(["admin", "dev", "qa", "manager", "hr", "po", "member"]);
 const displayName = z.string().min(1).max(200);
 
-export const inviteSchema = z.object({
-  email,
-  role,
-  displayName,
-});
+/**
+ * Invite payload.
+ *   - `role` is the legacy single-role field (still required for
+ *     wire compat with older admin tooling)
+ *   - `roles` is the new multi-role array; optional, falls back to
+ *     [role] when missing
+ *
+ * The handler writes both: `role = roles[0]` and `roles` verbatim.
+ * When the legacy `role` field is removed in a follow-up, `roles`
+ * becomes the only required field.
+ */
+export const inviteSchema = z
+  .object({
+    email,
+    role,
+    roles: z.array(role).min(1).max(8).optional(),
+    displayName,
+  })
+  .transform((input) => ({
+    ...input,
+    roles: input.roles ?? [input.role],
+  }));
 export type InviteInput = z.infer<typeof inviteSchema>;
 
 // Token shape: 32-byte random base64url (43 chars). Liberal on length
@@ -83,7 +100,24 @@ export interface PublicUser {
   id: string;
   orgId: string;
   email: string;
+  /**
+   * Primary role — first element of `roles`. Kept for backward-compat
+   * with UI code that switches on a single role; new code should
+   * read `roles` and/or `capabilities` instead.
+   */
   role: string;
+  /**
+   * All roles the user holds. The orchestrator computes which hubs
+   * they can access by unioning capabilities from this list.
+   */
+  roles: string[];
+  /**
+   * Capability ids granted by the union of `roles`. Convenience —
+   * the frontend can re-derive from `roles` via
+   * `@espace-devhub/shared/capabilities`, but shipping it saves a
+   * round-trip and keeps gating authoritative (server-derived).
+   */
+  capabilities: string[];
   status: string;
   displayName: string;
   totpEnrolled: boolean;

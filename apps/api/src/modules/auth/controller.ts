@@ -31,6 +31,10 @@ import {
 } from "../../lib/email-templates.js";
 import { DEFAULT_HUB_ID } from "@espace-devhub/shared/hubs";
 import {
+  effectiveCapabilities,
+  effectiveRoles,
+} from "../../lib/user-roles.js";
+import {
   INVITE_TTL_MS,
   PASSWORD_RESET_TTL_MS,
   deleteTokensFor,
@@ -73,11 +77,15 @@ const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
  * and any audit-log `before`/`after` payload.
  */
 export function toPublicUser(u: User): PublicUser {
+  const roles = effectiveRoles(u);
+  const caps = effectiveCapabilities(u);
   return {
     id: u._id.toHexString(),
     orgId: u.orgId.toHexString(),
     email: u.email,
-    role: u.role,
+    role: roles[0] ?? u.role,
+    roles,
+    capabilities: Array.from(caps),
     status: u.status,
     displayName: u.displayName,
     totpEnrolled: !!u.totpSecret,
@@ -329,7 +337,7 @@ export async function inviteHandler(
     const session = req.session;
     if (!session) throw new HttpError(401, "unauthenticated", "Login required.");
 
-    const { email, role, displayName } = inviteSchema.parse(req.body);
+    const { email, role, roles, displayName } = inviteSchema.parse(req.body);
 
     const users = await getUsersCollection();
     const orgs = await getOrgsCollection();
@@ -360,7 +368,11 @@ export async function inviteHandler(
         orgId: org._id,
         email,
         passwordHash: null,
-        role,
+        // M-CAP: write both. `role` is the legacy compat shim
+        // (= roles[0]); `roles` is the new source of truth that
+        // /hubs/me reads to resolve capabilities.
+        role: roles[0],
+        roles,
         status: "invited" as const,
         totpSecret: null,
         totpEnrolledAt: null,
@@ -445,7 +457,7 @@ export async function inviteHandler(
       action: "user.invite",
       targetType: "user",
       targetId: user._id.toHexString(),
-      after: { email, role, displayName, status: user.status },
+      after: { email, role, roles, displayName, status: user.status },
       ...meta,
     });
 

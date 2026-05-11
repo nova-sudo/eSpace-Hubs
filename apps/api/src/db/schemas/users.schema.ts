@@ -47,6 +47,16 @@ export const usersValidator: Document = {
       },
       passwordHash: { bsonType: ["string", "null"] },
       role: { enum: [...ALL_USER_ROLES] },
+      // M-CAP: multi-role array. Optional during the cutover —
+      // readers fall back to `[role]` when missing. Boot-time
+      // migration populates this for every existing row, and
+      // new user-creation paths write both fields until `role` is
+      // removed in a follow-up release.
+      roles: {
+        bsonType: ["array", "null"],
+        items: { enum: [...ALL_USER_ROLES] },
+        maxItems: 16,
+      },
       status: { enum: [...ALL_USER_STATUSES] },
       totpSecret: { bsonType: ["string", "null"] },
       totpEnrolledAt: { bsonType: ["date", "null"] },

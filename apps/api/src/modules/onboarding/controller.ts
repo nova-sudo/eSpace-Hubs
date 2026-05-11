@@ -1,27 +1,36 @@
 /**
  * /api/v1/onboarding — the M-OB submit handler.
  *
- * Receives the user's profile fields, resolves their hub via the
- * shared registry's department mapping, persists everything in one
- * atomic users.findOneAndUpdate, and returns the resolved hub so the
- * frontend can navigate.
+ * Captures profile fields. Post-M-CAP, hub access is driven by ROLES
+ * (assigned by the admin at /invite or by the bootstrap CLI), not by
+ * department. This handler therefore does NOT touch the user's
+ * `roles` or `primaryHub` — those are the admin's authoritative
+ * decision and onboarding shouldn't second-guess them.
  *
- * Idempotency: re-submitting after onboarding is complete is allowed
- * (the user is just updating their profile) — we don't reject on
- * `onboardingCompletedAt` already being set. The handler always
- * recomputes the resolved hub from the new department; an admin
- * override applied since the last submit takes effect on the next
- * /hubs/me round-trip.
+ * The `department` field is still captured as a profile attribute
+ * (useful for org charts + Zoho reconciliation in M9), but the
+ * resolved-hub redirect comes from the user's existing roles via
+ * the capability resolver.
+ *
+ * Redirect logic:
+ *   - 1 hub allowed  → redirect to /<hubId>
+ *   - 0 hubs allowed → redirect to / (caller surfaces an error or
+ *                       falls back to defaults — shouldn't happen
+ *                       for a properly invited user)
+ *   - >1 hubs        → redirect to / (the post-login picker shows;
+ *                       lands in PR 3)
+ *
+ * Idempotency: re-submission updates profile fields. Existing
+ * onboarded users can hit this endpoint again to edit their
+ * employeeId / department / displayName.
  */
 
 import type { NextFunction, Request, Response } from "express";
 import { z } from "zod";
-import {
-  DEFAULT_HUB_ID,
-  getHubIdForDepartment,
-} from "@espace-devhub/shared/hubs";
+import { resolveHubsForCapabilities } from "@espace-devhub/shared/hubs";
 import { getUsersCollection } from "../../db/collections.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
+import { effectiveCapabilities } from "../../lib/user-roles.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import { toPublicUser } from "../auth/controller.js";
 
@@ -44,13 +53,6 @@ export async function submitOnboardingHandler(
 
     const payload = submitSchema.parse(req.body);
 
-    // Resolve department → hub. `getHubIdForDepartment` returns
-    // DEFAULT_HUB_ID for unknown departments (rather than null) so
-    // the user always lands somewhere coherent — the registry's
-    // fallback is the design contract.
-    const resolvedHubId =
-      getHubIdForDepartment(payload.department) ?? DEFAULT_HUB_ID;
-
     const now = new Date();
     const users = await getUsersCollection();
     const result = await users.findOneAndUpdate(
@@ -60,8 +62,6 @@ export async function submitOnboardingHandler(
           displayName: payload.displayName,
           employeeId: payload.employeeId,
           department: payload.department,
-          allowedHubs: [resolvedHubId],
-          primaryHub: resolvedHubId,
           onboardingCompletedAt: now,
           updatedAt: now,
         },
@@ -73,6 +73,19 @@ export async function submitOnboardingHandler(
       throw new HttpError(401, "unauthenticated", "User no longer exists.");
     }
 
+    // Compute the redirect from the user's CURRENT roles (set by the
+    // admin at invite time, not by this handler). One hub → land
+    // there. >1 → root, where the post-login picker will render.
+    const caps = effectiveCapabilities({
+      role: result.role,
+      roles: result.roles ?? null,
+    });
+    const accessibleHubs = resolveHubsForCapabilities(caps);
+    const redirectTo =
+      accessibleHubs.length === 1
+        ? `/${accessibleHubs[0].id}`
+        : "/";
+
     await writeAudit({
       orgId: session.orgId,
       actorUserId: session.userId,
@@ -83,14 +96,14 @@ export async function submitOnboardingHandler(
       after: {
         department: payload.department,
         employeeId: payload.employeeId,
-        resolvedHubId,
+        hubsAccessible: accessibleHubs.map((h) => h.id),
       },
       ...networkMeta(req),
     });
 
     res.json({
       user: toPublicUser(result),
-      redirectTo: `/${resolvedHubId}`,
+      redirectTo,
     });
   } catch (err) {
     next(err);

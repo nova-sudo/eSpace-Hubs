@@ -1,39 +1,39 @@
 /**
  * /api/v1/hubs/me — returns the hubs the current user can access.
  *
- * Resolution layers (each applied in order):
+ * Resolution layers (in order):
  *   1. Shared registry defaults     — @espace-devhub/shared/hubs
- *   2. Per-(orgId, hubId) overrides — hub_configs collection (M10.5)
- *   3. User's allowedHubs           — filters which hubs surface
+ *   2. Capability gate              — user's roles → capabilities →
+ *                                       intersect with each hub's
+ *                                       `requires` list (M-CAP)
+ *   3. Per-(orgId, hubId) overrides — hub_configs collection (M10.5)
  *
  * Response:
- *   {
- *     hubs: HubDefinition[],     // ordered by HUB_ORDER, post-merge
- *     primaryHubId: string,
- *     defaultHubId: string,
- *   }
+ *   { hubs: HubDefinition[], primaryHubId: string, defaultHubId: string }
  *
- * Pre-M10 users (no allowedHubs / primaryHub on doc) get the
- * DEFAULT_HUB_ID fallback so the response stays useful.
+ * Pre-M-CAP users (only `role` set, no `roles`) get a compat fallback
+ * via `effectiveRoles(u)` — single-role behaviour is preserved until
+ * the boot-time migration writes `roles` for every row.
  *
  * Per-hub metadata (theme, allowedIntegrations, page slots, widget
- * catalog) ships in the response so the frontend can render the
- * chrome without a separate registry fetch — and so admin overrides
- * take effect on the very next /hubs/me round-trip.
+ * catalog) ships in the response so the frontend renders the chrome
+ * without a separate registry fetch, and admin overrides take effect
+ * on the very next /hubs/me round-trip.
  */
 
 import type { NextFunction, Request, Response } from "express";
 import {
   DEFAULT_HUB_ID,
   HUB_ORDER,
-  HUBS,
   findHubById,
+  resolveHubsForCapabilities,
 } from "@espace-devhub/shared/hubs";
 import {
   getHubConfigsCollection,
   getUsersCollection,
 } from "../../db/collections.js";
 import type { HubConfig } from "../../db/types.js";
+import { effectiveCapabilities } from "../../lib/user-roles.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import { mergeHubOverride } from "./merge.js";
 
@@ -51,7 +51,7 @@ export async function listMyHubsHandler(
     const users = await getUsersCollection();
     const user = await users.findOne(
       { _id: session.userId },
-      { projection: { allowedHubs: 1, primaryHub: 1 } },
+      { projection: { role: 1, roles: 1, primaryHub: 1 } },
     );
     if (!user) {
       throw new HttpError(401, "unauthenticated", "User no longer exists.");
@@ -66,54 +66,57 @@ export async function listMyHubsHandler(
       overrideRows.map((row) => [row.hubId, row] as const),
     );
 
-    // Resolution: every hub in HUB_ORDER → merge defaults + override
-    // → filter out disabled ones → intersect with the user's
-    // allowedHubs list.
-    const userAllowed = new Set<string>(
-      Array.isArray(user.allowedHubs) && user.allowedHubs.length > 0
-        ? user.allowedHubs
-        : [DEFAULT_HUB_ID],
+    // M-CAP: resolve the user's capabilities from their roles. Pre-
+    // migration users get `[u.role]` as the fallback role set.
+    const userCaps = effectiveCapabilities({
+      role: user.role,
+      roles: user.roles ?? null,
+    });
+
+    // Capability filter first (authoritative gate), then per-hub
+    // override merge. Hub ids stay in HUB_ORDER.
+    const capAllowedIds = new Set(
+      resolveHubsForCapabilities(userCaps).map((h) => h.id),
     );
 
     const hubs = [];
     for (const hubId of HUB_ORDER) {
+      if (!capAllowedIds.has(hubId)) continue;
       const defaults = findHubById(hubId);
       if (!defaults) continue;
       const { hub, enabled } = mergeHubOverride(
         defaults,
         overrideByHubId.get(hubId) ?? null,
       );
-      if (!enabled) continue;
-      if (!userAllowed.has(hubId)) continue;
+      if (!enabled) continue; // admin disabled this hub for the org
       hubs.push(hub);
     }
 
     if (hubs.length === 0) {
-      // Defense in depth: if every hub the user has access to is
-      // either unknown or disabled by an admin override, fall back to
-      // the default rather than returning an empty list (which would
-      // lock the user out of every hub). The fallback is the
-      // post-merge version of DEFAULT_HUB_ID — admin overrides still
-      // apply.
+      // Defense in depth: a user whose roles grant nothing, or whose
+      // hubs are all admin-disabled, would otherwise see an empty
+      // list and get stuck. Falling back to the default hub keeps the
+      // app navigable while ops fixes the misconfiguration.
+      //
+      // Specifically covers the bootstrap-admin window before the
+      // M-CAP migration runs: their `role: "admin"` resolves to
+      // hub.admin.access via the compat shim, so this branch is
+      // mostly a paranoid catch-all.
       const defaults = findHubById(DEFAULT_HUB_ID);
       if (defaults) {
         const merged = mergeHubOverride(
           defaults,
           overrideByHubId.get(DEFAULT_HUB_ID) ?? null,
         );
-        if (merged.enabled) {
-          hubs.push(merged.hub);
-        } else {
-          // Even the default is disabled. Last-ditch: every registry
-          // hub, ignoring overrides. Prevents a misconfigured admin
-          // from locking themselves out.
+        if (merged.enabled) hubs.push(merged.hub);
+        else {
+          // Even the default is disabled — admit every registry hub
+          // ignoring overrides. Worst-case correctness.
           for (const fallbackId of HUB_ORDER) {
             const fb = findHubById(fallbackId);
             if (fb) hubs.push(fb);
           }
         }
-      } else {
-        for (const h of Object.values(HUBS)) hubs.push(h);
       }
     }
 
