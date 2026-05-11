@@ -167,4 +167,24 @@ export function clearSnapshots() {
   writeAll([]);
 }
 
+/**
+ * Remove only AUTO-captured snapshots, preserving any MANUAL ones the
+ * user wrote by hand. Used by the Settings "Reset auto & re-backfill"
+ * flow when a previous backfill ran against broken data sources (e.g.
+ * pre-hotfix when the events feed was empty because GitHub username
+ * wasn't populated in localStorage) and the user wants to re-synthesise
+ * from scratch.
+ *
+ * Server side: stale auto rows on the server for weeks the next
+ * backfill DOES cover will be replaced by saveSnapshot's mirror. Weeks
+ * outside the next backfill's range stay stale on the server — that's
+ * acceptable because the supported path is "reset, then run backfill",
+ * not "reset as a standalone op".
+ */
+export function clearAutoSnapshots() {
+  const all = readSnapshots();
+  const next = all.filter((s) => s.capturedBy !== "auto");
+  writeAll(next);
+}
+
 export const SNAPSHOTS_CHANGE_EVENT = CHANGE_EVENT;
