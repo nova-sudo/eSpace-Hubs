@@ -7,6 +7,10 @@ import {
   PROVIDERS,
   useIntegrations,
 } from "@/features/integrations";
+import {
+  useActiveHub,
+  useAllowedProviders,
+} from "@/features/hubs";
 import { startGitHubOAuth } from "@/lib/oauth-pkce";
 import { GitLabTokenForm, JiraTokenForm } from "../token-forms";
 
@@ -16,13 +20,34 @@ const OAUTH_STARTERS = {
 };
 
 export function IntegrationsTab() {
+  // Per-hub provider filter (M10.4). Each hub's registry declares
+  // its `allowedIntegrations`; this tab shows only those. Connections
+  // made on another hub aren't deleted — they're hidden here. The
+  // dashed hint at the bottom of the list explains the filtering so
+  // the absence isn't surprising.
+  const allowed = useAllowedProviders();
+  const hub = useActiveHub();
+  const totalCatalog = Object.keys(PROVIDERS).length;
+  const hiddenCount = totalCatalog - allowed.length;
+
   return (
     <>
       <Section num="01 /" title="Connected providers">
         <div className="flex flex-col gap-3">
-          {Object.values(PROVIDERS).map((p) => (
+          {allowed.map((p) => (
             <ProviderCard key={p.id} provider={p} />
           ))}
+          {hub && hiddenCount > 0 ? (
+            <div
+              className="rounded-[var(--radius-sub)] border border-dashed border-border bg-card-alt px-4 py-3 text-[12px] text-muted-fg"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              {hiddenCount} provider{hiddenCount === 1 ? " is" : "s are"} hidden in
+              the <span className="text-fg">{hub.label}</span> — they aren't
+              used by this hub's widgets. Switch to a hub that uses them to
+              manage their tokens.
+            </div>
+          ) : null}
         </div>
       </Section>
 
