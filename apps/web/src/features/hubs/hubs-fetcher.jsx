@@ -20,6 +20,7 @@ import { useEffect, useRef } from "react";
 import { apiGet } from "@/lib/api-client";
 import { useSession } from "@/features/auth";
 import { resetHubsStore, setHubsState, getHubsState } from "./hubs-store";
+import { clearActivePick } from "./hub-pick-store.js";
 
 const LOG_PREFIX = "[hubs-fetcher]";
 
@@ -34,9 +35,12 @@ export function HubsFetcher() {
 
     if (!user) {
       if (lastUserIdRef.current !== null) {
-        // Session just dropped — wipe the cache so the next sign-in
-        // doesn't see stale data for ~1 paint.
+        // Session just dropped — wipe both the hubs cache AND the
+        // active-hub pick so a different user signing in on the
+        // same device doesn't inherit either the stale list or the
+        // prior user's chosen hub.
         resetHubsStore();
+        clearActivePick();
         lastUserIdRef.current = null;
       }
       return;
