@@ -76,9 +76,22 @@ export const githubApi = {
   },
 
   /**
-   * User's public event stream since isoDate. GitHub caps this at the last
-   * ~300 events (90 days max) regardless of `since`, which is fine for the
-   * dashboard's 30/90d windows.
+   * User's public event stream since isoDate.
+   *
+   * GitHub's `/users/:u/events/public` caps the response at:
+   *   - 100 events per page
+   *   - 3 pages total (300 events absolute max)
+   *   - ~90 days regardless of pagination
+   *
+   * For a heavy day where 100+ events fire, page 1 alone is consumed by
+   * today and everything older is invisible until we paginate. (This is
+   * exactly what produced the "100 events / peak 100/day" YTD heatmap
+   * with an otherwise-empty Jan–Apr grid.)
+   *
+   * We page through up to 3 pages, short-circuiting when:
+   *   - the batch comes back short (< 100) — we got everything available
+   *   - the oldest event on a page is already before the requested
+   *     `isoDate` cutoff — caller's window is already covered
    *
    * Self-heals the local `github.username` cache via `resolveGithubUsername`
    * if it's missing — historically a user who connected before the
@@ -86,12 +99,52 @@ export const githubApi = {
    * events-driven tile (Activity / Signal / Heatmap / Reviews) would
    * silently return empty.
    */
-  myEventsSince: async (_isoDate) => {
+  myEventsSince: async (isoDate) => {
     const username = await resolveGithubUsername();
-    return proxyFetch(
-      "github",
-      `users/${encodeURIComponent(username)}/events/public?per_page=100`,
-    );
+    const cutoffMs =
+      typeof isoDate === "string" && isoDate
+        ? new Date(isoDate).getTime()
+        : 0;
+    const MAX_PAGES = 3;
+    const PER_PAGE = 100;
+    const all = [];
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      let batch;
+      try {
+        batch = await proxyFetch(
+          "github",
+          `users/${encodeURIComponent(username)}/events/public?per_page=${PER_PAGE}&page=${page}`,
+        );
+      } catch (err) {
+        // GitHub returns 422 ("In order to keep the API fast for
+        // everyone, pagination is limited for this resource.") once
+        // the per-resource pagination cap is exceeded. Treat it as
+        // "we already have everything this endpoint will give" and
+        // surface what we collected so far — failing the whole hook
+        // because page N+1 hit the cap would be hostile to the
+        // dashboard's events-driven tiles.
+        //
+        // If page 1 itself fails we genuinely have nothing; re-throw
+        // so SWR can flag the tile.
+        if (page === 1) throw err;
+        break;
+      }
+      if (!Array.isArray(batch) || batch.length === 0) break;
+      all.push(...batch);
+      // Page wasn't filled → we already have every event GitHub will
+      // return; further requests just yield empty arrays.
+      if (batch.length < PER_PAGE) break;
+      // Oldest event on this page is already past the caller's window
+      // → no need to walk further into history.
+      if (cutoffMs > 0) {
+        const oldest = batch[batch.length - 1];
+        const oldestMs = oldest?.created_at
+          ? new Date(oldest.created_at).getTime()
+          : 0;
+        if (oldestMs > 0 && oldestMs < cutoffMs) break;
+      }
+    }
+    return all;
   },
 
   /**
