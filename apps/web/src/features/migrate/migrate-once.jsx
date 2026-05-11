@@ -1,34 +1,29 @@
 "use client";
 
 /**
- * One-shot localStorage→API migration trigger.
+ * One-shot localStorage→API migration trigger, per-(device, user).
  *
  * Mounted alongside the per-store <*Sync /> components in the root
- * layout. The component renders nothing — it's a lifecycle effect.
+ * layout. Renders nothing — it's a lifecycle effect.
  *
  * Flow:
  *   1. Wait until useSession() reports an authenticated user.
- *   2. If the local migration marker is already set, exit. The
- *      device has already uploaded; the per-store mirror writes
- *      keep things in sync from here on.
+ *   2. If the local migration marker is set FOR THIS USER, exit.
+ *      (Pre-hotfix the marker was per-device. A different user
+ *      signing in on the same browser would skip the migration and
+ *      land without their localStorage data on the server — which
+ *      broke the integrations proxy because no encrypted token was
+ *      stored under their userId.)
  *   3. Read the seven legacy localStorage keys via
- *      collectMigrationPayload(). If nothing to send, set the
- *      marker anyway and exit — a fresh device shouldn't keep
- *      retrying the no-op call every session.
- *   4. POST to /api/v1/migrate/import. On success, write the
- *      marker with the server-returned counts. On failure, log
- *      and bail (next session retries).
+ *      collectMigrationPayload(). If nothing to send, set the marker
+ *      anyway and exit.
+ *   4. POST to /api/v1/migrate/import. On success, write the marker
+ *      under the user's id with the server-returned counts. On
+ *      failure, log + bail; next session retries.
  *
- * Concurrency with the <*Sync /> pulls:
- *   The pull helpers only replaceLocal() when the server returns
- *   non-empty content. On a fresh user the pulls are no-ops, so
- *   they can't clobber the local data we're about to upload.
- *   We don't await the pulls — both run in parallel and converge.
- *
- * Toast:
- *   Uses sonner (already mounted at the root). A one-off "Synced
- *   N items to your account" with the per-collection counts. Quiet
- *   on no-data devices.
+ * Re-fires per user change: if the user logs out and a different
+ * user logs in on the same browser, firedRef resets via the user.id
+ * key in the effect — the new user gets their own migration check.
  */
 
 import { useEffect, useRef } from "react";
@@ -55,50 +50,54 @@ function totalImported(counts) {
 
 export function MigrateOnce() {
   const { user, loading } = useSession();
-  // Guards against React 18 StrictMode double-mounting in dev — we
-  // only want one POST per page lifetime.
-  const firedRef = useRef(false);
+  // Per-user fired flag — re-fires when the user.id changes (logout
+  // + login as a different user on the same browser tab).
+  const firedForUserRef = useRef(null);
 
   useEffect(() => {
     if (loading) return;
-    if (!user) return;
-    if (firedRef.current) return;
+    if (!user) {
+      firedForUserRef.current = null;
+      return;
+    }
+    if (firedForUserRef.current === user.id) return;
 
-    // Already migrated on this device — nothing to do.
-    if (readMigrationMarker()) {
-      firedRef.current = true;
+    // Already migrated this user on this device — nothing to do.
+    if (readMigrationMarker(user.id)) {
+      firedForUserRef.current = user.id;
       return;
     }
 
     const { payload, hasAny } = collectMigrationPayload();
 
-    // No legacy data on this device. Set the marker so we don't
-    // keep checking on every future session.
+    // No legacy data on this device. Set the marker for this user
+    // so we don't keep checking on every future session.
     if (!hasAny) {
-      writeMigrationMarker(null);
-      firedRef.current = true;
+      writeMigrationMarker(user.id, null);
+      firedForUserRef.current = user.id;
       return;
     }
 
-    firedRef.current = true;
+    firedForUserRef.current = user.id;
+    const userIdAtStart = user.id;
 
     (async () => {
       const result = await apiPost("/migrate/import", payload);
       if (!result.ok) {
-        // Auth failures: just leave the marker unset — next session
-        // will retry once the cookie is good.
+        // Auth failures: leave the marker unset — next session retries
+        // once the cookie is good.
         // eslint-disable-next-line no-console
         console.warn(
           `${LOG_PREFIX} import failed:`,
           result.error?.code,
           result.error?.message,
         );
-        firedRef.current = false;
+        firedForUserRef.current = null;
         return;
       }
 
       const counts = result.data?.counts ?? null;
-      writeMigrationMarker(counts);
+      writeMigrationMarker(userIdAtStart, counts);
 
       const total = totalImported(counts);
       if (total > 0) {

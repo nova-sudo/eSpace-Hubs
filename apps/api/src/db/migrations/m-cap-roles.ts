@@ -10,13 +10,15 @@
  *                          generic pre-M-CAP role; the M-OB
  *                          department mapping makes new users
  *                          start with the right role going forward)
- *   - role === "admin"   → roles = ["admin", "dev", "qa"]
- *                          Preserves the bootstrap admin's ability
- *                          to navigate Dev + QA. New admins minted
- *                          AFTER this migration get just ["admin"]
- *                          unless the admin-create CLI was passed
- *                          --roles with more.
  *   - any other role     → roles = [role] (single-element)
+ *
+ * Admin auto-expansion was tried in the first cut of this migration
+ * (admin → admin+dev+qa) to preserve the bootstrap admin's
+ * pre-M-CAP multi-hub view. That was the wrong call: the design
+ * intent is that admin is admin-only by default, and an admin who
+ * also wants Dev/QA access gets it via an explicit `--roles=admin,dev`
+ * at admin-create time, or via the admin UI later. The single-role
+ * fallback is correct.
  *
  * Result is logged at info level with counts per outcome. Failure
  * is non-fatal: server boots regardless so /healthz stays green;
@@ -55,12 +57,14 @@ export async function migrateUserRoles(
     let roles: UserRole[];
     let outcome: string;
     if (legacyRole === "member") {
+      // Legacy "member" was the generic engineer role; map to the
+      // new explicit "dev" role.
       roles = ["dev"];
       outcome = "member→dev";
-    } else if (legacyRole === "admin") {
-      roles = ["admin", "dev", "qa"];
-      outcome = "admin→admin+dev+qa";
     } else {
+      // Every other role (including admin) gets converted as-is to
+      // a single-element array. Admin remains admin-only by default;
+      // multi-hub admins are opted in via --roles at admin-create.
       roles = [legacyRole];
       outcome = `single:${legacyRole}`;
     }
