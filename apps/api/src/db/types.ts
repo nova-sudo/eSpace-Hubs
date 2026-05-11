@@ -513,3 +513,37 @@ export interface AuditLogEntry {
   ua: string | null;
   ts: Date;
 }
+
+// ─── hub configs (M10.5) ─────────────────────────────────────────────
+
+/**
+ * Per-(orgId, hubId) override that merges on top of the shared
+ * registry defaults in @espace-devhub/shared/hubs at resolution time.
+ *
+ * Every override field is OPTIONAL. Absent fields fall through to
+ * the registry default. See modules/hubs/controller.ts for the merge
+ * semantics (replace vs partial-replace per field).
+ *
+ * `null` on a scalar field means "no value" (passes through to the
+ * default). `null` on a `pages.<slot>` ENTRY means "remove this slot
+ * from the effective pages map".
+ */
+export interface HubConfig {
+  _id: ObjectId;
+  orgId: ObjectId;
+  hubId: string;
+  /** When false, the hub is filtered out of /hubs/me entirely. */
+  enabled?: boolean | null;
+  label?: string | null;
+  description?: string | null;
+  /** Replaces the registry default. Empty array is meaningful ("no
+   *  integrations for this hub"). Null falls through. */
+  allowedIntegrations?: string[] | null;
+  /** Partial merge — only listed slot ids override. Null entries
+   *  remove the slot from the effective map. */
+  pages?: Record<string, string | null> | null;
+  /** Replaces the registry default. */
+  departments?: string[] | null;
+  updatedBy: ObjectId | null;
+  updatedAt: Date;
+}

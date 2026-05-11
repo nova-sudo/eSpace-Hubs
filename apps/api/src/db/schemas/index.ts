@@ -16,6 +16,7 @@ import { goalInputsValidator } from "./goal-inputs.schema.js";
 import { snapshotsValidator } from "./snapshots.schema.js";
 import { gradingVerdictsValidator } from "./grading-verdicts.schema.js";
 import { integrationsValidator } from "./integrations.schema.js";
+import { hubConfigsValidator } from "./hub-configs.schema.js";
 import type { Document } from "mongodb";
 
 export interface CollectionDef {
@@ -36,4 +37,5 @@ export const COLLECTION_DEFS: readonly CollectionDef[] = [
   { name: "snapshots", validator: snapshotsValidator },
   { name: "grading_verdicts", validator: gradingVerdictsValidator },
   { name: "integrations", validator: integrationsValidator },
+  { name: "hub_configs", validator: hubConfigsValidator },
 ] as const;
