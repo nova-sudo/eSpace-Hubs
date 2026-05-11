@@ -1,34 +1,41 @@
 /**
  * /api/v1/hubs/me — returns the hubs the current user can access.
  *
- * Reads the user's `allowedHubs` + `primaryHub` from the session-
- * referenced user doc, resolves them against the shared registry,
- * and returns:
+ * Resolution layers (each applied in order):
+ *   1. Shared registry defaults     — @espace-devhub/shared/hubs
+ *   2. Per-(orgId, hubId) overrides — hub_configs collection (M10.5)
+ *   3. User's allowedHubs           — filters which hubs surface
  *
+ * Response:
  *   {
- *     hubs: HubDefinition[],     // ordered by HUB_ORDER
- *     primaryHubId: string,      // member of hubs[*].id
- *     defaultHubId: string,      // the registry's overall default
+ *     hubs: HubDefinition[],     // ordered by HUB_ORDER, post-merge
+ *     primaryHubId: string,
+ *     defaultHubId: string,
  *   }
  *
- * Pre-M10 users have neither field on their doc; we apply the
- * DEFAULT_HUB_ID fallback so the response stays useful while we
- * roll out the schema (no migration required).
+ * Pre-M10 users (no allowedHubs / primaryHub on doc) get the
+ * DEFAULT_HUB_ID fallback so the response stays useful.
  *
- * Public per-hub metadata (theme, allowedIntegrations, page slots,
- * widget catalog) ships in the response so the frontend can render
- * the chrome without a separate registry fetch.
+ * Per-hub metadata (theme, allowedIntegrations, page slots, widget
+ * catalog) ships in the response so the frontend can render the
+ * chrome without a separate registry fetch — and so admin overrides
+ * take effect on the very next /hubs/me round-trip.
  */
 
 import type { NextFunction, Request, Response } from "express";
 import {
   DEFAULT_HUB_ID,
+  HUB_ORDER,
   HUBS,
   findHubById,
-  resolveAllowedHubs,
 } from "@espace-devhub/shared/hubs";
-import { getUsersCollection } from "../../db/collections.js";
+import {
+  getHubConfigsCollection,
+  getUsersCollection,
+} from "../../db/collections.js";
+import type { HubConfig } from "../../db/types.js";
 import { HttpError } from "../../middleware/error-handler.js";
+import { mergeHubOverride } from "./merge.js";
 
 export async function listMyHubsHandler(
   req: Request,
@@ -47,25 +54,67 @@ export async function listMyHubsHandler(
       { projection: { allowedHubs: 1, primaryHub: 1 } },
     );
     if (!user) {
-      // Session referenced a deleted user — let the existing auth
-      // path surface this as an unauthenticated state.
       throw new HttpError(401, "unauthenticated", "User no longer exists.");
     }
 
-    // Resolve allowed hubs through the registry. Unknown ids on the
-    // user doc are silently filtered out so a hub removed from the
-    // registry doesn't leave the user staring at a broken switcher.
-    const allowedIds =
+    // Load the org's overrides once, keyed by hubId for O(1) merge.
+    const hubConfigs = await getHubConfigsCollection();
+    const overrideRows = await hubConfigs
+      .find({ orgId: session.orgId })
+      .toArray();
+    const overrideByHubId = new Map<string, HubConfig>(
+      overrideRows.map((row) => [row.hubId, row] as const),
+    );
+
+    // Resolution: every hub in HUB_ORDER → merge defaults + override
+    // → filter out disabled ones → intersect with the user's
+    // allowedHubs list.
+    const userAllowed = new Set<string>(
       Array.isArray(user.allowedHubs) && user.allowedHubs.length > 0
         ? user.allowedHubs
-        : [DEFAULT_HUB_ID];
-    let hubs = resolveAllowedHubs(allowedIds);
+        : [DEFAULT_HUB_ID],
+    );
+
+    const hubs = [];
+    for (const hubId of HUB_ORDER) {
+      const defaults = findHubById(hubId);
+      if (!defaults) continue;
+      const { hub, enabled } = mergeHubOverride(
+        defaults,
+        overrideByHubId.get(hubId) ?? null,
+      );
+      if (!enabled) continue;
+      if (!userAllowed.has(hubId)) continue;
+      hubs.push(hub);
+    }
+
     if (hubs.length === 0) {
-      // Defense in depth: if the user's allowedHubs all reference
-      // unknown ids, fall back to the default rather than returning
-      // an empty list (which would lock the user out of every hub).
-      const fallback = findHubById(DEFAULT_HUB_ID);
-      hubs = fallback ? [fallback] : Object.values(HUBS);
+      // Defense in depth: if every hub the user has access to is
+      // either unknown or disabled by an admin override, fall back to
+      // the default rather than returning an empty list (which would
+      // lock the user out of every hub). The fallback is the
+      // post-merge version of DEFAULT_HUB_ID — admin overrides still
+      // apply.
+      const defaults = findHubById(DEFAULT_HUB_ID);
+      if (defaults) {
+        const merged = mergeHubOverride(
+          defaults,
+          overrideByHubId.get(DEFAULT_HUB_ID) ?? null,
+        );
+        if (merged.enabled) {
+          hubs.push(merged.hub);
+        } else {
+          // Even the default is disabled. Last-ditch: every registry
+          // hub, ignoring overrides. Prevents a misconfigured admin
+          // from locking themselves out.
+          for (const fallbackId of HUB_ORDER) {
+            const fb = findHubById(fallbackId);
+            if (fb) hubs.push(fb);
+          }
+        }
+      } else {
+        for (const h of Object.values(HUBS)) hubs.push(h);
+      }
     }
 
     const primaryHubId =

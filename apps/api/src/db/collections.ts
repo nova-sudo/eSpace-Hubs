@@ -24,6 +24,7 @@ import type {
   GoalSpecRecord,
   GoalTree,
   GradingVerdict,
+  HubConfig,
   Integration,
   Org,
   Session,
@@ -104,6 +105,11 @@ export async function getIntegrationsCollection(): Promise<
 > {
   const db = await getDb();
   return db.collection<Integration>("integrations");
+}
+
+export async function getHubConfigsCollection(): Promise<Collection<HubConfig>> {
+  const db = await getDb();
+  return db.collection<HubConfig>("hub_configs");
 }
 
 // ─── bootstrap: validators + indexes ─────────────────────────────────
@@ -352,8 +358,22 @@ async function ensureIndexes(): Promise<void> {
     },
   );
 
+  // ─── M10.5 collection ─────────────────────────────────────────────
+
+  const hubConfigs = await getHubConfigsCollection();
+  await hubConfigs.createIndex(
+    { orgId: 1, hubId: 1 },
+    {
+      unique: true,
+      name: "hub_configs_org_hub_uniq",
+      // One override row per (orgId, hubId). Upsert semantics on the
+      // PUT endpoint; missing row means "use shared registry default
+      // for everything".
+    },
+  );
+
   logger.debug(
-    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs, snapshots, grading_verdicts, integrations",
+    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs, snapshots, grading_verdicts, integrations, hub_configs",
   );
 }
 
