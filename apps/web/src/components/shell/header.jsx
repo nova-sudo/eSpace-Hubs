@@ -6,7 +6,7 @@ import { LogoMark } from "./logo-mark";
 import { AnalystActivator } from "@/features/analyst";
 import { useIntegrations } from "@/features/integrations";
 import { UserChip } from "@/features/auth";
-import { useActiveHub } from "@/features/hubs";
+import { useActiveHub, HubSwitcher } from "@/features/hubs";
 import { cn } from "@/lib/cn";
 
 /**
@@ -99,6 +99,9 @@ export function Header() {
             {VERSION}
           </span>
         </Link>
+        {/* Multi-hub users see a switcher chip here. Single-hub users
+            see nothing (HubSwitcher self-hides when |hubs| <= 1). */}
+        <HubSwitcher />
         <nav className="flex gap-0.5" style={{ fontFamily: "var(--font-mono)" }}>
           {NAV_ITEMS.map((item) => {
             if (hub && !hub.pages[item.slot]) return null;
