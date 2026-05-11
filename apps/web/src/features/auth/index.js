@@ -7,6 +7,8 @@
  *   <AcceptInviteForm>   — used by /accept-invite page
  *   <AuthGuard>          — wraps protected page contents
  *   <UserChip>           — header chip showing the session user + logout
+ *   <RequireCapability>  — gate child elements on a capability check
+ *   hasCapability/hasAllCapabilities — non-React reader helpers
  */
 
 export { useSession } from "./use-session.js";
@@ -15,3 +17,8 @@ export { LoginForm } from "./login-form.jsx";
 export { AcceptInviteForm } from "./accept-invite-form.jsx";
 export { AuthGuard } from "./auth-guard.jsx";
 export { UserChip } from "./user-chip.jsx";
+export {
+  RequireCapability,
+  hasCapability,
+  hasAllCapabilities,
+} from "./require-capability.jsx";
