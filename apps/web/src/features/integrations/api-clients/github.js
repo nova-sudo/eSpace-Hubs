@@ -148,6 +148,37 @@ export const githubApi = {
   },
 
   /**
+   * Every PR the current user authored since isoDate, regardless of state
+   * (open, closed-unmerged, merged) and including drafts. Used to
+   * synthesise "PR opened" / "PR merged" event-shaped records that
+   * supplement the events feed for older periods — the user-events
+   * endpoint hard-caps at 300 events / 90 days and gets fully consumed
+   * by recent heavy days, so April/March activity drops off entirely.
+   * The search-issues endpoint, by contrast, has no such cap.
+   *
+   * Unlike `myPrsSince` which runs two queries (is:open / is:merged) to
+   * dodge GitHub's flaky draft flag, this method takes the union with a
+   * single query because activity-feed callers want EVERY PR — drafts
+   * included, since a draft still represents real work that day. Closed-
+   * unmerged PRs are also useful: they show "tried something, abandoned"
+   * markers on the heatmap.
+   *
+   * Single-page (per_page=100, no pagination) — sufficient for the YTD
+   * cadence of all current users. If anyone exceeds 100 PRs/year we'll
+   * paginate; the search-issues endpoint supports it without the 422 cap
+   * that bites the events feed.
+   */
+  myAuthoredPrsSince: async (isoDate) => {
+    const day = (isoDate || "").slice(0, 10);
+    const q = `is:pr author:@me created:>=${day}`;
+    const res = await proxyFetch(
+      "github",
+      `search/issues?q=${encodeURIComponent(q)}&per_page=100`,
+    );
+    return Array.isArray(res?.items) ? res.items : [];
+  },
+
+  /**
    * PRs authored by the user since isoDate, INCLUDING both open and merged
    * (but NOT drafts). Used by the CODE_RUBRIC widget to collect the full
    * "year-to-date" set for grading.

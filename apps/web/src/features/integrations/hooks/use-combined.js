@@ -5,6 +5,7 @@ import { useGitlabMergedSince } from "./use-gitlab-merged";
 import { useGitlabEventsSince } from "./use-gitlab-events";
 import { useGithubMergedSince } from "./use-github-merged";
 import { useGithubEventsSince } from "./use-github-events";
+import { useGithubPrEventsSince } from "./use-github-pr-events";
 import {
   buildDemoEvents,
   buildDemoPrs,
@@ -58,6 +59,12 @@ export function useCombinedEventsSince(since) {
   const demo = useDemoMode();
   const gl = useGitlabEventsSince(since);
   const gh = useGithubEventsSince(since);
+  // GitHub's /users/:u/events/public hard-caps at 300 events / 90 days
+  // and gets fully consumed by recent heavy days. To recover older
+  // months we synthesise "opened" / "merged" event-shaped records from
+  // the user's PR list (search-issues, no cap). See
+  // `use-github-pr-events.js` for the contract + dedup discussion.
+  const ghPr = useGithubPrEventsSince(since);
   const demoEvents = useMemo(() => (demo ? buildDemoEvents() : null), [demo]);
 
   if (demo) {
@@ -65,16 +72,22 @@ export function useCombinedEventsSince(since) {
       data: demoEvents,
       isLoading: false,
       error: null,
-      sources: { gitlab: gl, github: gh, demo: true },
+      sources: { gitlab: gl, github: gh, githubPrSynth: ghPr, demo: true },
     };
   }
 
   const data =
-    gl.data || gh.data ? [...(gl.data || []), ...(gh.data || [])] : undefined;
+    gl.data || gh.data || ghPr.data
+      ? [
+          ...(gl.data || []),
+          ...(gh.data || []),
+          ...(ghPr.data || []),
+        ]
+      : undefined;
   return {
     data,
-    isLoading: gl.isLoading || gh.isLoading,
-    error: gl.error || gh.error || null,
-    sources: { gitlab: gl, github: gh },
+    isLoading: gl.isLoading || gh.isLoading || ghPr.isLoading,
+    error: gl.error || gh.error || ghPr.error || null,
+    sources: { gitlab: gl, github: gh, githubPrSynth: ghPr },
   };
 }
