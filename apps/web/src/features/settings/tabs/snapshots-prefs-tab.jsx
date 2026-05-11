@@ -1,6 +1,7 @@
 "use client";
 
-import { Card, Field, Input, Section } from "@/components/ui";
+import { Button, Card, Field, Input, MonoLabel, Section } from "@/components/ui";
+import { clearAutoSnapshots, useBackfill } from "@/features/snapshots";
 
 const EXPLICIT_NOT = [
   [
@@ -24,7 +25,10 @@ const EXPLICIT_NOT = [
 export function SnapshotsPrefsTab() {
   return (
     <>
-      <Section num="01 /" title="Snapshot schedule">
+      <Section num="01 /" title="Cycle history">
+        <BackfillCard />
+      </Section>
+      <Section num="02 /" title="Snapshot schedule">
         <Card className="p-6">
           <div className="grid grid-cols-2 gap-5">
             <Field
@@ -49,7 +53,7 @@ export function SnapshotsPrefsTab() {
           </div>
         </Card>
       </Section>
-      <Section num="02 /" title="What we explicitly do not do">
+      <Section num="03 /" title="What we explicitly do not do">
         <Card className="p-6">
           {EXPLICIT_NOT.map(([title, body]) => (
             <div
@@ -68,5 +72,105 @@ export function SnapshotsPrefsTab() {
         </Card>
       </Section>
     </>
+  );
+}
+
+/**
+ * Manual backfill control. The top-of-page BackfillBanner already
+ * surfaces this when `missingWeeks > 0`, but the banner self-hides
+ * once history is covered (and is easy to dismiss-by-scrolling-past).
+ * Settings is a more discoverable home for re-running the synthesis
+ * on demand, e.g. after a fresh GitHub reconnect that newly populated
+ * the events feed.
+ *
+ * The button is idempotent: with zero missing weeks the click is a
+ * no-op. We disable it explicitly in that state so the user doesn't
+ * wonder whether something fired silently.
+ */
+function BackfillCard() {
+  const { run, isRunning, progress, missingWeeks } = useBackfill();
+  const hasMissing = missingWeeks > 0;
+
+  // Reset path — wipes AUTO snapshots so a previous bad backfill (e.g.
+  // ran while a data source was returning empty) can be re-synthesised
+  // from scratch. Manual snapshots are preserved. The follow-up run()
+  // re-enumerates from a freshly-cleared store so every completed week
+  // re-enters the work queue.
+  const handleResetAndRebackfill = () => {
+    if (isRunning) return;
+    if (
+      !window.confirm(
+        "Delete all auto-captured snapshots and re-synthesise from your current connected data? Manual snapshots will be preserved.",
+      )
+    ) {
+      return;
+    }
+    clearAutoSnapshots();
+    void run();
+  };
+
+  return (
+    <Card className="p-6">
+      <div className="flex items-start justify-between gap-6">
+        <div className="max-w-[560px]">
+          <MonoLabel>
+            {hasMissing
+              ? `${missingWeeks} week${missingWeeks === 1 ? "" : "s"} missing`
+              : "All clear"}
+          </MonoLabel>
+          <div
+            className="mt-2 font-semibold"
+            style={{ fontFamily: "var(--font-display)", fontSize: 17 }}
+          >
+            Synthesise weekly snapshots from connected data
+          </div>
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted-fg">
+            Walks every completed Sun → Thu week of the current year and
+            generates a snapshot for any that don&apos;t already have one,
+            using whatever your providers return for that window. Weeks older
+            than ~90 days are marked <em>partial</em> because the GitHub
+            events feed only reaches that far back — heatmap and reviews-given
+            numbers for those weeks will read as 0, flagged as unavailable
+            rather than zero-effort.
+          </p>
+          <p className="mt-2 text-[12px] leading-[1.5] text-dim-fg">
+            If a previous backfill ran while a provider was unreachable, the
+            saved weeks will be all-zero auto snapshots. Use{" "}
+            <span className="text-fg">Reset &amp; re-backfill</span> to wipe
+            those (manual snapshots are kept) and run again against the
+            current live data.
+          </p>
+          {isRunning && progress ? (
+            <div
+              className="mt-3 inline-flex items-center gap-2 text-[12px]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              <span className="block h-[6px] w-[6px] animate-pulse rounded-full bg-accent" />
+              Building week {progress.done} of {progress.total}…
+            </div>
+          ) : null}
+        </div>
+        <div className="flex flex-col items-stretch gap-2">
+          <Button
+            onClick={() => run()}
+            disabled={isRunning || !hasMissing}
+            title={
+              !hasMissing
+                ? "Every completed week already has a snapshot — use Reset & re-backfill to redo from scratch."
+                : undefined
+            }
+          >
+            {isRunning ? "Running…" : "Backfill now"}
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={handleResetAndRebackfill}
+            disabled={isRunning}
+          >
+            Reset &amp; re-backfill
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }

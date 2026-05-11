@@ -4,6 +4,7 @@ export {
   saveSnapshot,
   applyPulledSnapshot,
   clearSnapshots,
+  clearAutoSnapshots,
 } from "./snapshots-store";
 export { SnapshotsPage } from "./snapshots-page";
 export { useAutoSnapshot } from "./use-auto-snapshot";

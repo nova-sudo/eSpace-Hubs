@@ -1,5 +1,51 @@
 import { proxyFetch } from "./proxy-fetch";
-import { readIntegrations } from "../integrations-store";
+import { readIntegrations, saveConnection } from "../integrations-store";
+
+/**
+ * Resolve the connected user's GitHub login.
+ *
+ * Reads from localStorage first (populated by the OAuth callback after a
+ * successful `/user` lookup). When it's missing — which happens for users
+ * who connected before the M-CAP content-encoding hotfix, because that bug
+ * silently broke the callback's profile fetch — we recover by calling
+ * `/user` here and back-filling the local cache so this branch only runs
+ * once per browser.
+ *
+ * The recovery promise is memoised at module scope so the dozen-ish tiles
+ * that hit `myEventsSince` in parallel on a fresh page load share a single
+ * `/user` round-trip instead of dog-piling the proxy. The promise is
+ * cleared on success so a later disconnect+reconnect can re-recover if
+ * needed.
+ */
+let _usernameRecoveryPromise = null;
+async function resolveGithubUsername() {
+  const stored = readIntegrations().github?.username;
+  if (stored) return stored;
+  if (!_usernameRecoveryPromise) {
+    _usernameRecoveryPromise = (async () => {
+      try {
+        const me = await proxyFetch("github", "user");
+        if (!me?.login) {
+          throw new Error(
+            "GitHub /user returned no login — reconnect required.",
+          );
+        }
+        // Persist locally + mirror to the server-side integrations row.
+        saveConnection("github", {
+          username: me.login,
+          displayName: me.name,
+          avatarUrl: me.avatar_url,
+        });
+        return me.login;
+      } finally {
+        // Don't pin a permanent reference — let a future disconnect or
+        // forced re-fetch re-enter this path.
+        _usernameRecoveryPromise = null;
+      }
+    })();
+  }
+  return _usernameRecoveryPromise;
+}
 
 export const githubApi = {
   me: () => proxyFetch("github", "user"),
@@ -33,12 +79,15 @@ export const githubApi = {
    * User's public event stream since isoDate. GitHub caps this at the last
    * ~300 events (90 days max) regardless of `since`, which is fine for the
    * dashboard's 30/90d windows.
+   *
+   * Self-heals the local `github.username` cache via `resolveGithubUsername`
+   * if it's missing — historically a user who connected before the
+   * content-encoding hotfix would have a token but no username, and every
+   * events-driven tile (Activity / Signal / Heatmap / Reviews) would
+   * silently return empty.
    */
-  myEventsSince: (_isoDate) => {
-    const username = readIntegrations().github?.username;
-    if (!username) {
-      throw new Error("GitHub username unknown — reconnect to populate it");
-    }
+  myEventsSince: async (_isoDate) => {
+    const username = await resolveGithubUsername();
     return proxyFetch(
       "github",
       `users/${encodeURIComponent(username)}/events/public?per_page=100`,
