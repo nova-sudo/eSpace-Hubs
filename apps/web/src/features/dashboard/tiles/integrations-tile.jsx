@@ -2,18 +2,26 @@
 
 import Link from "next/link";
 import { BentoTile } from "@/components/ui";
-import { PROVIDERS, useIntegrations } from "@/features/integrations";
-import { useHubLink } from "@/features/hubs";
+import { useIntegrations } from "@/features/integrations";
+import { useAllowedProviders, useHubLink } from "@/features/hubs";
 
 export function IntegrationsTile() {
-  const { integrations, isConnected, connectedProviders } = useIntegrations();
+  const { integrations, isConnected } = useIntegrations();
   const link = useHubLink();
+  // M10.4: only count + show providers the active hub allows. The
+  // "connected" status comes from the global integrations store (a
+  // connection made under another hub still counts as connected when
+  // the user switches back to that hub), but the tile's denominator
+  // is the hub's allowed set so the ratio reads as "X / Y for this hub".
+  const allowed = useAllowedProviders();
+  const allowedIds = new Set(allowed.map((p) => p.id));
+  const connectedHere = Array.from(allowedIds).filter((id) => isConnected(id));
 
   return (
     <BentoTile
       col="span 3"
       row="span 2"
-      label={`Integrations · ${connectedProviders.length} / ${Object.keys(PROVIDERS).length}`}
+      label={`Integrations · ${connectedHere.length} / ${allowed.length}`}
       right={
         <Link
           href={link("/settings")}
@@ -25,7 +33,7 @@ export function IntegrationsTile() {
       }
     >
       <div className="mt-1 flex flex-col gap-2">
-        {Object.values(PROVIDERS).map((p) => {
+        {allowed.map((p) => {
           const connected = isConnected(p.id);
           const meta = integrations[p.id];
           return (
