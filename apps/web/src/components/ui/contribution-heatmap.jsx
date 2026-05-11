@@ -39,15 +39,23 @@ export function ContributionHeatmap({
   cellGap = 3,
   className = "",
 }) {
-  // Build "yyyy-mm-dd" → count map. Slice on the ISO string keeps us in
-  // the user's local-equivalent UTC day; good enough for daily buckets.
+  // Build "yyyy-mm-dd" → count map keyed in the user's LOCAL time.
+  //
+  // We can't use `ts.slice(0, 10)` here: that's the UTC date. The grid
+  // cells below are generated from `isoDay(day)` where `day` is a Date
+  // with local components, so a UTC-keyed lookup will miss any event
+  // that sits in a different calendar day across the local-vs-UTC
+  // offset (e.g. an event at 23:30Z on May 10 belongs in the May 11
+  // cell for a Cairo user, but `slice(0,10)` returns "2026-05-10").
   const byDay = useMemo(() => {
     const map = new Map();
     for (const e of events || []) {
-      const ts = e?.created_at || "";
-      if (typeof ts !== "string" || ts.length < 10) continue;
-      const day = ts.slice(0, 10);
-      map.set(day, (map.get(day) || 0) + 1);
+      const ts = e?.created_at;
+      if (!ts) continue;
+      const d = new Date(ts);
+      if (Number.isNaN(d.getTime())) continue;
+      const key = isoDay(d);
+      map.set(key, (map.get(key) || 0) + 1);
     }
     return map;
   }, [events]);

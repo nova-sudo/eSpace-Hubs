@@ -53,13 +53,21 @@ export function HeatmapTile() {
 /**
  * Peak events on any single day in the window. Used in the tile label
  * so the user has a sense of scale without needing to read every cell.
+ *
+ * Uses LOCAL-time date keys (not `created_at.slice(0,10)`, which is UTC)
+ * so the count matches the user's notion of "a day" — and matches the
+ * line-chart Activity tile, which buckets in local time too. With a UTC
+ * key, events from the early-morning UTC hours straddle the wrong
+ * calendar day for any user east of UTC and the peak undercounts.
  */
 function computePeak(events) {
   const byDay = new Map();
   for (const e of events) {
-    const day = (e?.created_at || "").slice(0, 10);
-    if (!day) continue;
-    byDay.set(day, (byDay.get(day) || 0) + 1);
+    if (!e?.created_at) continue;
+    const d = new Date(e.created_at);
+    if (Number.isNaN(d.getTime())) continue;
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    byDay.set(key, (byDay.get(key) || 0) + 1);
   }
   let max = 0;
   for (const v of byDay.values()) if (v > max) max = v;
