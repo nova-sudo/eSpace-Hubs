@@ -33,6 +33,7 @@ import { hashPassword } from "../src/lib/argon2.js";
 import { writeAudit } from "../src/lib/audit.js";
 import { logger } from "../src/lib/logger.js";
 import type { User } from "../src/db/types.js";
+import { DEFAULT_HUB_ID, HUB_ORDER } from "@espace-devhub/shared/hubs";
 
 interface Args {
   email: string;
@@ -162,6 +163,12 @@ async function main(): Promise<void> {
     lastLoginAt: null,
     failedLoginAttempts: 0,
     lockedUntil: null,
+    // Bootstrap admin lands with access to every hub by default —
+    // they're the org's first user and the most likely candidate to
+    // visit any hub for setup work. Onboarding (M-OB) and the admin
+    // config UI (M10.5) refine this for everyone else.
+    allowedHubs: [...HUB_ORDER],
+    primaryHub: DEFAULT_HUB_ID,
   } as unknown as User;
 
   await users.insertOne(draft);
