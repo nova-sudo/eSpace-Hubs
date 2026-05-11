@@ -89,4 +89,16 @@ export interface PublicUser {
   totpEnrolled: boolean;
   createdAt: string;
   lastLoginAt: string | null;
+  /**
+   * Onboarding state — null until the user submits the M-OB form.
+   * Frontend AuthGuard reads this to decide whether to trap the
+   * user at /onboarding.
+   */
+  onboardingCompletedAt: string | null;
+  /** User-entered employee identifier; null pre-onboarding. */
+  employeeId: string | null;
+  /** Department label picked during onboarding; drives hub assignment. */
+  department: string | null;
+  /** Convenience for the frontend — the user's primary hub id, if set. */
+  primaryHub: string | null;
 }

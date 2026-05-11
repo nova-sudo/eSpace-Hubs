@@ -73,6 +73,17 @@ export const usersValidator: Document = {
         maxItems: 32,
       },
       primaryHub: { bsonType: ["string", "null"], maxLength: 64 },
+      // M-OB: onboarding state. Optional everywhere — null/missing
+      // for invited users who haven't completed onboarding yet; set
+      // to a Date once they submit the form. The AuthGuard reads
+      // this to decide whether to trap the user at /onboarding.
+      onboardingCompletedAt: { bsonType: ["date", "null"] },
+      // Employee profile fields collected by the onboarding form.
+      // Department drives hub assignment via the registry's
+      // departments mapping. Both nullable so pre-M-OB users still
+      // validate.
+      employeeId: { bsonType: ["string", "null"], maxLength: 64 },
+      department: { bsonType: ["string", "null"], maxLength: 200 },
     },
   },
 };
