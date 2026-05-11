@@ -4,7 +4,7 @@
  * Client-side orchestrator for a classification run.
  *
  * Responsibilities:
- *   - POST the current goal tree to /api/classify-goals
+ *   - POST the current goal tree to /api/v1/ai/classify-goals
  *   - Parse the NDJSON stream line-by-line
  *   - Push each event into local React state (so the analyst page can
  *     render a live process log)
@@ -223,8 +223,9 @@ export function useClassifyGoals() {
           typeof localStorage !== "undefined"
             ? localStorage.getItem("espace-devhub:ai-provider") || "mistral"
             : "mistral";
-        const res = await fetch("/api/classify-goals", {
+        const res = await fetch("/api/v1/ai/classify-goals", {
           method: "POST",
+          credentials: "include",
           headers: {
             "Content-Type": "application/json",
             "x-ai-provider": provider,
@@ -235,7 +236,9 @@ export function useClassifyGoals() {
         if (!res.ok) {
           const errBody = await res.json().catch(() => ({}));
           throw new Error(
-            errBody?.error || `Classifier responded ${res.status}`,
+            errBody?.error?.message ||
+              errBody?.error ||
+              `Classifier responded ${res.status}`,
           );
         }
         if (!res.body) {

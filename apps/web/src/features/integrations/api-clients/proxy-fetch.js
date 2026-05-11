@@ -1,32 +1,58 @@
-import { readIntegrations } from "../integrations-store";
-
 /**
- * Browser → Next.js proxy fetcher.
+ * Browser → API service proxy fetcher.
  *
- * Tokens live in localStorage; we attach them to a request to our own
- * `/api/{provider}/*` route, which forwards upstream. This dodges CORS on
- * self-hosted GitLab and Jira Cloud, and keeps the Next.js server stateless.
+ * Post-M7.9c: hits the API service's encrypted-at-rest proxy
+ *   GET /api/v1/integrations/proxy/<providerId>/<rest of path>
+ * The API decrypts the user's token in-process (it never touches the
+ * browser), forwards to the upstream provider, and streams the
+ * response back through an allowlist of safe headers.
+ *
+ * Auth: the session cookie is sent via `credentials: "include"` (the
+ * Next.js rewrite proxies /api/v1/* to localhost:4000 same-origin in
+ * dev). The API rejects with 401 unauthenticated/totp_required if
+ * the session is missing — those errors bubble up to the caller as
+ * thrown Errors, matching the pre-M7.9c contract.
+ *
+ * Pre-M7.9c shape (deleted): we used to read the plaintext token
+ * from localStorage and ship it as `x-devhub-token` to a Next.js
+ * proxy route. That pattern defeated the M6 encryption-at-rest
+ * design and is now retired.
  */
 export async function proxyFetch(providerId, path, init = {}) {
-  const creds = readIntegrations()[providerId];
-  if (!creds) throw new Error(`Not connected to ${providerId}`);
+  if (!providerId) throw new Error("proxyFetch: providerId is required");
+  const cleanPath = String(path || "").replace(/^\//, "");
+  const url = `/api/v1/integrations/proxy/${providerId}/${cleanPath}`;
 
+  const method = (init.method || "GET").toUpperCase();
   const headers = new Headers(init.headers || {});
-  headers.set("x-devhub-provider", providerId);
-  if (creds.accessToken) headers.set("x-devhub-token", creds.accessToken);
-  if (creds.apiToken) {
-    headers.set("x-devhub-api-token", creds.apiToken);
-    if (creds.email) headers.set("x-devhub-email", creds.email);
+  // POST bodies stay JSON-shaped — keep callers' existing convention.
+  if (method !== "GET" && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "application/json");
   }
 
-  const res = await fetch(`/api/${providerId}/${path.replace(/^\//, "")}`, {
-    ...init,
+  const res = await fetch(url, {
+    method,
+    credentials: "include",
     headers,
+    ...(init.body !== undefined ? { body: init.body } : {}),
   });
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`${providerId} ${res.status}: ${text.slice(0, 200)}`);
+    let detail = "";
+    try {
+      const text = await res.text();
+      // Surface the API's structured error message when present.
+      const parsed = text ? JSON.parse(text) : null;
+      detail = parsed?.error?.message || parsed?.message || text.slice(0, 200);
+    } catch {
+      /* ignore parse errors — empty detail is fine */
+    }
+    throw new Error(
+      `${providerId} ${res.status}${detail ? `: ${detail}` : ""}`,
+    );
   }
   return res.json();
 }

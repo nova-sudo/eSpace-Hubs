@@ -6,8 +6,8 @@
  * makes it instant, offline-friendly, and predictable.
  *
  * Optional AI-polish path lives in the tile that uses this output (the
- * tile calls `/api/chat` with this paragraph as input, asking for a
- * tonal pass). We keep that out of this module so the function stays
+ * tile calls `/api/v1/ai/chat` with this paragraph as input, asking for
+ * a tonal pass). We keep that out of this module so the function stays
  * synchronous and pure.
  *
  * Tone rules (chosen deliberately to match the dashboard's "calm,

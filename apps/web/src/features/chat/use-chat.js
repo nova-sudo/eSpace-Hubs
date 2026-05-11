@@ -2,7 +2,7 @@
 
 /**
  * Chat feature — client-only store for the conversation + a thin wrapper
- * around the `/api/chat` server route that proxies to Mistral.
+ * around the API service's `/api/v1/ai/chat` endpoint.
  *
  * Messages persist to localStorage so reopening the chat keeps the thread.
  * A custom event + `useSyncExternalStore` lets multiple hooks subscribe
@@ -101,7 +101,7 @@ export function clearMessages() {
 const CONTEXT_WINDOW_TURNS = 12;
 
 /**
- * Send the current thread to the chat backend (`/api/chat` → Mistral) and
+ * Send the current thread to the chat backend (`/api/v1/ai/chat`) and
  * return the assistant's reply as a string. Throws on network / API
  * failures — the UI catches and shows the message in an assistant bubble.
  *
@@ -133,8 +133,9 @@ export async function sendChatMessage(_userMessage) {
       ? localStorage.getItem("espace-devhub:ai-provider") || "mistral"
       : "mistral";
 
-  const res = await fetch("/api/chat", {
+  const res = await fetch("/api/v1/ai/chat", {
     method: "POST",
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       "x-ai-provider": provider,
@@ -144,7 +145,7 @@ export async function sendChatMessage(_userMessage) {
 
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(body?.error || `Chat API ${res.status}`);
+    throw new Error(body?.error?.message || body?.error || `Chat API ${res.status}`);
   }
   if (!body?.content) {
     throw new Error("Chat API returned an empty reply.");

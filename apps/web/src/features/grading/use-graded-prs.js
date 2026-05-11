@@ -9,8 +9,9 @@
  *   2. For each PR, check the local verdict cache keyed on
  *      `(prId, rubricHash)`. Cache hit → done for that PR.
  *   3. For cache misses, fetch the PR body + comments via
- *      `githubApi.pullDetails`, then POST to `/api/grade-pr`. Concurrency
- *      is capped so we don't thrash Mistral's rate limits.
+ *      `githubApi.pullDetails`, then POST to `/api/v1/ai/grade-pr`. The
+ *      concurrency cap is wired into the loop, not the endpoint — keeps
+ *      us from thrashing the upstream model's rate limits.
  *   4. Verdicts are persisted in `grading-store` as each comes back; the
  *      widget re-renders from the store in the same tick.
  *
@@ -202,8 +203,9 @@ export function useGradedPrs(spec) {
               typeof localStorage !== "undefined"
                 ? localStorage.getItem("espace-devhub:ai-provider") || "mistral"
                 : "mistral";
-            const res = await fetch("/api/grade-pr", {
+            const res = await fetch("/api/v1/ai/grade-pr", {
               method: "POST",
+              credentials: "include",
               headers: {
                 "Content-Type": "application/json",
                 "x-ai-provider": aiProvider,
@@ -227,7 +229,7 @@ export function useGradedPrs(spec) {
               // the UI can surface it.
               saveVerdict(pr.id, hash, {
                 pass: false,
-                reasoning: `Grading failed: ${body?.error || res.status}`,
+                reasoning: `Grading failed: ${body?.error?.message || body?.error || res.status}`,
                 violations: [],
                 errored: true,
               });

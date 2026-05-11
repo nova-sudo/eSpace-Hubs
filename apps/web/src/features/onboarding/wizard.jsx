@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button, Card, Field, Input, MonoLabel } from "@/components/ui";
 import { saveConnection } from "@/features/integrations";
+import { proxyFetch } from "@/features/integrations/api-clients/proxy-fetch";
 import { startGitHubOAuth } from "@/lib/oauth-pkce";
 
 const STEPS = ["jira", "gitlab", "github"];
@@ -24,20 +25,24 @@ export function Wizard() {
         toast.error("Email and API token required.");
         return;
       }
+      if (!jira.url) {
+        toast.error("Atlassian workspace URL required.");
+        return;
+      }
       setLoading(true);
       try {
-        saveConnection("jira", { email: jira.email, apiToken: jira.token });
-        const res = await fetch("/api/jira/myself", {
-          headers: {
-            "x-devhub-api-token": jira.token,
-            "x-devhub-email": jira.email,
-          },
-        });
-        if (!res.ok) throw new Error(`Jira rejected credentials (${res.status})`);
-        const me = await res.json();
-        saveConnection("jira", {
+        // Save + await the mirror so the encrypted credential lands
+        // server-side before we hit the proxy to validate it.
+        await saveConnection("jira", {
           email: jira.email,
           apiToken: jira.token,
+          endpointUrl: jira.url,
+        });
+        const me = await proxyFetch("jira", "myself");
+        await saveConnection("jira", {
+          email: jira.email,
+          apiToken: jira.token,
+          endpointUrl: jira.url,
           username: me.emailAddress || me.name || jira.email,
           displayName: me.displayName,
         });
@@ -53,16 +58,20 @@ export function Wizard() {
         toast.error("GitLab PAT required.");
         return;
       }
+      if (!gitlab.url) {
+        toast.error("GitLab URL required.");
+        return;
+      }
       setLoading(true);
       try {
-        saveConnection("gitlab", { accessToken: gitlab.token });
-        const res = await fetch("/api/gitlab/user", {
-          headers: { "x-devhub-token": gitlab.token },
-        });
-        if (!res.ok) throw new Error(`GitLab rejected the token (${res.status})`);
-        const me = await res.json();
-        saveConnection("gitlab", {
+        await saveConnection("gitlab", {
           accessToken: gitlab.token,
+          endpointUrl: gitlab.url,
+        });
+        const me = await proxyFetch("gitlab", "user");
+        await saveConnection("gitlab", {
+          accessToken: gitlab.token,
+          endpointUrl: gitlab.url,
           username: me.username,
           displayName: me.name,
           avatarUrl: me.avatar_url,
