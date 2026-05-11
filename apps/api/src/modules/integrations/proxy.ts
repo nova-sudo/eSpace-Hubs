@@ -18,10 +18,20 @@
  * inflating memory.
  *
  * Header pass-through is allowlist-only. We forward content-type,
- * content-encoding, pagination, and rate-limit signals; we DROP
- * set-cookie / www-authenticate / server / etc. — the upstream's
- * cookies aren't ours to relay, and the client doesn't need its
- * Server fingerprint.
+ * pagination, and rate-limit signals; we DROP set-cookie /
+ * www-authenticate / server / etc. — the upstream's cookies aren't
+ * ours to relay.
+ *
+ * IMPORTANT: We do NOT pass through `content-encoding` or
+ * `content-length`. Node's fetch (undici) automatically decompresses
+ * gzipped/brotli upstream responses before exposing `response.body`
+ * to our code, so the bytes we stream to the client are already
+ * plaintext. Forwarding the original `content-encoding: gzip` header
+ * would tell the browser "decompress me" → browser tries to gunzip
+ * plaintext JSON → fails. content-length is similarly stale because
+ * the decompressed length differs from the on-the-wire compressed
+ * length. Node sets `transfer-encoding: chunked` automatically when
+ * we pipe a stream, which is the correct framing.
  *
  * Methods: GET + POST only, matching the localStorage-era Next.js
  * proxy. PUT/PATCH/DELETE aren't used by any current call site;
@@ -38,11 +48,20 @@ import {
   markIntegrationUsed,
 } from "./controller.js";
 
-/** Headers we forward from upstream → client. Everything else is
- *  dropped (defensive — never echo Set-Cookie, never leak Server). */
+/**
+ * Headers we forward from upstream → client. Everything else is
+ * dropped (defensive — never echo Set-Cookie, never leak Server).
+ *
+ * Deliberately NOT in this list:
+ *   content-encoding / content-length — undici decompresses upstream
+ *     gzipped responses before we see them. The bytes we stream to
+ *     the client are plaintext; passing the original gzip header
+ *     would tell the browser to decompress already-decompressed data
+ *     and fail. Node's response sets transfer-encoding: chunked
+ *     automatically when we pipe a stream.
+ */
 const PASSTHROUGH_RESPONSE_HEADERS = new Set([
   "content-type",
-  "content-encoding",
   "content-language",
   "etag",
   "last-modified",
