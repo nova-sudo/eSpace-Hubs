@@ -130,6 +130,39 @@ export function updateSnapshotNote(week, note) {
   void mirrorPatchSnapshotNote(week, note);
 }
 
+/**
+ * No-mirror save path. Used by the pull-on-session sync (M7.3) so
+ * server-sourced snapshots don't trigger a mirror back to the server —
+ * which would cause a feedback loop:
+ *   pull → saveSnapshot (writes + POSTs back) → server writes again
+ *        → next pull fetches them again → repeat.
+ *
+ * Same conflict-resolution rules as saveSnapshot (manual wins over
+ * auto for the same week). Single difference: skips the mirror call.
+ *
+ * Other mirror-mode stores (goals, grading, goal-specs, goal-context,
+ * goal-inputs) all expose an equivalent no-mirror path. Snapshots
+ * missed it until the loop manifested in a busy session.
+ */
+export function applyPulledSnapshot(snapshot) {
+  const incoming = normaliseSnapshot(snapshot);
+  if (!incoming || !incoming.week) return;
+  const all = readSnapshots();
+  const existing = all.find((s) => s.week === incoming.week);
+  if (
+    existing &&
+    existing.capturedBy === "manual" &&
+    incoming.capturedBy === "auto"
+  ) {
+    return;
+  }
+  const filtered = all.filter((s) => s.week !== incoming.week);
+  const next = [incoming, ...filtered]
+    .sort((a, b) => b.week.localeCompare(a.week))
+    .slice(0, 60);
+  writeAll(next);
+}
+
 export function clearSnapshots() {
   writeAll([]);
 }
