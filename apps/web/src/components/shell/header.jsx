@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { LogoMark } from "./logo-mark";
 import { AnalystActivator } from "@/features/analyst";
 import { useIntegrations } from "@/features/integrations";
+import { UserChip } from "@/features/auth";
 import { cn } from "@/lib/cn";
 
 const NAV = [
@@ -18,7 +19,7 @@ const VERSION = "v0.3.1";
 
 export function Header() {
   const pathname = usePathname();
-  const { connectedProviders, me } = useIntegrations();
+  const { connectedProviders } = useIntegrations();
   const isLive = connectedProviders.length > 0;
 
   return (
@@ -89,15 +90,9 @@ export function Header() {
         </div>
         {/* Inverse-themed activator — opens the accent-ground analyst page. */}
         <AnalystActivator />
-        <div className="flex items-center gap-2 rounded-full border border-border py-1 pl-1 pr-3">
-          <div
-            className="grid h-6 w-6 place-items-center rounded-full bg-accent font-bold text-accent-on"
-            style={{ fontSize: 11 }}
-          >
-            {me?.initials ?? "?"}
-          </div>
-          <div className="text-[12px] font-semibold">{me?.name ?? "Sign in"}</div>
-        </div>
+        {/* Session-aware chip with logout dropdown. Falls back to the
+            integrations-derived identity in pure-localStorage mode. */}
+        <UserChip />
       </div>
     </header>
   );
