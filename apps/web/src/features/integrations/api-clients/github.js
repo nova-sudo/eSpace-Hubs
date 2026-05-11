@@ -131,9 +131,17 @@ export const githubApi = {
       }
       if (!Array.isArray(batch) || batch.length === 0) break;
       all.push(...batch);
-      // Page wasn't filled → we already have every event GitHub will
-      // return; further requests just yield empty arrays.
-      if (batch.length < PER_PAGE) break;
+      // NOTE: we do NOT short-circuit on `batch.length < PER_PAGE`.
+      // GitHub's `/users/:u/events/public` regularly returns 99
+      // (or fewer) events on a page that still has a `Link:
+      // rel="next"` — events from private repos that have since
+      // been flipped public, or vice-versa, leave gaps that the
+      // count doesn't reveal. The authoritative end-of-stream
+      // signal is the 422 caught above OR an empty array. The
+      // older heuristic dropped page 3 entirely on busy accounts
+      // (verified on the wire: page 2 = 99, but page 3 had a
+      // full 100 events of older data).
+      //
       // Oldest event on this page is already past the caller's window
       // → no need to walk further into history.
       if (cutoffMs > 0) {
