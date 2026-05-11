@@ -1,5 +1,10 @@
 export { useSnapshots, useSnapshotNow } from "./use-snapshots";
-export { readSnapshots, saveSnapshot, clearSnapshots } from "./snapshots-store";
+export {
+  readSnapshots,
+  saveSnapshot,
+  applyPulledSnapshot,
+  clearSnapshots,
+} from "./snapshots-store";
 export { SnapshotsPage } from "./snapshots-page";
 export { useAutoSnapshot } from "./use-auto-snapshot";
 export { captureGoalReadings } from "./capture-readings";
