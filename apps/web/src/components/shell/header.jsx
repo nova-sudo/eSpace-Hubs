@@ -10,21 +10,59 @@ import { useActiveHub } from "@/features/hubs";
 import { cn } from "@/lib/cn";
 
 /**
- * Nav slots. Each entry maps to a hub `pages.<slot>` symbolic id;
- * the link href is computed from the active hub's prefix at render
- * time. Slots a hub doesn't expose (missing from its `pages` map)
- * are silently hidden.
+ * Slot → nav label + subpath. Drives the header's nav rendering.
+ * The active hub's `pages` map decides which slots actually appear
+ * (slots not in `hub.pages` are silently hidden).
  *
- * `dashboard` is the home of each hub. We highlight it on the
- * drill-down routes (reviews, snapshots) as well, mirroring the
- * pre-M10.2 behaviour for Dev Hub.
+ * Order here is the order on screen. Admin slots come after the
+ * generic ones; the admin hub's nav reads naturally as
+ *   Dashboard · Hubs · Users · Audit · Settings
+ *
+ * Adding a slot to a hub now means: register it in the shared hub
+ * registry (`pages.<slot>`) + add a route file + add an entry here
+ * (or below in DASHBOARD_LABELS if it needs a hub-specific label).
  */
 const NAV_ITEMS = [
-  { slot: "dashboard", label: "Performance", subpath: "" },
-  { slot: "goals", label: "Goals", subpath: "/goals" },
-  { slot: "evidence", label: "Evidence", subpath: "/evidence" },
-  { slot: "settings", label: "Settings", subpath: "/settings" },
+  { slot: "dashboard", subpath: "" },
+  { slot: "goals", subpath: "/goals" },
+  { slot: "evidence", subpath: "/evidence" },
+  { slot: "hub-config", subpath: "/hub-config" },
+  { slot: "users", subpath: "/users" },
+  { slot: "audit", subpath: "/audit" },
+  { slot: "settings", subpath: "/settings" },
 ];
+
+/**
+ * Default labels per slot. Hub-specific overrides live in
+ * HUB_SLOT_LABEL_OVERRIDES below — Dev's dashboard reads as
+ * "Performance" (its longstanding name); admin's reads as "Overview";
+ * everyone else falls back to "Dashboard".
+ */
+const DEFAULT_LABELS = {
+  dashboard: "Dashboard",
+  goals: "Goals",
+  evidence: "Evidence",
+  "hub-config": "Hubs",
+  users: "Users",
+  audit: "Audit",
+  settings: "Settings",
+  reviews: "Reviews",
+  snapshots: "Snapshots",
+};
+
+const HUB_SLOT_LABEL_OVERRIDES = {
+  dev: { dashboard: "Performance" },
+  admin: { dashboard: "Overview" },
+  qa: { dashboard: "Overview" },
+  manager: { dashboard: "Team" },
+};
+
+function labelFor(slot, hubId) {
+  const hubOverride = HUB_SLOT_LABEL_OVERRIDES[hubId];
+  return (
+    (hubOverride && hubOverride[slot]) ?? DEFAULT_LABELS[slot] ?? slot
+  );
+}
 
 const VERSION = "v0.3.1";
 
@@ -34,9 +72,8 @@ export function Header() {
   const isLive = connectedProviders.length > 0;
   const hub = useActiveHub();
 
-  // Build the hub-prefixed link for each nav slot. If we don't have an
-  // active hub (very brief loading window, or a top-level non-hub page
-  // somehow renders the header), fall back to root — the redirect at
+  // Build the hub-prefixed link for each nav slot. Without an active
+  // hub (brief loading window) fall back to root — the redirect at
   // `/` will route the user back to their primary hub.
   const hubPrefix = hub ? `/${hub.id}` : "";
 
@@ -64,16 +101,11 @@ export function Header() {
         </Link>
         <nav className="flex gap-0.5" style={{ fontFamily: "var(--font-mono)" }}>
           {NAV_ITEMS.map((item) => {
-            // Hide nav items the active hub doesn't expose. The dev
-            // hub exposes all four; QA in M10.1 only exposes dashboard
-            // / goals / evidence / settings so this is a no-op for
-            // both current hubs, but ready for future hubs that
-            // restrict their nav.
             if (hub && !hub.pages[item.slot]) return null;
-
+            const label = labelFor(item.slot, hub?.id);
             const href = `${hubPrefix}${item.subpath}` || "/";
             // Dashboard slot is the home tab — highlight on its
-            // drill-downs too.
+            // drill-downs too (reviews/snapshots for Dev).
             const dashboardHome = `${hubPrefix}` || "/";
             const active =
               item.slot === "dashboard"
@@ -92,7 +124,7 @@ export function Header() {
                     : "text-muted-fg hover:bg-accent-dim/60",
                 )}
               >
-                {item.label}
+                {label}
               </Link>
             );
           })}
@@ -116,8 +148,7 @@ export function Header() {
         </div>
         {/* Inverse-themed activator — opens the accent-ground analyst page. */}
         <AnalystActivator />
-        {/* Session-aware chip with logout dropdown. Falls back to the
-            integrations-derived identity in pure-localStorage mode. */}
+        {/* Session-aware chip with logout dropdown. */}
         <UserChip />
       </div>
     </header>

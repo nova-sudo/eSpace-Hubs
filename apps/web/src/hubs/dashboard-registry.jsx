@@ -19,6 +19,11 @@
 
 import { DashboardPage } from "@/features/dashboard";
 import { QaPlaceholder } from "@/hubs/qa";
+import {
+  AdminDashboard,
+  AdminHubConfig,
+  AdminPlaceholder,
+} from "@/hubs/admin";
 
 /**
  * Map of hubId → React component for the dashboard slot.
@@ -27,6 +32,8 @@ import { QaPlaceholder } from "@/hubs/qa";
 const DASHBOARDS = {
   dev: DashboardPage,
   qa: () => <QaPlaceholder slot="dashboard" />,
+  admin: AdminDashboard,
+  manager: () => <QaPlaceholder slot="dashboard" />, // placeholder; real UI later
 };
 
 /**
@@ -43,4 +50,24 @@ function DefaultDashboardPlaceholder() {
 
 export function getDashboardComponent(hubId) {
   return DASHBOARDS[hubId] ?? DefaultDashboardPlaceholder;
+}
+
+/**
+ * Admin-specific page-slot resolver. The admin hub uses unique slot
+ * ids (hub-config, users, audit) that don't exist in other hubs.
+ * Pages files for those slots dispatch through this map.
+ *
+ * Other hubs keep their per-slot page wiring inline in the route
+ * files (e.g. app/[hub]/reviews/page.jsx hard-codes PrReviewsPage).
+ * The admin hub uses a registry pattern because it has more slots
+ * and benefits from a single dispatch table.
+ */
+const ADMIN_SLOT_COMPONENTS = {
+  "hub-config": AdminHubConfig,
+  users: () => <AdminPlaceholder slot="users" />,
+  audit: () => <AdminPlaceholder slot="audit" />,
+};
+
+export function getAdminSlotComponent(slot) {
+  return ADMIN_SLOT_COMPONENTS[slot] ?? null;
 }
