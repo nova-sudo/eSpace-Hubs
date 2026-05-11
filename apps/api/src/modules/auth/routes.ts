@@ -28,6 +28,13 @@ import { Router } from "express";
 import { requireAuth } from "../../middleware/require-auth.js";
 import { requireRole } from "../../middleware/require-role.js";
 import {
+  inviteAcceptLimiter,
+  loginLimiter,
+  passwordResetLimiter,
+  passwordResetRequestLimiter,
+  totpLimiter,
+} from "../../middleware/rate-limit.js";
+import {
   acceptInviteHandler,
   inviteHandler,
   loginHandler,
@@ -44,17 +51,27 @@ import {
 export const authRouter: Router = Router();
 
 // ─── public ──────────────────────────────────────────────────────────
-authRouter.post("/login", loginHandler);
+// Rate-limited per IP. Per-account lockout (in the user document) is
+// the second layer; this is the per-source-IP layer that handles a
+// stuffing attack sweeping many accounts from one host.
+authRouter.post("/login", loginLimiter, loginHandler);
 authRouter.post("/logout", logoutHandler);
-authRouter.post("/accept-invite", acceptInviteHandler);
-authRouter.post("/password/reset-request", passwordResetRequestHandler);
-authRouter.post("/password/reset", passwordResetHandler);
+authRouter.post("/accept-invite", inviteAcceptLimiter, acceptInviteHandler);
+authRouter.post(
+  "/password/reset-request",
+  passwordResetRequestLimiter,
+  passwordResetRequestHandler,
+);
+authRouter.post("/password/reset", passwordResetLimiter, passwordResetHandler);
 
 // ─── partial session OK ──────────────────────────────────────────────
 // requireTotp:false lets a totpVerified:false session reach this route
 // (the entire purpose of the route is to flip that bit to true).
+// Rate-limited because this is step 2 of the public login flow — an
+// attacker who has a valid password+cookie still has to clear TOTP.
 authRouter.post(
   "/totp/verify",
+  totpLimiter,
   requireAuth({ requireTotp: false }),
   totpVerifyLoginHandler,
 );
