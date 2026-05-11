@@ -26,6 +26,10 @@ import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { encryptSecret, decryptSecret } from "../../lib/crypto-secret.js";
 import { emailService } from "../../lib/email.js";
 import {
+  renderInviteEmail,
+  renderPasswordResetEmail,
+} from "../../lib/email-templates.js";
+import {
   INVITE_TTL_MS,
   PASSWORD_RESET_TTL_MS,
   deleteTokensFor,
@@ -279,15 +283,31 @@ export { type ObjectId };
 // ─── POST /api/v1/auth/invite (admin-only) ───────────────────────────
 
 /**
+ * App origin used to build absolute URLs in outbound emails. Without
+ * this the invite/reset links would be relative — fine inside the app,
+ * useless in an email client.
+ *
+ * Set APP_URL (or NEXT_PUBLIC_APP_URL as a fallback) in production.
+ * Defaults to localhost:3000 for dev.
+ */
+function appOrigin(): string {
+  const raw =
+    process.env.APP_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    "http://localhost:3000";
+  return raw.replace(/\/$/, "");
+}
+
+/**
  * Public URL the user clicks to accept an invite. Frontend renders the
  * page; the page POSTs the token to /api/v1/auth/accept-invite.
  */
 function buildInviteUrl(token: string): string {
-  return `/accept-invite?token=${encodeURIComponent(token)}`;
+  return `${appOrigin()}/accept-invite?token=${encodeURIComponent(token)}`;
 }
 
 function buildPasswordResetUrl(token: string): string {
-  return `/password-reset?token=${encodeURIComponent(token)}`;
+  return `${appOrigin()}/password-reset?token=${encodeURIComponent(token)}`;
 }
 
 export async function inviteHandler(
@@ -362,20 +382,41 @@ export async function inviteHandler(
       userAgent: meta.ua,
     });
 
-    await emailService.send({
-      to: email,
-      subject: `You're invited to ${org.name}`,
-      body: [
-        `Hi ${displayName},`,
-        ``,
-        `You've been invited to join ${org.name} on eSpace Dev Hub.`,
-        `Click the link below to set your password and activate your account:`,
-        ``,
-        buildInviteUrl(plaintext),
-        ``,
-        `This link expires in 7 days.`,
-      ].join("\n"),
+    // Look up the inviter's display name for the email greeting.
+    // Best-effort — if it fails the template falls back to the
+    // generic "You're invited" wording.
+    let inviterDisplayName: string | null = null;
+    try {
+      const inviter = await users.findOne(
+        { _id: session.userId },
+        { projection: { displayName: 1 } },
+      );
+      inviterDisplayName = inviter?.displayName ?? null;
+    } catch {
+      /* non-fatal */
+    }
+
+    const expiresInDays = Math.round(INVITE_TTL_MS / (24 * 60 * 60 * 1000));
+    const inviteUrl = buildInviteUrl(plaintext);
+    const inviteEmail = renderInviteEmail({
+      displayName,
+      orgName: org.name,
+      acceptUrl: inviteUrl,
+      expiresInDays,
+      inviterDisplayName,
     });
+    const inviteResult = await emailService.send({
+      to: email,
+      subject: inviteEmail.subject,
+      text: inviteEmail.text,
+      html: inviteEmail.html,
+    });
+    if (!inviteResult.ok) {
+      logger.warn(
+        { email, reason: inviteResult.reason },
+        "[auth.invite] email send failed — token minted, user must be informed manually",
+      );
+    }
 
     await writeAudit({
       orgId: org._id,
@@ -518,20 +559,29 @@ export async function passwordResetRequestHandler(
         userAgent: meta.ua,
       });
 
-      await emailService.send({
-        to: email,
-        subject: "Reset your eSpace Dev Hub password",
-        body: [
-          `Hi ${user.displayName},`,
-          ``,
-          `A password reset was requested for your account.`,
-          `Click the link below to choose a new password:`,
-          ``,
-          buildPasswordResetUrl(plaintext),
-          ``,
-          `This link expires in 1 hour. If you didn't request this, ignore this email — your password will stay unchanged.`,
-        ].join("\n"),
+      const expiresInHours = Math.max(
+        1,
+        Math.round(PASSWORD_RESET_TTL_MS / (60 * 60 * 1000)),
+      );
+      const resetEmail = renderPasswordResetEmail({
+        displayName: user.displayName,
+        resetUrl: buildPasswordResetUrl(plaintext),
+        expiresInHours,
+        ip: meta.ip,
+        userAgent: meta.ua,
       });
+      const resetResult = await emailService.send({
+        to: email,
+        subject: resetEmail.subject,
+        text: resetEmail.text,
+        html: resetEmail.html,
+      });
+      if (!resetResult.ok) {
+        logger.warn(
+          { email, reason: resetResult.reason },
+          "[auth.password-reset] email send failed — token minted but not delivered",
+        );
+      }
 
       await writeAudit({
         orgId: user.orgId,
