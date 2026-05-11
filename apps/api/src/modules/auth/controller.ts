@@ -83,6 +83,14 @@ export function toPublicUser(u: User): PublicUser {
     totpEnrolled: !!u.totpSecret,
     createdAt: u.createdAt.toISOString(),
     lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
+    // M-OB fields. Null on pre-onboarding users; populated by the
+    // /api/v1/onboarding handler on submit.
+    onboardingCompletedAt: u.onboardingCompletedAt
+      ? u.onboardingCompletedAt.toISOString()
+      : null,
+    employeeId: u.employeeId ?? null,
+    department: u.department ?? null,
+    primaryHub: u.primaryHub ?? null,
   };
 }
 
@@ -369,10 +377,16 @@ export async function inviteHandler(
         failedLoginAttempts: 0,
         lockedUntil: null,
         // M10.1: every new invite lands with access to the default hub.
-        // Onboarding (M-OB) can broaden allowedHubs based on the
-        // user's department; admins can override later via M10.5.
+        // Onboarding (M-OB) replaces this with the department-resolved
+        // hub when the user submits the form. Admins can override later
+        // via M10.5.
         allowedHubs: [DEFAULT_HUB_ID],
         primaryHub: DEFAULT_HUB_ID,
+        // M-OB: explicit null so the AuthGuard knows to trap this
+        // user at /onboarding on first authenticated load.
+        onboardingCompletedAt: null,
+        employeeId: null,
+        department: null,
       } as unknown as User;
       await users.insertOne(draft);
       user = draft;

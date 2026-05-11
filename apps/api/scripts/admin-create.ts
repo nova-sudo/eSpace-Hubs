@@ -169,6 +169,13 @@ async function main(): Promise<void> {
     // config UI (M10.5) refine this for everyone else.
     allowedHubs: [...HUB_ORDER],
     primaryHub: DEFAULT_HUB_ID,
+    // Bootstrap admin skips onboarding — the M-OB form gates regular
+    // users at /onboarding when this is null. The admin's profile
+    // fields (employeeId, department) stay null; the admin UI for
+    // managing user profiles will let them edit their own row later.
+    onboardingCompletedAt: now,
+    employeeId: null,
+    department: null,
   } as unknown as User;
 
   await users.insertOne(draft);

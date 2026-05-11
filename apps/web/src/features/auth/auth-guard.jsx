@@ -1,22 +1,26 @@
 "use client";
 
 /**
- * Auth gate for protected pages.
+ * Auth + onboarding gate for protected pages.
  *
  * Behaviour
  *   NEXT_PUBLIC_AUTH_REQUIRED=false (default) → renders children as-is,
  *     no redirects. Existing dev flows + the legacy localStorage path
- *     keep working without a login. This is the M-series transition
- *     escape hatch the plan documents.
+ *     keep working without a login.
  *
  *   NEXT_PUBLIC_AUTH_REQUIRED=true →
- *     - while loading initial /me, render a small placeholder
- *     - if no session OR partial session (needsTotp), redirect to
- *       /login. The login form will surface the right step.
- *     - else render children.
+ *     1. while loading initial /me, render a placeholder
+ *     2. no session OR partial session (needsTotp) → redirect to /login
+ *     3. authenticated but onboarding incomplete → redirect to /onboarding
+ *     4. otherwise render children
  *
- * Each page-level layout can wrap its content with this; the /login
- * page deliberately does NOT, so there's no redirect loop.
+ * The /login page and /onboarding page intentionally do NOT wrap
+ * themselves in AuthGuard's full chain to avoid redirect loops:
+ *   - /login skips AuthGuard entirely
+ *   - /onboarding wraps in AuthGuard but its own `OnboardingPage` is
+ *     a no-op for the onboarding-incomplete branch (since we'd be
+ *     redirecting to where we already are). We detect "the page is
+ *     /onboarding" and skip the onboarding-redirect step.
  */
 
 import { useEffect } from "react";
@@ -27,29 +31,46 @@ const AUTH_REQUIRED =
   typeof process !== "undefined" &&
   process.env.NEXT_PUBLIC_AUTH_REQUIRED === "true";
 
+const ONBOARDING_PATH = "/onboarding";
+
 export function AuthGuard({ children, fallback = null }) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, loading, needsTotp } = useSession();
 
-  const shouldRedirect = AUTH_REQUIRED && !loading && (!user || needsTotp);
+  const needsLoginRedirect =
+    AUTH_REQUIRED && !loading && (!user || needsTotp);
+
+  // M-OB gate: authenticated but onboarding never completed →
+  // route to /onboarding. Skip when we're ALREADY on /onboarding to
+  // avoid a redirect loop.
+  const needsOnboardingRedirect =
+    AUTH_REQUIRED &&
+    !loading &&
+    !!user &&
+    !needsTotp &&
+    !user.onboardingCompletedAt &&
+    pathname !== ONBOARDING_PATH;
 
   useEffect(() => {
-    if (!shouldRedirect) return;
-    // Preserve the post-login destination so the login page can bounce
-    // back. Use a query param rather than state — survives a hard
-    // refresh during dev.
-    const target = `/login${
-      pathname && pathname !== "/login"
-        ? `?next=${encodeURIComponent(pathname)}`
-        : ""
-    }`;
-    router.replace(target);
-  }, [shouldRedirect, pathname, router]);
+    if (needsLoginRedirect) {
+      const target = `/login${
+        pathname && pathname !== "/login"
+          ? `?next=${encodeURIComponent(pathname)}`
+          : ""
+      }`;
+      router.replace(target);
+      return;
+    }
+    if (needsOnboardingRedirect) {
+      router.replace(ONBOARDING_PATH);
+    }
+  }, [needsLoginRedirect, needsOnboardingRedirect, pathname, router]);
 
   if (!AUTH_REQUIRED) return children;
   if (loading) return fallback ?? <AuthLoading />;
   if (!user || needsTotp) return fallback ?? <AuthLoading />;
+  if (needsOnboardingRedirect) return fallback ?? <AuthLoading />;
   return children;
 }
 

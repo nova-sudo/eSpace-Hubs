@@ -128,6 +128,28 @@ export interface User {
    * `allowedHubs`. Defaults to DEFAULT_HUB_ID when missing.
    */
   primaryHub?: string | null;
+
+  // ─ onboarding (M-OB). Profile fields the user fills in once after
+  //   first authenticated load. The form resolves `department` →
+  //   hub via the shared registry's departments map and updates
+  //   `allowedHubs` / `primaryHub` server-side.
+  /**
+   * Set when the onboarding form is submitted. Null/missing means
+   * the user hasn't onboarded yet — AuthGuard traps them at
+   * /onboarding regardless of which URL they typed.
+   */
+  onboardingCompletedAt?: Date | null;
+  /**
+   * Free-text employee identifier the user types in onboarding.
+   * Distinct from `zohoEmployeeId` (canonical, set by Zoho sync in
+   * M9) — this is the informal pre-Zoho value.
+   */
+  employeeId?: string | null;
+  /**
+   * Department label the user picked. Drives hub assignment at
+   * onboarding submit time. Zoho will overwrite once it lands.
+   */
+  department?: string | null;
 }
 
 // ─── sessions ────────────────────────────────────────────────────────
