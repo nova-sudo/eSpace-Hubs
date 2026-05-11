@@ -15,6 +15,7 @@ export {
 } from "./use-github-pulls";
 export { useGithubMergedSince } from "./use-github-merged";
 export { useGithubEventsSince } from "./use-github-events";
+export { useGithubPrEventsSince } from "./use-github-pr-events";
 export {
   useCombinedMergedSince,
   useCombinedEventsSince,
