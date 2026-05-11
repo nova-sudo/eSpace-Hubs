@@ -47,21 +47,29 @@ export interface Org {
 
 // ─── users ───────────────────────────────────────────────────────────
 
+/**
+ * Role ids. `dev` was added in the capability-model migration to
+ * replace the generic `member` role for engineers. `member` remains
+ * in this union for backward-compat with pre-migration rows; the
+ * boot-time migration converts members → devs.
+ */
 export type UserRole =
   | "admin"
-  | "manager"
-  | "member"
-  | "hr"
+  | "dev"
   | "qa"
-  | "po";
+  | "manager"
+  | "hr"
+  | "po"
+  | "member";
 
 export const ALL_USER_ROLES: readonly UserRole[] = [
   "admin",
-  "manager",
-  "member",
-  "hr",
+  "dev",
   "qa",
+  "manager",
+  "hr",
   "po",
+  "member",
 ] as const;
 
 export type UserStatus = "invited" | "active" | "disabled";
@@ -81,7 +89,27 @@ export interface User {
    * haven't set a password yet. Becomes a string on first password set.
    */
   passwordHash: string | null;
+  /**
+   * @deprecated Pre-capability-model field. Kept on the user doc for
+   * one release as a backward-compatibility shim: readers fall back
+   * to `[role]` when `roles` is missing. Boot-time migration writes
+   * `roles` for every existing row; new user-creation paths write
+   * both `roles` and `role` (the latter is `roles[0]`) until this
+   * field is removed in a follow-up.
+   *
+   * Session resolution + audit log use the FIRST element of the
+   * effective roles list as the "primary role" (session.role,
+   * audit.actorRole).
+   */
   role: UserRole;
+  /**
+   * Capability-model roles. A user can hold multiple — the
+   * orchestrator unions their granted capabilities to decide which
+   * hubs they can enter. Optional in the schema for migration
+   * compatibility; readers should call `effectiveRoles(u)` which
+   * falls back to `[u.role]` when this is missing or empty.
+   */
+  roles?: UserRole[] | null;
   status: UserStatus;
 
   /**

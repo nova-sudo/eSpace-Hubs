@@ -378,15 +378,48 @@ async function ensureIndexes(): Promise<void> {
 }
 
 /**
- * One-call boot pipeline. Order matters: we apply validators FIRST
- * (which creates collections if missing) and THEN ensure indexes.
- * Doing it in the other order would force Mongo to apply the validator
- * to an existing collection that may already have rows — fine here
- * since the rows we'd hit were inserted under the same schema, but
- * cleaner to set up the validator before any writes.
+ * One-call boot pipeline. Order matters:
+ *   1. validators (creates collections if missing)
+ *   2. indexes
+ *   3. one-shot migrations (e.g. M-CAP roles backfill) — idempotent
+ *      and skip-if-already-applied. Failure here is non-fatal.
+ *
+ * The migration step runs in the background of boot — we kick it off
+ * and don't await, so /healthz/readyz turns green as soon as the
+ * core DB shape is right. Migration progress lands in the structured
+ * log.
  */
 export async function bootstrap(): Promise<void> {
   await applyValidators();
   await ensureIndexes();
   logger.info("[db] bootstrap complete (validators + indexes)");
+  // Migrations after validators + indexes. We `await` so callers can
+  // see counts in their boot logs; migrations are designed to be
+  // fast (one updateOne per affected row, bounded by user count).
+  await runMigrations();
+}
+
+async function runMigrations(): Promise<void> {
+  try {
+    const { migrateUserRoles } = await import("./migrations/m-cap-roles.js");
+    const users = await getUsersCollection();
+    const result = await migrateUserRoles(users);
+    if (result.scanned > 0) {
+      logger.info(
+        {
+          scanned: result.scanned,
+          migrated: result.migrated,
+          byOutcome: result.byOutcome,
+        },
+        "[migrate.m-cap] user roles backfill complete",
+      );
+    } else {
+      logger.debug("[migrate.m-cap] no user rows to migrate");
+    }
+  } catch (err) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "[migrate] migration step failed — server still booting, retries on next boot",
+    );
+  }
 }

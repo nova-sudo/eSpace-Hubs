@@ -14,4 +14,5 @@ export {
   findHubById,
   getHubIdForDepartment,
   resolveAllowedHubs,
+  resolveHubsForCapabilities,
 } from "./registry.js";

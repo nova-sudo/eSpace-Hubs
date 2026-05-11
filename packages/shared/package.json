@@ -18,6 +18,10 @@
     "./hubs": {
       "types": "./src/hubs/index.d.ts",
       "default": "./src/hubs/index.js"
+    },
+    "./capabilities": {
+      "types": "./src/capabilities/index.d.ts",
+      "default": "./src/capabilities/index.js"
     }
   },
   "files": [

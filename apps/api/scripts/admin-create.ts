@@ -32,7 +32,8 @@ import {
 import { hashPassword } from "../src/lib/argon2.js";
 import { writeAudit } from "../src/lib/audit.js";
 import { logger } from "../src/lib/logger.js";
-import type { User } from "../src/db/types.js";
+import type { User, UserRole } from "../src/db/types.js";
+import { ALL_USER_ROLES } from "../src/db/types.js";
 import { DEFAULT_HUB_ID, HUB_ORDER } from "@espace-devhub/shared/hubs";
 
 interface Args {
@@ -41,13 +42,21 @@ interface Args {
   org: string;
   display: string | null;
   force: boolean;
+  /**
+   * M-CAP roles. Defaults to ["admin"] — bootstrap admins get only
+   * the admin role unless the operator explicitly opts in to more.
+   * Pass --roles=admin,dev,qa to give your account multi-hub visibility
+   * (useful if you're the only seat in the org during dev work).
+   */
+  roles: UserRole[];
 }
 
 function parseArgs(argv: readonly string[]): Args {
-  const out: Partial<Args> & { force: boolean } = {
+  const out: Partial<Args> & { force: boolean; roles: UserRole[] } = {
     org: "default",
     display: null,
     force: false,
+    roles: ["admin"],
   };
   for (const raw of argv) {
     if (raw === "--force") {
@@ -73,6 +82,25 @@ function parseArgs(argv: readonly string[]): Args {
       case "display":
         out.display = value;
         break;
+      case "roles": {
+        const parsed = value
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        for (const r of parsed) {
+          if (!ALL_USER_ROLES.includes(r as UserRole)) {
+            die(
+              `--roles: unknown role "${r}". Allowed: ${ALL_USER_ROLES.join(", ")}.`,
+            );
+          }
+        }
+        if (parsed.length === 0) die("--roles must list at least one role");
+        if (!parsed.includes("admin")) {
+          die("--roles must include 'admin' (this is admin:create)");
+        }
+        out.roles = parsed as UserRole[];
+        break;
+      }
       default:
         die(`unrecognised flag: --${key}`);
     }
@@ -91,7 +119,7 @@ function die(message: string): never {
   console.error(`[admin:create] ${message}`);
   // eslint-disable-next-line no-console
   console.error(
-    "\nUsage:\n  npm run admin:create -- --email=you@example.com --password='secret' [--org=default] [--display='Your Name'] [--force]",
+    "\nUsage:\n  npm run admin:create -- --email=you@example.com --password='secret' [--org=default] [--display='Your Name'] [--roles=admin,dev,qa] [--force]",
   );
   process.exit(1);
 }
@@ -143,11 +171,15 @@ async function main(): Promise<void> {
   const passwordHash = await hashPassword(args.password);
   const now = new Date();
 
+  // M-CAP: write both the legacy `role` (= roles[0]) and the new
+  // multi-role `roles` array. `roles` drives /hubs/me; the singular
+  // field is kept for compat until removed in a follow-up.
   const draft = {
     orgId: org._id,
     email: args.email,
     passwordHash,
-    role: "admin" as const,
+    role: args.roles[0],
+    roles: args.roles,
     status: "active" as const,
     totpSecret: null,
     totpEnrolledAt: null,
