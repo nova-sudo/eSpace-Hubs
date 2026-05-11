@@ -12,7 +12,7 @@
  * stream from the new API endpoint without modification.
  */
 
-import type { ValidatedSpec } from "./spec-types.js";
+import type { ValidatedSpec } from "@espace-devhub/shared/goal-specs";
 
 export const ANALYSIS = {
   /** Fired once when classification begins. */

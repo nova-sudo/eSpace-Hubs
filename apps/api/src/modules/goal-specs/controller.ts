@@ -2,9 +2,8 @@
  * Goal-specs controller — list / upsert / delete classified specs.
  *
  * The single-spec PUT runs the spec body through the same
- * `validateSpec` the classifier uses (apps/api/src/modules/ai/
- * classifier/spec-validator.ts), so route-layer validation matches
- * what the classifier emits exactly.
+ * `validateSpec` the classifier uses (`@espace-devhub/shared/goal-specs`),
+ * so route-layer validation matches what the classifier emits exactly.
  *
  * Listing returns the same `{specs: {[goalId]: spec}, lastAnalyzedAt}`
  * shape the frontend's localStorage store uses, so swapping the
@@ -15,8 +14,8 @@ import type { NextFunction, Request, Response } from "express";
 import { getGoalSpecsCollection } from "../../db/collections.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { HttpError } from "../../middleware/error-handler.js";
-import { validateSpec } from "../ai/classifier/spec-validator.js";
-import type { ValidatedSpec } from "../ai/classifier/spec-types.js";
+import { validateSpec } from "@espace-devhub/shared/goal-specs";
+import type { ValidatedSpec } from "@espace-devhub/shared/goal-specs";
 
 const goalIdParam = (req: Request): string => {
   const { goalId } = req.params;

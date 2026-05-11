@@ -1,11 +1,17 @@
 /**
  * Public API for the goal-specs feature.
  *
+ * Domain vocabulary + validator come from `@espace-devhub/shared/goal-specs`
+ * (single source of truth shared with the API; hoisted in M7.9d).
+ * Everything below is web-only: localStorage store, React hook,
+ * sync-mount component.
+ *
  * Kept minimal by design:
- *   - types / enums so widgets can reference `SPEC_KINDS.MERGED_COUNT`
- *   - validator + builder for callers that construct specs
+ *   - re-export the shared types / validator so feature consumers can
+ *     keep importing from `@/features/goal-specs` without churn
  *   - store CRUD for the AI classifier and admin flows
  *   - hook for React consumers
+ *   - <SpecsSync /> lifecycle component
  *
  * Internal-only modules (change events, raw readers) stay in their files
  * and are not re-exported. Adding something here should be a deliberate
@@ -28,9 +34,10 @@ export {
   SPEC_SCHEMA_VERSION,
   SPEC_VARIANTS,
   TARGET_OPS,
-} from "./types";
-
-export { buildSpec, isSpec, validateSpec } from "./schema";
+  buildSpec,
+  isSpec,
+  validateSpec,
+} from "@espace-devhub/shared/goal-specs";
 
 export {
   clearSpecs,

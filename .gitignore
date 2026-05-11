@@ -7,6 +7,9 @@ node_modules
 .next
 **/.next
 
+# TypeScript build output (apps/api/dist, future workspace dist dirs)
+**/dist
+
 # Env files — never commit
 .env
 .env.local

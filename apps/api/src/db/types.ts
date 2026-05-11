@@ -225,9 +225,9 @@ export interface GoalSpecRecord {
   userId: ObjectId;
   /** Stable goal id (matches GoalL1.id or GoalL2.id). */
   goalId: string;
-  /** The validated spec object — see classifier/spec-types.ts. Stored
-   *  as a permissive `object` in Mongo; full Zod validation happens
-   *  at the route layer. */
+  /** The validated spec object — see @espace-devhub/shared/goal-specs.
+   *  Stored as a permissive `object` in Mongo; full Zod validation
+   *  happens at the route layer. */
   spec: Record<string, unknown>;
   generatedAt: Date;
   /** Free-form provenance tag, e.g. "mistral-medium-latest@2026-05".
