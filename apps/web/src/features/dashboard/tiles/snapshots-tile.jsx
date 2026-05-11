@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { BentoTile } from "@/components/ui";
 import { useSnapshots } from "@/features/snapshots";
+import { useHubLink } from "@/features/hubs";
 import { fullDate } from "@/lib/date";
 
 /**
@@ -15,6 +16,7 @@ export function SnapshotsTile() {
   const { snapshots } = useSnapshots();
   const latest = snapshots[0];
   const total = snapshots.length;
+  const link = useHubLink();
 
   return (
     <BentoTile
@@ -23,7 +25,7 @@ export function SnapshotsTile() {
       label={`Weekly snapshots${total > 0 ? ` · ${total} captured` : ""}`}
       right={
         <Link
-          href="/snapshots"
+          href={link("/snapshots")}
           className="font-bold text-accent hover:underline"
           style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
         >

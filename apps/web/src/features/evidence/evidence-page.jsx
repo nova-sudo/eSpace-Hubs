@@ -16,6 +16,7 @@ import {
   useIntegrations,
 } from "@/features/integrations";
 import { fmtDurationHours } from "@/features/integrations";
+import { useHubLink } from "@/features/hubs";
 import { isoDaysAgo } from "@/lib/date";
 import { ConfigPanel } from "./config-panel";
 import { DocumentPreview } from "./document-preview";
@@ -30,6 +31,7 @@ export function EvidencePage() {
   const searchParams = useSearchParams();
   const [format, setFormat] = useState("markdown");
   const [range, setRange] = useState("90d");
+  const link = useHubLink();
 
   // Deep-link from the dashboard Export tile: `/evidence?print=1` opens this
   // page with the browser print dialog auto-triggered on first render. We
@@ -129,7 +131,7 @@ export function EvidencePage() {
         subtitle="Turn scattered receipts into one reviewable document. You pick what to include; the data speaks for itself."
         right={
           <div className="flex gap-2 no-print">
-            <Link href="/">
+            <Link href={link("")}>
               <Button variant="ghost">← Dashboard</Button>
             </Link>
             <Button size="lg" onClick={handleExport}>

@@ -21,6 +21,7 @@ import {
   renderMarkdown,
   useStarredEvidence,
 } from "@/features/evidence";
+import { useHubLink } from "@/features/hubs";
 import { isoDaysAgo } from "@/lib/date";
 
 /**
@@ -37,6 +38,7 @@ import { isoDaysAgo } from "@/lib/date";
  */
 export function ExportTile() {
   const router = useRouter();
+  const link = useHubLink();
   const { me } = useIntegrations();
   const { data: merged } = useCombinedMergedSince(isoDaysAgo(90));
   const { data: events } = useCombinedEventsSince(isoDaysAgo(90));
@@ -84,7 +86,7 @@ export function ExportTile() {
 
   function handlePdf() {
     toast("Opening the evidence page — use your browser's print dialog to save as PDF.");
-    router.push("/evidence?print=1");
+    router.push(link("/evidence?print=1"));
   }
 
   return (
@@ -95,7 +97,7 @@ export function ExportTile() {
       label="Evidence · 90d bundle"
       right={
         <Link
-          href="/evidence"
+          href={link("/evidence")}
           className="font-bold text-[rgba(255,255,255,0.9)] hover:text-white"
           style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
         >

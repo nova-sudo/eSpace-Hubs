@@ -13,6 +13,7 @@ import {
 import { cn } from "@/lib/cn";
 import { TrendChart } from "./trend-chart";
 import { useSnapshotNow, useSnapshots } from "./use-snapshots";
+import { useHubLink } from "@/features/hubs";
 import { fullDate } from "@/lib/date";
 
 const METRICS = [
@@ -32,6 +33,7 @@ const METRICS = [
 export function SnapshotsPage() {
   const { snapshots } = useSnapshots();
   const snapshotNow = useSnapshotNow();
+  const link = useHubLink();
   const [metric, setMetric] = useState("merged");
   const [selected, setSelected] = useState(snapshots[0]?.week);
   // Optional second selection for "compare to" — falls back to disabled when null.
@@ -60,7 +62,7 @@ export function SnapshotsPage() {
         subtitle="Every Monday we freeze the dashboard into a snapshot. The line you're watching is you, vs. you."
         right={
           <div className="flex gap-2">
-            <Link href="/">
+            <Link href={link("")}>
               <Button variant="ghost">← Dashboard</Button>
             </Link>
             <Button onClick={() => snapshotNow()}>Snapshot now</Button>

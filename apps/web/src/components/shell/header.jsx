@@ -6,13 +6,24 @@ import { LogoMark } from "./logo-mark";
 import { AnalystActivator } from "@/features/analyst";
 import { useIntegrations } from "@/features/integrations";
 import { UserChip } from "@/features/auth";
+import { useActiveHub } from "@/features/hubs";
 import { cn } from "@/lib/cn";
 
-const NAV = [
-  ["Performance", "/"],
-  ["Goals", "/goals"],
-  ["Evidence", "/evidence"],
-  ["Settings", "/settings"],
+/**
+ * Nav slots. Each entry maps to a hub `pages.<slot>` symbolic id;
+ * the link href is computed from the active hub's prefix at render
+ * time. Slots a hub doesn't expose (missing from its `pages` map)
+ * are silently hidden.
+ *
+ * `dashboard` is the home of each hub. We highlight it on the
+ * drill-down routes (reviews, snapshots) as well, mirroring the
+ * pre-M10.2 behaviour for Dev Hub.
+ */
+const NAV_ITEMS = [
+  { slot: "dashboard", label: "Performance", subpath: "" },
+  { slot: "goals", label: "Goals", subpath: "/goals" },
+  { slot: "evidence", label: "Evidence", subpath: "/evidence" },
+  { slot: "settings", label: "Settings", subpath: "/settings" },
 ];
 
 const VERSION = "v0.3.1";
@@ -21,6 +32,13 @@ export function Header() {
   const pathname = usePathname();
   const { connectedProviders } = useIntegrations();
   const isLive = connectedProviders.length > 0;
+  const hub = useActiveHub();
+
+  // Build the hub-prefixed link for each nav slot. If we don't have an
+  // active hub (very brief loading window, or a top-level non-hub page
+  // somehow renders the header), fall back to root — the redirect at
+  // `/` will route the user back to their primary hub.
+  const hubPrefix = hub ? `/${hub.id}` : "";
 
   return (
     <header
@@ -28,13 +46,14 @@ export function Header() {
       style={{ background: "rgba(241, 238, 230, 0.80)" }}
     >
       <div className="flex items-center gap-8">
-        <Link href="/" className="flex items-center gap-2.5">
+        <Link href={hubPrefix || "/"} className="flex items-center gap-2.5">
           <LogoMark />
           <div
             className="font-semibold"
             style={{ fontFamily: "var(--font-display)", fontSize: 18, letterSpacing: "-0.3px" }}
           >
-            eSpace<span style={{ color: "var(--accent)" }}>/</span>DevHub
+            eSpace<span style={{ color: "var(--accent)" }}>/</span>
+            {hub?.label?.replace(/ Hub$/, "") ?? "DevHub"}
           </div>
           <span
             className="rounded-[4px] border border-border px-1.5 py-0.5 text-[10px] text-dim-fg"
@@ -44,20 +63,27 @@ export function Header() {
           </span>
         </Link>
         <nav className="flex gap-0.5" style={{ fontFamily: "var(--font-mono)" }}>
-          {NAV.map(([label, href]) => {
-            // Performance is the home tab — highlight it both on the
-            // dashboard itself AND on its drill-down routes (/reviews,
-            // /snapshots) so the user always knows which "section of the
-            // app" they're in.
+          {NAV_ITEMS.map((item) => {
+            // Hide nav items the active hub doesn't expose. The dev
+            // hub exposes all four; QA in M10.1 only exposes dashboard
+            // / goals / evidence / settings so this is a no-op for
+            // both current hubs, but ready for future hubs that
+            // restrict their nav.
+            if (hub && !hub.pages[item.slot]) return null;
+
+            const href = `${hubPrefix}${item.subpath}` || "/";
+            // Dashboard slot is the home tab — highlight on its
+            // drill-downs too.
+            const dashboardHome = `${hubPrefix}` || "/";
             const active =
-              href === "/"
-                ? pathname === "/" ||
-                  pathname?.startsWith("/reviews") ||
-                  pathname?.startsWith("/snapshots")
+              item.slot === "dashboard"
+                ? pathname === dashboardHome ||
+                  pathname?.startsWith(`${hubPrefix}/reviews`) ||
+                  pathname?.startsWith(`${hubPrefix}/snapshots`)
                 : pathname?.startsWith(href);
             return (
               <Link
-                key={href}
+                key={item.slot}
                 href={href}
                 className={cn(
                   "rounded-md px-3 py-1.5 text-[12px] uppercase tracking-[0.4px] transition-colors",
@@ -66,7 +92,7 @@ export function Header() {
                     : "text-muted-fg hover:bg-accent-dim/60",
                 )}
               >
-                {label}
+                {item.label}
               </Link>
             );
           })}

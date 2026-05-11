@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Button, PageHeader } from "@/components/ui";
+import { useHubLink } from "@/features/hubs";
 import { cn } from "@/lib/cn";
 import {
   AccountTab,
@@ -23,6 +24,7 @@ const TABS = [
 export function SettingsPage() {
   const [tab, setTab] = useState("onboarding");
   const ActivePanel = TABS.find((t) => t.id === tab).Component;
+  const link = useHubLink();
 
   return (
     <main className="relative z-[2] px-10 pb-14 pt-9">
@@ -32,7 +34,7 @@ export function SettingsPage() {
         italicWord="terms"
         subtitle="Everything lives in your browser. We never see your tokens, and your metrics never leave this tab unless you export them."
         right={
-          <Link href="/">
+          <Link href={link("")}>
             <Button variant="ghost">← Dashboard</Button>
           </Link>
         }
