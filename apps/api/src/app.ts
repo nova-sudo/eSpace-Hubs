@@ -38,6 +38,7 @@ import { snapshotsRouter } from "./modules/snapshots/routes.js";
 import { gradingVerdictsRouter } from "./modules/grading-verdicts/routes.js";
 import { integrationsRouter } from "./modules/integrations/routes.js";
 import { migrateRouter } from "./modules/migrate/routes.js";
+import { hubsRouter } from "./modules/hubs/routes.js";
 
 /**
  * Cast a connect-style middleware to Express's RequestHandler. helmet,
@@ -127,6 +128,7 @@ export function buildApp(): Application {
   app.use("/api/v1/grading-verdicts", gradingVerdictsRouter);
   app.use("/api/v1/integrations", integrationsRouter);
   app.use("/api/v1/migrate", migrateRouter);
+  app.use("/api/v1/hubs", hubsRouter);
 
   // ─── tail handlers ─────────────────────────────────────────────────
   app.use(notFoundHandler);

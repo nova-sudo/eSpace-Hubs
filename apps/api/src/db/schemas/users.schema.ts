@@ -62,6 +62,17 @@ export const usersValidator: Document = {
       lastLoginAt: { bsonType: ["date", "null"] },
       failedLoginAttempts: { bsonType: "int", minimum: 0 },
       lockedUntil: { bsonType: ["date", "null"] },
+      // M10.1: hub access. Both fields are OPTIONAL on existing rows
+      // so we don't force a backward-incompatible migration; the
+      // controller reads with defaults (allowedHubs ?? [DEFAULT_HUB_ID],
+      // primaryHub ?? DEFAULT_HUB_ID). New user-creation paths (invite
+      // accept, admin-create CLI) set them explicitly.
+      allowedHubs: {
+        bsonType: ["array", "null"],
+        items: { bsonType: "string", minLength: 1, maxLength: 64 },
+        maxItems: 32,
+      },
+      primaryHub: { bsonType: ["string", "null"], maxLength: 64 },
     },
   },
 };

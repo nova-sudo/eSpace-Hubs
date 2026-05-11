@@ -29,6 +29,7 @@ import {
   renderInviteEmail,
   renderPasswordResetEmail,
 } from "../../lib/email-templates.js";
+import { DEFAULT_HUB_ID } from "@espace-devhub/shared/hubs";
 import {
   INVITE_TTL_MS,
   PASSWORD_RESET_TTL_MS,
@@ -367,6 +368,11 @@ export async function inviteHandler(
         lastLoginAt: null,
         failedLoginAttempts: 0,
         lockedUntil: null,
+        // M10.1: every new invite lands with access to the default hub.
+        // Onboarding (M-OB) can broaden allowedHubs based on the
+        // user's department; admins can override later via M10.5.
+        allowedHubs: [DEFAULT_HUB_ID],
+        primaryHub: DEFAULT_HUB_ID,
       } as unknown as User;
       await users.insertOne(draft);
       user = draft;

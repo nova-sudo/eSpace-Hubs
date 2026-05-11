@@ -112,6 +112,22 @@ export interface User {
    */
   failedLoginAttempts: number;
   lockedUntil: Date | null;
+
+  // ─ hubs (M10.1). Both fields are optional on existing rows; readers
+  //   apply the DEFAULT_HUB_ID fallback so pre-M10 users keep working.
+  //   New user-creation paths (admin-create, invite-accept) populate
+  //   them explicitly. M-OB updates them when the user picks a hub.
+  /**
+   * Hub ids this user is allowed to access. Drives the hub-switcher
+   * in the header + the hub-route guard. Empty array would lock the
+   * user out of every hub; readers default to [DEFAULT_HUB_ID].
+   */
+  allowedHubs?: string[] | null;
+  /**
+   * Default landing hub when the user hits `/`. Must be a member of
+   * `allowedHubs`. Defaults to DEFAULT_HUB_ID when missing.
+   */
+  primaryHub?: string | null;
 }
 
 // ─── sessions ────────────────────────────────────────────────────────
