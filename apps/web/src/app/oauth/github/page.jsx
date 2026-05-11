@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { readPending, clearPending } from "@/lib/oauth-pkce";
 import { saveConnection } from "@/features/integrations";
+import { proxyFetch } from "@/features/integrations/api-clients/proxy-fetch";
 import { toast } from "sonner";
 
 export default function GitHubCallbackPage() {
@@ -62,18 +63,17 @@ function GitHubCallbackInner() {
         const tokens = await res.json();
         if (tokens.error) throw new Error(tokens.error_description || tokens.error);
 
-        saveConnection("github", {
+        // Save + await the mirror so the encrypted token lands
+        // server-side before we use the proxy to fetch the user.
+        await saveConnection("github", {
           accessToken: tokens.access_token,
           tokenType: tokens.token_type,
           scope: tokens.scope,
         });
 
-        const meRes = await fetch("/api/github/user", {
-          headers: { "x-devhub-token": tokens.access_token },
-        });
-        if (meRes.ok) {
-          const me = await meRes.json();
-          saveConnection("github", {
+        try {
+          const me = await proxyFetch("github", "user");
+          await saveConnection("github", {
             accessToken: tokens.access_token,
             tokenType: tokens.token_type,
             scope: tokens.scope,
@@ -81,6 +81,10 @@ function GitHubCallbackInner() {
             displayName: me.name,
             avatarUrl: me.avatar_url,
           });
+        } catch {
+          // Profile lookup failure shouldn't break the OAuth flow —
+          // the token is already saved + verified by the exchange.
+          // The header chip will just lack the avatar/displayName.
         }
 
         clearPending();

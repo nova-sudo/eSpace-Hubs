@@ -528,8 +528,9 @@ function GradeBlock({ pr, details }) {
     }
     setGrading(true);
     try {
-      const res = await fetch("/api/grade-pr", {
+      const res = await fetch("/api/v1/ai/grade-pr", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json", ...aiHeaders },
         body: JSON.stringify({
           provider,
@@ -543,7 +544,11 @@ function GradeBlock({ pr, details }) {
         }),
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.error || `${provider} ${res.status}`);
+      if (!res.ok) {
+        throw new Error(
+          body?.error?.message || body?.error || `${provider} ${res.status}`,
+        );
+      }
       setVerdict(body?.verdict || null);
     } catch (err) {
       toast.error(`Grading failed: ${err?.message || err}`);

@@ -22,10 +22,11 @@ const nextConfig = {
   // its own pages. Keeps cookies SameSite-clean in dev and avoids any
   // CORS preflight on the happy path.
   //
-  // Note: existing /api/* Next route handlers (chat, classify-goals,
-  // grade-pr, github/gitlab/jira/oauth proxies) are NOT under /api/v1
-  // so they keep working untouched. Those routes get migrated to the
-  // API service in M3.
+  // The only Next.js route handler left is /api/oauth/github/exchange
+  // (still server-side because it consumes GITHUB_CLIENT_SECRET). All
+  // other legacy /api/* proxies (chat, classify-goals, grade-pr,
+  // github/gitlab/jira) were retired in M7.9c — those flows now hit
+  // the API service via /api/v1/* under this rewrite.
   async rewrites() {
     return [
       {

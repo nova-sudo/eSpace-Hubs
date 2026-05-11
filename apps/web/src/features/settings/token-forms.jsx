@@ -7,7 +7,25 @@ import {
   disconnectProvider,
   saveConnection,
 } from "@/features/integrations";
+import { proxyFetch } from "@/features/integrations/api-clients/proxy-fetch";
 
+const GITLAB_URL = process.env.NEXT_PUBLIC_GITLAB_URL;
+const JIRA_URL = process.env.NEXT_PUBLIC_JIRA_URL;
+
+/**
+ * Token-form validation flow (post-M7.9c):
+ *   1. saveConnection() — writes locally AND mirrors to /api/v1/integrations
+ *      (server encrypts and persists). We await the returned mirror
+ *      promise so the credential is server-side before step 2.
+ *   2. proxyFetch() — hits /api/v1/integrations/proxy/<provider>/<path>.
+ *      The API reads the just-saved encrypted token, decrypts in-process,
+ *      forwards upstream. Confirms the token actually works.
+ *   3. saveConnection() again — enriches the row with the provider's
+ *      profile info (username, displayName, etc.) for the header chip.
+ *
+ * On any failure we disconnectProvider() to wipe both local and server
+ * copies so the user can retry cleanly.
+ */
 export function GitLabTokenForm() {
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
@@ -15,16 +33,23 @@ export function GitLabTokenForm() {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!token) return toast.error("Access token is required.");
+    if (!GITLAB_URL) {
+      return toast.error(
+        "NEXT_PUBLIC_GITLAB_URL is not set — set it in apps/web/.env.local and restart.",
+      );
+    }
     setLoading(true);
     try {
-      saveConnection("gitlab", { accessToken: token });
-      const res = await fetch("/api/gitlab/user", {
-        headers: { "x-devhub-token": token },
-      });
-      if (!res.ok) throw new Error(`GitLab rejected the token (${res.status})`);
-      const me = await res.json();
-      saveConnection("gitlab", {
+      // Save + await the mirror — the API needs the encrypted token on
+      // disk before the proxy call below can use it.
+      await saveConnection("gitlab", {
         accessToken: token,
+        endpointUrl: GITLAB_URL,
+      });
+      const me = await proxyFetch("gitlab", "user");
+      await saveConnection("gitlab", {
+        accessToken: token,
+        endpointUrl: GITLAB_URL,
         username: me.username,
         displayName: me.name,
         avatarUrl: me.avatar_url,
@@ -76,20 +101,23 @@ export function JiraTokenForm() {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!email || !apiToken) return toast.error("Email and API token are required.");
+    if (!JIRA_URL) {
+      return toast.error(
+        "NEXT_PUBLIC_JIRA_URL is not set — set it in apps/web/.env.local and restart.",
+      );
+    }
     setLoading(true);
     try {
-      saveConnection("jira", { email, apiToken });
-      const res = await fetch("/api/jira/myself", {
-        headers: {
-          "x-devhub-api-token": apiToken,
-          "x-devhub-email": email,
-        },
-      });
-      if (!res.ok) throw new Error(`Jira rejected credentials (${res.status})`);
-      const me = await res.json();
-      saveConnection("jira", {
+      await saveConnection("jira", {
         email,
         apiToken,
+        endpointUrl: JIRA_URL,
+      });
+      const me = await proxyFetch("jira", "myself");
+      await saveConnection("jira", {
+        email,
+        apiToken,
+        endpointUrl: JIRA_URL,
         username: me.emailAddress || me.name || email,
         displayName: me.displayName,
       });

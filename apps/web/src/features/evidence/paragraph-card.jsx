@@ -8,8 +8,8 @@
  * Zero AI by default — instant, offline, predictable.
  *
  * Optional "Polish with AI" button is the same paragraph passed through
- * `/api/chat` with a tonal-pass system prompt. We hide that button when
- * no AI is reachable (network errors fall through to a toast).
+ * `/api/v1/ai/chat` with a tonal-pass system prompt. We hide that button
+ * when no AI is reachable (network errors fall through to a toast).
  */
 
 import { useMemo, useState } from "react";
@@ -49,8 +49,9 @@ export function ParagraphCard({ metrics, rangeLabel, level, starred }) {
     if (!baseParagraph) return;
     setPolishing(true);
     try {
-      const res = await fetch("/api/chat", {
+      const res = await fetch("/api/v1/ai/chat", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json", ...aiHeaders },
         body: JSON.stringify({
           provider,
@@ -73,7 +74,9 @@ export function ParagraphCard({ metrics, rangeLabel, level, starred }) {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error || `${provider} ${res.status}`);
+        throw new Error(
+          body?.error?.message || body?.error || `${provider} ${res.status}`,
+        );
       }
       const data = await res.json();
       const out =

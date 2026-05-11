@@ -4,9 +4,9 @@
  * Client-side AI provider preference.
  *
  * Stored in localStorage so the choice survives reloads. All three AI
- * routes (`/api/chat`, `/api/classify-goals`, `/api/grade-pr`) honor
- * either an `x-ai-provider` header or a `provider` field on the request
- * body — we send both to keep server-side selection bulletproof regardless
+ * routes (`/api/v1/ai/{chat,classify-goals,grade-pr}`) honor either an
+ * `x-ai-provider` header or a `provider` field on the request body —
+ * we send both to keep server-side selection bulletproof regardless
  * of fetch flavor.
  *
  * Default is "mistral" (matches what was running before this feature).
