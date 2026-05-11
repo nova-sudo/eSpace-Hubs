@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { BentoTile } from "@/components/ui";
 import { PROVIDERS, useIntegrations } from "@/features/integrations";
+import { useHubLink } from "@/features/hubs";
 
 export function IntegrationsTile() {
   const { integrations, isConnected, connectedProviders } = useIntegrations();
+  const link = useHubLink();
 
   return (
     <BentoTile
@@ -14,7 +16,7 @@ export function IntegrationsTile() {
       label={`Integrations · ${connectedProviders.length} / ${Object.keys(PROVIDERS).length}`}
       right={
         <Link
-          href="/settings"
+          href={link("/settings")}
           className="text-[10px] uppercase tracking-[0.4px] text-muted-fg hover:text-fg"
           style={{ fontFamily: "var(--font-mono)" }}
         >

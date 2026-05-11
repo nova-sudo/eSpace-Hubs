@@ -26,12 +26,16 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useHubLink } from "@/features/hubs";
 
 const CHORD_TIMEOUT_MS = 1200;
 
+// Hub-relative chord destinations. Resolved through useHubLink() at
+// fire time so the same chord (`g g` → Goals) targets the active hub
+// whichever one it is.
 const CHORD_NAV = {
   // Top-level tabs first (mirrors the header order).
-  p: "/",         // Performance
+  p: "",          // Performance — bare hub root
   g: "/goals",    // Goals — `g g` (double tap) goes to Goals
   e: "/evidence",
   t: "/settings",
@@ -40,12 +44,13 @@ const CHORD_NAV = {
   s: "/snapshots",
   // Legacy: `g d` used to mean "go to dashboard" pre-tab-split. Keep it
   // working so muscle memory survives.
-  d: "/",
+  d: "",
 };
 
 export function useGlobalShortcuts() {
   const router = useRouter();
   const pathname = usePathname();
+  const link = useHubLink();
   const chordRef = useRef({ key: null, expiresAt: 0 });
 
   useEffect(() => {
@@ -76,11 +81,14 @@ export function useGlobalShortcuts() {
 
       // ── Chord follow-up ──────────────────────────────────────────────
       if (inChord && chord.key === "g") {
-        const dest = CHORD_NAV[e.key.toLowerCase()];
+        const sub = CHORD_NAV[e.key.toLowerCase()];
         clearChord();
-        if (dest && dest !== pathname) {
-          e.preventDefault();
-          router.push(dest);
+        if (sub !== undefined) {
+          const dest = link(sub);
+          if (dest && dest !== pathname) {
+            e.preventDefault();
+            router.push(dest);
+          }
           return;
         }
         // Unknown follow-up — just drop the chord and let the key through.
@@ -98,7 +106,7 @@ export function useGlobalShortcuts() {
       // Section jumps + j/k only meaningful on routes that own a
       // scroll-shell — Performance (/) and Goals (/goals). Other routes
       // don't have data-section-id targets to jump between.
-      if (pathname === "/" || pathname?.startsWith("/goals")) {
+      if (pathname === link("") || pathname?.startsWith(link("/goals"))) {
         if (/^[1-9]$/.test(e.key)) {
           const idx = Number(e.key) - 1;
           const sections = document.querySelectorAll("[data-section-id]");
@@ -142,5 +150,5 @@ export function useGlobalShortcuts() {
     return () => {
       window.removeEventListener("keydown", onKey);
     };
-  }, [pathname, router]);
+  }, [pathname, router, link]);
 }

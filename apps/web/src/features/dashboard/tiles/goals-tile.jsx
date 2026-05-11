@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { BentoTile, Pill } from "@/components/ui";
 import { useGoals } from "@/features/goals";
+import { useHubLink } from "@/features/hubs";
 
 /**
  * Renders the user's L1 / L2 goal tree (entered manually via the Onboarding
@@ -13,6 +14,7 @@ import { useGoals } from "@/features/goals";
  */
 export function GoalsTile() {
   const { goals, total, weights } = useGoals();
+  const link = useHubLink();
 
   if (total.l1s === 0) {
     return (
@@ -29,7 +31,7 @@ export function GoalsTile() {
             render them here at a glance.
           </div>
           <Link
-            href="/settings"
+            href={link("/settings")}
             className="inline-flex items-center rounded-[var(--radius-sub)] border border-accent bg-accent-dim px-3 py-1.5 text-accent hover:opacity-90"
             style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700 }}
           >
@@ -49,7 +51,7 @@ export function GoalsTile() {
       titleSize={18}
       right={
         <Link
-          href="/settings"
+          href={link("/settings")}
           className="text-[10px] uppercase tracking-[0.4px] text-muted-fg hover:text-fg"
           style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}
         >

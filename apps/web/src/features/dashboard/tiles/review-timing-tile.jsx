@@ -7,6 +7,7 @@ import {
   fmtMs,
   usePrReviewTimings,
 } from "@/features/integrations";
+import { useHubLink } from "@/features/hubs";
 import { useDateRange, splitByRange } from "../date-range";
 
 /**
@@ -29,6 +30,7 @@ import { useDateRange, splitByRange } from "../date-range";
 export function ReviewTimingTile() {
   const { range } = useDateRange();
   const { data: timings, isLoading, error } = usePrReviewTimings(range.fetchSince);
+  const link = useHubLink();
 
   // Filter to the active date window. `splitByRange` returns previous-period
   // too — we only need current.
@@ -56,7 +58,7 @@ export function ReviewTimingTile() {
       titleSize={18}
       right={
         <Link
-          href="/reviews"
+          href={link("/reviews")}
           className="font-bold text-accent hover:underline"
           style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
         >

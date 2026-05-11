@@ -9,6 +9,7 @@ import { InputsSync } from "@/features/goal-inputs";
 import { SpecsSync } from "@/features/goal-specs";
 import { GoalsSync } from "@/features/goals";
 import { MigrateOnce } from "@/features/migrate";
+import { HubsFetcher } from "@/features/hubs";
 
 const interTight = Inter_Tight({
   subsets: ["latin"],
@@ -50,6 +51,11 @@ export default function RootLayout({ children }) {
               which only replace local state when the server has
               content — so the pull/migrate race is safe. */}
           <MigrateOnce />
+          {/* M10.1: fetches /api/v1/hubs/me once per authenticated
+              session into the hubs store. The hub layout
+              (app/[hub]/layout.jsx) and the root redirect read from
+              that store synchronously. */}
+          <HubsFetcher />
           <GradingSync />
           <SnapshotsSync />
           <ContextSync />

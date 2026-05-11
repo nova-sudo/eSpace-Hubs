@@ -84,25 +84,35 @@ export function buildCommands(ctx) {
     snapshotNow,
     demo,
     toggleDemo,
+    link,
   } = ctx;
   const cmds = [];
 
   // ── Navigation ─────────────────────────────────────────────────────
+  // Each route is hub-relative — the `link()` helper supplied by the
+  // palette host prepends the active hub's id (e.g. "/dev/goals").
+  // The pathname comparison uses the resolved hub-prefixed path so
+  // we skip the route the user is already on.
   ROUTES.forEach((r) => {
-    if (r.path === pathname) return; // skip current route
+    const target = link ? link(r.path) : r.path;
+    if (target === pathname) return; // skip current route
     cmds.push({
       id: `nav:${r.path}`,
       category: "Go to",
       label: r.label,
-      sub: r.path,
+      sub: target,
       keywords: r.keywords,
-      run: () => router.push(r.path),
+      run: () => router.push(target),
     });
   });
 
   // ── Tab sections (only when on Performance or Goals — they own the
-  //    scroll-shell and have data-section-id elements in the DOM)
-  if (pathname === "/" || pathname?.startsWith("/goals")) {
+  //    scroll-shell and have data-section-id elements in the DOM).
+  //    pathname is now hub-prefixed (e.g. /dev or /dev/goals); compare
+  //    against the resolved link() targets.
+  const dashboardPath = link ? link("") : "/";
+  const goalsPath = link ? link("/goals") : "/goals";
+  if (pathname === dashboardPath || pathname?.startsWith(goalsPath)) {
     const sections = listSections();
     sections.forEach((s, i) => {
       cmds.push({
@@ -133,7 +143,7 @@ export function buildCommands(ctx) {
     label: "Open evidence in print mode",
     sub: "browser print → save as PDF",
     keywords: ["pdf", "print", "export"],
-    run: () => router.push("/evidence?print=1"),
+    run: () => router.push(link ? link("/evidence?print=1") : "/evidence?print=1"),
   });
 
   // Demo mode toggle — surfaced in actions because flipping it during a

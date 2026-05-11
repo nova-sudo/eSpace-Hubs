@@ -38,11 +38,13 @@ import {
   usePrReviewTimings,
 } from "@/features/integrations";
 import { useDateRange, DateRangeToolbar, splitByRange } from "@/features/dashboard/date-range";
+import { useHubLink } from "@/features/hubs";
 import { fullDate } from "@/lib/date";
 
 export function PrReviewsPage() {
   const { range } = useDateRange();
   const { data: timings, isLoading, error } = usePrReviewTimings(range.fetchSince);
+  const link = useHubLink();
   const inWindow = useMemo(
     () =>
       splitByRange(timings || [], range, (t) => t.pr?.mergedAt || t.pr?.createdAt)
@@ -83,7 +85,7 @@ export function PrReviewsPage() {
         italicWord="goes"
         subtitle="Every reviewed PR in the window, with TTFR, ATTNR, total idle, and the comment threads that drove each round. Click a comment with a file path to see the exact code snippet it was left on."
         right={
-          <Link href="/">
+          <Link href={link("")}>
             <Button variant="ghost">← Dashboard</Button>
           </Link>
         }
