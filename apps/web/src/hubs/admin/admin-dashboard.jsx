@@ -136,14 +136,12 @@ export function AdminDashboard() {
         <NavCard
           href={link("/users")}
           title="User management"
-          body="Manage roles + hub access per user. Full UI lands in a follow-up — the API endpoints are in flight."
-          comingSoon
+          body="Manage roles + status + hub access per user. Self-edits can't strip your own admin role or disable your own account."
         />
         <NavCard
           href={link("/audit")}
           title="Audit log"
-          body="Privileged-action history — invites, role changes, hub overrides, password resets. Viewer lands in a follow-up."
-          comingSoon
+          body="Privileged-action history — invites, role changes, hub overrides, password resets, integration connect/disconnect. Filterable + paginated."
         />
       </div>
     </main>

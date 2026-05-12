@@ -20,9 +20,10 @@
 import { DashboardPage } from "@/features/dashboard";
 import { QaPlaceholder } from "@/hubs/qa";
 import {
+  AdminAudit,
   AdminDashboard,
   AdminHubConfig,
-  AdminPlaceholder,
+  AdminUsers,
 } from "@/hubs/admin";
 
 /**
@@ -64,8 +65,8 @@ export function getDashboardComponent(hubId) {
  */
 const ADMIN_SLOT_COMPONENTS = {
   "hub-config": AdminHubConfig,
-  users: () => <AdminPlaceholder slot="users" />,
-  audit: () => <AdminPlaceholder slot="audit" />,
+  users: AdminUsers,
+  audit: AdminAudit,
 };
 
 export function getAdminSlotComponent(slot) {
