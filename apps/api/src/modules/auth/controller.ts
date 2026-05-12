@@ -52,6 +52,7 @@ import {
   destroySession,
   destroySessionsForUser,
   mintSession,
+  setSessionTotpEnrolled,
   setSessionTotpVerified,
 } from "./session.js";
 import {
@@ -200,6 +201,9 @@ export async function loginHandler(
       ip: meta.ip,
       userAgent: meta.ua,
       totpVerified: !needsTotp,
+      // Pin the enrolment state at mint time. requireTotpEnrolled
+      // reads this on every subsequent request without a user lookup.
+      totpEnrolled: u.totpEnrolledAt !== null,
     });
     setSessionCookie(res, sessionId);
 
@@ -530,6 +534,11 @@ export async function acceptInviteHandler(
       ip: meta.ip,
       userAgent: meta.ua,
       totpVerified: true,
+      // Fresh invitee — no TOTP enrolment yet. The AuthGuard will
+      // trap them at /totp-setup. Server-side enforcement (via
+      // requireTotpEnrolled) blocks API access to protected routes
+      // until they finish enrolment.
+      totpEnrolled: false,
     });
     setSessionCookie(res, sessionId);
 
@@ -849,6 +858,15 @@ export async function totpVerifyEnrolmentHandler(
       { $set: { totpEnrolledAt: now, updatedAt: now } },
     );
 
+    // Flip the CURRENT session's totpEnrolled flag so the next request
+    // passes requireAuth({requireTotpEnrolled: true}) without a user
+    // lookup. Other live sessions for the same user (e.g. an old tab)
+    // will pass too as soon as they refresh and re-load the session
+    // doc, which happens every request.
+    if (session._id) {
+      await setSessionTotpEnrolled(session._id, true);
+    }
+
     await writeAudit({
       orgId: user.orgId,
       actorUserId: user._id,
@@ -994,6 +1012,15 @@ export async function totpDisableHandler(
         },
       },
     );
+
+    // Flip the current session's totpEnrolled flag false. Subsequent
+    // requests will hit the requireTotpEnrolled gate and bounce to
+    // /totp-setup, matching the new-user flow. Other live sessions
+    // for the same user keep working until they hit a gated route
+    // (the session lookup on each request reads the same Mongo doc).
+    if (session._id) {
+      await setSessionTotpEnrolled(session._id, false);
+    }
 
     await writeAudit({
       orgId: user.orgId,

@@ -53,6 +53,17 @@ export interface MintSessionInput {
    *  this true after a TOTP verify; for now always true (no TOTP
    *  enforcement yet). */
   totpVerified?: boolean;
+  /**
+   * Snapshot of whether the user had TOTP enrolled at session-mint
+   * time. Read by `requireAuth({requireTotpEnrolled: true})`. Login
+   * passes `u.totpEnrolledAt !== null`; accept-invite passes `false`
+   * because the new user can't have enrolled yet.
+   *
+   * Defaults to `true` so existing callers that don't pass anything
+   * don't suddenly lock users out — but every caller in the auth
+   * controller passes an explicit value.
+   */
+  totpEnrolled?: boolean;
 }
 
 /** Mint a new session and return the cookie-bound id. */
@@ -76,6 +87,7 @@ export async function mintSession(input: MintSessionInput): Promise<{
     userAgent: input.userAgent,
     demo: input.demo ?? false,
     totpVerified: input.totpVerified ?? true,
+    totpEnrolled: input.totpEnrolled ?? true,
   };
 
   const col = await getSessionsCollection();
@@ -139,6 +151,25 @@ export async function setSessionTotpVerified(
   await col.updateOne(
     { _id: sessionId },
     { $set: { totpVerified: verified } },
+  );
+}
+
+/**
+ * Flip a session's `totpEnrolled` flag. Called after a successful
+ * /auth/totp/verify-enrolment so subsequent requests pass
+ * `requireAuth({requireTotpEnrolled: true})` without a user-doc
+ * lookup. Also called from /auth/totp/disable to flip it back to
+ * false (the user immediately loses non-enrol-gated access until
+ * they re-enrol).
+ */
+export async function setSessionTotpEnrolled(
+  sessionId: string,
+  enrolled: boolean,
+): Promise<void> {
+  const col = await getSessionsCollection();
+  await col.updateOne(
+    { _id: sessionId },
+    { $set: { totpEnrolled: enrolled } },
   );
 }
 

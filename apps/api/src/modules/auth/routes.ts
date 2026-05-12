@@ -67,23 +67,39 @@ authRouter.post("/password/reset", passwordResetLimiter, passwordResetHandler);
 // ─── partial session OK ──────────────────────────────────────────────
 // requireTotp:false lets a totpVerified:false session reach this route
 // (the entire purpose of the route is to flip that bit to true).
+// requireTotpEnrolled:false too — by definition this only runs for
+// users who have TOTP, but staying consistent in case the gating
+// runs in a different order downstream.
 // Rate-limited because this is step 2 of the public login flow — an
 // attacker who has a valid password+cookie still has to clear TOTP.
 authRouter.post(
   "/totp/verify",
   totpLimiter,
-  requireAuth({ requireTotp: false }),
+  requireAuth({ requireTotp: false, requireTotpEnrolled: false }),
   totpVerifyLoginHandler,
 );
 
-// ─── authenticated (full session) ────────────────────────────────────
-authRouter.get("/me", requireAuth(), meHandler);
-authRouter.post("/totp/enrol", requireAuth(), totpEnrolHandler);
+// ─── authenticated, enrolment NOT required ───────────────────────────
+// These routes have to remain reachable for users who haven't enrolled
+// TOTP yet — otherwise the /totp-setup flow can't complete + the
+// frontend can't fetch /me to decide what gate to render.
+authRouter.get(
+  "/me",
+  requireAuth({ requireTotpEnrolled: false }),
+  meHandler,
+);
+authRouter.post(
+  "/totp/enrol",
+  requireAuth({ requireTotpEnrolled: false }),
+  totpEnrolHandler,
+);
 authRouter.post(
   "/totp/verify-enrolment",
-  requireAuth(),
+  requireAuth({ requireTotpEnrolled: false }),
   totpVerifyEnrolmentHandler,
 );
+
+// ─── authenticated, full session + enrolment required ────────────────
 authRouter.post("/totp/disable", requireAuth(), totpDisableHandler);
 
 // ─── admin-only ──────────────────────────────────────────────────────

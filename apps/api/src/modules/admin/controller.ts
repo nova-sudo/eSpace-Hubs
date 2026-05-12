@@ -28,10 +28,12 @@ import { ObjectId } from "mongodb";
 import { findHubById, HUB_ORDER } from "@espace-devhub/shared/hubs";
 import {
   getAuditLogCollection,
+  getSessionsCollection,
   getUsersCollection,
 } from "../../db/collections.js";
 import type { AuditLogEntry, User, UserRole } from "../../db/types.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
+import { logger } from "../../lib/logger.js";
 import { effectiveRoles } from "../../lib/user-roles.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import {
@@ -462,6 +464,29 @@ export async function resetUserTotpHandler(
         500,
         "internal_error",
         "TOTP reset returned no document.",
+      );
+    }
+
+    // Flip every live session for the target user to totpEnrolled:
+    // false so the new requireTotpEnrolled gate immediately routes
+    // them through /totp-setup. Without this, an in-flight session
+    // from a different device would keep passing the gate (until
+    // expiry) even though the user record now has no TOTP secret.
+    try {
+      const sessions = await getSessionsCollection();
+      await sessions.updateMany(
+        { userId: targetId },
+        { $set: { totpEnrolled: false } },
+      );
+    } catch (err) {
+      // Don't fail the reset on a session-update miss — the next
+      // login will mint a fresh session with the correct flag.
+      logger.warn(
+        {
+          targetId: targetId.toHexString(),
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "[admin] totp reset: session backfill failed",
       );
     }
 

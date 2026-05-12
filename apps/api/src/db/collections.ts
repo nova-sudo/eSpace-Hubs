@@ -422,4 +422,21 @@ async function runMigrations(): Promise<void> {
       "[migrate] migration step failed — server still booting, retries on next boot",
     );
   }
+
+  // Backfill session.totpEnrolled for sessions minted before the
+  // field existed. Independent of the M-CAP step — wrapping both in
+  // one try would swallow either failure under the other's banner.
+  try {
+    const { runTotpEnrolledSessionsMigration } = await import(
+      "./migrations/totp-enrolled-sessions.js"
+    );
+    const sessions = await getSessionsCollection();
+    const users = await getUsersCollection();
+    await runTotpEnrolledSessionsMigration(sessions, users);
+  } catch (err) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "[migrate] totp-enrolled-sessions step failed — retries on next boot",
+    );
+  }
 }
