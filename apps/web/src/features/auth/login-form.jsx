@@ -19,6 +19,7 @@
  */
 
 import { useState } from "react";
+import Link from "next/link";
 import { useSession } from "./use-session.js";
 
 export function LoginForm({ onSuccess }) {
@@ -245,6 +246,28 @@ export function LoginForm({ onSuccess }) {
           >
             {submitting ? "Signing in…" : "Continue"}
           </button>
+
+          {/* Forgot-password link — only on the password step, not the
+              TOTP step (a user on step 2 already authenticated and is
+              just stuck on the 6-digit code; the right recovery there
+              is backup codes, not password reset). */}
+          <div
+            className="mt-1"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 11,
+              color: "var(--muted-fg)",
+              textAlign: "center",
+            }}
+          >
+            <Link
+              href="/forgot-password"
+              className="text-accent hover:underline"
+              style={{ fontWeight: 600 }}
+            >
+              Forgot password?
+            </Link>
+          </div>
         </form>
       )}
     </div>
