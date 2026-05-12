@@ -1,10 +1,13 @@
 /**
  * /api/v1/admin/* router.
  *
- *   GET   /users           admin: list every user in the org
- *   PATCH /users/:id       admin: edit roles/status/hubs/displayName
+ *   GET   /users                       admin: list every user in the org
+ *   PATCH /users/:id                   admin: edit roles/status/hubs/displayName
+ *   POST  /users/:id/totp/reset        admin: clear a user's TOTP enrolment
+ *                                       (admin-side recovery for lost
+ *                                       authenticators; not allowed on self)
  *
- *   GET   /audit           admin: filterable audit-log feed
+ *   GET   /audit                       admin: filterable audit-log feed
  *
  * Authorization: every route requires a full session AND the admin
  * role. Same pattern hub-configs follows. Audit-log read intentionally
@@ -20,6 +23,7 @@ import { requireRole } from "../../middleware/require-role.js";
 import {
   listAuditHandler,
   listUsersHandler,
+  resetUserTotpHandler,
   updateUserHandler,
 } from "./controller.js";
 
@@ -36,6 +40,12 @@ adminRouter.patch(
   requireAuth(),
   requireRole("admin"),
   updateUserHandler,
+);
+adminRouter.post(
+  "/users/:id/totp/reset",
+  requireAuth(),
+  requireRole("admin"),
+  resetUserTotpHandler,
 );
 
 adminRouter.get(
