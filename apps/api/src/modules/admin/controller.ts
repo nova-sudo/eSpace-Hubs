@@ -383,6 +383,110 @@ export async function updateUserHandler(
   }
 }
 
+// ─── POST /api/v1/admin/users/:id/totp/reset ─────────────────────────
+
+/**
+ * Admin-side TOTP reset. Clears the target user's totpSecret and
+ * totpEnrolledAt so they re-enrol on next login (the AuthGuard's
+ * client-side gate traps them at /totp-setup until they re-enrol;
+ * post-#2 the server will also enforce this).
+ *
+ * Use case: a user lost their phone / authenticator app and can no
+ * longer pass the second factor. They contact an admin, who confirms
+ * identity out-of-band (in person, video call, etc.) and runs this
+ * reset. The next login skips the TOTP step (because totpEnrolledAt
+ * is now null) — they go straight into the enrol flow.
+ *
+ * Self-protection: an admin cannot reset their OWN TOTP via this
+ * endpoint. If they need to, they call /auth/totp/disable (which
+ * requires a current code) or have ANOTHER admin do it. This
+ * prevents a hijacked admin session from neutering its own 2FA on
+ * the spot — the attacker would need a second compromised admin.
+ *
+ * No body required. The :id path param identifies the target user.
+ *
+ * Audit: writes `user.totp_reset_by_admin` with before/after = the
+ * old totpEnrolledAt timestamp (null after).
+ */
+export async function resetUserTotpHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const targetId = requireUserId(req);
+
+    if (targetId.equals(session.userId)) {
+      throw new HttpError(
+        400,
+        "self_lockout",
+        "You can't reset your own TOTP via the admin endpoint. Use /auth/totp/disable (requires a current code), or have another admin do it.",
+      );
+    }
+
+    const col = await getUsersCollection();
+    const target = await col.findOne({
+      _id: targetId,
+      orgId: session.orgId,
+    });
+    if (!target) {
+      throw new HttpError(404, "not_found", "User not found in this org.");
+    }
+
+    // If the user has nothing to reset, return 200 anyway — the admin's
+    // intent is "make sure TOTP is off for this user" and that's
+    // already the case. Idempotent.
+    if (target.totpSecret === null && target.totpEnrolledAt === null) {
+      res.json({ user: toPublicUser(target), reset: false });
+      return;
+    }
+
+    const now = new Date();
+    const updated = await col.findOneAndUpdate(
+      { _id: targetId, orgId: session.orgId },
+      {
+        $set: {
+          totpSecret: null,
+          totpEnrolledAt: null,
+          updatedAt: now,
+        },
+      },
+      { returnDocument: "after" },
+    );
+    if (!updated) {
+      throw new HttpError(
+        500,
+        "internal_error",
+        "TOTP reset returned no document.",
+      );
+    }
+
+    await writeAudit({
+      orgId: session.orgId,
+      actorUserId: session.userId,
+      actorRole: session.role,
+      action: "user.totp_reset_by_admin",
+      targetType: "user",
+      targetId: targetId.toHexString(),
+      before: {
+        totpEnrolledAt: target.totpEnrolledAt
+          ? target.totpEnrolledAt.toISOString()
+          : null,
+      },
+      after: { totpEnrolledAt: null },
+      ...networkMeta(req),
+    });
+
+    res.json({ user: toPublicUser(updated), reset: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ─── GET /api/v1/admin/audit ─────────────────────────────────────────
 
 export async function listAuditHandler(
