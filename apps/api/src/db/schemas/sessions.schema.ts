@@ -43,6 +43,11 @@ export const sessionsValidator: Document = {
       userAgent: { bsonType: ["string", "null"] },
       demo: { bsonType: "bool" },
       totpVerified: { bsonType: "bool" },
+      // Optional for backward-compat with sessions minted before this
+      // field existed. New mintSession calls always write it; the
+      // startup migration `backfill-totp-enrolled-sessions` backfills
+      // pre-existing rows.
+      totpEnrolled: { bsonType: ["bool", "null"] },
     },
   },
 };

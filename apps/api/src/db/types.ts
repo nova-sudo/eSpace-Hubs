@@ -203,6 +203,18 @@ export interface Session {
   demo: boolean;
   /** Whether the second factor was satisfied this session. */
   totpVerified: boolean;
+  /**
+   * Whether the user had a TOTP secret on record AT SESSION MINT TIME.
+   * Set to `true` for sessions minted from an already-enrolled user,
+   * `false` for fresh users without enrolment yet. Toggled to `true`
+   * when the user completes `/auth/totp/verify-enrolment`.
+   *
+   * Optional on the type for backward-compat with sessions minted
+   * before this field existed — the auth middleware falls back to a
+   * one-shot user-lookup + session-backfill when undefined. New
+   * `mintSession` calls always write it.
+   */
+  totpEnrolled?: boolean;
 }
 
 // ─── goals (L1 / L2 tree) ────────────────────────────────────────────
