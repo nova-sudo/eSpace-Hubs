@@ -65,6 +65,7 @@ import {
   loginSchema,
   passwordResetRequestSchema,
   passwordResetSchema,
+  profileUpdateSchema,
   totpDisableSchema,
   totpVerifySchema,
   type PublicUser,
@@ -278,6 +279,107 @@ export async function meHandler(
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
     res.json({ user: toPublicUser(user) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Self-service profile update. Scoped to fields the user is allowed
+ * to change about themselves — displayName, employeeId, department.
+ * Admin-managed fields (role/status/hubs) flow through
+ * /api/v1/admin/users/:id; email changes are deferred (require the
+ * confirmation-email + session-invalidation dance).
+ *
+ * Empty body / no-diff patches return 200 + the unchanged user with
+ * no audit row written — matches the admin PATCH endpoint's policy
+ * of "don't pollute the log on re-save-on-blur UIs".
+ */
+export async function updateMeHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const payload = profileUpdateSchema.parse(req.body);
+
+    const users = await getUsersCollection();
+    const user = await users.findOne({ _id: session.userId });
+    if (!user) {
+      await destroySession(session._id);
+      clearSessionCookie(res);
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+
+    // Build a minimal $set + a paired before/after for the audit row.
+    // Only include keys the caller actually sent AND whose value
+    // differs from the stored value.
+    const set: Record<string, unknown> = {};
+    const before: Record<string, unknown> = {};
+    const after: Record<string, unknown> = {};
+
+    if (
+      payload.displayName !== undefined &&
+      payload.displayName !== user.displayName
+    ) {
+      set.displayName = payload.displayName;
+      before.displayName = user.displayName;
+      after.displayName = payload.displayName;
+    }
+    if (
+      payload.employeeId !== undefined &&
+      payload.employeeId !== (user.employeeId ?? null)
+    ) {
+      set.employeeId = payload.employeeId;
+      before.employeeId = user.employeeId ?? null;
+      after.employeeId = payload.employeeId;
+    }
+    if (
+      payload.department !== undefined &&
+      payload.department !== (user.department ?? null)
+    ) {
+      set.department = payload.department;
+      before.department = user.department ?? null;
+      after.department = payload.department;
+    }
+
+    if (Object.keys(set).length === 0) {
+      // No-op. Don't touch updatedAt, don't write an audit row.
+      res.json({ user: toPublicUser(user) });
+      return;
+    }
+
+    const now = new Date();
+    const updated = await users.findOneAndUpdate(
+      { _id: user._id },
+      { $set: { ...set, updatedAt: now } },
+      { returnDocument: "after" },
+    );
+    if (!updated) {
+      throw new HttpError(
+        500,
+        "internal_error",
+        "Profile update returned no document.",
+      );
+    }
+
+    await writeAudit({
+      orgId: user.orgId,
+      actorUserId: user._id,
+      actorRole: user.role,
+      action: "user.profile_update",
+      targetType: "user",
+      targetId: user._id.toHexString(),
+      before,
+      after,
+      ...networkMeta(req),
+    });
+
+    res.json({ user: toPublicUser(updated) });
   } catch (err) {
     next(err);
   }

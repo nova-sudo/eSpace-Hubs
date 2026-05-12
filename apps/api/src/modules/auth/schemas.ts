@@ -81,6 +81,27 @@ export const passwordResetSchema = z.object({
 });
 export type PasswordResetInput = z.infer<typeof passwordResetSchema>;
 
+/**
+ * Self-service profile patch. Scoped to fields a user can edit
+ * about THEMSELVES — not the admin-managed dimensions (role,
+ * status, hub access) that flow through /admin/users/:id.
+ *
+ * Email is intentionally NOT in this list. Changing email is the
+ * login-key change; it'd need a confirmation-email round-trip
+ * AND invalidating existing sessions. Out of scope here — defer
+ * with the rest of the email-related auth work (alongside
+ * /forgot-email or similar).
+ *
+ * Every field is optional. Empty body parses fine but the
+ * controller treats it as a no-op (no audit row, no DB write).
+ */
+export const profileUpdateSchema = z.object({
+  displayName: displayName.optional(),
+  employeeId: z.string().min(1).max(64).nullable().optional(),
+  department: z.string().min(1).max(200).nullable().optional(),
+});
+export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>;
+
 // 6-digit TOTP code. Strict — the controller never logs/echoes a
 // malformed code, so any leniency would just produce more 401s.
 const totpCode = z.string().regex(/^\d{6}$/, "code must be 6 digits");

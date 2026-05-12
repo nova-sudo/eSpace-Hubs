@@ -16,6 +16,8 @@
  *
  * Authenticated, full session (requireTotp: true is the default):
  *   GET  /me                       returns the current user
+ *   PATCH /me                      self-edit profile fields (displayName,
+ *                                   employeeId, department)
  *   POST /totp/enrol               start a new enrolment (rejects if already enrolled)
  *   POST /totp/verify-enrolment    confirm enrolment with a fresh code
  *   POST /totp/disable             turn TOTP off, requires current code
@@ -46,6 +48,7 @@ import {
   totpEnrolHandler,
   totpVerifyEnrolmentHandler,
   totpVerifyLoginHandler,
+  updateMeHandler,
 } from "./controller.js";
 
 export const authRouter: Router = Router();
@@ -88,6 +91,10 @@ authRouter.get(
   requireAuth({ requireTotpEnrolled: false }),
   meHandler,
 );
+// PATCH /me requires enrolment — un-enrolled users shouldn't be
+// editing profile fields until they finish setup. Mirrors the
+// "TOTP first, profile second" ordering the AuthGuard enforces.
+authRouter.patch("/me", requireAuth(), updateMeHandler);
 authRouter.post(
   "/totp/enrol",
   requireAuth({ requireTotpEnrolled: false }),
