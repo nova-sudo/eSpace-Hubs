@@ -21,6 +21,7 @@ export {
   useJenkinsBuildsForJob,
   useJenkinsBuildsSince,
 } from "./use-jenkins-builds";
+export { useJiraDefectsForProject } from "./use-jira-defects";
 export {
   useCombinedMergedSince,
   useCombinedEventsSince,
