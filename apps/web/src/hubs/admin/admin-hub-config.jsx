@@ -26,8 +26,14 @@ import { toast } from "sonner";
 import { apiDelete, apiGet, apiPut } from "@/lib/api-client";
 import { useSession } from "@/features/auth";
 import { CAPABILITIES } from "@espace-devhub/shared/capabilities";
+import { ALL_PROVIDERS } from "@espace-devhub/shared/hubs";
 
-const ALL_INTEGRATIONS = ["github", "gitlab", "jira"];
+// Source the integration list from the shared registry so adding
+// a new provider (e.g. PR A's `jenkins`, the imminent `zephyr`,
+// future zoho/etc.) automatically appears as a togglable pill in
+// the admin hub-config UI. Hardcoding here was the bug that hid
+// jenkins from QA hub config after PR A merged.
+const ALL_INTEGRATIONS = [...ALL_PROVIDERS];
 
 export function AdminHubConfig() {
   const { user } = useSession();
