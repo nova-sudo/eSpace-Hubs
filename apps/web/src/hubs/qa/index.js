@@ -12,3 +12,6 @@
 export { QaPlaceholder } from "./qa-placeholder.jsx";
 export { QaDashboard } from "./qa-dashboard.jsx";
 export { BuildPassRateTile } from "./build-pass-rate-tile.jsx";
+export { FlakeRateTile } from "./flake-rate-tile.jsx";
+export { DefectsTile } from "./defects-tile.jsx";
+export { DefectPriorityMixTile } from "./defect-priority-mix-tile.jsx";

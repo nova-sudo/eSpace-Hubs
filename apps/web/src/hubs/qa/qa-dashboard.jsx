@@ -26,9 +26,12 @@
  */
 
 import Link from "next/link";
-import { BentoTile, MonoLabel, PageHeader } from "@/components/ui";
+import { MonoLabel, PageHeader } from "@/components/ui";
 import { useActiveHub, useHubLink } from "@/features/hubs";
 import { BuildPassRateTile } from "./build-pass-rate-tile";
+import { DefectPriorityMixTile } from "./defect-priority-mix-tile";
+import { DefectsTile } from "./defects-tile";
+import { FlakeRateTile } from "./flake-rate-tile";
 
 export function QaDashboard() {
   const hub = useActiveHub();
@@ -59,7 +62,7 @@ export function QaDashboard() {
       />
 
       <div className="mt-2">
-        <MonoLabel>01 / Automation</MonoLabel>
+        <MonoLabel>01 / Automation health</MonoLabel>
         <div
           className="mt-3 grid gap-3"
           style={{
@@ -68,53 +71,23 @@ export function QaDashboard() {
           }}
         >
           <BuildPassRateTile />
-          <ComingSoonTile
-            col="span 4"
-            label="Flake rate · last 30d"
-            body="Tests that flip pass↔fail between runs without a code change. Lands in PR B alongside the broader Jenkins panel."
-          />
-          <ComingSoonTile
-            col="span 4"
-            label="Defects logged · current sprint"
-            body="Bugs you raised in Jira this sprint, by severity. Lands in PR C once defect-tag config is wired."
-          />
+          <FlakeRateTile />
+        </div>
+      </div>
+
+      <div className="mt-8">
+        <MonoLabel>02 / Defect flow</MonoLabel>
+        <div
+          className="mt-3 grid gap-3"
+          style={{
+            gridTemplateColumns: "repeat(12, 1fr)",
+            gridAutoRows: "minmax(140px, auto)",
+          }}
+        >
+          <DefectsTile />
+          <DefectPriorityMixTile />
         </div>
       </div>
     </main>
-  );
-}
-
-/**
- * Inline "this widget hasn't shipped yet" tile. We DO render this
- * (rather than hiding the slot entirely) so the QA dashboard has
- * shape from day one — a half-empty grid is more legible than
- * staring at one tile floating alone.
- */
-function ComingSoonTile({ col = "span 4", label, body }) {
-  return (
-    <BentoTile col={col} row="span 1" label={label}>
-      <div
-        className="flex h-full flex-col justify-between"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 11.5 }}
-      >
-        <div
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 36,
-            color: "var(--muted-fg)",
-            letterSpacing: "-1px",
-          }}
-        >
-          —
-        </div>
-        <div className="text-[12px] leading-[1.5] text-muted-fg">{body}</div>
-        <div
-          className="text-dim-fg"
-          style={{ fontSize: 10, letterSpacing: "0.5px" }}
-        >
-          coming soon
-        </div>
-      </div>
-    </BentoTile>
   );
 }
