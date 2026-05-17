@@ -12,7 +12,11 @@ import {
   useAllowedProviders,
 } from "@/features/hubs";
 import { startGitHubOAuth } from "@/lib/oauth-pkce";
-import { GitLabTokenForm, JiraTokenForm } from "../token-forms";
+import {
+  GitLabTokenForm,
+  JenkinsTokenForm,
+  JiraTokenForm,
+} from "../token-forms";
 
 /** Map provider id → OAuth start function. Single point of dispatch. */
 const OAUTH_STARTERS = {
@@ -132,6 +136,8 @@ function ProviderCard({ provider }) {
                 <JiraTokenForm />
               ) : provider.authMode === "pat" ? (
                 <GitLabTokenForm />
+              ) : provider.authMode === "basic" ? (
+                <JenkinsTokenForm />
               ) : (
                 <Button
                   onClick={async () => {

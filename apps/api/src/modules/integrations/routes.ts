@@ -9,6 +9,7 @@
  *   ANY     /proxy/github/*                authed — proxy to api.github.com
  *   ANY     /proxy/gitlab/*                authed — proxy to <user's GitLab>/api/v4
  *   ANY     /proxy/jira/*                  authed — proxy to <user's Jira>/rest/api/3
+ *   ANY     /proxy/jenkins/*               authed — proxy to <user's Jenkins>/<path>
  *
  * No public path returns ciphertext or plaintext tokens. The proxy
  * module reads tokens via `loadDecryptedTokens` and uses them only
@@ -29,6 +30,7 @@ import {
 import {
   githubProxyHandler,
   gitlabProxyHandler,
+  jenkinsProxyHandler,
   jiraProxyHandler,
 } from "./proxy.js";
 
@@ -44,6 +46,7 @@ for (const method of ["get", "post"] as const) {
   integrationsRouter[method]("/proxy/github/*", requireAuth(), githubProxyHandler);
   integrationsRouter[method]("/proxy/gitlab/*", requireAuth(), gitlabProxyHandler);
   integrationsRouter[method]("/proxy/jira/*", requireAuth(), jiraProxyHandler);
+  integrationsRouter[method]("/proxy/jenkins/*", requireAuth(), jenkinsProxyHandler);
 }
 
 // Per-provider CRUD — order matters, must come after /proxy/*.

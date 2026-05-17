@@ -18,7 +18,7 @@
  */
 
 import { DashboardPage } from "@/features/dashboard";
-import { QaPlaceholder } from "@/hubs/qa";
+import { QaDashboard, QaPlaceholder } from "@/hubs/qa";
 import {
   AdminAudit,
   AdminDashboard,
@@ -32,7 +32,7 @@ import {
  */
 const DASHBOARDS = {
   dev: DashboardPage,
-  qa: () => <QaPlaceholder slot="dashboard" />,
+  qa: QaDashboard,
   admin: AdminDashboard,
   manager: () => <QaPlaceholder slot="dashboard" />, // placeholder; real UI later
 };

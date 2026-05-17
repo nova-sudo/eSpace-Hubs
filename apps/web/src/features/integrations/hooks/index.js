@@ -17,6 +17,11 @@ export { useGithubMergedSince } from "./use-github-merged";
 export { useGithubEventsSince } from "./use-github-events";
 export { useGithubPrEventsSince } from "./use-github-pr-events";
 export {
+  useJenkinsJobs,
+  useJenkinsBuildsForJob,
+  useJenkinsBuildsSince,
+} from "./use-jenkins-builds";
+export {
   useCombinedMergedSince,
   useCombinedEventsSince,
 } from "./use-combined";
