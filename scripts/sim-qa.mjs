@@ -49,7 +49,14 @@
  */
 
 import { execSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, mkdtempSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -213,11 +220,27 @@ async function fetchJson(url, init = {}) {
     /* not JSON */
   }
   if (!r.ok) {
-    const detail =
-      parsed?.errorMessages?.join("; ") ||
-      parsed?.errors?.join("; ") ||
-      parsed?.message ||
-      text.slice(0, 300);
+    // Jira's response shape is annoying:
+    //   `errorMessages` is an array of strings (top-level errors)
+    //   `errors` is an OBJECT keyed by field name → message (field-level)
+    // Older endpoints sometimes return `errors` as an array. Handle both
+    // so the user sees the actual reason instead of a TypeError from
+    // calling .join on an object.
+    let detail = "";
+    if (Array.isArray(parsed?.errorMessages) && parsed.errorMessages.length) {
+      detail = parsed.errorMessages.join("; ");
+    }
+    if (!detail && parsed?.errors) {
+      if (Array.isArray(parsed.errors)) {
+        detail = parsed.errors.join("; ");
+      } else if (typeof parsed.errors === "object") {
+        const pairs = Object.entries(parsed.errors).map(
+          ([field, msg]) => `${field}: ${msg}`,
+        );
+        if (pairs.length) detail = pairs.join("; ");
+      }
+    }
+    if (!detail) detail = parsed?.message || text.slice(0, 300);
     const err = new Error(`HTTP ${r.status} on ${url} — ${detail}`);
     err.status = r.status;
     err.body = parsed ?? text;
@@ -227,6 +250,55 @@ async function fetchJson(url, init = {}) {
 }
 
 // ─── Jira ─────────────────────────────────────────────────────────
+
+// Cache of issuetypes the current Jira project actually has. Filled
+// during preflight by hitting /createmeta. `resolveIssueType` maps a
+// template's desired type (e.g. "Bug") onto whatever the project
+// supports — falling back to Task or the first available type if
+// the requested one isn't present.
+let _availableIssueTypes = null;
+
+async function fetchProjectIssueTypes(env) {
+  // The /createmeta/{key}/issuetypes endpoint is the modern (post-2024)
+  // replacement for the deprecated /createmeta?expand=...&projectKeys=...
+  // It returns { issueTypes: [{ name, ... }, ...], maxResults, ... }
+  // or { values: [...] } on some Jira versions.
+  const url = `${env.SIM_JIRA_URL.replace(/\/$/, "")}/rest/api/3/issue/createmeta/${env.SIM_JIRA_PROJECT_KEY}/issuetypes`;
+  const data = await fetchJson(url, {
+    headers: {
+      Authorization: basicAuthHeader(env.SIM_JIRA_EMAIL, env.SIM_JIRA_API_TOKEN),
+      Accept: "application/json",
+    },
+  });
+  const list = Array.isArray(data?.issueTypes)
+    ? data.issueTypes
+    : Array.isArray(data?.values)
+      ? data.values
+      : [];
+  return list.map((t) => t.name).filter(Boolean);
+}
+
+/** Map a template's requested issuetype onto something the project has. */
+function resolveIssueType(requested) {
+  if (!_availableIssueTypes || _availableIssueTypes.length === 0) {
+    // Unknown — pass through and let Jira reject if it's wrong.
+    return requested;
+  }
+  const ciMatch = _availableIssueTypes.find(
+    (n) => n.toLowerCase() === requested.toLowerCase(),
+  );
+  if (ciMatch) return ciMatch;
+  // Common downgrade target — most Jira projects have at least Task.
+  const task = _availableIssueTypes.find((n) => n.toLowerCase() === "task");
+  if (task) return task;
+  // Last resort: pick the first non-Epic, non-Subtask type so we don't
+  // try to create an Epic without the required `customfield_10011`.
+  const fallback =
+    _availableIssueTypes.find(
+      (n) => !/^(epic|sub.?task)$/i.test(n),
+    ) || _availableIssueTypes[0];
+  return fallback;
+}
 
 async function preflightJira(env) {
   const url = `${env.SIM_JIRA_URL.replace(/\/$/, "")}/rest/api/3/project/${env.SIM_JIRA_PROJECT_KEY}`;
@@ -238,6 +310,32 @@ async function preflightJira(env) {
       },
     });
     log.ok(`jira project found: ${project.key} (${project.name})`);
+
+    // Discover issuetypes so we can adapt to projects without "Bug"
+    // (common on Jira Work Management — those ship Task/Epic only).
+    try {
+      _availableIssueTypes = await fetchProjectIssueTypes(env);
+      if (_availableIssueTypes.length > 0) {
+        log.ok(`jira issuetypes: ${_availableIssueTypes.join(", ")}`);
+        const hasBug = _availableIssueTypes.some(
+          (n) => n.toLowerCase() === "bug",
+        );
+        if (!hasBug) {
+          log.warn(
+            `project ${env.SIM_JIRA_PROJECT_KEY} has no "Bug" issuetype — ` +
+              `Bug-templated tickets will downgrade to "${resolveIssueType("Bug")}". ` +
+              `The QA Hub defect widgets query \`issuetype = Bug\` and will read 0 ` +
+              `until Bug is added under Jira → Project settings → Issue types.`,
+          );
+        }
+      }
+    } catch (metaErr) {
+      log.warn(
+        `couldn't fetch project issuetypes (${metaErr.message}); ` +
+          `will pass template types through as-is`,
+      );
+    }
+
     return project;
   } catch (e) {
     if (e.status === 404) {
@@ -278,26 +376,57 @@ async function createTicket(env, template) {
       },
     ],
   };
-  const body = {
-    fields: {
-      project: { key: env.SIM_JIRA_PROJECT_KEY },
-      summary: template.summary,
-      issuetype: { name: template.type },
-      description,
-      priority: { name: template.priority },
-      labels: ["qa-hub-sim", "synthetic"],
-    },
+  const issueTypeName = resolveIssueType(template.type);
+  const baseFields = {
+    project: { key: env.SIM_JIRA_PROJECT_KEY },
+    summary: template.summary,
+    issuetype: { name: issueTypeName },
+    description,
   };
-  const issue = await fetchJson(url, {
-    method: "POST",
-    headers: {
-      Authorization: basicAuthHeader(env.SIM_JIRA_EMAIL, env.SIM_JIRA_API_TOKEN),
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  return { key: issue.key, summary: template.summary };
+
+  // Some Jira projects don't have `priority` or `labels` on the Create
+  // screen for every issuetype (especially Bug). Hitting that returns
+  // a 400 with `errors: { priority: "Field cannot be set..." }`.
+  //
+  // Strategy: try with the full payload first; on 400 retry without
+  // priority + labels. We surface a `partial` flag so the caller can
+  // log that priority-mix data won't be populated for that ticket.
+  const fullFields = {
+    ...baseFields,
+    priority: { name: template.priority },
+    labels: ["qa-hub-sim", "synthetic"],
+  };
+
+  const post = (fields) =>
+    fetchJson(url, {
+      method: "POST",
+      headers: {
+        Authorization: basicAuthHeader(env.SIM_JIRA_EMAIL, env.SIM_JIRA_API_TOKEN),
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ fields }),
+    });
+
+  try {
+    const issue = await post(fullFields);
+    return { key: issue.key, summary: template.summary, partial: false };
+  } catch (e) {
+    if (e.status !== 400) throw e;
+    // Re-throw with the original error details if the minimal retry
+    // also fails — so the user sees the real Jira message either way.
+    try {
+      const issue = await post(baseFields);
+      return {
+        key: issue.key,
+        summary: template.summary,
+        partial: true,
+        droppedReason: e.message,
+      };
+    } catch (e2) {
+      throw e2;
+    }
+  }
 }
 
 // ─── GitHub PRs (via gh CLI) ──────────────────────────────────────
@@ -344,15 +473,33 @@ function createPr(env, template, ticketKey, repoTmpRoot) {
   log.info(`  cloning into ${cloneDir}`);
   sh(`git clone --depth=1 https://github.com/${env.SIM_GH_REPO}.git "${cloneDir}"`);
 
-  // Make a no-op-ish change so the PR has a diff. We append a line
-  // to the README under a "PR notes" heading the script owns. Real
-  // PR templates wouldn't do this, but the simulation just needs a
-  // diff.
-  const note = `\n<!-- sim-qa: ${ticketKey} · ${new Date().toISOString()} -->\n`;
-  sh(`echo "${note}" >> README.md`, { cwd: cloneDir });
+  // Make a real diff so the PR has something to merge. We write a
+  // unique file per PR under `sim-qa-notes/` rather than appending
+  // to README — appending via `echo "..." >> README.md` is shell-
+  // quoting hell on Windows (the literal "\n" inside the quoted
+  // string crashes cmd.exe parsing and the file ends up untouched,
+  // which gives the misleading "nothing to commit" error).
+  //
+  // Writing through Node's fs sidesteps the shell entirely and
+  // gives us a guaranteed diff with predictable contents.
+  // Note path is `sim-qa-notes/<branch>.md`. The branch is something
+  // like `fix/cart-rounding-xrrp5` — the `/` means writeFileSync needs
+  // the `sim-qa-notes/fix/` subdir to already exist, so mkdir
+  // recursively on the file's dirname rather than just on the root.
+  const notePath = path.join(cloneDir, "sim-qa-notes", `${branch}.md`);
+  mkdirSync(path.dirname(notePath), { recursive: true });
+  writeFileSync(
+    notePath,
+    `# sim-qa marker\n\n` +
+      `- ticket: ${ticketKey}\n` +
+      `- created: ${new Date().toISOString()}\n` +
+      `- title:   ${template.title}\n\n` +
+      `Synthetic file created by sim-qa.mjs. Safe to delete.\n`,
+    "utf8",
+  );
 
   sh(`git checkout -b ${branch}`, { cwd: cloneDir });
-  sh(`git add README.md`, { cwd: cloneDir });
+  sh(`git add sim-qa-notes`, { cwd: cloneDir });
   sh(
     `git -c user.email=sim-qa@local -c user.name="sim-qa" commit -m "${template.title} (${ticketKey})"`,
     { cwd: cloneDir },
@@ -400,20 +547,70 @@ async function preflightJenkins(env) {
   }
 }
 
+// Cached during preflight so we don't ask Jenkins on every trigger.
+// `null` = unknown, `true`/`false` = answered.
+let _jobIsParameterized = null;
+
+/**
+ * Ask Jenkins whether the job declares any parameters. If yes, we use
+ * /buildWithParameters and the variant env vars take effect. If no,
+ * /buildWithParameters returns HTTP 400 "is not parameterized" and we
+ * have to fall back to /build (variants are silently dropped — the
+ * Jenkinsfile would need to declare a `parameters { ... }` block for
+ * them to be honoured).
+ */
+async function detectJobParameterized(env) {
+  if (_jobIsParameterized !== null) return _jobIsParameterized;
+  const url = `${env.SIM_JENKINS_BASE_URL.replace(/\/$/, "")}/job/${env.SIM_JENKINS_JOB}/api/json?tree=property[parameterDefinitions[name]]`;
+  try {
+    const data = await fetchJson(url, {
+      headers: {
+        Authorization: basicAuthHeader(env.SIM_JENKINS_USER, env.SIM_JENKINS_API_TOKEN),
+        Accept: "application/json",
+        "ngrok-skip-browser-warning": "1",
+      },
+    });
+    const props = Array.isArray(data?.property) ? data.property : [];
+    _jobIsParameterized = props.some(
+      (p) =>
+        Array.isArray(p?.parameterDefinitions) &&
+        p.parameterDefinitions.length > 0,
+    );
+    if (!_jobIsParameterized) {
+      log.warn(
+        `jenkins job "${env.SIM_JENKINS_JOB}" is not parameterized — ` +
+          `falling back to /build. Variant env vars (FLAKY_FAIL_RATE, ` +
+          `SIMULATE_BROKEN, …) will NOT apply. To restore variance, ` +
+          `add a parameters { ... } block to qa-sim-target's Jenkinsfile ` +
+          `and run one manual build to register them.`,
+      );
+    }
+    return _jobIsParameterized;
+  } catch (e) {
+    // If introspection fails we'd rather try the parameterized path
+    // and surface the real error per-build than block the whole run.
+    log.warn(`couldn't introspect job parameters (${e.message}); assuming parameterized`);
+    _jobIsParameterized = true;
+    return true;
+  }
+}
+
 async function triggerBuild(env, variant, idx) {
-  // Use /buildWithParameters when the job has params declared; for our
-  // qa-sim-target Jenkinsfile we don't (it reads env vars at runtime),
-  // but Jenkins still accepts /buildWithParameters for any job and
-  // exposes the params as env vars on the build. That's the path the
-  // Jenkinsfile sees them on.
+  const parameterized = await detectJobParameterized(env);
+
   const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(variant)) params.set(k, v);
-  // Identify the source of the build so dashboards can split
-  // sim-builds from real ones if we ever care.
-  params.set("cause", `sim-qa run ${idx + 1}`);
+  if (parameterized) {
+    for (const [k, v] of Object.entries(variant)) params.set(k, v);
+    // Identify the source of the build so dashboards can split
+    // sim-builds from real ones if we ever care. Only attaches when
+    // the job is parameterized — unparameterized jobs ignore extra
+    // query params entirely.
+    params.set("cause", `sim-qa run ${idx + 1}`);
+  }
   if (env.SIM_JENKINS_REMOTE_TOKEN) params.set("token", env.SIM_JENKINS_REMOTE_TOKEN);
 
-  const url = `${env.SIM_JENKINS_BASE_URL.replace(/\/$/, "")}/job/${env.SIM_JENKINS_JOB}/buildWithParameters?${params.toString()}`;
+  const endpoint = parameterized ? "buildWithParameters" : "build";
+  const url = `${env.SIM_JENKINS_BASE_URL.replace(/\/$/, "")}/job/${env.SIM_JENKINS_JOB}/${endpoint}?${params.toString()}`;
   const r = await fetch(url, {
     method: "POST",
     headers: {
