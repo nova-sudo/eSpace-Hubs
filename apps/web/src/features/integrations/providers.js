@@ -34,6 +34,19 @@ export const PROVIDERS = {
     scopes: "repo · read:user",
     endpointHint: () => "api.github.com",
   },
+  jenkins: {
+    id: "jenkins",
+    label: "Jenkins",
+    glyph: "JK",
+    // Jenkins uses Basic auth with `username:apiToken` — same shape as
+    // Jira, separate authMode so the token form renders the right fields
+    // (URL + username + API token, not URL + email + token).
+    authMode: "basic",
+    description:
+      "Paste your Jenkins URL, username, and an API token. Generate one at <your-jenkins>/me/configure → API Token → Add new Token.",
+    scopes: "overall/read · job/read · job/build (optional)",
+    endpointHint: (url) => (url ? url.replace(/^https?:\/\//, "") : "your Jenkins instance"),
+  },
   zoho: {
     id: "zoho",
     label: "Zoho People",

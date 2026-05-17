@@ -46,7 +46,7 @@ function freezeTheme(t) {
 }
 
 /** Catalog of currently-supported integration provider ids. */
-export const ALL_PROVIDERS = Object.freeze(["github", "gitlab", "jira"]);
+export const ALL_PROVIDERS = Object.freeze(["github", "gitlab", "jira", "jenkins"]);
 
 /**
  * Page slot ids the hub layout can render. Each hub picks which
@@ -152,7 +152,7 @@ const QA_HUB = Object.freeze({
     accent: "#b8722d",
     accentSurface: "rgba(184,114,45,0.08)",
   }),
-  allowedIntegrations: Object.freeze(["gitlab", "jira"]),
+  allowedIntegrations: Object.freeze(["gitlab", "github", "jira", "jenkins"]),
   pages: Object.freeze({
     dashboard: "qa:dashboard",
     goals: "qa:goals",
@@ -163,12 +163,14 @@ const QA_HUB = Object.freeze({
     "defect-leakage",
     "test-cycle-time",
     "regression-rate",
+    "build-pass-rate",
   ]),
   departments: Object.freeze([
     "qa",
     "quality assurance",
     "testing",
     "quality",
+    "software testing",
   ]),
   requires: Object.freeze([CAPABILITIES.HUB_QA_ACCESS]),
 });

@@ -45,7 +45,13 @@ const upsertSchema = z.object({
   accessToken: tokenString.optional(),
   apiToken: tokenString.optional(),
   refreshToken: tokenString.optional(),
-  email: z.string().email().max(320).nullable().optional(),
+  // `email` is overloaded — Jira stores the user's Atlassian email
+  // (used for Basic auth), Jenkins stores the username (also used
+  // for Basic auth). Both are free-form identifiers from the user's
+  // perspective; we let either shape through and rely on the
+  // provider-specific token form to validate format. Length cap is
+  // unchanged.
+  email: z.string().min(1).max(320).nullable().optional(),
   endpointUrl: z.string().url().max(1_000).nullable().optional(),
   scopes: z.array(z.string().max(200)).max(50).default([]),
   expiresAt: z.string().datetime({ offset: true }).nullable().optional(),

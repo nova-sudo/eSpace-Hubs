@@ -79,7 +79,7 @@ const PASSTHROUGH_RESPONSE_HEADERS = new Set([
 ]);
 
 interface ProxyContext {
-  providerId: "github" | "gitlab" | "jira";
+  providerId: "github" | "gitlab" | "jira" | "jenkins";
   /** Builds the upstream URL from the captured rest-of-path + querystring. */
   buildUrl(args: { restPath: string; search: string; endpointUrl: string | null }): string;
   /** Builds the Authorization header (and any provider-specific extras). */
@@ -148,6 +148,58 @@ const JIRA: ProxyContext = {
     if (!t.apiToken) return "Jira API token missing — reconnect required.";
     if (!t.email) return "Jira email missing on the integration.";
     if (!t.endpointUrl) return "Jira endpoint URL not set on the integration.";
+    return null;
+  },
+};
+
+/**
+ * Jenkins proxy context.
+ *
+ * Jenkins exposes a REST API under the same host:port as its web UI.
+ * Almost every resource has a `/api/json` suffix that returns the
+ * machine-readable representation — e.g. `/job/foo/api/json`,
+ * `/job/foo/lastBuild/api/json`, `/api/json` at the root for instance
+ * metadata.
+ *
+ * Auth: Basic with `username:apiToken`. The API token is generated
+ * per-user at `<jenkins>/me/configure → API Token → Add new Token`
+ * and is revocable independently of the account password.
+ *
+ * Path shape unlike GitHub/GitLab/Jira there is no fixed REST
+ * prefix — callers ship the full path including `api/json` (or
+ * `wfapi/runs` for the Pipeline Stage View plugin, etc.). The
+ * `buildUrl` here just joins endpointUrl + restPath verbatim so we
+ * can target any Jenkins resource the user's plugins expose.
+ *
+ * We DO normalise `endpointUrl` by stripping any trailing slash so
+ * `https://jenkins.example.com/` + `api/json` doesn't double-slash.
+ *
+ * `email` field on the integrations row is reused as the Jenkins
+ * username (see JenkinsTokenForm) — the schema's `email` validator
+ * was relaxed for non-Jira providers in M6.2.
+ *
+ * Tree parameter: many Jenkins responses are huge (recursive job
+ * listings, build history with all parameters). The api-client passes
+ * `?tree=...` selectors to keep responses focused. The proxy doesn't
+ * inject these — it just relays whatever the client requested.
+ */
+const JENKINS: ProxyContext = {
+  providerId: "jenkins",
+  buildUrl: ({ restPath, search, endpointUrl }) => {
+    const base = endpointUrl?.replace(/\/$/, "") ?? "";
+    return `${base}/${restPath}${search}`;
+  },
+  buildHeaders: ({ apiToken, email }) => {
+    const basic = Buffer.from(`${email}:${apiToken}`).toString("base64");
+    return {
+      Authorization: `Basic ${basic}`,
+      Accept: "application/json",
+    };
+  },
+  validate: (t) => {
+    if (!t.apiToken) return "Jenkins API token missing — reconnect required.";
+    if (!t.email) return "Jenkins username missing on the integration.";
+    if (!t.endpointUrl) return "Jenkins URL not set on the integration.";
     return null;
   },
 };
@@ -300,4 +352,8 @@ export function gitlabProxyHandler(req: Request, res: Response, next: NextFuncti
 
 export function jiraProxyHandler(req: Request, res: Response, next: NextFunction) {
   return runProxy(JIRA, req, res, next);
+}
+
+export function jenkinsProxyHandler(req: Request, res: Response, next: NextFunction) {
+  return runProxy(JENKINS, req, res, next);
 }
