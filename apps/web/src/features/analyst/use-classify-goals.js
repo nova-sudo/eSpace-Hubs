@@ -182,6 +182,8 @@ export function useClassifyGoals() {
 
   useEffect(
     () => () => {
+      // eslint-disable-next-line no-console
+      console.warn("[classify] useClassifyGoals UNMOUNT — mountedRef→false, aborting in-flight");
       mountedRef.current = false;
       if (abortRef.current) abortRef.current.abort();
     },
@@ -204,10 +206,22 @@ export function useClassifyGoals() {
    */
   const start = useCallback(
     async (subset) => {
-      if (phase === PHASES.RUNNING) return;
+      // TEMP DEBUG: tracking down the "0/N · analyzing · 55s · Warming up"
+      // stall — server stream completes per network tab but client
+      // events array never grows past the synthetic START. Remove these
+      // logs once the rendering bug is diagnosed.
+      // eslint-disable-next-line no-console
+      console.log("[classify] start() invoked. phase:", phase);
+      if (phase === PHASES.RUNNING) {
+        // eslint-disable-next-line no-console
+        console.warn("[classify] start() bailed: phase already RUNNING");
+        return;
+      }
       const list = subset && Array.isArray(subset)
         ? subset
         : flattenGoalsForClassification(goals);
+      // eslint-disable-next-line no-console
+      console.log("[classify] flattened goals:", list.length);
       if (list.length === 0) {
         setError("No goals to classify. Add goals in Settings first.");
         setPhase(PHASES.ERROR);
@@ -264,20 +278,61 @@ export function useClassifyGoals() {
         if (!res.body) {
           throw new Error("Classifier returned an empty stream.");
         }
+        // eslint-disable-next-line no-console
+        console.log("[classify] fetch ok:", res.status, "— opening NDJSON reader");
+        let evtCount = 0;
         for await (const evt of readNdjson(res.body)) {
-          if (!mountedRef.current) break;
+          evtCount += 1;
+          // eslint-disable-next-line no-console
+          console.log(
+            `[classify] event #${evtCount}:`,
+            evt.type,
+            evt.payload?.goalId ? `(goal ${evt.payload.goalId.slice(-4)})` : "",
+            "mounted:",
+            mountedRef.current,
+          );
+          if (!mountedRef.current) {
+            // eslint-disable-next-line no-console
+            console.warn("[classify] mountedRef false — breaking loop at event", evtCount);
+            break;
+          }
           // Persist classified specs immediately so downstream consumers
           // (dashboard section 5, analyst grid) update in real time.
           if (evt.type === ANALYSIS.GOAL_CLASSIFIED && evt.payload?.spec) {
-            saveSpec(evt.payload.spec);
+            try {
+              saveSpec(evt.payload.spec);
+            } catch (saveErr) {
+              // eslint-disable-next-line no-console
+              console.warn("[classify] saveSpec threw:", saveErr);
+            }
           }
-          setEvents((prev) => [...prev, evt]);
+          setEvents((prev) => {
+            const next = [...prev, evt];
+            // Periodically log how many events have actually landed in
+            // React state — this is the smoking-gun check: if this number
+            // stays at 1 while the stream is clearly delivering, the
+            // setEvents path is broken upstream.
+            if (next.length % 50 === 0 || next.length <= 5) {
+              // eslint-disable-next-line no-console
+              console.log("[classify] events in state →", next.length);
+            }
+            return next;
+          });
           if (evt.type === ANALYSIS.COMPLETE) {
             markAnalyzedAt(Date.now());
           }
         }
+        // eslint-disable-next-line no-console
+        console.log(
+          "[classify] for-await EXITED. total events:",
+          evtCount,
+          "mounted:",
+          mountedRef.current,
+        );
         if (mountedRef.current) setPhase(PHASES.COMPLETE);
       } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[classify] caught error:", err?.name, err?.message);
         if (err?.name === "AbortError") {
           if (mountedRef.current) setPhase(PHASES.IDLE);
           return;
