@@ -135,22 +135,16 @@ export async function classifyGoalsHandler(
     }
   };
 
-  // Flush a START envelope BEFORE opening the classifier so the client
-  // sees stream bytes within a few ms of connecting, instead of waiting
-  // out the upstream model's cold-start (~500-1500ms on free-tier
-  // providers like Mistral). The classifier emits its own START shortly
-  // after, but the client's fold logic is idempotent on START (refreshes
-  // totalGoals + startedAt with the same values), so the double-emit is
-  // safe. Pairs with the client's optimistic-skeleton seed in
-  // apps/web/src/features/analyst/use-classify-goals.js — together they
-  // close the "click → first visible block" gap to under a frame.
-  writeEvent(
-    AnalysisEvents.start({
-      totalGoals: goals.length,
-      startedAt: Date.now(),
-    }),
-  );
-
+  // NOTE on perceived latency: the client (see use-classify-goals.js)
+  // seeds its `events` state with a synthetic START on click, which
+  // immediately shows "0 / N · analyzing · 0s" in the summary strip.
+  // We deliberately do NOT emit a duplicate START from the server here
+  // — an earlier attempt did, and it appeared to interact badly with
+  // the per-goal streaming loop (the response would deliver the START
+  // chunk and then stall before yielding the classifier's own events).
+  // The classifier emits its own START as the first event from
+  // `classify()`, which is sufficient and arrives before any goal-
+  // specific events.
   try {
     for await (const event of classifier.classify(goals, {
       signal: abortController.signal,
