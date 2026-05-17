@@ -213,31 +213,27 @@ export function useClassifyGoals() {
         setPhase(PHASES.ERROR);
         return;
       }
-      // Optimistic skeleton: seed `events` with a synthetic START + one
-      // GOAL_STARTED per goal BEFORE the network call goes out. The
-      // analysis-stream renderer keys goal blocks on goalId, so when
-      // the real GOAL_STARTED events arrive from the server they merge
-      // into the same blocks (with identical title / parentL1 values,
-      // no visual jump). Without this seed, the overlay would sit on
-      // the "Warming up the analyst" empty placeholder for the entire
-      // upstream-model cold-start window (~500–1500ms on free-tier
-      // providers). With it, the user sees N "reading…" cards within
-      // the same tick — feels instant even when the model is slow.
-      const optimisticEvents = [
+      // Optimistic kick-off: seed `events` with a synthetic START
+      // BEFORE the network call goes out. This gives the summary
+      // strip its `totalGoals` / `startedAt` so the user immediately
+      // sees "0 / 12 · analyzing · 0s" instead of empty placeholder.
+      //
+      // We DO NOT also seed synthetic GOAL_STARTED-per-goal events:
+      // the fold replaces a block on every GOAL_STARTED it sees,
+      // which means a synthetic-then-server pair can race the
+      // intervening REASONING/CLASSIFIED events in subtle ways
+      // (observed: blocks freezing on "reading" after the server's
+      // real GOAL_STARTED lands). Letting the server's GOAL_STARTED
+      // be the SOLE source of block creation removes that whole
+      // class of bug. Blocks appear as the server queue picks goals
+      // up (concurrency=3), each transitioning reading → reasoning
+      // → classified in real time.
+      setEvents([
         {
           type: ANALYSIS.START,
           payload: { totalGoals: list.length, startedAt: Date.now() },
         },
-        ...list.map((g) => ({
-          type: ANALYSIS.GOAL_STARTED,
-          payload: {
-            goalId: g.id,
-            title: g.title,
-            parentL1: g.parentL1Title,
-          },
-        })),
-      ];
-      setEvents(optimisticEvents);
+      ]);
       setError(null);
       setPhase(PHASES.RUNNING);
       const ctrl = new AbortController();
