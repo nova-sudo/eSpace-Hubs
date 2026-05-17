@@ -213,7 +213,31 @@ export function useClassifyGoals() {
         setPhase(PHASES.ERROR);
         return;
       }
-      setEvents([]);
+      // Optimistic skeleton: seed `events` with a synthetic START + one
+      // GOAL_STARTED per goal BEFORE the network call goes out. The
+      // analysis-stream renderer keys goal blocks on goalId, so when
+      // the real GOAL_STARTED events arrive from the server they merge
+      // into the same blocks (with identical title / parentL1 values,
+      // no visual jump). Without this seed, the overlay would sit on
+      // the "Warming up the analyst" empty placeholder for the entire
+      // upstream-model cold-start window (~500–1500ms on free-tier
+      // providers). With it, the user sees N "reading…" cards within
+      // the same tick — feels instant even when the model is slow.
+      const optimisticEvents = [
+        {
+          type: ANALYSIS.START,
+          payload: { totalGoals: list.length, startedAt: Date.now() },
+        },
+        ...list.map((g) => ({
+          type: ANALYSIS.GOAL_STARTED,
+          payload: {
+            goalId: g.id,
+            title: g.title,
+            parentL1: g.parentL1Title,
+          },
+        })),
+      ];
+      setEvents(optimisticEvents);
       setError(null);
       setPhase(PHASES.RUNNING);
       const ctrl = new AbortController();
