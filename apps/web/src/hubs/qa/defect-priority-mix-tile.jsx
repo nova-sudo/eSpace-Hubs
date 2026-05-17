@@ -18,11 +18,10 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { BentoTile } from "@/components/ui";
-import { useHubLink } from "@/features/hubs";
+import { useHubLink, useQaHubConfig } from "@/features/hubs";
 import { useIntegrations } from "@/features/integrations";
 import { useJiraDefectsForProject } from "@/features/integrations/hooks";
 
-const PROJECT_KEY = "ESPQA";
 const WINDOW_DAYS = 14;
 
 // Stable display order + per-priority colour. Colours track the
@@ -39,7 +38,9 @@ const PRIORITY_ORDER = [
 
 export function DefectPriorityMixTile() {
   const { isConnected } = useIntegrations();
+  const { config } = useQaHubConfig();
   const connected = isConnected("jira");
+  const projectKey = config.jiraProjectKey;
 
   return (
     <BentoTile
@@ -48,7 +49,7 @@ export function DefectPriorityMixTile() {
       label="Defect priority mix"
       right={connected ? <span style={meta}>last 14d</span> : null}
     >
-      {connected ? <Body /> : <NotConnectedBody />}
+      {connected ? <Body projectKey={projectKey} /> : <NotConnectedBody />}
     </BentoTile>
   );
 }
@@ -71,9 +72,9 @@ function NotConnectedBody() {
   );
 }
 
-function Body() {
+function Body({ projectKey }) {
   const { data, isLoading, error } = useJiraDefectsForProject(
-    PROJECT_KEY,
+    projectKey,
     WINDOW_DAYS,
   );
   const buckets = useMemo(() => bucketByPriority(data?.issues ?? []), [data]);

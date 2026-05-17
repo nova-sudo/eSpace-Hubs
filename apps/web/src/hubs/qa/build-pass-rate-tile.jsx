@@ -25,7 +25,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { BentoTile, MonoLabel } from "@/components/ui";
-import { useHubLink } from "@/features/hubs";
+import { useHubLink, useQaHubConfig } from "@/features/hubs";
 import { useIntegrations } from "@/features/integrations";
 import {
   useJenkinsJobs,
@@ -104,15 +104,28 @@ function NotConnectedBody() {
 
 function ConnectedBody() {
   const { jobs, isLoading: jobsLoading, error: jobsError } = useJenkinsJobs();
+  const { config } = useQaHubConfig();
   const [selectedJob, setSelectedJob] = useState(null);
 
-  // Default to the first buildable job once the list resolves.
+  // Default selection priority:
+  //   1) the job the user picked in QA Hub config (jenkinsJobName)
+  //   2) the first buildable job
+  //   3) the first job in the list
+  // The user can still pick a different job via the dropdown — this
+  // is just the initial selection. Re-runs when the config job name
+  // changes so a fresh save in another tab seeds the right default.
   useEffect(() => {
-    if (!selectedJob && jobs.length > 0) {
-      const firstBuildable = jobs.find((j) => j.buildable) ?? jobs[0];
-      setSelectedJob(firstBuildable.name);
+    if (selectedJob || jobs.length === 0) return;
+    const preferred = config.jenkinsJobName
+      ? jobs.find((j) => j.name === config.jenkinsJobName)
+      : null;
+    if (preferred) {
+      setSelectedJob(preferred.name);
+      return;
     }
-  }, [jobs, selectedJob]);
+    const firstBuildable = jobs.find((j) => j.buildable) ?? jobs[0];
+    setSelectedJob(firstBuildable.name);
+  }, [jobs, selectedJob, config.jenkinsJobName]);
 
   if (jobsError) {
     return (

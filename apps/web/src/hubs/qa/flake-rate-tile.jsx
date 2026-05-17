@@ -43,20 +43,22 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { BentoTile } from "@/components/ui";
-import { useHubLink } from "@/features/hubs";
+import { useHubLink, useQaHubConfig } from "@/features/hubs";
 import { useIntegrations } from "@/features/integrations";
 import { useJenkinsBuildsForJob } from "@/features/integrations/hooks";
 
-// Same job name the BuildPassRateTile uses by default. Both tiles
-// will eventually accept a selector when we ship the "configure
-// which job per widget" UI in PR D.
-const JOB_NAME = "qa-sim-target";
+// Job name comes from useQaHubConfig (QA Hub → Settings → QA Hub
+// config). Defaults to "qa-sim-target" — the synthetic CI target we
+// ship for the demo flow. BuildPassRateTile prefers the same value
+// when auto-selecting a job.
 const WINDOW_DAYS = 30;
 const LOW_SIGNAL_THRESHOLD = 5;
 
 export function FlakeRateTile() {
   const { isConnected } = useIntegrations();
+  const { config } = useQaHubConfig();
   const connected = isConnected("jenkins");
+  const jobName = config.jenkinsJobName;
 
   return (
     <BentoTile
@@ -65,7 +67,7 @@ export function FlakeRateTile() {
       label="Flake rate · last 30d"
       right={connected ? <span style={meta}>UNSTABLE / completed</span> : null}
     >
-      {connected ? <Body /> : <NotConnectedBody />}
+      {connected ? <Body jobName={jobName} /> : <NotConnectedBody />}
     </BentoTile>
   );
 }
@@ -88,8 +90,8 @@ function NotConnectedBody() {
   );
 }
 
-function Body() {
-  const { builds, isLoading, error } = useJenkinsBuildsForJob(JOB_NAME);
+function Body({ jobName }) {
+  const { builds, isLoading, error } = useJenkinsBuildsForJob(jobName);
   const stats = useMemo(() => compute(builds, WINDOW_DAYS), [builds]);
 
   if (error) {
@@ -116,7 +118,7 @@ function Body() {
       <div>
         <div style={{ ...meta, marginBottom: 6 }}>SUITE</div>
         <div style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>
-          {JOB_NAME}
+          {jobName}
         </div>
         {stats.completed < LOW_SIGNAL_THRESHOLD ? (
           <div className="mt-2" style={lowSignal}>
