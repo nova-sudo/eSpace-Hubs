@@ -67,7 +67,11 @@ function AppShellInner({ children, hideFooter }) {
       <div
         className="relative z-[2]"
         aria-hidden={open ? "true" : undefined}
-        inert={open ? "" : undefined}
+        // React 19 treats an empty string for boolean attrs as `false`
+        // and warns. Pass real boolean `true` when we want the shell
+        // inert (analyst overlay open), and `undefined` to omit the
+        // attribute entirely otherwise.
+        inert={open || undefined}
         style={{
           transform: open ? "translateX(-100%)" : "translateX(0)",
           transition: "transform 320ms cubic-bezier(0.22, 0.61, 0.36, 1)",
