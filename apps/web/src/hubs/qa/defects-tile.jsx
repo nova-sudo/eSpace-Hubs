@@ -13,45 +13,39 @@
  *   target that's fragile.
  *
  *   A 14-day rolling window approximates a typical sprint length on
- *   most teams and works regardless of sprint state. PR C will add
- *   a "Sprint cadence" setting so this can switch to true sprint
+ *   most teams and works regardless of sprint state. A "Sprint
+ *   cadence" setting (PR D / PR E) can switch this to true sprint
  *   bounds when configured.
  *
- * Project key is hard-coded to ESPQA — same caveat as the
- * BuildPassRate's job name. PR C makes it a per-org setting.
- *
- * The headline is just a count. The companion DefectPriorityMixTile
- * (next file) breaks the same data down by priority. Sharing one
- * Jira query between the two tiles means we only make one network
- * call per dashboard load (SWR dedupes on the cache key).
+ * Project key comes from useQaHubConfig (QA Hub → Settings → QA Hub
+ * config). Defaults to ESPQA; users with a different Jira project
+ * change it once and both this tile and DefectPriorityMixTile pick
+ * it up (they share the same SWR cache key, so the two tiles still
+ * cost one Jira call together).
  */
 
 import Link from "next/link";
 import { BentoTile } from "@/components/ui";
-import { useHubLink } from "@/features/hubs";
+import { useHubLink, useQaHubConfig } from "@/features/hubs";
 import { useIntegrations } from "@/features/integrations";
 import { useJiraDefectsForProject } from "@/features/integrations/hooks";
 
-// Hard-coded for now; PR C surfaces this in QA Hub config.
-const PROJECT_KEY = "ESPQA";
 const WINDOW_DAYS = 14;
 
 export function DefectsTile() {
   const { isConnected } = useIntegrations();
+  const { config } = useQaHubConfig();
   const connected = isConnected("jira");
+  const projectKey = config.jiraProjectKey;
 
   return (
     <BentoTile
       col="span 4"
       row="span 2"
       label="Defects · last 14d"
-      right={
-        connected ? (
-          <span style={meta}>{PROJECT_KEY}</span>
-        ) : null
-      }
+      right={connected ? <span style={meta}>{projectKey}</span> : null}
     >
-      {connected ? <Body /> : <NotConnectedBody />}
+      {connected ? <Body projectKey={projectKey} /> : <NotConnectedBody />}
     </BentoTile>
   );
 }
@@ -73,9 +67,9 @@ function NotConnectedBody() {
   );
 }
 
-function Body() {
+function Body({ projectKey }) {
   const { data, isLoading, error } = useJiraDefectsForProject(
-    PROJECT_KEY,
+    projectKey,
     WINDOW_DAYS,
   );
   const issues = Array.isArray(data?.issues) ? data.issues : [];
@@ -90,7 +84,7 @@ function Body() {
         head="!"
         sub={
           isProjectMissing
-            ? `Couldn't find project ${PROJECT_KEY} in your Jira. Create it or adjust the QA Hub config.`
+            ? `Couldn't find project ${projectKey} in your Jira. Create it, or change the project key in QA Hub config.`
             : `Couldn't load defects: ${error.code ?? error.status ?? "error"}`
         }
       />

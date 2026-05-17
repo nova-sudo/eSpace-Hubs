@@ -31,6 +31,10 @@ export { useActiveHub, useActiveHubStrict, HubContext } from "./hub-context.js";
 export { useHubLink } from "./use-hub-link.js";
 export { useHubSlotGuard } from "./use-hub-slot-guard.js";
 export { useAllowedProviders } from "./use-allowed-providers.js";
+export {
+  useQaHubConfig,
+  DEFAULT_QA_CONFIG,
+} from "./use-qa-hub-config.js";
 export { resetHubsStore } from "./hubs-store.js";
 export {
   getActivePick,
