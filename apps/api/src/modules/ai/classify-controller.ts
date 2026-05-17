@@ -96,6 +96,15 @@ export async function classifyGoalsHandler(
   res.setHeader("X-Accel-Buffering", "no");
   // Flush headers immediately so the client opens the stream.
   res.flushHeaders?.();
+  // Disable Nagle's algorithm on the underlying TCP socket so each
+  // res.write() flushes immediately instead of being batched into a
+  // larger packet (default 200ms). Without this, on loopback dev the
+  // classifier can yield 4+ events in the first 10ms but the kernel
+  // batches them and the client sees nothing until the 3rd or 4th
+  // write fills the Nagle window — which manifests as the analyst's
+  // summary strip freezing at "0/N · analyzing · 3s" while the
+  // classifier silently progresses.
+  res.socket?.setNoDelay(true);
 
   const abortController = new AbortController();
   const goals: GoalForClassification[] = parsed.goals.map((g) => ({
@@ -135,16 +144,25 @@ export async function classifyGoalsHandler(
     }
   };
 
-  // NOTE on perceived latency: the client (see use-classify-goals.js)
-  // seeds its `events` state with a synthetic START on click, which
-  // immediately shows "0 / N · analyzing · 0s" in the summary strip.
-  // We deliberately do NOT emit a duplicate START from the server here
-  // — an earlier attempt did, and it appeared to interact badly with
-  // the per-goal streaming loop (the response would deliver the START
-  // chunk and then stall before yielding the classifier's own events).
-  // The classifier emits its own START as the first event from
-  // `classify()`, which is sufficient and arrives before any goal-
-  // specific events.
+  // Force-flush a priming byte before opening the classifier. The
+  // first res.write() on a Node HTTP response is what actually wakes
+  // up the chunked-transfer-encoding pipeline + the client's
+  // response.body reader on fetch. Without this, the classifier's own
+  // START event (the next write that happens) appears to sit in a
+  // socket buffer alongside the first goal-started events; combined
+  // with Nagle (now disabled above) and TCP coalescing on loopback,
+  // the client sees nothing until much later. Writing this START
+  // explicitly here both primes the pipeline AND gives the client a
+  // duplicate of its own synthetic START — the client's fold logic
+  // is idempotent on START so the double-emit is harmless (it just
+  // refreshes totalGoals and startedAt with the same values).
+  writeEvent(
+    AnalysisEvents.start({
+      totalGoals: goals.length,
+      startedAt: Date.now(),
+    }),
+  );
+
   try {
     for await (const event of classifier.classify(goals, {
       signal: abortController.signal,
