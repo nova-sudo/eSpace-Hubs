@@ -8,10 +8,24 @@ import {
   subscribeSession,
 } from "./session-store.js";
 
+// React's useSyncExternalStore compares snapshot return values by
+// reference (Object.is). If getServerSnapshot allocates a new object on
+// every call, React thinks the store changed every render and warns
+// "The result of getServerSnapshot should be cached to avoid an
+// infinite loop." Freezing the snapshot once at module scope and
+// returning the same reference each call silences that and lets the
+// SSR/hydration phase settle deterministically.
+const SERVER_SNAPSHOT = Object.freeze({
+  user: null,
+  loading: true,
+  needsTotp: false,
+  error: null,
+});
+
 function serverSnapshot() {
   // SSR returns the "loading" state — the client will hydrate after
   // the first /me round-trip.
-  return { user: null, loading: true, needsTotp: false, error: null };
+  return SERVER_SNAPSHOT;
 }
 
 /**
