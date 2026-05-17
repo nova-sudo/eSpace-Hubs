@@ -19,6 +19,7 @@
     "build:api": "npm run build --workspace=@espace-devhub/api",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "typecheck:api": "npm run typecheck --workspace=@espace-devhub/api",
+    "sim:qa": "node scripts/sim-qa.mjs",
     "start": "npm run start --workspace=@espace-devhub/web",
     "lint": "npm run lint --workspaces --if-present",
     "services:up": "docker compose up -d",
