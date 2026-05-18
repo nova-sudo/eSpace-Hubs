@@ -9,6 +9,7 @@ import {
 } from "@/features/goal-specs";
 import { useAnalyst, ANALYST_MODES } from "./analyst-provider";
 import { AnalysisStream } from "./analysis-stream";
+import { ReviewPane } from "./review-pane";
 import { useClassifyGoals, flattenGoalsForClassification } from "./use-classify-goals";
 import { AnalystChatMode } from "./analyst-chat-mode";
 import { AI_PROVIDERS, useAiProvider } from "./use-ai-provider";
@@ -38,16 +39,33 @@ export function AnalystPage() {
     start,
     abort,
     reset,
+    pendingSpecs,
+    pendingCount,
+    commitSpec,
+    commitAllPending,
+    discardSpec,
+    discardAllPending,
+    updatePendingSpec,
   } = useClassifyGoals();
 
-  // Auto-switch to analysis mode while running; back to widgets on complete
-  // only if the user is currently on analysis (don't steal focus if they
-  // moved to chat).
+  // Auto-switch to analysis mode while running. When the run finishes
+  // and we have pending specs that need review, flip to REVIEW so the
+  // user can vet / edit / discard before anything lands in the goal-
+  // specs store. (If `pendingCount` is 0 — e.g. all goals failed — we
+  // leave the user on ANALYSIS so they can see the failure list and
+  // retry.)
   useEffect(() => {
     if (phase === "running" && mode !== ANALYST_MODES.ANALYSIS) {
       setMode(ANALYST_MODES.ANALYSIS);
     }
-  }, [phase, mode, setMode]);
+    if (
+      phase === "complete" &&
+      pendingCount > 0 &&
+      (mode === ANALYST_MODES.ANALYSIS || mode === ANALYST_MODES.WIDGETS)
+    ) {
+      setMode(ANALYST_MODES.REVIEW);
+    }
+  }, [phase, mode, pendingCount, setMode]);
 
   function handleAnalyzeAll() {
     reset();
@@ -82,6 +100,25 @@ export function AnalystPage() {
         kind: goal.kind || "L2",
       },
     ]);
+  }
+
+  /**
+   * Re-run classification on one goal by id (used by the Review pane's
+   * "Retry" buttons for failed classifications). Looks up the full
+   * goal record from the flattened tree so we have title + rubric +
+   * parent context to send to the classifier.
+   */
+  function handleRetryGoalById(goalId) {
+    const flat = flattenGoalsForClassification(goals);
+    const goal = flat.find((g) => g.id === goalId);
+    if (!goal) return;
+    handleReAnalyzeGoal({
+      id: goal.id,
+      title: goal.title,
+      rubric: goal.description,
+      parentL1Title: goal.parentL1Title,
+      kind: goal.kind,
+    });
   }
 
   function handleAnalyzeRemaining() {
@@ -154,7 +191,24 @@ export function AnalystPage() {
             events={events}
             phase={phase}
             error={error}
+            onSwitchToGrid={() => {
+              // Skip Review when there's nothing to review (e.g. all
+              // failed) — go straight to the grid.
+              if (pendingCount > 0) setMode(ANALYST_MODES.REVIEW);
+              else setMode(ANALYST_MODES.WIDGETS);
+            }}
+          />
+        ) : mode === ANALYST_MODES.REVIEW ? (
+          <ReviewPane
+            pendingSpecs={pendingSpecs}
+            events={events}
+            commitSpec={commitSpec}
+            commitAllPending={commitAllPending}
+            discardSpec={discardSpec}
+            discardAllPending={discardAllPending}
+            updatePendingSpec={updatePendingSpec}
             onSwitchToGrid={() => setMode(ANALYST_MODES.WIDGETS)}
+            onRetryGoal={handleRetryGoalById}
           />
         ) : mode === ANALYST_MODES.CHAT ? (
           <AnalystChatMode />
@@ -300,6 +354,7 @@ function ModeToggle({ mode, onMode }) {
   const MODES = [
     [ANALYST_MODES.WIDGETS, "Widgets"],
     [ANALYST_MODES.ANALYSIS, "Analysis"],
+    [ANALYST_MODES.REVIEW, "Review"],
     [ANALYST_MODES.CHAT, "Chat"],
   ];
   return (

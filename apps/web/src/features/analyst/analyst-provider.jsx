@@ -19,6 +19,7 @@ const AnalystContext = createContext(null);
 
 export const ANALYST_MODES = Object.freeze({
   ANALYSIS: "analysis",
+  REVIEW: "review",
   WIDGETS: "widgets",
   CHAT: "chat",
 });
