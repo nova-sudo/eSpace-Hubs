@@ -23,6 +23,22 @@ import { markAnalyzedAt, saveSpec } from "@/features/goal-specs";
 import { ANALYSIS } from "./ai/analysis-events";
 
 /**
+ * Pending-spec buffer.
+ *
+ * Before the review/edit UI shipped, GOAL_CLASSIFIED events were saved
+ * immediately via saveSpec(), so a single bad classification went
+ * straight to the user's dashboard. Now we buffer them in
+ * `pendingSpecs` and surface a Review view that lets the user inspect,
+ * edit, or discard each spec before committing.
+ *
+ * `pendingSpecs` is a plain object keyed by goalId rather than a Map so
+ * React's value-equality re-render check works on Object.is(prev,next)
+ * — every mutation goes through `{ ...prev, [id]: next }` and creates a
+ * new reference. (Using a Map would require manually creating a fresh
+ * Map each update too, so the object form is slightly less ceremony.)
+ */
+
+/**
  * Flatten the L1/L2 tree into the classifier's input shape.
  *
  * The `description` field we ship is a RICHLY-STRUCTURED block that
@@ -177,6 +193,9 @@ export function useClassifyGoals() {
   const [events, setEvents] = useState([]);
   const [phase, setPhase] = useState(PHASES.IDLE);
   const [error, setError] = useState(null);
+  // Buffer for classified specs that haven't been committed yet. See
+  // the module-level comment for the rationale.
+  const [pendingSpecs, setPendingSpecs] = useState(/** @type {Record<string, object>} */ ({}));
   const abortRef = useRef(null);
   const mountedRef = useRef(true);
 
@@ -210,6 +229,77 @@ export function useClassifyGoals() {
     setEvents([]);
     setPhase(PHASES.IDLE);
     setError(null);
+    setPendingSpecs({});
+  }, []);
+
+  /**
+   * Commit a single pending spec to the goal-specs store + remove it
+   * from the pending buffer. Returns the validateSpec result so callers
+   * can surface validation errors inline.
+   */
+  const commitSpec = useCallback((goalId) => {
+    const spec = pendingSpecs[goalId];
+    if (!spec) return { ok: false, errors: ["spec not in pending buffer"] };
+    const result = saveSpec(spec);
+    if (result.ok) {
+      setPendingSpecs((prev) => {
+        const next = { ...prev };
+        delete next[goalId];
+        return next;
+      });
+    }
+    return result;
+  }, [pendingSpecs]);
+
+  /**
+   * Commit every pending spec at once. Returns { saved, failed } so the
+   * UI can show how many landed vs. were rejected by the validator.
+   */
+  const commitAllPending = useCallback(() => {
+    const ids = Object.keys(pendingSpecs);
+    let saved = 0;
+    const failed = [];
+    for (const id of ids) {
+      const result = saveSpec(pendingSpecs[id]);
+      if (result.ok) saved += 1;
+      else failed.push({ goalId: id, errors: result.errors });
+    }
+    setPendingSpecs((prev) => {
+      const next = { ...prev };
+      const stillFailed = new Set(failed.map((f) => f.goalId));
+      for (const id of Object.keys(next)) {
+        if (!stillFailed.has(id)) delete next[id];
+      }
+      return next;
+    });
+    return { saved, failed };
+  }, [pendingSpecs]);
+
+  /** Discard a single pending spec without saving. */
+  const discardSpec = useCallback((goalId) => {
+    setPendingSpecs((prev) => {
+      const next = { ...prev };
+      delete next[goalId];
+      return next;
+    });
+  }, []);
+
+  /** Discard every pending spec. */
+  const discardAllPending = useCallback(() => {
+    setPendingSpecs({});
+  }, []);
+
+  /**
+   * Apply a partial update to a pending spec (shallow merge at the top
+   * level). Used by the review UI's inline edit dropdowns — e.g. when
+   * switching widget kind we patch `{ widget: "SCALE", kind: "manual" }`
+   * and the rest of the spec stays put.
+   */
+  const updatePendingSpec = useCallback((goalId, patch) => {
+    setPendingSpecs((prev) => {
+      if (!prev[goalId]) return prev;
+      return { ...prev, [goalId]: { ...prev[goalId], ...patch } };
+    });
   }, []);
 
   const abort = useCallback(() => {
@@ -284,10 +374,14 @@ export function useClassifyGoals() {
         }
         for await (const evt of readNdjson(res.body)) {
           if (!mountedRef.current) break;
-          // Persist classified specs immediately so downstream consumers
-          // (dashboard section 5, analyst grid) update in real time.
+          // BUFFER, don't save. The Review pane lets the user accept /
+          // edit / discard each classification before it lands in the
+          // goal-specs store. `markAnalyzedAt` still fires on COMPLETE
+          // so the header's "last run" timestamp updates as soon as the
+          // run finishes (not when the user finally commits).
           if (evt.type === ANALYSIS.GOAL_CLASSIFIED && evt.payload?.spec) {
-            saveSpec(evt.payload.spec);
+            const spec = evt.payload.spec;
+            setPendingSpecs((prev) => ({ ...prev, [spec.goalId]: spec }));
           }
           setEvents((prev) => [...prev, evt]);
           if (evt.type === ANALYSIS.COMPLETE) {
@@ -319,5 +413,13 @@ export function useClassifyGoals() {
     start,
     abort,
     reset,
+    // Review/edit surface
+    pendingSpecs,
+    pendingCount: Object.keys(pendingSpecs).length,
+    commitSpec,
+    commitAllPending,
+    discardSpec,
+    discardAllPending,
+    updatePendingSpec,
   };
 }
