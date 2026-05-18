@@ -5,6 +5,11 @@ export {
   turnaroundHistogram,
   fmtDurationHours,
 } from "./turnaround";
+export {
+  resolvedTicketsInWindow,
+  medianTicketCycleDays,
+  ticketCycleHistogram,
+} from "./ticket-cycle";
 export { avgReviewerComments } from "./rounds";
 export { linkagePct } from "./linkage";
 export { countMrComments } from "./reviews";

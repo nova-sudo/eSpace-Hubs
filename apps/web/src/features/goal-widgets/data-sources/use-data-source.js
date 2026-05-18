@@ -30,6 +30,9 @@ import {
   mergedWithin,
   mergedTrend,
   turnaroundHistogram,
+  resolvedTicketsInWindow,
+  medianTicketCycleDays,
+  ticketCycleHistogram,
   SOURCE_METRICS,
 } from "./source-deps";
 
@@ -149,8 +152,21 @@ export function useDataSource(source) {
     // downstream `for ... of` never sees the envelope object (which was
     // causing the "tickets is not iterable" widget crash).
     const tickets = Array.isArray(jira.data?.issues) ? jira.data.issues : [];
+    // Cycle time uses `resolutiondate − created` for tickets RESOLVED
+    // inside the spec window (`sinceIso`). This is the simple MVP cycle
+    // time — a richer "in-progress → done" version would need the Jira
+    // changelog endpoint, which we don't fetch yet.
+    const resolvedInWindow = resolvedTicketsInWindow(tickets, sinceIso);
+    const median = medianTicketCycleDays(resolvedInWindow);
+    const histogram = ticketCycleHistogram(resolvedInWindow);
     return {
-      data: { tickets },
+      data: {
+        median,
+        histogram,
+        resolvedCount: resolvedInWindow.length,
+        totalCount: tickets.length,
+        tickets,
+      },
       isLoading: jira.isLoading,
       error: jira.error,
       windowDays: days,
