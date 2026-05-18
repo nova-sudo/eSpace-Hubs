@@ -24,6 +24,7 @@ import {
   useGitlabMergedSince,
   useGithubMergedSince,
   useJiraTickets,
+  useBuildEventsSince,
   avgReviewerComments,
   linkagePct,
   firstPassRatePct,
@@ -35,6 +36,9 @@ import {
   medianTicketCycleDays,
   ticketCycleHistogram,
   filterMrsByRepo,
+  deployFrequency,
+  leadTimeStats,
+  buildPassRate,
   SOURCE_METRICS,
 } from "./source-deps";
 
@@ -87,6 +91,13 @@ export function useDataSource(source) {
   // We only need Jira for JIRA-based metrics; call conditionally via a
   // separate hook that already handles "skip when not connected".
   const jira = useJiraTickets();
+
+  // CI/CD events for DEPLOY_FREQUENCY / LEAD_TIME / BUILD_PASS_RATE.
+  // The hook itself gates by provider + filter.job/repo and returns
+  // an empty list when scope isn't set yet — safe to call
+  // unconditionally on every render even when this spec is NOT a
+  // CI/CD spec (React hook rules say all hooks run every render).
+  const buildEvents = useBuildEventsSince(source, sinceIso);
 
   const metric = source?.metric;
   const provider = source?.provider || "combined";
@@ -169,6 +180,55 @@ export function useDataSource(source) {
       data: { ...(value || {}), rawMrs: mrs },
       isLoading: merged.isLoading,
       error: merged.error,
+      windowDays: days,
+    };
+  }
+
+  if (metric === SOURCE_METRICS.DEPLOY_FREQUENCY) {
+    // BuildEvent[] from Jenkins (per-job) OR GitHub Actions (per-repo).
+    // The hook returns `needsScope: true` until the user picks the
+    // job/repo via the Review pane; the widget renders a scope-
+    // picker affordance in that case.
+    const events = buildEvents.data || [];
+    const stats = deployFrequency(events, days);
+    return {
+      data: {
+        ...stats,
+        events,
+        needsScope: buildEvents.needsScope,
+      },
+      isLoading: buildEvents.isLoading,
+      error: buildEvents.error,
+      windowDays: days,
+    };
+  }
+
+  if (metric === SOURCE_METRICS.LEAD_TIME) {
+    const events = buildEvents.data || [];
+    const stats = leadTimeStats(events, days);
+    return {
+      data: {
+        ...stats,
+        events,
+        needsScope: buildEvents.needsScope,
+      },
+      isLoading: buildEvents.isLoading,
+      error: buildEvents.error,
+      windowDays: days,
+    };
+  }
+
+  if (metric === SOURCE_METRICS.BUILD_PASS_RATE) {
+    const events = buildEvents.data || [];
+    const stats = buildPassRate(events, days);
+    return {
+      data: {
+        ...stats,
+        events,
+        needsScope: buildEvents.needsScope,
+      },
+      isLoading: buildEvents.isLoading,
+      error: buildEvents.error,
       windowDays: days,
     };
   }

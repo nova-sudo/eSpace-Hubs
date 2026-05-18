@@ -14,6 +14,8 @@ export {
   useGitlabMergedSince,
   useGithubMergedSince,
   useJiraTickets,
+  useBuildEventsSince,
+  useJenkinsJobs,
   avgReviewerComments,
   linkagePct,
   firstPassRatePct,
@@ -26,6 +28,9 @@ export {
   ticketCycleHistogram,
   filterMrsByRepo,
   listReposFromMrs,
+  deployFrequency,
+  leadTimeStats,
+  buildPassRate,
 } from "@/features/integrations";
 
 export { SOURCE_METRICS } from "@/features/goal-specs";

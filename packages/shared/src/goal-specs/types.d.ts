@@ -13,6 +13,9 @@ export const SPEC_KINDS: Readonly<{
   readonly LINKAGE: "LINKAGE";
   readonly TICKET_CYCLE: "TICKET_CYCLE";
   readonly FIRST_PASS_RATE: "FIRST_PASS_RATE";
+  readonly DEPLOY_FREQUENCY: "DEPLOY_FREQUENCY";
+  readonly LEAD_TIME: "LEAD_TIME";
+  readonly BUILD_PASS_RATE: "BUILD_PASS_RATE";
   readonly CODE_RUBRIC: "CODE_RUBRIC";
   readonly COUNTER: "COUNTER";
   readonly SCALE: "SCALE";
@@ -34,6 +37,9 @@ export const SOURCE_METRICS: Readonly<{
   readonly LINKAGE_PCT: "linkage_pct";
   readonly TICKET_CYCLE_TIME: "ticket_cycle_time";
   readonly FIRST_PASS_RATE: "first_pass_rate";
+  readonly DEPLOY_FREQUENCY: "deploy_frequency";
+  readonly LEAD_TIME: "lead_time";
+  readonly BUILD_PASS_RATE: "build_pass_rate";
 }>;
 export type SourceMetric =
   (typeof SOURCE_METRICS)[keyof typeof SOURCE_METRICS];
@@ -53,6 +59,8 @@ export const SOURCE_PROVIDERS: Readonly<{
   readonly GITLAB: "gitlab";
   readonly JIRA: "jira";
   readonly COMBINED: "combined";
+  readonly JENKINS: "jenkins";
+  readonly GITHUB_ACTIONS: "github_actions";
 }>;
 export type SourceProvider =
   (typeof SOURCE_PROVIDERS)[keyof typeof SOURCE_PROVIDERS];
@@ -118,9 +126,16 @@ export interface SpecSource {
     /**
      * GitHub/GitLab repo slug ("owner/name" or "group/project").
      * When set, the metrics layer filters merged-MR results to only
-     * this repo before computing counts/medians.
+     * this repo before computing counts/medians. Reused by the
+     * GitHub Actions provider to scope `/actions/runs` to one repo.
      */
     repo?: string;
+    /**
+     * Jenkins job name. Required for AUTO widgets whose
+     * `source.provider === "jenkins"` — Jenkins doesn't expose a
+     * cross-job feed, so each spec scopes to ONE job slug.
+     */
+    job?: string;
   };
   target?: SpecTarget;
 }

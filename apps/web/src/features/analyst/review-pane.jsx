@@ -31,6 +31,7 @@ import {
 import {
   useCombinedMergedSince,
   listReposFromMrs,
+  useJenkinsJobs,
 } from "@/features/integrations";
 import { isoDaysAgo } from "@/lib/date";
 import { ANALYSIS } from "./ai/analysis-events";
@@ -45,6 +46,31 @@ function validKindsFor(widget) {
   // AUTO widgets: pure auto (e.g. MERGED_COUNT, CODE_RUBRIC) OR hybrid
   // (auto+manual). MANUAL kind is never valid here.
   return [SPEC_VARIANTS.AUTO, SPEC_VARIANTS.HYBRID];
+}
+
+/**
+ * Apply a `source.filter[key]` change to a spec.source, returning the
+ * new source object (or null when filter would become empty). Null /
+ * empty value deletes the key; a non-empty value sets it.
+ *
+ * Centralises the same delete/restore dance both repo + job pickers
+ * need so the call sites stay one-liners.
+ */
+function patchFilter(source, key, value) {
+  if (!source) return null;
+  if (!value) {
+    if (!source.filter) return source;
+    const next = { ...source.filter };
+    delete next[key];
+    return {
+      ...source,
+      filter: Object.keys(next).length > 0 ? next : null,
+    };
+  }
+  return {
+    ...source,
+    filter: { ...(source.filter || {}), [key]: value },
+  };
 }
 
 export function ReviewPane({
@@ -73,6 +99,19 @@ export function ReviewPane({
   const repoOptions = useMemo(
     () => listReposFromMrs(merged90.data || []),
     [merged90.data],
+  );
+  // Phase D3: Jenkins jobs for the JobPicker. Same SWR cache key as
+  // the QA dashboard, so opening the analyst after browsing the
+  // dashboard reuses the response. When Jenkins isn't connected the
+  // hook returns an empty array — the picker falls back to free-text.
+  const { jobs: jenkinsJobs } = useJenkinsJobs();
+  const jobOptions = useMemo(
+    () =>
+      (jenkinsJobs || [])
+        .map((j) => (j && typeof j.name === "string" ? j.name : null))
+        .filter(Boolean)
+        .sort(),
+    [jenkinsJobs],
   );
 
   const [bulkError, setBulkError] = useState(null);
@@ -117,6 +156,7 @@ export function ReviewPane({
             spec={spec}
             meta={goalsById.get(goalId)}
             repoOptions={repoOptions}
+            jobOptions={jobOptions}
             onSave={() => {
               const result = commitSpec(goalId);
               if (!result.ok) {
@@ -144,21 +184,14 @@ export function ReviewPane({
               })
             }
             onChangeRepo={(repo) => {
-              // Patch source.filter.repo in place. Null clears the
-              // scope, restoring cross-repo behaviour.
-              const nextSource = spec.source
-                ? {
-                    ...spec.source,
-                    filter: repo
-                      ? { ...(spec.source.filter || {}), repo }
-                      : (() => {
-                          if (!spec.source.filter) return null;
-                          const { repo: _drop, ...rest } = spec.source.filter;
-                          return Object.keys(rest).length > 0 ? rest : null;
-                        })(),
-                  }
-                : null;
-              updatePendingSpec(goalId, { source: nextSource });
+              updatePendingSpec(goalId, {
+                source: patchFilter(spec.source, "repo", repo),
+              });
+            }}
+            onChangeJob={(job) => {
+              updatePendingSpec(goalId, {
+                source: patchFilter(spec.source, "job", job),
+              });
             }}
           />
         ))}
@@ -267,12 +300,14 @@ function PendingCard({
   spec,
   meta,
   repoOptions = [],
+  jobOptions = [],
   onSave,
   onSkip,
   onChangeWidget,
   onChangeKind,
   onSetUntrackable,
   onChangeRepo,
+  onChangeJob,
 }) {
   const kindsOk = validKindsFor(spec.widget);
   const widgetMeta = SPEC_KIND_META[spec.widget];
@@ -282,17 +317,19 @@ function PendingCard({
   );
   const [showUntrackableEditor, setShowUntrackableEditor] = useState(false);
 
-  // Repo picker is only meaningful for AUTO data-source widgets that
-  // pull from GitHub/GitLab. CODE_RUBRIC uses its own PR pipeline so
-  // it's also relevant there; we gate on source.provider being one of
-  // the code-host values rather than on widget kind alone.
+  // Repo picker covers GitHub/GitLab MR-based widgets AND the GitHub
+  // Actions provider (which also scopes by `owner/name` repo slug).
+  // Jenkins gets its own picker (jobs, not repos).
   const sourceProvider = spec.source?.provider;
   const showRepoPicker =
     !isUntrackable &&
     (sourceProvider === "github" ||
       sourceProvider === "gitlab" ||
-      sourceProvider === "combined");
+      sourceProvider === "combined" ||
+      sourceProvider === "github_actions");
+  const showJobPicker = !isUntrackable && sourceProvider === "jenkins";
   const currentRepo = spec.source?.filter?.repo || "";
+  const currentJob = spec.source?.filter?.job || "";
 
   return (
     <div
@@ -379,6 +416,7 @@ function PendingCard({
         {spec.delegated ? <Chip tone="warn">delegated</Chip> : null}
         {isUntrackable ? <Chip tone="warn">untrackable</Chip> : null}
         {currentRepo ? <Chip>repo · {currentRepo}</Chip> : null}
+        {currentJob ? <Chip>job · {currentJob}</Chip> : null}
         {!isUntrackable &&
         widgetMeta?.variant !== spec.kind &&
         !(widgetMeta?.variant === SPEC_VARIANTS.AUTO &&
@@ -387,16 +425,29 @@ function PendingCard({
         ) : null}
       </div>
 
-      {/* Repo scope picker — only for GitHub / GitLab / combined sources.
-          Dropdown when we have repo options from the user's merged-PR
-          history (90d); free-text input otherwise so it still works
-          when the user hasn't merged anything yet but knows their repo
-          name. "All repos" clears the filter. */}
+      {/* Repo scope picker — only for GitHub / GitLab / combined / GH
+          Actions sources. Dropdown when we have repo options from the
+          user's merged-PR history (90d); free-text input otherwise so
+          it still works when the user hasn't merged anything yet but
+          knows their repo name. "All repos" clears the filter. */}
       {showRepoPicker ? (
         <RepoPicker
           value={currentRepo}
           options={repoOptions}
           onChange={onChangeRepo}
+        />
+      ) : null}
+
+      {/* Jenkins job picker — required for the three CI/CD widgets
+          when source.provider === "jenkins". Dropdown when we
+          enumerated jobs over the Jenkins API; free-text fallback
+          when no jobs returned (Jenkins not connected, restricted
+          permissions, or just empty controller). */}
+      {showJobPicker ? (
+        <JobPicker
+          value={currentJob}
+          options={jobOptions}
+          onChange={onChangeJob}
         />
       ) : null}
 
@@ -657,6 +708,99 @@ function RepoPicker({ value, options, onChange }) {
             color: "rgba(255,255,255,0.55)",
           }}
           title="Drop the repo filter — count merges across every connected repo."
+        >
+          clear
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Jenkins job picker — required for the three CI/CD AUTO widgets
+ * when `source.provider === "jenkins"`. Same UX skeleton as
+ * RepoPicker but labelled "Job scope" and gated on Jenkins-shaped
+ * options (no "all jobs" fallback — Jenkins specs MUST pick one
+ * job).
+ *
+ * Unlike RepoPicker, the empty value still appears as `clear` but
+ * the widget will render NeedsScopeBanner when no job is set. This
+ * is deliberate — the user can save the spec partially, then come
+ * back later when they know which job to wire it to.
+ */
+function JobPicker({ value, options, onChange }) {
+  const hasOptions = options.length > 0;
+  const allOptions = useMemo(() => {
+    const out = [...options];
+    if (value && !out.includes(value)) out.unshift(value);
+    return out;
+  }, [options, value]);
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-2 rounded-[var(--radius-sub)] px-2.5 py-1.5"
+      style={{
+        background: "rgba(255,255,255,0.05)",
+        border: "1px solid rgba(255,255,255,0.14)",
+      }}
+    >
+      <span
+        className="uppercase tracking-[0.5px]"
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 9,
+          color: "rgba(255,255,255,0.55)",
+        }}
+      >
+        Job scope
+      </span>
+      {hasOptions ? (
+        <select
+          value={value || ""}
+          onChange={(e) => onChange(e.target.value || null)}
+          className="cursor-pointer bg-transparent outline-none"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10.5,
+            color: "rgba(255,255,255,0.95)",
+          }}
+        >
+          <option value="" style={{ color: "#000" }}>
+            (pick a job)
+          </option>
+          {allOptions.map((slug) => (
+            <option key={slug} value={slug} style={{ color: "#000" }}>
+              {slug}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type="text"
+          value={value || ""}
+          onChange={(e) => onChange(e.target.value.trim() || null)}
+          placeholder="job-name"
+          className="flex-1 bg-transparent outline-none"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10.5,
+            color: "rgba(255,255,255,0.95)",
+            minWidth: 200,
+          }}
+        />
+      )}
+      {value ? (
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          className="uppercase transition-colors hover:opacity-90"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 9,
+            letterSpacing: "0.5px",
+            color: "rgba(255,255,255,0.55)",
+          }}
+          title="Drop the job filter — widget will show 'needs scope' until you pick a job."
         >
           clear
         </button>

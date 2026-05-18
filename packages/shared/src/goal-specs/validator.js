@@ -98,6 +98,13 @@ function validateSource(source, errors) {
     // comparison is case-insensitive.
     if (isNonEmptyString(source.filter.repo))
       filter.repo = source.filter.repo.trim().toLowerCase();
+    // Scope a Jenkins source to a single job slug. Required for
+    // jenkins-provider AUTO widgets (DEPLOY_FREQUENCY / LEAD_TIME /
+    // BUILD_PASS_RATE) — Jenkins has no cross-job feed. NOT
+    // lower-cased: Jenkins job names are case-sensitive on the
+    // server side (`/job/Foo/...` differs from `/job/foo/...`).
+    if (isNonEmptyString(source.filter.job))
+      filter.job = source.filter.job.trim();
     if (Object.keys(filter).length > 0) out.filter = filter;
   }
   const target = validateTarget(source.target, "source", errors);

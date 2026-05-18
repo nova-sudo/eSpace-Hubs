@@ -23,6 +23,9 @@ import { TurnaroundWidget } from "./turnaround-widget";
 import { LinkageWidget } from "./linkage-widget";
 import { TicketCycleWidget } from "./ticket-cycle-widget";
 import { FirstPassRateWidget } from "./first-pass-rate-widget";
+import { DeployFrequencyWidget } from "./deploy-frequency-widget";
+import { LeadTimeWidget } from "./lead-time-widget";
+import { BuildPassRateWidget } from "./build-pass-rate-widget";
 import { CodeRubricWidget } from "./code-rubric-widget";
 
 import { CounterWidget } from "./counter-widget";
@@ -66,6 +69,24 @@ registerWidget(SPEC_KINDS.FIRST_PASS_RATE, {
   Component: FirstPassRateWidget,
   description:
     "% of merged PRs that pass first review cleanly (≤1 reviewer comment).",
+});
+registerWidget(SPEC_KINDS.DEPLOY_FREQUENCY, {
+  variant: SPEC_VARIANTS.AUTO,
+  Component: DeployFrequencyWidget,
+  description:
+    "Count of successful CI builds / workflow runs in window, with 8-week trend.",
+});
+registerWidget(SPEC_KINDS.LEAD_TIME, {
+  variant: SPEC_VARIANTS.AUTO,
+  Component: LeadTimeWidget,
+  description:
+    "Median CI build duration (minutes) for successful runs in window, with duration histogram.",
+});
+registerWidget(SPEC_KINDS.BUILD_PASS_RATE, {
+  variant: SPEC_VARIANTS.AUTO,
+  Component: BuildPassRateWidget,
+  description:
+    "% of completed CI builds in window that succeeded (excludes still-running).",
 });
 registerWidget(SPEC_KINDS.CODE_RUBRIC, {
   variant: SPEC_VARIANTS.AUTO,
