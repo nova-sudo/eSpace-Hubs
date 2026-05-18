@@ -146,6 +146,34 @@ function validateContext(context, errors) {
   };
 }
 
+/**
+ * Validate an `untrackable` block.
+ *
+ * Shape: `{ reason: string }` or null. When present, the spec is
+ * marked "intentionally not tracked right now" and `validateSpec`
+ * skips the variant/source/manual constraint checks — the widget
+ * choice becomes a placeholder for "what we'd track once it's
+ * trackable again", and source/manual blocks become optional.
+ *
+ * Users (or the classifier) reach for this when:
+ *   - The goal genuinely can't map to any current widget kind
+ *   - The needed integration isn't connected yet
+ *   - The goal is too vague to instrument without conversation
+ *   - It's a "park this for now" intent
+ */
+function validateUntrackable(untrackable, errors) {
+  if (untrackable == null) return null;
+  if (!isObject(untrackable)) {
+    errors.push("untrackable: must be an object when present");
+    return null;
+  }
+  if (!isNonEmptyString(untrackable.reason)) {
+    errors.push("untrackable.reason: required non-empty string");
+    return null;
+  }
+  return { reason: untrackable.reason.trim() };
+}
+
 function validateDelegated(delegated, errors) {
   if (delegated == null) return null;
   if (!isObject(delegated)) {
@@ -220,42 +248,65 @@ export function validateSpec(obj) {
 
   if (errors.length > 0) return { ok: false, errors };
 
-  const widgetMeta = SPEC_KIND_META[obj.widget];
+  // Untrackable specs short-circuit the source/manual constraint checks
+  // below. The widget choice + variant are kept as the user's "what
+  // I'd track once it's trackable again" hint, but they don't have to
+  // line up with the validator's normal rules while the goal is
+  // explicitly parked.
+  const untrackable = validateUntrackable(obj.untrackable, errors);
 
-  // Soft cross-check: spec variant should align with the widget's
-  // declared variant, EXCEPT for hybrid (widget renders both halves).
-  if (
-    widgetMeta &&
-    obj.kind !== SPEC_VARIANTS.HYBRID &&
-    widgetMeta.variant !== obj.kind
-  ) {
-    errors.push(
-      `widget "${obj.widget}" is a ${widgetMeta.variant} widget but spec kind is "${obj.kind}"`,
-    );
-  }
+  const widgetMeta = SPEC_KIND_META[obj.widget];
 
   let source = null;
   let manual = null;
   const meta = widgetMeta || {};
-  const sourceRequired =
-    (obj.kind === SPEC_VARIANTS.AUTO || obj.kind === SPEC_VARIANTS.HYBRID) &&
-    meta.requiresSource !== false;
-  const manualRequired =
-    (obj.kind === SPEC_VARIANTS.MANUAL || obj.kind === SPEC_VARIANTS.HYBRID) &&
-    meta.requiresManual !== false;
 
-  if (sourceRequired) {
-    source = validateSource(obj.source, errors);
-  } else if (obj.source != null) {
-    // Optional pass-through: widget doesn't need it, accept silently.
-    const collected = [];
-    source = validateSource(obj.source, collected) || null;
-  }
-  if (manualRequired) {
-    manual = validateManual(obj.manual, errors);
-  } else if (obj.manual != null) {
-    const collected = [];
-    manual = validateManual(obj.manual, collected) || null;
+  if (!untrackable) {
+    // Soft cross-check: spec variant should align with the widget's
+    // declared variant, EXCEPT for hybrid (widget renders both halves).
+    if (
+      widgetMeta &&
+      obj.kind !== SPEC_VARIANTS.HYBRID &&
+      widgetMeta.variant !== obj.kind
+    ) {
+      errors.push(
+        `widget "${obj.widget}" is a ${widgetMeta.variant} widget but spec kind is "${obj.kind}"`,
+      );
+    }
+
+    const sourceRequired =
+      (obj.kind === SPEC_VARIANTS.AUTO || obj.kind === SPEC_VARIANTS.HYBRID) &&
+      meta.requiresSource !== false;
+    const manualRequired =
+      (obj.kind === SPEC_VARIANTS.MANUAL || obj.kind === SPEC_VARIANTS.HYBRID) &&
+      meta.requiresManual !== false;
+
+    if (sourceRequired) {
+      source = validateSource(obj.source, errors);
+    } else if (obj.source != null) {
+      // Optional pass-through: widget doesn't need it, accept silently.
+      const collected = [];
+      source = validateSource(obj.source, collected) || null;
+    }
+    if (manualRequired) {
+      manual = validateManual(obj.manual, errors);
+    } else if (obj.manual != null) {
+      const collected = [];
+      manual = validateManual(obj.manual, collected) || null;
+    }
+  } else {
+    // Even when untrackable, run source/manual through the validator
+    // permissively so a future "make trackable" flip doesn't drop
+    // partial work the user/AI already laid down. We never push into
+    // `errors` here — bad shapes just don't survive.
+    if (obj.source != null) {
+      const collected = [];
+      source = validateSource(obj.source, collected) || null;
+    }
+    if (obj.manual != null) {
+      const collected = [];
+      manual = validateManual(obj.manual, collected) || null;
+    }
   }
 
   const context = validateContext(obj.context, errors);
@@ -274,6 +325,7 @@ export function validateSpec(obj) {
     manual,
     context,
     delegated,
+    untrackable,
     classifiedAt:
       typeof obj.classifiedAt === "number" && obj.classifiedAt > 0
         ? obj.classifiedAt
@@ -302,6 +354,7 @@ export function buildSpec({
   manual = null,
   context = null,
   delegated = null,
+  untrackable = null,
   classifiedAt = Date.now(),
 }) {
   return validateSpec({
@@ -315,6 +368,7 @@ export function buildSpec({
     manual,
     context,
     delegated,
+    untrackable,
     classifiedAt,
   });
 }

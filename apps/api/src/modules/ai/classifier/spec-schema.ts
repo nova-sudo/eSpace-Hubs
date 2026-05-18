@@ -45,6 +45,7 @@ export const SPEC_RESPONSE_SCHEMA = {
       "manual",
       "context",
       "delegated",
+      "untrackable",
     ],
     properties: {
       kind: {
@@ -203,6 +204,22 @@ export const SPEC_RESPONSE_SCHEMA = {
           "Set when the goal is evaluated by a human judge. Even when " +
           "delegated, source/manual should still be set so the user can " +
           "opt into self-tracking.",
+      },
+      untrackable: {
+        type: ["object", "null"],
+        additionalProperties: false,
+        required: ["reason"],
+        properties: {
+          reason: { type: "string" },
+        },
+        description:
+          "Set when the goal genuinely doesn't map to any widget in the " +
+          "catalogue right now — the needed integration isn't connected, " +
+          "the goal is too vague to instrument, or judgement is needed " +
+          "before tracking starts. The `reason` is shown to the user as " +
+          "the explanation. Still pick a best-guess widget so the spec " +
+          "stays editable; when the user unflags untrackable later, the " +
+          "widget choice resurfaces as a starting point.",
       },
     },
   },

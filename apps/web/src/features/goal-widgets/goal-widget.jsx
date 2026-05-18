@@ -28,6 +28,7 @@ import { WidgetShell } from "./widget-shell";
 import { WidgetControlsProvider } from "./widget-controls-context";
 import { resolveWidget } from "./registry";
 import { DelegatedCard } from "./state-shells/delegated-card";
+import { UntrackableCard } from "./state-shells/untrackable-card";
 import { ContextCollector } from "./state-shells/context-collector";
 import { useIsContextComplete } from "@/features/goal-context";
 import { saveSpec } from "@/features/goal-specs";
@@ -39,6 +40,23 @@ export function GoalWidget({ spec, goal, variant = "light", className, onRetry }
   const contextComplete = useIsContextComplete(spec);
 
   if (!spec) return null;
+
+  // ── State 0 ── Untrackable: user or AI marked this goal as not
+  // currently trackable. Takes precedence over delegation, context,
+  // and the widget body — the reason is the whole story until the
+  // user clicks "track it" to unflag.
+  if (spec.untrackable) {
+    return (
+      <UntrackableCard
+        spec={spec}
+        goal={goal}
+        variant={variant}
+        className={className}
+        onRetry={onRetry}
+        onClearUntrackable={() => clearUntrackable(spec)}
+      />
+    );
+  }
 
   // ── State A ── Delegated: goal is judged by someone else. No tracking.
   if (spec.delegated?.delegated) {
@@ -145,4 +163,15 @@ function toggleDelegated(spec, value) {
     },
   };
   saveSpec(next);
+}
+
+/**
+ * Clear the `untrackable` flag from a spec and persist. The widget's
+ * underlying choice (kept on the spec as `widget` + `source`/`manual`)
+ * takes over the slot immediately. We null out the field rather than
+ * deleting it so the change is unambiguous to the validator and to any
+ * sync mirrors that compare keys.
+ */
+function clearUntrackable(spec) {
+  saveSpec({ ...spec, untrackable: null });
 }

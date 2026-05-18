@@ -138,6 +138,10 @@ export interface SpecDelegated {
   note?: string;
 }
 
+export interface SpecUntrackable {
+  reason: string;
+}
+
 export interface ValidatedSpec {
   schemaVersion: number;
   goalId: string;
@@ -149,5 +153,6 @@ export interface ValidatedSpec {
   manual: SpecManual | null;
   context: SpecContext | null;
   delegated: SpecDelegated | null;
+  untrackable: SpecUntrackable | null;
   classifiedAt: number;
 }

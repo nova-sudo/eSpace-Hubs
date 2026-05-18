@@ -121,6 +121,11 @@ export function ReviewPane({
               updatePendingSpec(goalId, { widget, kind: nextKind });
             }}
             onChangeKind={(kind) => updatePendingSpec(goalId, { kind })}
+            onSetUntrackable={(reason) =>
+              updatePendingSpec(goalId, {
+                untrackable: reason ? { reason } : null,
+              })
+            }
           />
         ))}
 
@@ -231,16 +236,26 @@ function PendingCard({
   onSkip,
   onChangeWidget,
   onChangeKind,
+  onSetUntrackable,
 }) {
   const kindsOk = validKindsFor(spec.widget);
   const widgetMeta = SPEC_KIND_META[spec.widget];
+  const isUntrackable = Boolean(spec.untrackable);
+  const [untrackableDraft, setUntrackableDraft] = useState(
+    spec.untrackable?.reason || "",
+  );
+  const [showUntrackableEditor, setShowUntrackableEditor] = useState(false);
 
   return (
     <div
       className="flex flex-col gap-2 rounded-[var(--radius-tile)] px-3.5 py-3"
       style={{
-        background: "rgba(255,255,255,0.06)",
-        border: "1px solid rgba(255,255,255,0.14)",
+        background: isUntrackable
+          ? "rgba(255,193,87,0.08)"
+          : "rgba(255,255,255,0.06)",
+        border: isUntrackable
+          ? "1px solid rgba(255,193,87,0.3)"
+          : "1px solid rgba(255,255,255,0.14)",
       }}
     >
       {/* Header: goal title + parent breadcrumb */}
@@ -314,15 +329,157 @@ function PendingCard({
           <Chip>{spec.manual.cadence}</Chip>
         ) : null}
         {spec.delegated ? <Chip tone="warn">delegated</Chip> : null}
-        {widgetMeta?.variant !== spec.kind &&
+        {isUntrackable ? <Chip tone="warn">untrackable</Chip> : null}
+        {!isUntrackable &&
+        widgetMeta?.variant !== spec.kind &&
         !(widgetMeta?.variant === SPEC_VARIANTS.AUTO &&
           spec.kind === SPEC_VARIANTS.HYBRID) ? (
           <Chip tone="danger">kind/variant mismatch</Chip>
         ) : null}
       </div>
 
+      {/* Untrackable banner + reason editor — shown when the spec is
+          already flagged untrackable (read-only view + clear button)
+          OR when the user clicked "Mark untrackable" (editor view). */}
+      {isUntrackable ? (
+        <div
+          className="flex flex-col gap-1.5 rounded-[var(--radius-sub)] px-2.5 py-2"
+          style={{
+            background: "rgba(255,193,87,0.10)",
+            border: "1px solid rgba(255,193,87,0.28)",
+          }}
+        >
+          <div
+            className="uppercase tracking-[0.5px]"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 9.5,
+              color: "#fde68a",
+            }}
+          >
+            Marked untrackable
+          </div>
+          <div
+            className="italic"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10.5,
+              lineHeight: 1.5,
+              color: "rgba(255,255,255,0.85)",
+            }}
+          >
+            “{spec.untrackable.reason}”
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setUntrackableDraft("");
+              setShowUntrackableEditor(false);
+              onSetUntrackable("");
+            }}
+            className="self-start uppercase transition-colors hover:opacity-90"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              letterSpacing: "0.5px",
+              color: "rgba(255,255,255,0.7)",
+            }}
+          >
+            unflag · make trackable
+          </button>
+        </div>
+      ) : showUntrackableEditor ? (
+        <div
+          className="flex flex-col gap-1.5 rounded-[var(--radius-sub)] px-2.5 py-2"
+          style={{
+            background: "rgba(255,193,87,0.06)",
+            border: "1px dashed rgba(255,193,87,0.28)",
+          }}
+        >
+          <label
+            className="uppercase tracking-[0.5px]"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              color: "rgba(255,255,255,0.6)",
+            }}
+          >
+            Reason
+          </label>
+          <textarea
+            value={untrackableDraft}
+            onChange={(e) => setUntrackableDraft(e.target.value)}
+            placeholder="e.g. needs a quarterly survey we haven't set up yet"
+            rows={2}
+            className="w-full rounded-[var(--radius-sub)] bg-transparent p-1.5 outline-none"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 11,
+              color: "rgba(255,255,255,0.95)",
+              border: "1px solid rgba(255,255,255,0.18)",
+              resize: "vertical",
+            }}
+          />
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setUntrackableDraft("");
+                setShowUntrackableEditor(false);
+              }}
+              className="uppercase transition-colors hover:opacity-90"
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 9,
+                letterSpacing: "0.5px",
+                color: "rgba(255,255,255,0.7)",
+              }}
+            >
+              cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const trimmed = untrackableDraft.trim();
+                if (!trimmed) return;
+                onSetUntrackable(trimmed);
+                setShowUntrackableEditor(false);
+              }}
+              disabled={!untrackableDraft.trim()}
+              className="rounded-[var(--radius-sub)] px-2 py-1 font-bold uppercase"
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 9.5,
+                letterSpacing: "0.4px",
+                background: "rgba(255,255,255,0.92)",
+                color: "var(--accent)",
+                opacity: untrackableDraft.trim() ? 1 : 0.4,
+              }}
+            >
+              Mark untrackable
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {/* Action row */}
       <div className="mt-1 flex items-center justify-end gap-2">
+        {!isUntrackable && !showUntrackableEditor ? (
+          <button
+            type="button"
+            onClick={() => setShowUntrackableEditor(true)}
+            className="mr-auto uppercase transition-colors hover:opacity-90"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              letterSpacing: "0.5px",
+              color: "rgba(255,255,255,0.55)",
+            }}
+            title="Mark this goal as not currently trackable, with a reason"
+          >
+            can't track this →
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onSkip}
