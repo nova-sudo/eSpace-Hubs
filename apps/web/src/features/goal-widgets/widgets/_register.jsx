@@ -30,6 +30,8 @@ import { MilestoneWidget } from "./milestone-widget";
 import { DateLogWidget } from "./date-log-widget";
 import { FreeTextWidget } from "./free-text-widget";
 import { BeforeAfterWidget } from "./before-after-widget";
+import { IncidentLogWidget } from "./incident-log-widget";
+import { RecurringMilestoneWidget } from "./recurring-milestone-widget";
 
 // AUTO widgets — read from integration sources via useDataSource.
 registerWidget(SPEC_KINDS.MERGED_COUNT, {
@@ -95,4 +97,16 @@ registerWidget(SPEC_KINDS.BEFORE_AFTER, {
   variant: SPEC_VARIANTS.MANUAL,
   Component: BeforeAfterWidget,
   description: "Baseline vs. current numeric with delta.",
+});
+registerWidget(SPEC_KINDS.INCIDENT_LOG, {
+  variant: SPEC_VARIANTS.MANUAL,
+  Component: IncidentLogWidget,
+  description:
+    "Per-incident log (severity + downtime + post-mortem). Rolls up MTTR and SLA-budget consumption.",
+});
+registerWidget(SPEC_KINDS.RECURRING_MILESTONE, {
+  variant: SPEC_VARIANTS.MANUAL,
+  Component: RecurringMilestoneWidget,
+  description:
+    "Milestone checklist that resets each cadence period. Tracks streak of complete periods.",
 });
