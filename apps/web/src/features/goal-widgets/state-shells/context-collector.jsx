@@ -16,6 +16,13 @@ import { useGoalContext } from "@/features/goal-context";
  * UI contract: stays visually consistent with every other widget tile.
  * Inputs are inverse-themed on section 5 / analyst page (`variant="light"`)
  * and default-themed on a regular dashboard tile (`variant="dark"`).
+ *
+ * Phase C: when `onReclassify` is provided, an opt-in
+ * "Re-analyze with these answers" button appears next to "Save".
+ * Clicking it commits the draft AND triggers a single-goal
+ * classifier run with the answers folded into the prompt — the
+ * classifier can then pick a different widget if the user's
+ * definitions point somewhere else.
  */
 export function ContextCollector({
   spec,
@@ -24,12 +31,20 @@ export function ContextCollector({
   className,
   onRetry,
   onSaved,
+  onReclassify,
 }) {
   const { answers, setAnswers } = useGoalContext(spec.goalId);
   const questions = spec.context?.questions || [];
   // Local draft — persist only on blur / submit so every keystroke doesn't
   // fire a localStorage write.
   const [draft, setDraft] = useState(() => seedDraft(questions, answers));
+  // Re-analysis state. `busy` disables both buttons; `reclassifyError`
+  // shows a one-line inline message under the form on failure (e.g.
+  // upstream provider error). On success we just hand off to onSaved()
+  // — the parent will swap the widget body to the (possibly different)
+  // new widget.
+  const [busy, setBusy] = useState(false);
+  const [reclassifyError, setReclassifyError] = useState(null);
 
   function update(id, value) {
     setDraft((d) => ({ ...d, [id]: value }));
@@ -45,6 +60,30 @@ export function ContextCollector({
   function commit() {
     const normalized = normalizeAnswers(questions, draft);
     setAnswers(normalized);
+    return normalized;
+  }
+
+  async function handleReclassify() {
+    if (!onReclassify || busy) return;
+    setReclassifyError(null);
+    setBusy(true);
+    try {
+      // Always commit the draft first so the spec switch doesn't
+      // strand the user's typed answers if they immediately edit
+      // again. The parent receives the SAME serialised Q/A pairs the
+      // server prompt will see, so the back-end + front-end stay
+      // in sync about what the model was actually asked.
+      const normalized = commit();
+      const pairs = buildAnswerPairs(questions, normalized);
+      await onReclassify(pairs);
+      // Parent saved the new spec; widget body now renders whatever
+      // the classifier chose this time.
+      onSaved?.();
+    } catch (err) {
+      setReclassifyError(err?.message || String(err));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -93,22 +132,107 @@ export function ContextCollector({
             />
           ))}
         </div>
-        <button
-          type="submit"
-          className="self-start rounded-[var(--radius-sub)] px-3 py-1.5 font-bold uppercase transition-opacity"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            letterSpacing: "0.5px",
-            background: variant === "light" ? "#ffffff" : "var(--accent)",
-            color: variant === "light" ? "var(--accent)" : "var(--accent-on)",
-          }}
-        >
-          Save answers
-        </button>
+        {reclassifyError ? (
+          <div
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10,
+              color: variant === "light" ? "#ffd5d5" : "var(--danger)",
+              lineHeight: 1.4,
+            }}
+          >
+            Re-analyze failed: {reclassifyError}
+          </div>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="submit"
+            disabled={busy}
+            className="rounded-[var(--radius-sub)] px-3 py-1.5 font-bold uppercase transition-opacity"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10.5,
+              letterSpacing: "0.5px",
+              background:
+                variant === "light" ? "#ffffff" : "var(--accent)",
+              color:
+                variant === "light" ? "var(--accent)" : "var(--accent-on)",
+              opacity: busy ? 0.55 : 1,
+              cursor: busy ? "not-allowed" : "pointer",
+            }}
+          >
+            Save answers
+          </button>
+          {/* Re-analyze is an OPT-IN escalation — only rendered when the
+              parent (GoalWidget on the dashboard) supplies onReclassify.
+              The Review pane and other contexts that show this collector
+              without a reclassify path simply don't pass the prop, so
+              the button never appears. */}
+          {onReclassify ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handleReclassify}
+              className="rounded-[var(--radius-sub)] px-3 py-1.5 font-bold uppercase transition-opacity"
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 10.5,
+                letterSpacing: "0.5px",
+                background: "transparent",
+                color: variant === "light" ? "#ffffff" : "var(--fg)",
+                border:
+                  variant === "light"
+                    ? "1px solid rgba(255,255,255,0.55)"
+                    : "1px solid var(--border)",
+                opacity: busy ? 0.55 : 1,
+                cursor: busy ? "not-allowed" : "pointer",
+              }}
+              title="Re-run the AI classifier with your answers so it can pick a different widget if the answers point elsewhere."
+            >
+              {busy ? "Re-analyzing…" : "Re-analyze with these answers"}
+            </button>
+          ) : null}
+        </div>
       </form>
     </WidgetShell>
   );
+}
+
+/**
+ * Build the Q→A pairs the classifier sees on the prompt. Each entry
+ * pairs the human-readable question text with a single serialised
+ * string answer (lists are joined with newlines so the prompt formatter
+ * can render them as nested bullets). Empty answers are filtered out
+ * so the prompt doesn't show "  • What's your standard?\n      "
+ * lines that confuse the model.
+ */
+function buildAnswerPairs(questions, normalizedAnswers) {
+  const out = [];
+  for (const q of questions) {
+    const raw = normalizedAnswers[q.id];
+    const answer = serializeAnswer(raw, q.kind);
+    if (!answer) continue;
+    out.push({
+      prompt: q.prompt,
+      answer,
+    });
+  }
+  return out;
+}
+
+function serializeAnswer(value, kind) {
+  if (value == null) return "";
+  if (kind === "list") {
+    return Array.isArray(value)
+      ? value.map((s) => String(s).trim()).filter(Boolean).join("\n")
+      : "";
+  }
+  if (kind === "number") {
+    return typeof value === "number" && !Number.isNaN(value)
+      ? String(value)
+      : "";
+  }
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function QuestionField({ question: q, value, onChange, onBlur, variant }) {

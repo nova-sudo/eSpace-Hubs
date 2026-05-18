@@ -32,6 +32,16 @@ import {
 
 // ─── input schema ────────────────────────────────────────────────────
 
+// `contextAnswers` is the Phase C re-analysis input. The Q→A pairs let
+// the classifier refine its widget choice with the user's own
+// definitions for vague terms (e.g. "quality standards"). Bounded
+// generously so a long rubric-style answer fits, but capped per-entry
+// and per-array so a malformed client can't blow up the prompt.
+const contextAnswerSchema = z.object({
+  prompt: z.string().min(1).max(500),
+  answer: z.string().min(1).max(4_000),
+});
+
 const classifyGoalsSchema = z.object({
   goals: z
     .array(
@@ -41,6 +51,7 @@ const classifyGoalsSchema = z.object({
         description: z.string().max(8_000).optional(),
         parentL1Title: z.string().max(500).optional(),
         kind: z.enum(["L1", "L2"]).default("L1"),
+        contextAnswers: z.array(contextAnswerSchema).max(8).optional(),
       }),
     )
     .min(1)
@@ -115,6 +126,19 @@ export async function classifyGoalsHandler(
       ? { parentL1Title: g.parentL1Title.trim() }
       : {}),
     kind: g.kind,
+    // Phase C: trim each Q/A pair and drop empty pairs so the prompt
+    // builder sees a clean array. An empty resulting array means
+    // "no context supplied" and the prompt skips the block entirely.
+    ...(g.contextAnswers && g.contextAnswers.length > 0
+      ? {
+          contextAnswers: g.contextAnswers
+            .map((a) => ({
+              prompt: a.prompt.trim(),
+              answer: a.answer.trim(),
+            }))
+            .filter((a) => a.prompt && a.answer),
+        }
+      : {}),
   }));
 
   // Client disconnect → abort the classifier so in-flight fetches stop.

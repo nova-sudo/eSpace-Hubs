@@ -27,12 +27,29 @@ import { validateSpec } from "@espace-devhub/shared/goal-specs";
 import { AnalysisEvents, type AnalysisEvent } from "./events.js";
 import { SPEC_RESPONSE_SCHEMA } from "./spec-schema.js";
 
+/**
+ * One Q→A pair from the user's saved goal-context answers. Front-end
+ * resolves the question id to its `prompt` text before sending — the
+ * classifier shouldn't need to know about our internal id slugs.
+ *
+ * Phase C: when present, this block is rendered into the user prompt
+ * BELOW the rubric so the classifier can use the user's own definitions
+ * for vague terms like "quality standards" or "success criteria" that
+ * a first-pass classification would have to ask about via `context`.
+ */
+export interface GoalContextAnswer {
+  prompt: string;
+  answer: string;
+}
+
 export interface GoalForClassification {
   id: string;
   title: string;
   description?: string;
   parentL1Title?: string;
   kind: "L1" | "L2";
+  /** Optional user-supplied context answers for re-analysis. */
+  contextAnswers?: GoalContextAnswer[];
 }
 
 export interface ClassifierConfig {
@@ -235,6 +252,22 @@ function buildSystemPrompt(): string {
     "MANUAL/SCALE widget with a vague prompt for a goal that can't really be",
     "measured is worse than admitting the gap.",
     "",
+    "═══ USER-SUPPLIED CONTEXT ════════════════════════════════════════",
+    "",
+    "Some calls include a \"User-supplied context (authoritative...)\" block",
+    "below the rubric. When present:",
+    "  • Treat those answers as the user's GROUND TRUTH for any vague",
+    "    concepts in the goal (\"quality standards\", \"success criteria\",",
+    "    \"agreed definitions\"). The user has already defined them — your",
+    "    job is to pick the widget that fits THAT definition.",
+    "  • Do NOT re-emit a `context.required: true` question asking the",
+    "    same thing back. The answer is already on the prompt.",
+    "  • The user's answers may push you AWAY from the widget a context-",
+    "    less classification would have picked. Example: a goal \"All code",
+    "    meets team standards\" with answers like \"PR must close a Jira",
+    "    ticket\" is closer to LINKAGE than CODE_RUBRIC. Use the answers",
+    "    as the strongest signal.",
+    "",
     "═══ OUTPUT SCHEMA ════════════════════════════════════════════════",
     "",
     "Return ONE JSON object. No prose, no markdown, no code fences. Shape:",
@@ -342,6 +375,26 @@ function buildUserPrompt(goal: GoalForClassification): string {
   ];
   if (goal.description) lines.push(`Description / rubric: ${goal.description}`);
   if (goal.parentL1Title) lines.push(`Parent L1 goal: ${goal.parentL1Title}`);
+  // Phase C: render the user's previously-supplied context answers as
+  // bullets BELOW the rubric. Marked "authoritative" so the model
+  // prefers these definitions to its own guess for vague terms. When
+  // present, the model should usually NOT re-emit a `context.required`
+  // block — the user has already answered.
+  if (goal.contextAnswers && goal.contextAnswers.length > 0) {
+    lines.push("");
+    lines.push("User-supplied context (authoritative — use these definitions):");
+    for (const { prompt, answer } of goal.contextAnswers) {
+      const trimmedPrompt = prompt.trim();
+      const trimmedAnswer = answer.trim();
+      if (!trimmedPrompt || !trimmedAnswer) continue;
+      lines.push(`  • ${trimmedPrompt}`);
+      // Indent multi-line answers two extra spaces so the bullet
+      // structure stays readable when the user pasted a list or rubric.
+      for (const ln of trimmedAnswer.split(/\r?\n/)) {
+        lines.push(`      ${ln}`);
+      }
+    }
+  }
   lines.push("", "Classify this goal. Respond with a single JSON object.");
   return lines.join("\n");
 }

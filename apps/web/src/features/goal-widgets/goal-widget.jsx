@@ -32,6 +32,14 @@ import { UntrackableCard } from "./state-shells/untrackable-card";
 import { ContextCollector } from "./state-shells/context-collector";
 import { useIsContextComplete } from "@/features/goal-context";
 import { saveSpec } from "@/features/goal-specs";
+// Import directly (not via @/features/analyst) to keep the dep edge
+// goal-widgets → analyst one-way at the module level. analyst-page.jsx
+// pulls GoalWidgetsGrid from @/features/goal-widgets so taking the
+// barrel path here would close a cycle; ES-module cycles often work
+// but can hand back `undefined` to whichever side initialised first.
+// reclassify-one-goal.js itself only depends on `./ai/analysis-events`,
+// which is below both features in our dep graph.
+import { reclassifyOneGoal } from "@/features/analyst/reclassify-one-goal";
 
 export function GoalWidget({ spec, goal, variant = "light", className, onRetry }) {
   // User override — force the collector to re-open even after answers exist.
@@ -94,6 +102,17 @@ export function GoalWidget({ spec, goal, variant = "light", className, onRetry }
         // path), which made it look like Save did nothing AND made
         // the rubric widget's regrade button unreachable.
         onSaved={() => setForceEditContext(false)}
+        // Phase C: opt-in "Re-analyze with these answers". Send the
+        // freshly-serialised Q/A pairs to the classifier and replace
+        // this goal's spec with the new one — which may pick a
+        // DIFFERENT widget if the user's definitions point elsewhere
+        // (e.g. CODE_RUBRIC → LINKAGE when the user defined "quality"
+        // as "PR closes a Jira ticket"). Errors propagate up to the
+        // collector via the rejected promise so the inline banner
+        // shows what went wrong.
+        onReclassify={async (pairs) => {
+          await runReclassify(spec, goal, pairs);
+        }}
       />
     );
   }
@@ -174,4 +193,42 @@ function toggleDelegated(spec, value) {
  */
 function clearUntrackable(spec) {
   saveSpec({ ...spec, untrackable: null });
+}
+
+/**
+ * Re-classify a single goal with the user's freshly-saved context
+ * answers folded into the prompt. On success the new spec replaces
+ * the existing one in the goal-specs store — which causes the
+ * `<GoalWidget>` to re-render and the new widget body (possibly a
+ * different widget kind) to take the slot.
+ *
+ * Implementation notes:
+ *  - `useCallback` would be appropriate here if React lifted closures
+ *    out of the JSX, but since the parent component already memoises
+ *    the JSX via React's normal re-render path AND the underlying
+ *    `reclassifyOneGoal` opens a one-shot fetch per call, a fresh
+ *    arrow per render is fine — the user can only click the button
+ *    after a network round-trip.
+ *  - We deliberately DON'T merge the new spec on top of the old one
+ *    (`{ ...oldSpec, ...newSpec }`) because the classifier may have
+ *    changed widget + kind + source + manual + context together; a
+ *    field-by-field merge would leave a half-old / half-new spec
+ *    that violates the variant↔widget pairing the validator enforces.
+ *    The classifier returns a complete spec; we save that.
+ *  - The `goal.title` / `goal.rubric` / `goal.kind` fields are pulled
+ *    from the goal prop the dashboard already passes in — same source
+ *    of truth as the analyst's `flattenGoalsForClassification`.
+ */
+async function runReclassify(spec, goal, contextAnswers) {
+  const result = await reclassifyOneGoal({
+    goal: {
+      id: spec.goalId,
+      title: goal?.title || spec.title || "(untitled)",
+      description: goal?.rubric || goal?.description || "",
+      parentL1Title: goal?.parentL1Title,
+      kind: goal?.kind || "L2",
+    },
+    contextAnswers,
+  });
+  saveSpec(result);
 }
