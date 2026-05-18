@@ -20,3 +20,4 @@ export {
   CLASSIFY_PHASES,
   flattenGoalsForClassification,
 } from "./use-classify-goals";
+export { reclassifyOneGoal } from "./reclassify-one-goal";
