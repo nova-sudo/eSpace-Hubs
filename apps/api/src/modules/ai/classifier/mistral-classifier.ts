@@ -25,6 +25,7 @@
 
 import { validateSpec } from "@espace-devhub/shared/goal-specs";
 import { AnalysisEvents, type AnalysisEvent } from "./events.js";
+import { SPEC_RESPONSE_SCHEMA } from "./spec-schema.js";
 
 export interface GoalForClassification {
   id: string;
@@ -332,20 +333,32 @@ async function* classifyOneGoal(
     parentL1: goal.parentL1Title,
   });
 
-  const requestBody = {
+  // Prefer JSON-Schema response_format mode — locks every enum the
+  // catalogue advertises (provider, metric, window, cadence, etc.)
+  // so the model can't return hallucinated values like
+  // `uptime_compliance` for source.metric. The fallback below handles
+  // providers that don't support `json_schema` (older OpenRouter-routed
+  // models, GLM in certain modes) by retrying with the older
+  // `json_object` mode + an explicit error from the upstream provider.
+  const baseBody = {
     model: opts.model,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: buildUserPrompt(goal) },
     ],
     temperature: 0.2,
-    response_format: { type: "json_object" },
     stream: true,
-  };
+  } as const;
 
-  let res: Awaited<ReturnType<typeof fetch>>;
-  try {
-    res = await fetch(opts.url, {
+  const buildBody = (responseFormat: unknown) => ({
+    ...baseBody,
+    response_format: responseFormat,
+  });
+
+  const requestWithFormat = async (
+    responseFormat: unknown,
+  ): Promise<Awaited<ReturnType<typeof fetch>>> =>
+    fetch(opts.url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${opts.apiKey}`,
@@ -353,8 +366,15 @@ async function* classifyOneGoal(
         Accept: "text/event-stream",
         ...opts.extraHeaders,
       },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify(buildBody(responseFormat)),
       signal: opts.signal,
+    });
+
+  let res: Awaited<ReturnType<typeof fetch>>;
+  try {
+    res = await requestWithFormat({
+      type: "json_schema",
+      json_schema: SPEC_RESPONSE_SCHEMA,
     });
   } catch (err) {
     yield AnalysisEvents.goalFailed({
@@ -362,6 +382,32 @@ async function* classifyOneGoal(
       error: `Network error: ${err instanceof Error ? err.message : String(err)}`,
     });
     return;
+  }
+
+  // If the provider rejects json_schema (some return 400 with a
+  // "response_format type must be ..." error, others ignore it
+  // silently — we only retry on the explicit 400), fall back to the
+  // older json_object mode. The prompt-side enum reminders still keep
+  // the model honest, just without the provider-side schema lock.
+  if (res.status === 400) {
+    const errText = await res.clone().text().catch(() => "");
+    const looksLikeSchemaUnsupported =
+      /response_format/i.test(errText) ||
+      /json[_-]?schema/i.test(errText) ||
+      /unsupported/i.test(errText);
+    if (looksLikeSchemaUnsupported) {
+      try {
+        res = await requestWithFormat({ type: "json_object" });
+      } catch (err) {
+        yield AnalysisEvents.goalFailed({
+          goalId: goal.id,
+          error: `Network error on json_object fallback: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        });
+        return;
+      }
+    }
   }
 
   if (!res.ok) {
