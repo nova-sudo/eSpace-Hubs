@@ -107,7 +107,17 @@ export interface SpecSource {
   provider: SourceProvider;
   metric: SourceMetric;
   window: SourceWindow;
-  filter?: { label?: string; branch?: string; ticketType?: string };
+  filter?: {
+    label?: string;
+    branch?: string;
+    ticketType?: string;
+    /**
+     * GitHub/GitLab repo slug ("owner/name" or "group/project").
+     * When set, the metrics layer filters merged-MR results to only
+     * this repo before computing counts/medians.
+     */
+    repo?: string;
+  };
   target?: SpecTarget;
 }
 
