@@ -26,6 +26,7 @@ import {
   useJiraTickets,
   avgReviewerComments,
   linkagePct,
+  firstPassRatePct,
   medianTurnaroundDays,
   mergedWithin,
   mergedTrend,
@@ -148,6 +149,22 @@ export function useDataSource(source) {
   if (metric === SOURCE_METRICS.LINKAGE_PCT) {
     const mrs = filteredMerged || [];
     const value = mrs.length > 0 ? linkagePct(mrs) : null;
+    return {
+      data: { ...(value || {}), rawMrs: mrs },
+      isLoading: merged.isLoading,
+      error: merged.error,
+      windowDays: days,
+    };
+  }
+
+  if (metric === SOURCE_METRICS.FIRST_PASS_RATE) {
+    // FIRST_PASS_RATE reads the same merged-MR list as MERGED_COUNT /
+    // LINKAGE_PCT; the metric just slices the array differently
+    // (clean ≤1-comment PRs vs. ping-pong ones). Returning the same
+    // `{ pct, clean, pingPong, rawMrs }` triple lets the widget render
+    // a familiar headline + bar without inventing new shape.
+    const mrs = filteredMerged || [];
+    const value = mrs.length > 0 ? firstPassRatePct(mrs) : null;
     return {
       data: { ...(value || {}), rawMrs: mrs },
       isLoading: merged.isLoading,

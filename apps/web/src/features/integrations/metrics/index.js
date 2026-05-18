@@ -12,6 +12,7 @@ export {
 } from "./ticket-cycle";
 export { avgReviewerComments } from "./rounds";
 export { linkagePct } from "./linkage";
+export { firstPassRatePct } from "./first-pass-rate";
 export { mrRepo, filterMrsByRepo, listReposFromMrs } from "./repo-filter";
 export { countMrComments } from "./reviews";
 export { dailyActivity, totalEvents, peakPerDay } from "./activity";

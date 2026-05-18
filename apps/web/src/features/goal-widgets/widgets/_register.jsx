@@ -22,6 +22,7 @@ import { ReviewRoundsWidget } from "./review-rounds-widget";
 import { TurnaroundWidget } from "./turnaround-widget";
 import { LinkageWidget } from "./linkage-widget";
 import { TicketCycleWidget } from "./ticket-cycle-widget";
+import { FirstPassRateWidget } from "./first-pass-rate-widget";
 import { CodeRubricWidget } from "./code-rubric-widget";
 
 import { CounterWidget } from "./counter-widget";
@@ -59,6 +60,12 @@ registerWidget(SPEC_KINDS.TICKET_CYCLE, {
   Component: TicketCycleWidget,
   description:
     "Median Jira ticket cycle (created → resolved) with day-bin histogram.",
+});
+registerWidget(SPEC_KINDS.FIRST_PASS_RATE, {
+  variant: SPEC_VARIANTS.AUTO,
+  Component: FirstPassRateWidget,
+  description:
+    "% of merged PRs that pass first review cleanly (≤1 reviewer comment).",
 });
 registerWidget(SPEC_KINDS.CODE_RUBRIC, {
   variant: SPEC_VARIANTS.AUTO,
