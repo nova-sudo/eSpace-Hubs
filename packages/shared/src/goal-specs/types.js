@@ -31,6 +31,14 @@ export const SPEC_KINDS = Object.freeze({
   DATE_LOG: "DATE_LOG",
   FREE_TEXT: "FREE_TEXT",
   BEFORE_AFTER: "BEFORE_AFTER",
+  // Phase D1: incident-stream + period-reset milestone. Both are
+  // pure-manual widgets that piggy-back on the goal-inputs store —
+  // INCIDENT_LOG appends one entry per incident (with severity +
+  // downtime minutes + optional post-mortem link); RECURRING_MILESTONE
+  // appends a fresh checklist snapshot per cadence period and tracks
+  // streak-of-complete-periods.
+  INCIDENT_LOG: "INCIDENT_LOG",
+  RECURRING_MILESTONE: "RECURRING_MILESTONE",
 });
 
 export const ALL_SPEC_KINDS = Object.freeze(Object.values(SPEC_KINDS));
@@ -183,6 +191,11 @@ export const SPEC_KIND_META = Object.freeze({
   [SPEC_KINDS.DATE_LOG]: { label: "Date log", variant: SPEC_VARIANTS.MANUAL },
   [SPEC_KINDS.FREE_TEXT]: { label: "Journal", variant: SPEC_VARIANTS.MANUAL },
   [SPEC_KINDS.BEFORE_AFTER]: { label: "Before / after", variant: SPEC_VARIANTS.MANUAL },
+  [SPEC_KINDS.INCIDENT_LOG]: { label: "Incident log", variant: SPEC_VARIANTS.MANUAL },
+  [SPEC_KINDS.RECURRING_MILESTONE]: {
+    label: "Recurring milestone",
+    variant: SPEC_VARIANTS.MANUAL,
+  },
 });
 
 export const SPEC_SCHEMA_VERSION = 1;

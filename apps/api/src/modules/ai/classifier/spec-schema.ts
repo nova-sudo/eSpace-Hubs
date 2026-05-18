@@ -70,6 +70,8 @@ export const SPEC_RESPONSE_SCHEMA = {
           "DATE_LOG",
           "FREE_TEXT",
           "BEFORE_AFTER",
+          "INCIDENT_LOG",
+          "RECURRING_MILESTONE",
         ],
         description: "Widget kind from the catalogue.",
       },

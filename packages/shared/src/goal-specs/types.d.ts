@@ -19,6 +19,8 @@ export const SPEC_KINDS: Readonly<{
   readonly DATE_LOG: "DATE_LOG";
   readonly FREE_TEXT: "FREE_TEXT";
   readonly BEFORE_AFTER: "BEFORE_AFTER";
+  readonly INCIDENT_LOG: "INCIDENT_LOG";
+  readonly RECURRING_MILESTONE: "RECURRING_MILESTONE";
 }>;
 
 export type SpecKind = (typeof SPEC_KINDS)[keyof typeof SPEC_KINDS];
