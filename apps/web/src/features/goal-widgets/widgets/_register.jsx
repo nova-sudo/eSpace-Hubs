@@ -55,7 +55,8 @@ registerWidget(SPEC_KINDS.LINKAGE, {
 registerWidget(SPEC_KINDS.TICKET_CYCLE, {
   variant: SPEC_VARIANTS.AUTO,
   Component: TicketCycleWidget,
-  description: "Preview — shows Jira status breakdown; cycle-time coming soon.",
+  description:
+    "Median Jira ticket cycle (created → resolved) with day-bin histogram.",
 });
 registerWidget(SPEC_KINDS.CODE_RUBRIC, {
   variant: SPEC_VARIANTS.AUTO,

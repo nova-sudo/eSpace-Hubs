@@ -20,6 +20,9 @@ export {
   mergedWithin,
   mergedTrend,
   turnaroundHistogram,
+  resolvedTicketsInWindow,
+  medianTicketCycleDays,
+  ticketCycleHistogram,
 } from "@/features/integrations";
 
 export { SOURCE_METRICS } from "@/features/goal-specs";
