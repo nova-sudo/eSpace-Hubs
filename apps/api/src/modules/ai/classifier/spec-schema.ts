@@ -80,7 +80,7 @@ export const SPEC_RESPONSE_SCHEMA = {
       source: {
         type: ["object", "null"],
         additionalProperties: false,
-        required: ["provider", "metric", "window", "target"],
+        required: ["provider", "metric", "window", "target", "filter"],
         properties: {
           provider: {
             type: "string",
@@ -107,6 +107,22 @@ export const SPEC_RESPONSE_SCHEMA = {
             properties: {
               op: { type: "string", enum: ["<=", ">=", "="] },
               value: { type: "number" },
+            },
+          },
+          filter: {
+            type: ["object", "null"],
+            additionalProperties: false,
+            required: ["repo"],
+            properties: {
+              repo: {
+                type: ["string", "null"],
+                description:
+                  "Optional GitHub/GitLab repo slug ('owner/name' or " +
+                  "'group/project'). Leave null to count merges across " +
+                  "every connected repo (the default). The user can " +
+                  "set this in the Review pane after classification — " +
+                  "the AI should default to null here.",
+              },
             },
           },
         },

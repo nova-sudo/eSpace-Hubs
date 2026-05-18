@@ -28,6 +28,11 @@ import {
   ALL_SPEC_VARIANTS,
   SPEC_KIND_META,
 } from "@/features/goal-specs";
+import {
+  useCombinedMergedSince,
+  listReposFromMrs,
+} from "@/features/integrations";
+import { isoDaysAgo } from "@/lib/date";
 import { ANALYSIS } from "./ai/analysis-events";
 
 // Map each widget to the kind(s) that are valid for it. The validator
@@ -58,6 +63,17 @@ export function ReviewPane({
     events,
     pendingSpecs,
   ]);
+
+  // Derive the repo dropdown options from the user's merged MRs over a
+  // 90d window. Uses the same SWR cache key as the metrics layer so
+  // this is effectively a free read when the analyst is open after a
+  // dashboard visit. Returns an empty list when GitHub/GitLab isn't
+  // connected — the picker falls back to a free-text input in that case.
+  const merged90 = useCombinedMergedSince(isoDaysAgo(90));
+  const repoOptions = useMemo(
+    () => listReposFromMrs(merged90.data || []),
+    [merged90.data],
+  );
 
   const [bulkError, setBulkError] = useState(null);
   const pendingEntries = Object.entries(pendingSpecs);
@@ -100,6 +116,7 @@ export function ReviewPane({
             goalId={goalId}
             spec={spec}
             meta={goalsById.get(goalId)}
+            repoOptions={repoOptions}
             onSave={() => {
               const result = commitSpec(goalId);
               if (!result.ok) {
@@ -126,6 +143,23 @@ export function ReviewPane({
                 untrackable: reason ? { reason } : null,
               })
             }
+            onChangeRepo={(repo) => {
+              // Patch source.filter.repo in place. Null clears the
+              // scope, restoring cross-repo behaviour.
+              const nextSource = spec.source
+                ? {
+                    ...spec.source,
+                    filter: repo
+                      ? { ...(spec.source.filter || {}), repo }
+                      : (() => {
+                          if (!spec.source.filter) return null;
+                          const { repo: _drop, ...rest } = spec.source.filter;
+                          return Object.keys(rest).length > 0 ? rest : null;
+                        })(),
+                  }
+                : null;
+              updatePendingSpec(goalId, { source: nextSource });
+            }}
           />
         ))}
 
@@ -232,11 +266,13 @@ function PendingCard({
   goalId,
   spec,
   meta,
+  repoOptions = [],
   onSave,
   onSkip,
   onChangeWidget,
   onChangeKind,
   onSetUntrackable,
+  onChangeRepo,
 }) {
   const kindsOk = validKindsFor(spec.widget);
   const widgetMeta = SPEC_KIND_META[spec.widget];
@@ -245,6 +281,18 @@ function PendingCard({
     spec.untrackable?.reason || "",
   );
   const [showUntrackableEditor, setShowUntrackableEditor] = useState(false);
+
+  // Repo picker is only meaningful for AUTO data-source widgets that
+  // pull from GitHub/GitLab. CODE_RUBRIC uses its own PR pipeline so
+  // it's also relevant there; we gate on source.provider being one of
+  // the code-host values rather than on widget kind alone.
+  const sourceProvider = spec.source?.provider;
+  const showRepoPicker =
+    !isUntrackable &&
+    (sourceProvider === "github" ||
+      sourceProvider === "gitlab" ||
+      sourceProvider === "combined");
+  const currentRepo = spec.source?.filter?.repo || "";
 
   return (
     <div
@@ -330,6 +378,7 @@ function PendingCard({
         ) : null}
         {spec.delegated ? <Chip tone="warn">delegated</Chip> : null}
         {isUntrackable ? <Chip tone="warn">untrackable</Chip> : null}
+        {currentRepo ? <Chip>repo · {currentRepo}</Chip> : null}
         {!isUntrackable &&
         widgetMeta?.variant !== spec.kind &&
         !(widgetMeta?.variant === SPEC_VARIANTS.AUTO &&
@@ -337,6 +386,19 @@ function PendingCard({
           <Chip tone="danger">kind/variant mismatch</Chip>
         ) : null}
       </div>
+
+      {/* Repo scope picker — only for GitHub / GitLab / combined sources.
+          Dropdown when we have repo options from the user's merged-PR
+          history (90d); free-text input otherwise so it still works
+          when the user hasn't merged anything yet but knows their repo
+          name. "All repos" clears the filter. */}
+      {showRepoPicker ? (
+        <RepoPicker
+          value={currentRepo}
+          options={repoOptions}
+          onChange={onChangeRepo}
+        />
+      ) : null}
 
       {/* Untrackable banner + reason editor — shown when the spec is
           already flagged untrackable (read-only view + clear button)
@@ -509,6 +571,96 @@ function PendingCard({
           Save
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Repo scope chip. Dropdown when we discovered repo names from the
+ * user's merged-PR history; free-text input otherwise so the field is
+ * never useless. "All repos" is always the first dropdown option and
+ * maps to null on the spec (clears the filter).
+ */
+function RepoPicker({ value, options, onChange }) {
+  const hasOptions = options.length > 0;
+  // When the current value isn't in the discovered list (e.g. user
+  // typed something the API hasn't seen yet) keep showing it so the
+  // selection isn't quietly dropped.
+  const allOptions = useMemo(() => {
+    const out = [...options];
+    if (value && !out.includes(value)) out.unshift(value);
+    return out;
+  }, [options, value]);
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-2 rounded-[var(--radius-sub)] px-2.5 py-1.5"
+      style={{
+        background: "rgba(255,255,255,0.05)",
+        border: "1px solid rgba(255,255,255,0.14)",
+      }}
+    >
+      <span
+        className="uppercase tracking-[0.5px]"
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 9,
+          color: "rgba(255,255,255,0.55)",
+        }}
+      >
+        Repo scope
+      </span>
+      {hasOptions ? (
+        <select
+          value={value || ""}
+          onChange={(e) => onChange(e.target.value || null)}
+          className="cursor-pointer bg-transparent outline-none"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10.5,
+            color: "rgba(255,255,255,0.95)",
+          }}
+        >
+          <option value="" style={{ color: "#000" }}>
+            All repos
+          </option>
+          {allOptions.map((slug) => (
+            <option key={slug} value={slug} style={{ color: "#000" }}>
+              {slug}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type="text"
+          value={value || ""}
+          onChange={(e) => onChange(e.target.value.trim() || null)}
+          placeholder="owner/name (leave empty for all)"
+          className="flex-1 bg-transparent outline-none"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10.5,
+            color: "rgba(255,255,255,0.95)",
+            minWidth: 200,
+          }}
+        />
+      )}
+      {value ? (
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          className="uppercase transition-colors hover:opacity-90"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 9,
+            letterSpacing: "0.5px",
+            color: "rgba(255,255,255,0.55)",
+          }}
+          title="Drop the repo filter — count merges across every connected repo."
+        >
+          clear
+        </button>
+      ) : null}
     </div>
   );
 }

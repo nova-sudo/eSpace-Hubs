@@ -23,6 +23,8 @@ export {
   resolvedTicketsInWindow,
   medianTicketCycleDays,
   ticketCycleHistogram,
+  filterMrsByRepo,
+  listReposFromMrs,
 } from "@/features/integrations";
 
 export { SOURCE_METRICS } from "@/features/goal-specs";

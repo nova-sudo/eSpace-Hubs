@@ -91,6 +91,13 @@ function validateSource(source, errors) {
       filter.branch = source.filter.branch.trim();
     if (isNonEmptyString(source.filter.ticketType))
       filter.ticketType = source.filter.ticketType.trim();
+    // Scope a GitHub/GitLab source to a single repo. Value is the
+    // "owner/name" or "group/project" slug; the metrics layer filters
+    // the merged-MR array via filterMrsByRepo() before computing
+    // counts / medians / linkage. Lower-cased here so the runtime
+    // comparison is case-insensitive.
+    if (isNonEmptyString(source.filter.repo))
+      filter.repo = source.filter.repo.trim().toLowerCase();
     if (Object.keys(filter).length > 0) out.filter = filter;
   }
   const target = validateTarget(source.target, "source", errors);

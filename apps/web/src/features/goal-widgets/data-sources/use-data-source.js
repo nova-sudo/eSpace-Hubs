@@ -33,6 +33,7 @@ import {
   resolvedTicketsInWindow,
   medianTicketCycleDays,
   ticketCycleHistogram,
+  filterMrsByRepo,
   SOURCE_METRICS,
 } from "./source-deps";
 
@@ -88,10 +89,18 @@ export function useDataSource(source) {
 
   const metric = source?.metric;
   const provider = source?.provider || "combined";
+  // Optional per-spec repo scope. When `spec.source.filter.repo` is set,
+  // the merged-MR list is filtered to only that "owner/name" /
+  // "group/project" slug BEFORE the metric math runs. Null/empty leaves
+  // the cross-repo behaviour intact (the old default).
+  const repoFilter = source?.filter?.repo || null;
 
   // One pair of merged-list hooks serves merged_count, avg_rounds,
   // median_turnaround, and linkage_pct.
   const merged = useMergedByProvider(provider, sinceIso);
+  const filteredMerged = repoFilter
+    ? filterMrsByRepo(merged.data, repoFilter)
+    : merged.data;
 
   if (!source || !metric) {
     return { data: null, isLoading: false, error: null, windowDays: days };
@@ -99,12 +108,14 @@ export function useDataSource(source) {
 
   // Compute-on-demand — cheap, and keeps this file pure-ish.
   if (metric === SOURCE_METRICS.MERGED_COUNT) {
-    const count = merged.data
-      ? mergedWithin(merged.data, days).length
+    const count = filteredMerged
+      ? mergedWithin(filteredMerged, days).length
       : null;
-    const trend = merged.data ? mergedTrend(merged.data, 8).map((b) => b.n) : [];
+    const trend = filteredMerged
+      ? mergedTrend(filteredMerged, 8).map((b) => b.n)
+      : [];
     return {
-      data: { count, trend, rawMrs: merged.data || [] },
+      data: { count, trend, rawMrs: filteredMerged || [] },
       isLoading: merged.isLoading,
       error: merged.error,
       windowDays: days,
@@ -112,7 +123,7 @@ export function useDataSource(source) {
   }
 
   if (metric === SOURCE_METRICS.AVG_ROUNDS) {
-    const mrs = merged.data || [];
+    const mrs = filteredMerged || [];
     const value = mrs.length > 0 ? avgReviewerComments(mrs) : null;
     return {
       data: { value, rawMrs: mrs },
@@ -123,7 +134,7 @@ export function useDataSource(source) {
   }
 
   if (metric === SOURCE_METRICS.MEDIAN_TURNAROUND) {
-    const mrs = merged.data || [];
+    const mrs = filteredMerged || [];
     const median = mrs.length > 0 ? medianTurnaroundDays(mrs) : null;
     const histogram = turnaroundHistogram(mrs);
     return {
@@ -135,7 +146,7 @@ export function useDataSource(source) {
   }
 
   if (metric === SOURCE_METRICS.LINKAGE_PCT) {
-    const mrs = merged.data || [];
+    const mrs = filteredMerged || [];
     const value = mrs.length > 0 ? linkagePct(mrs) : null;
     return {
       data: { ...(value || {}), rawMrs: mrs },
