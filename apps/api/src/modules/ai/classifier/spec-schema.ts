@@ -64,6 +64,9 @@ export const SPEC_RESPONSE_SCHEMA = {
           "LINKAGE",
           "TICKET_CYCLE",
           "FIRST_PASS_RATE",
+          "DEPLOY_FREQUENCY",
+          "LEAD_TIME",
+          "BUILD_PASS_RATE",
           "CODE_RUBRIC",
           "COUNTER",
           "SCALE",
@@ -87,7 +90,14 @@ export const SPEC_RESPONSE_SCHEMA = {
         properties: {
           provider: {
             type: "string",
-            enum: ["github", "gitlab", "jira", "combined"],
+            enum: [
+              "github",
+              "gitlab",
+              "jira",
+              "combined",
+              "jenkins",
+              "github_actions",
+            ],
           },
           metric: {
             type: "string",
@@ -98,6 +108,9 @@ export const SPEC_RESPONSE_SCHEMA = {
               "linkage_pct",
               "ticket_cycle_time",
               "first_pass_rate",
+              "deploy_frequency",
+              "lead_time",
+              "build_pass_rate",
             ],
           },
           window: {
@@ -116,16 +129,25 @@ export const SPEC_RESPONSE_SCHEMA = {
           filter: {
             type: ["object", "null"],
             additionalProperties: false,
-            required: ["repo"],
+            required: ["repo", "job"],
             properties: {
               repo: {
                 type: ["string", "null"],
                 description:
                   "Optional GitHub/GitLab repo slug ('owner/name' or " +
-                  "'group/project'). Leave null to count merges across " +
-                  "every connected repo (the default). The user can " +
-                  "set this in the Review pane after classification — " +
-                  "the AI should default to null here.",
+                  "'group/project'). Reused by `github_actions` provider " +
+                  "to scope workflow runs to one repo. Leave null to " +
+                  "count across every connected repo (the default). " +
+                  "The user can set this in the Review pane after " +
+                  "classification — the AI should default to null here.",
+              },
+              job: {
+                type: ["string", "null"],
+                description:
+                  "Jenkins job slug. Required for `jenkins` provider " +
+                  "(Jenkins has no cross-job feed). Leave null for any " +
+                  "other provider — the user picks the job in the " +
+                  "Review pane after classification.",
               },
             },
           },

@@ -26,6 +26,13 @@ export const SPEC_KINDS = Object.freeze({
   // REVIEW_ROUNDS (which averages noise per PR) — this one is the
   // PR-level "% that didn't ping-pong" rate.
   FIRST_PASS_RATE: "FIRST_PASS_RATE",
+  // Phase D3: CI/CD delivery widgets. Each is an AUTO widget that
+  // reads from a single Jenkins job (`source.filter.job`) OR a
+  // single GitHub Actions repo (`source.filter.repo`). Driven by
+  // unified `BuildEvent[]` normalisation across the two providers.
+  DEPLOY_FREQUENCY: "DEPLOY_FREQUENCY",
+  LEAD_TIME: "LEAD_TIME",
+  BUILD_PASS_RATE: "BUILD_PASS_RATE",
   // Hybrid: AI-graded — auto-pull PRs, scored against the user's
   // rubric (captured via spec.context). Lives in the auto row because
   // the user supplies the rubric once; grading is automatic thereafter.
@@ -56,6 +63,9 @@ export const SOURCE_METRICS = Object.freeze({
   LINKAGE_PCT: "linkage_pct",
   TICKET_CYCLE_TIME: "ticket_cycle_time",
   FIRST_PASS_RATE: "first_pass_rate",
+  DEPLOY_FREQUENCY: "deploy_frequency",
+  LEAD_TIME: "lead_time",
+  BUILD_PASS_RATE: "build_pass_rate",
 });
 
 export const ALL_SOURCE_METRICS = Object.freeze(Object.values(SOURCE_METRICS));
@@ -73,6 +83,13 @@ export const SOURCE_PROVIDERS = Object.freeze({
   GITLAB: "gitlab",
   JIRA: "jira",
   COMBINED: "combined",
+  // Phase D3: CI/CD providers. JENKINS reads via the existing
+  // Jenkins basic-auth proxy; GITHUB_ACTIONS reuses the GitHub OAuth
+  // token (the `repo` scope already grants `/actions/runs` read).
+  // The classifier picks one of these for spec.source.provider on
+  // DEPLOY_FREQUENCY / LEAD_TIME / BUILD_PASS_RATE widgets.
+  JENKINS: "jenkins",
+  GITHUB_ACTIONS: "github_actions",
 });
 
 export const ALL_SOURCE_PROVIDERS = Object.freeze(Object.values(SOURCE_PROVIDERS));
@@ -189,6 +206,18 @@ export const SPEC_KIND_META = Object.freeze({
   [SPEC_KINDS.TICKET_CYCLE]: { label: "Ticket cycle", variant: SPEC_VARIANTS.AUTO },
   [SPEC_KINDS.FIRST_PASS_RATE]: {
     label: "First-pass rate",
+    variant: SPEC_VARIANTS.AUTO,
+  },
+  [SPEC_KINDS.DEPLOY_FREQUENCY]: {
+    label: "Deploy frequency",
+    variant: SPEC_VARIANTS.AUTO,
+  },
+  [SPEC_KINDS.LEAD_TIME]: {
+    label: "Lead time",
+    variant: SPEC_VARIANTS.AUTO,
+  },
+  [SPEC_KINDS.BUILD_PASS_RATE]: {
+    label: "Build pass rate",
     variant: SPEC_VARIANTS.AUTO,
   },
   [SPEC_KINDS.CODE_RUBRIC]: {
