@@ -20,6 +20,12 @@ export const SPEC_KINDS = Object.freeze({
   TURNAROUND: "TURNAROUND",
   LINKAGE: "LINKAGE",
   TICKET_CYCLE: "TICKET_CYCLE",
+  // Phase D2: % of merged PRs that pass first review cleanly
+  // (user_notes_count <= 1 — at most one reviewer comment before
+  // merge). The "clean pass through review" metric. Distinct from
+  // REVIEW_ROUNDS (which averages noise per PR) — this one is the
+  // PR-level "% that didn't ping-pong" rate.
+  FIRST_PASS_RATE: "FIRST_PASS_RATE",
   // Hybrid: AI-graded — auto-pull PRs, scored against the user's
   // rubric (captured via spec.context). Lives in the auto row because
   // the user supplies the rubric once; grading is automatic thereafter.
@@ -49,6 +55,7 @@ export const SOURCE_METRICS = Object.freeze({
   MEDIAN_TURNAROUND: "median_turnaround",
   LINKAGE_PCT: "linkage_pct",
   TICKET_CYCLE_TIME: "ticket_cycle_time",
+  FIRST_PASS_RATE: "first_pass_rate",
 });
 
 export const ALL_SOURCE_METRICS = Object.freeze(Object.values(SOURCE_METRICS));
@@ -180,6 +187,10 @@ export const SPEC_KIND_META = Object.freeze({
   [SPEC_KINDS.TURNAROUND]: { label: "Turnaround", variant: SPEC_VARIANTS.AUTO },
   [SPEC_KINDS.LINKAGE]: { label: "Linkage", variant: SPEC_VARIANTS.AUTO },
   [SPEC_KINDS.TICKET_CYCLE]: { label: "Ticket cycle", variant: SPEC_VARIANTS.AUTO },
+  [SPEC_KINDS.FIRST_PASS_RATE]: {
+    label: "First-pass rate",
+    variant: SPEC_VARIANTS.AUTO,
+  },
   [SPEC_KINDS.CODE_RUBRIC]: {
     label: "Rubric grading",
     variant: SPEC_VARIANTS.AUTO,

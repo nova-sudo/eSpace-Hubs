@@ -12,6 +12,7 @@ export const SPEC_KINDS: Readonly<{
   readonly TURNAROUND: "TURNAROUND";
   readonly LINKAGE: "LINKAGE";
   readonly TICKET_CYCLE: "TICKET_CYCLE";
+  readonly FIRST_PASS_RATE: "FIRST_PASS_RATE";
   readonly CODE_RUBRIC: "CODE_RUBRIC";
   readonly COUNTER: "COUNTER";
   readonly SCALE: "SCALE";
@@ -32,6 +33,7 @@ export const SOURCE_METRICS: Readonly<{
   readonly MEDIAN_TURNAROUND: "median_turnaround";
   readonly LINKAGE_PCT: "linkage_pct";
   readonly TICKET_CYCLE_TIME: "ticket_cycle_time";
+  readonly FIRST_PASS_RATE: "first_pass_rate";
 }>;
 export type SourceMetric =
   (typeof SOURCE_METRICS)[keyof typeof SOURCE_METRICS];

@@ -16,6 +16,7 @@ export {
   useJiraTickets,
   avgReviewerComments,
   linkagePct,
+  firstPassRatePct,
   medianTurnaroundDays,
   mergedWithin,
   mergedTrend,

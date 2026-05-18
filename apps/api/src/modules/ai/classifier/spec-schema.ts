@@ -63,6 +63,7 @@ export const SPEC_RESPONSE_SCHEMA = {
           "TURNAROUND",
           "LINKAGE",
           "TICKET_CYCLE",
+          "FIRST_PASS_RATE",
           "CODE_RUBRIC",
           "COUNTER",
           "SCALE",
@@ -96,6 +97,7 @@ export const SPEC_RESPONSE_SCHEMA = {
               "median_turnaround",
               "linkage_pct",
               "ticket_cycle_time",
+              "first_pass_rate",
             ],
           },
           window: {
