@@ -218,8 +218,15 @@ function buildSystemPrompt(): string {
     "COMPOSITE (SCORECARD) — pick when ONE goal has 2 or 3 clearly-",
     "distinct quantitative targets joined by AND/while/and-also/maintain",
     "(e.g. \"≥85% pass rate AND ≤10% defect rate\", \"ship 12 deploys",
-    "per month AND keep build pass rate ≥95%\"). Set `widget:",
-    "\"SCORECARD\"` and emit a `scorecard` block with 2-3 components.",
+    "per month AND keep build pass rate ≥95%\").",
+    "",
+    "When you pick `widget: \"SCORECARD\"`, you MUST also emit a non-null",
+    "`scorecard` object with 2-3 components. Returning `\"scorecard\":",
+    "null` alongside `\"widget\": \"SCORECARD\"` is INVALID and the spec",
+    "will be rejected. If you can't construct ≥2 components, pick a",
+    "different widget instead — DO NOT emit SCORECARD with an empty",
+    "scorecard.",
+    "",
     "Each component is a normal widget choice with its own",
     "`widget`+`kind`+`source`/`manual`+`target`. Give each component a",
     "concise `label` (≤24 chars) and a `weight` reflecting the goal's",
@@ -559,6 +566,39 @@ function buildSystemPrompt(): string {
 
 const SYSTEM_PROMPT = buildSystemPrompt();
 
+/**
+ * Fallback scorecard used when the model picks `widget: "SCORECARD"`
+ * but omits / nullifies the `scorecard` block. Without this safety
+ * net the validator rejects the whole spec and the user sees "Failed
+ * to classify" for any compound goal the model only half-handles —
+ * a worse outcome than landing a half-finished SCORECARD that the
+ * user finishes in the Review pane.
+ *
+ * Two bare MERGED_COUNT components with even-split weights. The user
+ * picks the right widgets/targets per-row inside the Review pane's
+ * ScorecardEditor. Aggregate is "weighted" because that's the only
+ * one the MVP validates.
+ */
+function seedDefaultScorecard() {
+  const bare = () => ({
+    label: "",
+    weight: 50,
+    widget: "MERGED_COUNT",
+    kind: "auto",
+    source: {
+      provider: "combined",
+      metric: "merged_count",
+      window: "30d",
+      target: null,
+    },
+    manual: null,
+  });
+  return {
+    aggregate: "weighted",
+    components: [bare(), bare()],
+  };
+}
+
 function buildUserPrompt(goal: GoalForClassification): string {
   const lines = [
     `Goal ID: ${goal.id}`,
@@ -773,8 +813,28 @@ async function* classifyOneGoal(
     context: obj.context ?? null,
     delegated: obj.delegated ?? null,
     untrackable: obj.untrackable ?? null,
+    // Phase E: thread the scorecard block through. Without this, a
+    // model that correctly emits `widget: "SCORECARD"` + a valid
+    // scorecard payload still fails validation because the candidate
+    // object drops the block before validateSpec sees it.
+    scorecard: obj.scorecard ?? null,
     classifiedAt: Date.now(),
   };
+  // Safety net for SCORECARD: when the model picks the widget but
+  // omits / nullifies the scorecard block (a real failure mode —
+  // strict JSON Schema allows `"scorecard": null` because the field
+  // is nullable in the schema, but the validator rejects null for
+  // SCORECARD widgets), seed a default 2-component scorecard so the
+  // classification doesn't fail outright. The user finishes the
+  // components in the Review pane. We also reset top-level
+  // source/manual to null because SCORECARD forbids them; without
+  // this the validator rejects on a different rule.
+  if (candidate.widget === "SCORECARD" && !candidate.scorecard) {
+    candidate.scorecard = seedDefaultScorecard();
+    candidate.source = null;
+    candidate.manual = null;
+    candidate.kind = "auto"; // 2 auto-seeded components → auto.
+  }
   const result = validateSpec(candidate);
   if (!result.ok) {
     yield AnalysisEvents.goalFailed({
