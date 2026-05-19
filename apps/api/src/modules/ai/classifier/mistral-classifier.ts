@@ -236,8 +236,20 @@ function buildSystemPrompt(): string {
     "  - \"hybrid\" if any component is MANUAL",
     "The top-level `source` and `manual` MUST be null — components own",
     "the data. SCORECARD components CANNOT themselves be SCORECARD",
-    "(no nesting). CODE_RUBRIC is also forbidden as a component (it",
-    "renders its own UI lane).",
+    "(no nesting). CODE_RUBRIC IS allowed as a component — when used",
+    "inside a SCORECARD, the component carries its rubric criteria as",
+    "`manual.items: [<criterion>, ...]` and the SCORECARD widget grades",
+    "them inline via the same /api/v1/ai/grade-pr endpoint as the",
+    "standalone CODE_RUBRIC widget.",
+    "",
+    "`firstReviewOnly` flag (CODE_RUBRIC only) — set to `true` when the",
+    "goal explicitly says \"on first review\" / \"first-round review\" /",
+    "\"before fixes are applied\" / \"agreed quality on first review\".",
+    "Filters grading to comments BEFORE author rework, so the rubric",
+    "judges code quality at the first-review moment, not at merge time.",
+    "Default: false / null. Set this on the SPEC for standalone",
+    "CODE_RUBRIC; set it on the COMPONENT for CODE_RUBRIC inside a",
+    "SCORECARD.",
     "",
     "═══ SOURCE BLOCK ═════════════════════════════════════════════════",
     "",
@@ -454,23 +466,29 @@ function buildSystemPrompt(): string {
     "",
     'Goal: "Ensure ≥85% of deliverables meet agreed quality standards on ' +
       'first review AND maintain ≤10% post-delivery defects per quarter."',
-    "→ Two distinct quantitative targets in one goal. Use SCORECARD",
-    "  with two components: first-review pass rate (auto) and post-",
-    "  delivery defect count (manual, per-incident logger).",
+    "→ Two distinct quantitative targets in one goal. The quality half",
+    "  is RUBRIC-style (subjective criteria → AI grades each PR), not",
+    "  a thin pass-rate proxy. The defect half is a manual incident log.",
+    "  Set the rubric component's firstReviewOnly to true so the AI",
+    "  judges quality at the first-review moment, not at merge time.",
     "  {",
     '    "kind": "hybrid", "widget": "SCORECARD",',
-    '    "reasoning": "One scorecard with two halves: PR pass-rate is ' +
-      'auto-measurable; post-delivery defects need a manual log per incident.",',
+    '    "reasoning": "Quality is rubric-graded against the team\'s ' +
+      'criteria at first review; defects are manually logged per incident. ' +
+      'Weighted 60/40.",',
     '    "source": null, "manual": null,',
     '    "scorecard": {',
     '      "aggregate": "weighted",',
     '      "components": [',
     "        {",
-    '          "label": "Quality on first review", "weight": 60,',
-    '          "widget": "FIRST_PASS_RATE", "kind": "auto",',
-    '          "source": { "provider": "combined", "metric": "first_pass_rate",',
-    '                      "window": "quarter", "target": { "op": ">=", "value": 85 } },',
-    '          "manual": null',
+    '          "label": "Quality (rubric)", "weight": 60,',
+    '          "widget": "CODE_RUBRIC", "kind": "auto",',
+    '          "firstReviewOnly": true,',
+    '          "source": null,',
+    '          "manual": { "prompt": "Quality criteria",',
+    '                      "cadence": "continuous",',
+    '                      "items": ["meaningful tests", "no any types",',
+    '                                "all branches handled"] }',
     "        },",
     "        {",
     '          "label": "Post-delivery defects", "weight": 40,',
@@ -818,6 +836,10 @@ async function* classifyOneGoal(
     // scorecard payload still fails validation because the candidate
     // object drops the block before validateSpec sees it.
     scorecard: obj.scorecard ?? null,
+    // Phase F: top-level firstReviewOnly for standalone CODE_RUBRIC.
+    // Component-level firstReviewOnly lives inside scorecard.components
+    // and is threaded by the shared validator.
+    firstReviewOnly: obj.firstReviewOnly === true,
     classifiedAt: Date.now(),
   };
   // Safety net for SCORECARD: when the model picks the widget but

@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { WidgetShell, TargetChip } from "../widget-shell";
 import { useDataSource } from "../data-sources/use-data-source";
 import { useGoalInputs } from "@/features/goal-inputs";
+import { useGradedPrs } from "@/features/grading";
 import {
   componentScore,
   aggregateScore,
@@ -64,7 +65,22 @@ export function ScorecardWidget({
   const row0 = useComponentData(components[0] || null, goal, 0);
   const row1 = useComponentData(components[1] || null, goal, 1);
   const row2 = useComponentData(components[2] || null, goal, 2);
-  const rows = [row0, row1, row2].slice(0, components.length);
+
+  // Phase F: per-component CODE_RUBRIC grading. Always invokes 3
+  // useGradedPrs calls (mirroring the component-data slots). Each
+  // call gates on `enabled` — only the slot that actually carries a
+  // CODE_RUBRIC component does any fetching/grading. Each call gets
+  // a unique `scopeKey` derived from the parent goal id + slot
+  // index so verdicts for different components don't collide in the
+  // local cache.
+  const rubric0 = useRubricForSlot(components[0], goal, 0);
+  const rubric1 = useRubricForSlot(components[1], goal, 1);
+  const rubric2 = useRubricForSlot(components[2], goal, 2);
+  const rubrics = [rubric0, rubric1, rubric2];
+
+  const rows = [row0, row1, row2]
+    .slice(0, components.length)
+    .map((row, i) => mergeRubricIntoRow(row, components[i], rubrics[i]));
 
   const scoredEntries = useMemo(
     () =>
@@ -121,6 +137,7 @@ export function ScorecardWidget({
               score={scoredEntries[i]?.score}
               loading={scoredEntries[i]?.loading}
               error={scoredEntries[i]?.error}
+              rubric={rows[i]?.rubric}
               variant={variant}
             />
           ))}
@@ -172,7 +189,15 @@ function Headline({ score, pass, total, variant }) {
  * embedding the full widget body to keep the row compact + scannable
  * — a SCORECARD with 3 full widget tiles inside would be unreadable.
  */
-function ComponentRow({ component, data, score, loading, error, variant }) {
+function ComponentRow({
+  component,
+  data,
+  score,
+  loading,
+  error,
+  rubric,
+  variant,
+}) {
   const label =
     component?.label?.trim() ||
     component?.widget?.replace(/_/g, " ").toLowerCase() ||
@@ -180,6 +205,7 @@ function ComponentRow({ component, data, score, loading, error, variant }) {
   const target = component?.source?.target || component?.manual?.target;
   const value = extractValue(component, data);
   const isPercent = isPercentMetric(component?.widget);
+  const isRubric = component?.widget === "CODE_RUBRIC";
 
   return (
     <li
@@ -263,9 +289,93 @@ function ComponentRow({ component, data, score, loading, error, variant }) {
           }}
         >
           {weightCopy(component?.weight)}
+          {component?.firstReviewOnly ? " · first-review only" : ""}
         </span>
       </div>
+      {isRubric ? (
+        <RubricRowFooter
+          rubric={rubric}
+          data={data}
+          variant={variant}
+        />
+      ) : null}
     </li>
+  );
+}
+
+/**
+ * Footer strip for a CODE_RUBRIC component row: shows criteria
+ * count, ungraded count, and a "Grade now" button. The button calls
+ * the slot's imperative `gradeAll` — the same function the
+ * standalone CodeRubricWidget uses. Progress is reported live; on
+ * completion the verdicts land in the local store and the parent
+ * SCORECARD re-renders with the new pass-rate folded into the
+ * aggregate.
+ *
+ * Rendered conditionally only for CODE_RUBRIC components — the
+ * regular ComponentRow stays compact for AUTO/MANUAL components.
+ */
+function RubricRowFooter({ rubric, data, variant }) {
+  if (!rubric) return null;
+  const muted =
+    variant === "light"
+      ? "rgba(255,255,255,0.6)"
+      : "var(--dim-fg)";
+  const isRunning = rubric.progress?.running === true;
+  const criteriaCount = rubric.criteriaCount ?? 0;
+  const ungraded = data?.ungraded ?? 0;
+  const total = (data?.total ?? 0) + ungraded + (data?.errored ?? 0);
+  const canGrade =
+    !isRunning &&
+    rubric.hasGithub &&
+    criteriaCount > 0 &&
+    typeof rubric.gradeAll === "function";
+  return (
+    <div
+      className="flex items-center justify-between gap-2"
+      style={{
+        fontFamily: "var(--font-mono)",
+        fontSize: 9.5,
+        color: muted,
+        letterSpacing: "0.3px",
+      }}
+    >
+      <span>
+        {criteriaCount === 0
+          ? "no criteria yet — edit in Review pane"
+          : `${criteriaCount} criteri${criteriaCount === 1 ? "on" : "a"} · ` +
+            `${data?.pass ?? 0}/${total} graded` +
+            (ungraded > 0 ? ` · ${ungraded} ungraded` : "")}
+      </span>
+      {criteriaCount > 0 ? (
+        <button
+          type="button"
+          onClick={() => {
+            if (canGrade) rubric.gradeAll();
+          }}
+          disabled={!canGrade}
+          className="uppercase tracking-[0.5px] transition-opacity disabled:opacity-40"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 9.5,
+            letterSpacing: "0.5px",
+            color: variant === "light" ? "#ffffff" : "var(--fg)",
+            background: "transparent",
+            border:
+              variant === "light"
+                ? "1px solid rgba(255,255,255,0.35)"
+                : "1px solid var(--border)",
+            borderRadius: "var(--radius-sub)",
+            padding: "2px 6px",
+            cursor: canGrade ? "pointer" : "not-allowed",
+          }}
+        >
+          {isRunning
+            ? `Grading… ${rubric.progress?.done ?? 0}/${rubric.progress?.total ?? 0}`
+            : "Grade now"}
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -280,8 +390,79 @@ function isPercentMetric(widget) {
     widget === "LINKAGE" ||
     widget === "BUILD_PASS_RATE" ||
     widget === "MILESTONE" ||
-    widget === "RECURRING_MILESTONE"
+    widget === "RECURRING_MILESTONE" ||
+    widget === "CODE_RUBRIC"
   );
+}
+
+/**
+ * Phase F: per-slot rubric grading for SCORECARD CODE_RUBRIC
+ * components.
+ *
+ * Always invoked exactly 3 times per render (once per max-component
+ * slot) so React's hook count stays stable regardless of how many
+ * actual components the user has configured. Slots that aren't
+ * CODE_RUBRIC pass `enabled: false` and short-circuit internally
+ * — useGradedPrs still runs all its internal hooks but doesn't
+ * fetch or grade.
+ *
+ * Each grading slot gets a unique `scopeKey` derived from the
+ * parent goal id + slot index so verdicts for different components
+ * (or different SCORECARDs) never collide in the local store.
+ */
+function useRubricForSlot(component, parentGoal, index) {
+  const isRubric = component?.widget === "CODE_RUBRIC";
+  const criteria = isRubric ? component?.manual?.items || [] : [];
+  const firstReviewOnly = isRubric && component?.firstReviewOnly === true;
+  const scopeKey =
+    isRubric && parentGoal?.id ? `sc${index}:${parentGoal.id}` : null;
+  return useGradedPrs(
+    isRubric && parentGoal?.id
+      ? { goalId: parentGoal.id, context: { questions: [] } }
+      : { goalId: null, context: { questions: [] } },
+    {
+      enabled: isRubric && criteria.length > 0,
+      criteriaOverride: criteria,
+      firstReviewOnly,
+      scopeKey,
+    },
+  );
+}
+
+/**
+ * Fold a rubric slot's `summary` into the component-data row so the
+ * downstream extractValue / componentScore path can read `data.pct`
+ * uniformly. When the slot isn't a CODE_RUBRIC component, the
+ * underlying useGradedPrs ran with `enabled: false` and the rubric
+ * summary is empty — we leave the row's data alone in that case.
+ *
+ * The merge also surfaces `rubric` (criteria), `progress`, and
+ * `gradeAll` so the SCORECARD's ComponentRow can offer a "Grade now"
+ * affordance specific to this slot.
+ */
+function mergeRubricIntoRow(row, component, rubric) {
+  if (component?.widget !== "CODE_RUBRIC") return row;
+  return {
+    ...(row || {}),
+    data: {
+      ...(row?.data || {}),
+      pct: rubric.summary?.pct ?? null,
+      pass: rubric.summary?.pass ?? 0,
+      total: rubric.summary?.total ?? 0,
+      ungraded: rubric.summary?.ungraded ?? 0,
+      errored: rubric.summary?.errored ?? 0,
+    },
+    isLoading: rubric.isListLoading,
+    error: rubric.listError,
+    // Forward the imperative grader + per-slot progress so the
+    // ComponentRow can render a "Grade now" button + progress chip.
+    rubric: {
+      criteriaCount: (rubric.rubric || []).length,
+      gradeAll: rubric.gradeAll,
+      progress: rubric.progress,
+      hasGithub: rubric.hasGithub,
+    },
+  };
 }
 
 /**

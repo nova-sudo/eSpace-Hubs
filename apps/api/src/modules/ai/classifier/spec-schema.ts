@@ -47,6 +47,7 @@ export const SPEC_RESPONSE_SCHEMA = {
       "delegated",
       "untrackable",
       "scorecard",
+      "firstReviewOnly",
     ],
     properties: {
       kind: {
@@ -265,6 +266,16 @@ export const SPEC_RESPONSE_SCHEMA = {
           "stays editable; when the user unflags untrackable later, the " +
           "widget choice resurfaces as a starting point.",
       },
+      firstReviewOnly: {
+        type: ["boolean", "null"],
+        description:
+          "When true on a CODE_RUBRIC spec, the grader filters PR " +
+          "comments to the FIRST review round only (everything up to " +
+          "and including the first reviewer comment). Lets the rubric " +
+          "judge code quality at first review, before iterative " +
+          "fixes mask the original state. Ignored for non-CODE_RUBRIC " +
+          "widgets.",
+      },
       scorecard: {
         type: ["object", "null"],
         additionalProperties: false,
@@ -291,10 +302,17 @@ export const SPEC_RESPONSE_SCHEMA = {
                 "kind",
                 "source",
                 "manual",
+                "firstReviewOnly",
               ],
               properties: {
                 label: { type: ["string", "null"] },
                 weight: { type: "number" },
+                firstReviewOnly: {
+                  type: ["boolean", "null"],
+                  description:
+                    "Mirror of the top-level field — only meaningful " +
+                    "on a CODE_RUBRIC component.",
+                },
                 widget: {
                   type: "string",
                   enum: [

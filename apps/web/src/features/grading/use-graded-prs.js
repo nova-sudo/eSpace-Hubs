@@ -27,6 +27,7 @@ import {
   saveVerdict,
 } from "./grading-store";
 import { normalizeRubric, rubricHash } from "./rubric-hash";
+import { firstReviewComments } from "./first-review-comments";
 
 /** Concurrency cap for grading calls — honour Mistral rate limits. */
 const GRADE_CONCURRENCY = 3;
@@ -81,7 +82,26 @@ function getStoreSnapshot() {
     : "";
 }
 
-export function useGradedPrs(spec) {
+/**
+ * @typedef {Object} GradedPrsOptions
+ * @property {string[]} [criteriaOverride] — bypass `spec.context.answers`
+ *   and use this list of criteria instead. Used by SCORECARD CODE_RUBRIC
+ *   components, which carry their criteria on `component.manual.items`
+ *   rather than in the goal-context store.
+ * @property {boolean} [firstReviewOnly] — override the spec-level flag.
+ *   When set, the grader filters PR comments to the first-review
+ *   cluster before sending to the AI.
+ * @property {string} [scopeKey] — extra tag mixed into the verdict
+ *   cache key so two different scopes (e.g. two CODE_RUBRIC components
+ *   on one SCORECARD) don't collide. Pass `null`/`undefined` for legacy
+ *   un-scoped behaviour.
+ * @property {boolean} [enabled] — set to `false` to make the hook
+ *   short-circuit (returns empty data). Useful inside SCORECARD widgets
+ *   that need a stable count of hook calls but don't always have a
+ *   CODE_RUBRIC component to grade.
+ */
+
+export function useGradedPrs(spec, options = {}) {
   const { isConnected } = useIntegrations();
   // Capture the CONNECTION BOOLEAN up front. `isConnected` is a new function
   // reference on every `useIntegrations()` call, so passing it directly into
@@ -89,10 +109,36 @@ export function useGradedPrs(spec) {
   // every render → new fetch → state update → re-render → repeat). Boolean
   // comparison via React's default equality is the correct stable signal.
   const githubConnected = isConnected("github");
+  // Phase F: hook options. The `enabled` gate runs OUTSIDE the hook
+  // body's React calls — every useState/useEffect below still runs
+  // unconditionally so hook rules are satisfied, but expensive work
+  // (PR list fetch, grade-all loop) checks `enabled` and short-circuits.
+  const enabled = options.enabled !== false;
+  const scopeKey = options.scopeKey || null;
 
   const { answers } = useGoalContext(spec?.goalId);
-  const rubric = useMemo(() => resolveRubric(spec, answers), [spec, answers]);
-  const hash = useMemo(() => rubricHash(rubric), [rubric]);
+  const rubric = useMemo(() => {
+    if (Array.isArray(options.criteriaOverride)) {
+      return normalizeRubric(options.criteriaOverride);
+    }
+    return resolveRubric(spec, answers);
+  }, [spec, answers, options.criteriaOverride]);
+  // Phase F: when `spec.firstReviewOnly` is set on a CODE_RUBRIC spec,
+  // OR when the caller passes `firstReviewOnly` in options (used by
+  // SCORECARD CODE_RUBRIC components), grading filters PR comments to
+  // the first-review cluster before sending to the AI grader. The
+  // hash mixes the flag + the scope key in so verdicts graded with
+  // vs. without the scope filter don't collide in the local cache.
+  const firstReviewOnly =
+    options.firstReviewOnly !== undefined
+      ? options.firstReviewOnly === true
+      : spec?.firstReviewOnly === true;
+  const hash = useMemo(() => {
+    const tagBits = [];
+    if (scopeKey) tagBits.push(scopeKey);
+    if (firstReviewOnly) tagBits.push("fr1");
+    return rubricHash(rubric, tagBits.length > 0 ? tagBits.join(":") : null);
+  }, [rubric, scopeKey, firstReviewOnly]);
 
   // Subscribe to grading store changes so we re-render when verdicts land.
   // Capture the snapshot value — `verdictsByPr` memo below uses it as a
@@ -123,7 +169,9 @@ export function useGradedPrs(spec) {
   // without needing the effect's dep on a ref (which wouldn't trigger).
   const [refreshTick, setRefreshTick] = useState(0);
   useEffect(() => {
-    if (!githubConnected) {
+    // Phase F: respect the `enabled` gate. Disabled hooks still run
+    // the effect (React rules) but don't fetch.
+    if (!githubConnected || !enabled) {
       setPrs([]);
       setListError(null);
       setIsListLoading(false);
@@ -152,7 +200,7 @@ export function useGradedPrs(spec) {
     return () => {
       cancelled = true;
     };
-  }, [githubConnected, refreshTick]);
+  }, [githubConnected, refreshTick, enabled]);
 
   const refreshList = useCallback(() => {
     setRefreshTick((n) => n + 1);
@@ -203,6 +251,15 @@ export function useGradedPrs(spec) {
               typeof localStorage !== "undefined"
                 ? localStorage.getItem("espace-devhub:ai-provider") || "mistral"
                 : "mistral";
+            // Phase F: when firstReviewOnly is set, clip comments
+            // to the first-review cluster BEFORE sending. The grader
+            // sees only the PR body + the first reviewer comment
+            // (plus the author's own pre-review messages), so the
+            // rubric judges code quality at first review, not at
+            // merge time after iterative fixes.
+            const commentsForGrading = firstReviewOnly
+              ? firstReviewComments(details.comments, pr.author)
+              : details.comments;
             const res = await fetch("/api/v1/ai/grade-pr", {
               method: "POST",
               credentials: "include",
@@ -215,7 +272,7 @@ export function useGradedPrs(spec) {
                   id: pr.id,
                   title: details.title || pr.title,
                   body: details.body,
-                  comments: details.comments,
+                  comments: commentsForGrading,
                 },
                 rubric,
                 provider: aiProvider,

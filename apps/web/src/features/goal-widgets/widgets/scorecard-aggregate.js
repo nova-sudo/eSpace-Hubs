@@ -89,9 +89,27 @@ export function extractValue(component, data) {
     case "RECURRING_MILESTONE":
       return safeNum(data.pct);
 
+    // Phase F: CODE_RUBRIC components surface their pass-rate as
+    // the score. `data.pct` is computed by the SCORECARD widget
+    // from the local verdicts cache via `useGradedPrs.summary`.
+    case "CODE_RUBRIC":
+      return safeNum(data.pct);
+
     default:
       return null;
   }
+}
+
+/**
+ * For score targets we synthesize a default 100% target when the
+ * CODE_RUBRIC component doesn't carry one — the user's framing is
+ * "we want a high rubric pass rate", and 100% is the natural
+ * ceiling. The aggregate function still respects an explicit target
+ * if the user sets one.
+ */
+export function defaultTargetFor(widget) {
+  if (widget === "CODE_RUBRIC") return { op: ">=", value: 100 };
+  return null;
 }
 
 /**
@@ -127,7 +145,15 @@ export function pctOfTarget(value, target) {
  * separately.
  */
 export function componentScore(component, data) {
-  const target = component?.source?.target || component?.manual?.target;
+  // CODE_RUBRIC's "value" IS its pass-rate (0-100%), so a target is
+  // optional — when missing, we default to "≥ 100%" so the score
+  // matches what the standalone CodeRubricWidget already displays.
+  // Other widgets require an explicit target; null target → null
+  // score and the aggregate skips this component.
+  const target =
+    component?.source?.target ||
+    component?.manual?.target ||
+    defaultTargetFor(component?.widget);
   if (!target) return null;
   const value = extractValue(component, data);
   return pctOfTarget(value, target);

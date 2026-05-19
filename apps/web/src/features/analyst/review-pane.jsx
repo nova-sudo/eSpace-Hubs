@@ -930,9 +930,11 @@ function JobPicker({ value, options, onChange }) {
 // ─── SCORECARD sub-editor ─────────────────────────────────────────
 
 const SCORECARD_COMPONENT_WIDGETS = ALL_SPEC_KINDS.filter(
-  // SCORECARD inside SCORECARD is invalid; CODE_RUBRIC has its own
-  // UI lane and isn't useful as a scorecard component.
-  (k) => k !== "SCORECARD" && k !== "CODE_RUBRIC",
+  // SCORECARD inside SCORECARD is invalid (no nesting). Phase F
+  // restores CODE_RUBRIC as a valid component — the editor below
+  // surfaces an inline criteria textarea + first-review toggle so
+  // the user can drive rubric grading from inside a SCORECARD.
+  (k) => k !== "SCORECARD",
 );
 
 const SCORECARD_MAX_COMPONENTS = 3;
@@ -1064,8 +1066,20 @@ function ComponentEditorRow({ index, component, onPatch, onRemove, canRemove }) 
     const meta = SPEC_KIND_META[widget];
     const variant = meta?.variant || SPEC_VARIANTS.AUTO;
     const patch = { widget, kind: variant };
-    // Reset source/manual to sensible defaults for the new widget.
-    if (variant === SPEC_VARIANTS.AUTO) {
+    if (widget === "CODE_RUBRIC") {
+      // CODE_RUBRIC is meta-AUTO but uses neither source nor a
+      // standard manual block — it reads grading criteria from
+      // `manual.items` here (component scope) and runs the
+      // /api/v1/ai/grade-pr endpoint. Empty items array is a
+      // valid starting point; the RubricCriteriaEditor below
+      // surfaces a textarea so the user can fill it in.
+      patch.source = null;
+      patch.manual = {
+        prompt: "Grade against rubric",
+        cadence: "continuous",
+        items: [],
+      };
+    } else if (variant === SPEC_VARIANTS.AUTO) {
       patch.source = defaultSourceFor(widget);
       patch.manual = null;
     } else {
@@ -1231,6 +1245,109 @@ function ComponentEditorRow({ index, component, onPatch, onRemove, canRemove }) 
           />
         </label>
       </div>
+      {/* Phase F: rubric criteria + first-review toggle, only when
+          this component is CODE_RUBRIC. The criteria live on the
+          component's `manual.items` array (re-uses the existing
+          field — semantically: "the list of grader criteria"). */}
+      {component.widget === "CODE_RUBRIC" ? (
+        <RubricCriteriaEditor
+          criteria={component.manual?.items || []}
+          firstReviewOnly={component.firstReviewOnly === true}
+          onPatchCriteria={(items) =>
+            onPatch({
+              manual: {
+                ...(component.manual || {
+                  prompt: "Grade against rubric",
+                  cadence: "continuous",
+                }),
+                items,
+              },
+            })
+          }
+          onToggleFirstReviewOnly={(next) =>
+            onPatch({ firstReviewOnly: next })
+          }
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Inline criteria editor used by CODE_RUBRIC scorecard components.
+ *
+ * Lives inside the ScorecardEditor row so the user can author the
+ * rubric criteria in-place — no need to leave the Review pane and
+ * round-trip through the dashboard's ContextCollector. Items are
+ * stored on the component's `manual.items` array; the grader reads
+ * them via the same code path as the standalone CODE_RUBRIC widget
+ * uses for `spec.context.answers`.
+ *
+ * The "first-review only" toggle flips the component's
+ * `firstReviewOnly` boolean. When set, the grading client filters
+ * each PR's comments to the first-review cluster before sending to
+ * the AI grader (see `firstReviewComments`).
+ *
+ * Multi-line textarea on purpose: one criterion per line, copy-pastable
+ * straight from a markdown doc.
+ */
+function RubricCriteriaEditor({
+  criteria,
+  firstReviewOnly,
+  onPatchCriteria,
+  onToggleFirstReviewOnly,
+}) {
+  const text = (criteria || []).join("\n");
+  return (
+    <div className="flex flex-col gap-1.5 border-t border-white/10 pt-1.5">
+      <span
+        className="uppercase tracking-[0.5px]"
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 9,
+          color: "rgba(255,255,255,0.55)",
+        }}
+      >
+        Rubric criteria — one per line
+      </span>
+      <textarea
+        rows={3}
+        value={text}
+        onChange={(e) => {
+          const items = e.target.value
+            .split(/\r?\n/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+          onPatchCriteria(items);
+        }}
+        placeholder="meaningful tests&#10;no any types&#10;all branches handled"
+        className="w-full bg-transparent outline-none"
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 10.5,
+          color: "rgba(255,255,255,0.95)",
+          border: "1px solid rgba(255,255,255,0.18)",
+          borderRadius: "var(--radius-sub)",
+          padding: "4px 6px",
+          resize: "vertical",
+        }}
+      />
+      <label
+        className="flex items-center gap-1.5"
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 10,
+          color: "rgba(255,255,255,0.78)",
+        }}
+        title="Grade each PR against its FIRST review-round comments only — the rubric judges code quality at the moment of first review, not after iterative fixes."
+      >
+        <input
+          type="checkbox"
+          checked={firstReviewOnly}
+          onChange={(e) => onToggleFirstReviewOnly(e.target.checked)}
+        />
+        <span>Grade first-review state only</span>
+      </label>
     </div>
   );
 }
