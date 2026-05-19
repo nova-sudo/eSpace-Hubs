@@ -49,6 +49,28 @@ function validKindsFor(widget) {
 }
 
 /**
+ * Build (or augment) a context block so CODE_RUBRIC has the
+ * `quality-standards` list question it needs. Preserves any other
+ * questions the user / AI already added; only inserts the required
+ * one when missing. Idempotent — safe to call on any spec.context.
+ */
+function ensureRubricContext(existing) {
+  const questions = Array.isArray(existing?.questions)
+    ? [...existing.questions]
+    : [];
+  const has = questions.some((q) => q?.id === "quality-standards");
+  if (!has) {
+    questions.unshift({
+      id: "quality-standards",
+      prompt: "What are the team's code quality standards?",
+      kind: "list",
+      placeholder: "e.g. test coverage, naming, docs",
+    });
+  }
+  return { required: true, questions };
+}
+
+/**
  * Apply a `source.filter[key]` change to a spec.source, returning the
  * new source object (or null when filter would become empty). Null /
  * empty value deletes the key; a non-empty value sets it.
@@ -175,7 +197,29 @@ export function ReviewPane({
               const nextKind = kindsOk.includes(spec.kind)
                 ? spec.kind
                 : kindsOk[0];
-              updatePendingSpec(goalId, { widget, kind: nextKind });
+              // CODE_RUBRIC needs a `context.required: true` block
+              // with a `quality-standards` list question, otherwise
+              // the dashboard renders the widget's "Define your
+              // rubric first" placeholder with no edit-truths affordance
+              // (because the `controls.onEditContext` chip only mounts
+              // when context.questions exists). Seed it on switch so
+              // GoalWidget routes straight to the ContextCollector
+              // and the user can fill in their criteria.
+              const patch = { widget, kind: nextKind };
+              if (
+                widget === "CODE_RUBRIC" &&
+                !(spec.context?.required &&
+                  (spec.context?.questions || []).some(
+                    (q) => q.id === "quality-standards",
+                  ))
+              ) {
+                patch.context = ensureRubricContext(spec.context);
+                // CODE_RUBRIC also forbids source — clear it when
+                // present so the validator doesn't reject the spec
+                // on save.
+                if (spec.source) patch.source = null;
+              }
+              updatePendingSpec(goalId, patch);
             }}
             onChangeKind={(kind) => updatePendingSpec(goalId, { kind })}
             onSetUntrackable={(reason) =>

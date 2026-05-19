@@ -253,8 +253,26 @@ function resolveItems(latestEntry, spec, contextAnswers) {
 }
 
 /**
- * Pull every `kind: "list"` answer from a goal's context and flatten the
- * collected strings into a single de-duped array, preserving question order.
+ * Pull every list-shaped or text-shaped context answer from a goal's
+ * context and flatten the collected strings into a single de-duped
+ * array, preserving question order.
+ *
+ * Accepts both:
+ *   - `kind: "list"`  → answer is already string[]; flatten + dedupe.
+ *   - `kind: "text"`  → answer is a single string; split on newlines so
+ *                       a user who pasted multi-line milestones into a
+ *                       single-line input (because the AI emitted
+ *                       `kind: "text"` instead of `kind: "list"` for a
+ *                       milestone-style question) still gets their
+ *                       items materialised. Single-line text answers
+ *                       become a one-item list.
+ *
+ * Why widen to `text`: the classifier occasionally picks `kind: "text"`
+ * for "What are your X milestones?" style questions even though it
+ * should pick `"list"`. Before this widening, the saved answer was
+ * silently dropped by the widget (rendered as an empty checklist) and
+ * the user saw "Save did nothing". Being defensive here matches the
+ * permissive-on-shape stance the rest of the spec layer takes.
  *
  * Why dedupe: the user's two questions may share an item ("Documented
  * milestones" mentioned in both), and we don't want it to appear twice
@@ -265,11 +283,16 @@ function collectListAnswers(spec, answers) {
   const seen = new Set();
   const out = [];
   for (const q of spec.context.questions) {
-    if (q.kind !== "list") continue;
-    const ans = answers[q.id];
-    if (!Array.isArray(ans)) continue;
-    for (const raw of ans) {
-      const label = typeof raw === "string" ? raw.trim() : "";
+    if (q.kind !== "list" && q.kind !== "text") continue;
+    const raw = answers[q.id];
+    const items =
+      Array.isArray(raw)
+        ? raw
+        : typeof raw === "string"
+          ? raw.split(/\r?\n/)
+          : [];
+    for (const r of items) {
+      const label = typeof r === "string" ? r.trim() : "";
       if (!label || seen.has(label)) continue;
       seen.add(label);
       out.push(label);
