@@ -328,6 +328,13 @@ function validateScorecard(scorecard, errors) {
       kind,
       source,
       manual,
+      // Phase F: CODE_RUBRIC components can opt into "first review
+      // only" scope so the rubric judges quality at the moment of
+      // first review (before iterative fixes mask the original
+      // state). Boolean defaulting to false; only meaningful when
+      // widget is CODE_RUBRIC but accepted on any component for
+      // forward-compatibility.
+      ...(c.firstReviewOnly === true ? { firstReviewOnly: true } : {}),
     });
   });
 
@@ -510,6 +517,10 @@ export function validateSpec(obj) {
     delegated,
     untrackable,
     scorecard,
+    // Phase F: top-level firstReviewOnly applies to standalone
+    // CODE_RUBRIC specs. Optional boolean, false-by-default — kept
+    // as undefined when not set so older specs serialise identically.
+    ...(obj.firstReviewOnly === true ? { firstReviewOnly: true } : {}),
     classifiedAt:
       typeof obj.classifiedAt === "number" && obj.classifiedAt > 0
         ? obj.classifiedAt

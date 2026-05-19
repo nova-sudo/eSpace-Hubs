@@ -8,11 +8,17 @@
  * Not a cryptographic hash; we just need determinism and collision avoidance
  * in the practical case (a handful of short strings per user). Simple
  * "djb2"-style rolling hash is enough and has no bundle cost.
+ *
+ * Phase F adds the optional `scopeTag` parameter so verdicts graded under
+ * different evaluation scopes (e.g. "full PR" vs. "first review only")
+ * don't collide in the local cache. Callers pass null/undefined for the
+ * legacy un-scoped behaviour.
  */
 
-export function rubricHash(rubric) {
+export function rubricHash(rubric, scopeTag) {
   const normalized = normalizeRubric(rubric);
-  return djb2(normalized.join("\u0001")).toString(16);
+  const tag = typeof scopeTag === "string" && scopeTag ? `|${scopeTag}` : "";
+  return djb2(normalized.join("") + tag).toString(16);
 }
 
 export function normalizeRubric(rubric) {
