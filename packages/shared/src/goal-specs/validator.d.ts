@@ -23,6 +23,7 @@ export interface BuildSpecInput {
   context?: unknown;
   delegated?: unknown;
   untrackable?: unknown;
+  scorecard?: unknown;
   classifiedAt?: number;
 }
 

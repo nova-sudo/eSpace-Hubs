@@ -208,6 +208,140 @@ function validateDelegated(delegated, errors) {
   return out;
 }
 
+/**
+ * Validate a SCORECARD spec's `scorecard` block.
+ *
+ * Shape: `{ components: [...], aggregate: "weighted" }`. Components
+ * cap at 3 — both for cognitive load (a scorecard with 5 sub-metrics
+ * is unreadable on a tile) and to keep the JSON Schema enumeration
+ * manageable in strict-mode. Min 2 because anything with one
+ * component is just that single widget without the scorecard
+ * overhead.
+ *
+ * Each component is run through `validateSource` / `validateManual`
+ * permissively — we collect inner errors but ONLY surface them at
+ * the component level (prefixed with the index). This avoids the
+ * outer validator rejecting a half-classified scorecard the user
+ * can still finish editing.
+ *
+ * Weights default to an even split (100/N) when missing. Negative
+ * weights and non-numbers reject; weights summing to 0 reject
+ * (would divide-by-zero in the aggregate). Sums other than 100 are
+ * accepted — the aggregate normalises by Σweights.
+ */
+const SCORECARD_AGGREGATES = ["weighted"];
+const SCORECARD_MIN_COMPONENTS = 2;
+const SCORECARD_MAX_COMPONENTS = 3;
+
+function validateScorecard(scorecard, errors) {
+  if (!isObject(scorecard)) {
+    errors.push("scorecard: must be an object when widget is SCORECARD");
+    return null;
+  }
+  const rawComponents = Array.isArray(scorecard.components)
+    ? scorecard.components
+    : null;
+  if (!rawComponents) {
+    errors.push("scorecard.components: must be an array");
+    return null;
+  }
+  if (rawComponents.length < SCORECARD_MIN_COMPONENTS) {
+    errors.push(
+      `scorecard.components: needs at least ${SCORECARD_MIN_COMPONENTS} components`,
+    );
+    return null;
+  }
+  if (rawComponents.length > SCORECARD_MAX_COMPONENTS) {
+    errors.push(
+      `scorecard.components: at most ${SCORECARD_MAX_COMPONENTS} components`,
+    );
+    return null;
+  }
+
+  const aggregate = SCORECARD_AGGREGATES.includes(scorecard.aggregate)
+    ? scorecard.aggregate
+    : "weighted";
+
+  const evenWeight = 100 / rawComponents.length;
+  const components = [];
+  rawComponents.forEach((c, i) => {
+    if (!isObject(c)) {
+      errors.push(`scorecard.components[${i}]: must be an object`);
+      return;
+    }
+    if (!ALL_SPEC_KINDS.includes(c.widget)) {
+      errors.push(
+        `scorecard.components[${i}].widget: must be one of ${ALL_SPEC_KINDS.join(", ")}`,
+      );
+      return;
+    }
+    // Reject SCORECARD-of-SCORECARD up front — nested composites
+    // would explode the prompt + UI complexity and have no use
+    // case the MVP cares about.
+    if (c.widget === "SCORECARD") {
+      errors.push(
+        `scorecard.components[${i}].widget: SCORECARD cannot nest inside another SCORECARD`,
+      );
+      return;
+    }
+    const meta = SPEC_KIND_META[c.widget];
+    const kind = ALL_SPEC_VARIANTS.includes(c.kind)
+      ? c.kind
+      : meta?.variant || SPEC_VARIANTS.AUTO;
+
+    let source = null;
+    let manual = null;
+    const sourceRequired =
+      (kind === SPEC_VARIANTS.AUTO || kind === SPEC_VARIANTS.HYBRID) &&
+      meta?.requiresSource !== false;
+    const manualRequired =
+      (kind === SPEC_VARIANTS.MANUAL || kind === SPEC_VARIANTS.HYBRID) &&
+      meta?.requiresManual !== false;
+    if (sourceRequired) {
+      const inner = [];
+      source = validateSource(c.source, inner);
+      for (const e of inner)
+        errors.push(`scorecard.components[${i}].${e}`);
+    } else if (c.source != null) {
+      const inner = [];
+      source = validateSource(c.source, inner) || null;
+    }
+    if (manualRequired) {
+      const inner = [];
+      manual = validateManual(c.manual, inner);
+      for (const e of inner)
+        errors.push(`scorecard.components[${i}].${e}`);
+    } else if (c.manual != null) {
+      const inner = [];
+      manual = validateManual(c.manual, inner) || null;
+    }
+
+    let weight = typeof c.weight === "number" && c.weight >= 0
+      ? c.weight
+      : evenWeight;
+    if (!Number.isFinite(weight) || weight < 0) weight = evenWeight;
+
+    components.push({
+      ...(isNonEmptyString(c.label) ? { label: c.label.trim() } : {}),
+      weight,
+      widget: c.widget,
+      kind,
+      source,
+      manual,
+    });
+  });
+
+  // Σweights of 0 would explode the aggregate. Allow components
+  // with weight 0 individually, but the SUM must be > 0.
+  const totalWeight = components.reduce((s, c) => s + c.weight, 0);
+  if (totalWeight <= 0) {
+    errors.push("scorecard.components: total weight must be > 0");
+  }
+
+  if (errors.length > 0) return null;
+  return { components, aggregate };
+}
+
 function validateManual(manual, errors) {
   if (!isObject(manual)) {
     errors.push("manual: must be an object when kind is manual/hybrid");
@@ -273,40 +407,69 @@ export function validateSpec(obj) {
 
   let source = null;
   let manual = null;
+  let scorecard = null;
   const meta = widgetMeta || {};
+  const isScorecard = obj.widget === "SCORECARD";
 
   if (!untrackable) {
     // Soft cross-check: spec variant should align with the widget's
-    // declared variant, EXCEPT for hybrid (widget renders both halves).
+    // declared variant, EXCEPT for hybrid (widget renders both halves)
+    // and SCORECARD where the variant depends on its components'
+    // variants (see post-validate check below).
     if (
       widgetMeta &&
       obj.kind !== SPEC_VARIANTS.HYBRID &&
-      widgetMeta.variant !== obj.kind
+      widgetMeta.variant !== obj.kind &&
+      !isScorecard
     ) {
       errors.push(
         `widget "${obj.widget}" is a ${widgetMeta.variant} widget but spec kind is "${obj.kind}"`,
       );
     }
 
-    const sourceRequired =
-      (obj.kind === SPEC_VARIANTS.AUTO || obj.kind === SPEC_VARIANTS.HYBRID) &&
-      meta.requiresSource !== false;
-    const manualRequired =
-      (obj.kind === SPEC_VARIANTS.MANUAL || obj.kind === SPEC_VARIANTS.HYBRID) &&
-      meta.requiresManual !== false;
+    if (isScorecard) {
+      // SCORECARD owns its data through components — the top-level
+      // source/manual are always null on a clean spec. The component
+      // validator runs the per-component source/manual checks.
+      scorecard = validateScorecard(obj.scorecard, errors);
+      // Variant cross-check: kind must be "auto" if every component
+      // is AUTO, "hybrid" if any component is MANUAL. We can't fully
+      // enforce this when validateScorecard returned null, but when
+      // it produced components we check.
+      if (scorecard) {
+        const anyManual = scorecard.components.some(
+          (c) => c.kind === SPEC_VARIANTS.MANUAL,
+        );
+        const expectedKind = anyManual
+          ? SPEC_VARIANTS.HYBRID
+          : SPEC_VARIANTS.AUTO;
+        if (obj.kind !== expectedKind) {
+          errors.push(
+            `SCORECARD with ${anyManual ? "a MANUAL" : "only AUTO"} component requires kind "${expectedKind}", got "${obj.kind}"`,
+          );
+        }
+      }
+    } else {
+      const sourceRequired =
+        (obj.kind === SPEC_VARIANTS.AUTO || obj.kind === SPEC_VARIANTS.HYBRID) &&
+        meta.requiresSource !== false;
+      const manualRequired =
+        (obj.kind === SPEC_VARIANTS.MANUAL || obj.kind === SPEC_VARIANTS.HYBRID) &&
+        meta.requiresManual !== false;
 
-    if (sourceRequired) {
-      source = validateSource(obj.source, errors);
-    } else if (obj.source != null) {
-      // Optional pass-through: widget doesn't need it, accept silently.
-      const collected = [];
-      source = validateSource(obj.source, collected) || null;
-    }
-    if (manualRequired) {
-      manual = validateManual(obj.manual, errors);
-    } else if (obj.manual != null) {
-      const collected = [];
-      manual = validateManual(obj.manual, collected) || null;
+      if (sourceRequired) {
+        source = validateSource(obj.source, errors);
+      } else if (obj.source != null) {
+        // Optional pass-through: widget doesn't need it, accept silently.
+        const collected = [];
+        source = validateSource(obj.source, collected) || null;
+      }
+      if (manualRequired) {
+        manual = validateManual(obj.manual, errors);
+      } else if (obj.manual != null) {
+        const collected = [];
+        manual = validateManual(obj.manual, collected) || null;
+      }
     }
   } else {
     // Even when untrackable, run source/manual through the validator
@@ -320,6 +483,12 @@ export function validateSpec(obj) {
     if (obj.manual != null) {
       const collected = [];
       manual = validateManual(obj.manual, collected) || null;
+    }
+    // Same permissive pass for the scorecard block — preserves the
+    // user's component edits while the goal is parked.
+    if (obj.scorecard != null) {
+      const collected = [];
+      scorecard = validateScorecard(obj.scorecard, collected) || null;
     }
   }
 
@@ -340,6 +509,7 @@ export function validateSpec(obj) {
     context,
     delegated,
     untrackable,
+    scorecard,
     classifiedAt:
       typeof obj.classifiedAt === "number" && obj.classifiedAt > 0
         ? obj.classifiedAt
@@ -369,6 +539,7 @@ export function buildSpec({
   context = null,
   delegated = null,
   untrackable = null,
+  scorecard = null,
   classifiedAt = Date.now(),
 }) {
   return validateSpec({
@@ -383,6 +554,7 @@ export function buildSpec({
     context,
     delegated,
     untrackable,
+    scorecard,
     classifiedAt,
   });
 }
