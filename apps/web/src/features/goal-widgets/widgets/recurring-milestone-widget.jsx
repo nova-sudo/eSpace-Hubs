@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { WidgetShell } from "../widget-shell";
 import { useGoalInputs } from "@/features/goal-inputs";
+import { useGoalContext } from "@/features/goal-context";
 
 /**
  * Recurring milestone — a milestone checklist that RESETS each
@@ -36,6 +37,13 @@ export function RecurringMilestoneWidget({
   onRetry,
 }) {
   const { entries, append } = useGoalInputs(goal?.id);
+  // Phase D bug-fix: same context-driven seed path as MilestoneWidget.
+  // Without this, a goal that asked the user to define "what counts"
+  // via the ContextCollector (e.g. PDP milestones, DR drill steps)
+  // never sees those answers — the widget rendered with the AI's
+  // `spec.manual.items` seed (or nothing) and the saved context was
+  // silently ignored.
+  const { answers: contextAnswers } = useGoalContext(goal?.id);
   const cadence = spec.manual?.cadence || "quarterly";
   // `now` is captured once per render — recomputing the period key
   // every render is fine since users don't sit on this widget across
@@ -49,12 +57,12 @@ export function RecurringMilestoneWidget({
     [entries, nowPeriodKey],
   );
 
-  // The active items list: current period's entry wins; else seed from
-  // the spec. Once the user makes ANY edit, the seed is materialised
-  // into a real entry — from then on we read from there.
+  // The active items list: current period's entry wins; else seed
+  // from context answers (the user just defined "what to track" via
+  // the ContextCollector); else fall back to spec.manual.items.
   const items = useMemo(
-    () => resolveItems(currentEntry, spec),
-    [currentEntry, spec],
+    () => resolveItems(currentEntry, spec, contextAnswers),
+    [currentEntry, spec, contextAnswers],
   );
 
   const done = items.filter((i) => i.done).length;
@@ -303,14 +311,27 @@ function cadenceNoun(cadence, n) {
  *
  * Priority:
  *   1. Current period's entry (if the user has interacted this period).
- *   2. Seed from spec.manual.items so the first interaction has a
- *      starting list. The seed copy is fresh per period — earlier
- *      periods that DIDN'T tick any items left an empty entry; that
- *      doesn't poison the current period.
+ *   2. Context answers — the user's `kind: "list"` (or `kind: "text"`,
+ *      split on newlines) answers from the ContextCollector. This is
+ *      the "I just defined what counts" path; matches MilestoneWidget.
+ *   3. AI-pre-seeded items in `spec.manual.items` — older specs that
+ *      didn't go through context collection.
+ *
+ * The seed copy is fresh per period — earlier periods that DIDN'T
+ * tick any items left an empty entry; that doesn't poison the
+ * current period.
  */
-function resolveItems(currentEntry, spec) {
+function resolveItems(currentEntry, spec, contextAnswers) {
   if (currentEntry?.value?.items) {
     return currentEntry.value.items;
+  }
+  const contextItems = collectListAnswers(spec, contextAnswers);
+  if (contextItems.length > 0) {
+    return contextItems.map((label, i) => ({
+      id: `ctx-${i}`,
+      label,
+      done: false,
+    }));
   }
   const seed = spec.manual?.items || [];
   return seed.map((label, i) => ({
@@ -318,6 +339,36 @@ function resolveItems(currentEntry, spec) {
     label,
     done: false,
   }));
+}
+
+/**
+ * Same widened list/text collector MilestoneWidget uses — see its
+ * collectListAnswers for the rationale. Duplicated here on purpose:
+ * the two widgets are independent and importing across widget files
+ * would couple them in a way the registry/architecture deliberately
+ * avoids.
+ */
+function collectListAnswers(spec, answers) {
+  if (!spec?.context?.questions || !answers) return [];
+  const seen = new Set();
+  const out = [];
+  for (const q of spec.context.questions) {
+    if (q.kind !== "list" && q.kind !== "text") continue;
+    const raw = answers[q.id];
+    const items =
+      Array.isArray(raw)
+        ? raw
+        : typeof raw === "string"
+          ? raw.split(/\r?\n/)
+          : [];
+    for (const r of items) {
+      const label = typeof r === "string" ? r.trim() : "";
+      if (!label || seen.has(label)) continue;
+      seen.add(label);
+      out.push(label);
+    }
+  }
+  return out;
 }
 
 /**
