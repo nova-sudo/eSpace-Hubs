@@ -46,6 +46,7 @@ export const SPEC_RESPONSE_SCHEMA = {
       "context",
       "delegated",
       "untrackable",
+      "scorecard",
     ],
     properties: {
       kind: {
@@ -76,6 +77,7 @@ export const SPEC_RESPONSE_SCHEMA = {
           "BEFORE_AFTER",
           "INCIDENT_LOG",
           "RECURRING_MILESTONE",
+          "SCORECARD",
         ],
         description: "Widget kind from the catalogue.",
       },
@@ -262,6 +264,80 @@ export const SPEC_RESPONSE_SCHEMA = {
           "the explanation. Still pick a best-guess widget so the spec " +
           "stays editable; when the user unflags untrackable later, the " +
           "widget choice resurfaces as a starting point.",
+      },
+      scorecard: {
+        type: ["object", "null"],
+        additionalProperties: false,
+        required: ["components", "aggregate"],
+        properties: {
+          aggregate: {
+            type: "string",
+            enum: ["weighted"],
+            description:
+              "Currently always 'weighted' — each component contributes " +
+              "weight × its 0-100 score, normalised by Σweights.",
+          },
+          components: {
+            type: "array",
+            minItems: 2,
+            maxItems: 3,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: [
+                "label",
+                "weight",
+                "widget",
+                "kind",
+                "source",
+                "manual",
+              ],
+              properties: {
+                label: { type: ["string", "null"] },
+                weight: { type: "number" },
+                widget: {
+                  type: "string",
+                  enum: [
+                    "MERGED_COUNT",
+                    "REVIEW_ROUNDS",
+                    "TURNAROUND",
+                    "LINKAGE",
+                    "TICKET_CYCLE",
+                    "FIRST_PASS_RATE",
+                    "DEPLOY_FREQUENCY",
+                    "LEAD_TIME",
+                    "BUILD_PASS_RATE",
+                    "CODE_RUBRIC",
+                    "COUNTER",
+                    "SCALE",
+                    "MILESTONE",
+                    "DATE_LOG",
+                    "FREE_TEXT",
+                    "BEFORE_AFTER",
+                    "INCIDENT_LOG",
+                    "RECURRING_MILESTONE",
+                  ],
+                },
+                kind: {
+                  type: "string",
+                  enum: ["auto", "manual", "hybrid"],
+                },
+                // The component's source / manual mirror the top-level
+                // shapes one level down — we reuse the same object
+                // schemas by reference rather than re-stating every
+                // enum, which keeps the strict-mode schema readable.
+                source: { type: ["object", "null"] },
+                manual: { type: ["object", "null"] },
+              },
+            },
+          },
+        },
+        description:
+          "REQUIRED when widget is SCORECARD; MUST be null otherwise. " +
+          "Hosts 2-3 component sub-specs whose individual scores are " +
+          "weighted-averaged into the tile's headline. Each component " +
+          "is itself a (widget, kind, source, manual) tuple — its " +
+          "validation runs server-side via the shared validator.",
       },
     },
   },

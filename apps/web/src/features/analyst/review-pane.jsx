@@ -49,6 +49,35 @@ function validKindsFor(widget) {
 }
 
 /**
+ * Build a fresh 2-component SCORECARD seed when the user switches
+ * widget to SCORECARD without the AI having emitted one. The seeds
+ * are MERGED_COUNT components with no target — the user picks the
+ * actual widget + target via the per-component editor.
+ *
+ * Even-split weights match the user's stated preference for default
+ * weighting. Aggregate is always "weighted" in MVP.
+ */
+function seedScorecard() {
+  const bare = () => ({
+    label: "",
+    weight: 50,
+    widget: "MERGED_COUNT",
+    kind: "auto",
+    source: {
+      provider: "combined",
+      metric: "merged_count",
+      window: "30d",
+      target: null,
+    },
+    manual: null,
+  });
+  return {
+    aggregate: "weighted",
+    components: [bare(), bare()],
+  };
+}
+
+/**
  * Build (or augment) a context block so CODE_RUBRIC has the
  * `quality-standards` list question it needs. Preserves any other
  * questions the user / AI already added; only inserts the required
@@ -197,15 +226,14 @@ export function ReviewPane({
               const nextKind = kindsOk.includes(spec.kind)
                 ? spec.kind
                 : kindsOk[0];
+              const patch = { widget, kind: nextKind };
               // CODE_RUBRIC needs a `context.required: true` block
               // with a `quality-standards` list question, otherwise
               // the dashboard renders the widget's "Define your
               // rubric first" placeholder with no edit-truths affordance
               // (because the `controls.onEditContext` chip only mounts
               // when context.questions exists). Seed it on switch so
-              // GoalWidget routes straight to the ContextCollector
-              // and the user can fill in their criteria.
-              const patch = { widget, kind: nextKind };
+              // GoalWidget routes straight to the ContextCollector.
               if (
                 widget === "CODE_RUBRIC" &&
                 !(spec.context?.required &&
@@ -214,10 +242,27 @@ export function ReviewPane({
                   ))
               ) {
                 patch.context = ensureRubricContext(spec.context);
-                // CODE_RUBRIC also forbids source — clear it when
-                // present so the validator doesn't reject the spec
-                // on save.
+                // CODE_RUBRIC forbids source — clear it.
                 if (spec.source) patch.source = null;
+              }
+              // SCORECARD owns its data through components. Seed
+              // two bare AUTO components on switch so the editor
+              // has rows to render; user picks their widgets/targets
+              // from there. Top-level source/manual MUST be null
+              // (validator rejects otherwise) so we clear both.
+              if (widget === "SCORECARD" && !spec.scorecard) {
+                patch.scorecard = seedScorecard();
+                patch.source = null;
+                patch.manual = null;
+                // SCORECARD's kind tracks its components' variants;
+                // bare seed is all-AUTO so kind must be "auto".
+                patch.kind = "auto";
+              }
+              // Switching AWAY from SCORECARD: clear scorecard so the
+              // validator's "scorecard required for SCORECARD widget"
+              // pairing rule doesn't leave a dangling block.
+              if (widget !== "SCORECARD" && spec.scorecard) {
+                patch.scorecard = null;
               }
               updatePendingSpec(goalId, patch);
             }}
@@ -235,6 +280,20 @@ export function ReviewPane({
             onChangeJob={(job) => {
               updatePendingSpec(goalId, {
                 source: patchFilter(spec.source, "job", job),
+              });
+            }}
+            onChangeScorecard={(nextScorecard) => {
+              // Patch the whole scorecard block. Also derives the
+              // outer `kind` from the components (auto if all-AUTO,
+              // hybrid if any MANUAL) so the validator's
+              // SCORECARD↔kind cross-check stays satisfied without
+              // the editor having to thread `kind` separately.
+              const anyManual = (nextScorecard?.components || []).some(
+                (c) => c.kind === "manual",
+              );
+              updatePendingSpec(goalId, {
+                scorecard: nextScorecard,
+                kind: anyManual ? "hybrid" : "auto",
               });
             }}
           />
@@ -352,26 +411,30 @@ function PendingCard({
   onSetUntrackable,
   onChangeRepo,
   onChangeJob,
+  onChangeScorecard,
 }) {
   const kindsOk = validKindsFor(spec.widget);
   const widgetMeta = SPEC_KIND_META[spec.widget];
   const isUntrackable = Boolean(spec.untrackable);
+  const isScorecard = spec.widget === "SCORECARD";
   const [untrackableDraft, setUntrackableDraft] = useState(
     spec.untrackable?.reason || "",
   );
   const [showUntrackableEditor, setShowUntrackableEditor] = useState(false);
 
-  // Repo picker covers GitHub/GitLab MR-based widgets AND the GitHub
-  // Actions provider (which also scopes by `owner/name` repo slug).
-  // Jenkins gets its own picker (jobs, not repos).
+  // Repo / job pickers belong to the top-level source — they're
+  // hidden for SCORECARD because the components own their own
+  // sources (the editor surfaces them inline per component).
   const sourceProvider = spec.source?.provider;
   const showRepoPicker =
     !isUntrackable &&
+    !isScorecard &&
     (sourceProvider === "github" ||
       sourceProvider === "gitlab" ||
       sourceProvider === "combined" ||
       sourceProvider === "github_actions");
-  const showJobPicker = !isUntrackable && sourceProvider === "jenkins";
+  const showJobPicker =
+    !isUntrackable && !isScorecard && sourceProvider === "jenkins";
   const currentRepo = spec.source?.filter?.repo || "";
   const currentJob = spec.source?.filter?.job || "";
 
@@ -492,6 +555,17 @@ function PendingCard({
           value={currentJob}
           options={jobOptions}
           onChange={onChangeJob}
+        />
+      ) : null}
+
+      {/* SCORECARD sub-editor — surfaces each component with its own
+          widget/kind/weight/target so the user can refine the AI's
+          composite guess. Hidden when untrackable so the flag's
+          read-only banner takes priority. */}
+      {isScorecard && !isUntrackable ? (
+        <ScorecardEditor
+          scorecard={spec.scorecard}
+          onChange={onChangeScorecard}
         />
       ) : null}
 
@@ -851,6 +925,373 @@ function JobPicker({ value, options, onChange }) {
       ) : null}
     </div>
   );
+}
+
+// ─── SCORECARD sub-editor ─────────────────────────────────────────
+
+const SCORECARD_COMPONENT_WIDGETS = ALL_SPEC_KINDS.filter(
+  // SCORECARD inside SCORECARD is invalid; CODE_RUBRIC has its own
+  // UI lane and isn't useful as a scorecard component.
+  (k) => k !== "SCORECARD" && k !== "CODE_RUBRIC",
+);
+
+const SCORECARD_MAX_COMPONENTS = 3;
+const SCORECARD_MIN_COMPONENTS = 2;
+
+/**
+ * Per-component editor for a SCORECARD spec.
+ *
+ * Layout: stacked rows, one per component. Each row exposes the
+ * widget kind, weight, and target threshold. Source/manual blocks
+ * underneath get a minimal "metric · window" summary chip with a
+ * "Set source…" / "Set manual…" affordance that flips the component
+ * to a sensible default for its widget kind (the user can refine
+ * after).
+ *
+ * Add/remove respect the validator's 2-3 cap:
+ *   - "+ Add component" disabled when length === 3
+ *   - "× Remove" disabled when length === 2
+ * Weights aren't auto-rebalanced on add/remove — the aggregate
+ * normalises by Σweights anyway, so adding a 4th 50-weight component
+ * to two 50-weight ones just means each has weight 1/3 effectively.
+ */
+function ScorecardEditor({ scorecard, onChange }) {
+  const components = scorecard?.components || [];
+
+  function setComponentAt(index, patch) {
+    const next = components.map((c, i) =>
+      i === index ? { ...c, ...patch } : c,
+    );
+    onChange({ ...(scorecard || {}), components: next, aggregate: "weighted" });
+  }
+
+  function removeAt(index) {
+    if (components.length <= SCORECARD_MIN_COMPONENTS) return;
+    const next = components.filter((_, i) => i !== index);
+    onChange({ ...(scorecard || {}), components: next, aggregate: "weighted" });
+  }
+
+  function addComponent() {
+    if (components.length >= SCORECARD_MAX_COMPONENTS) return;
+    const evenWeight = Math.round(100 / (components.length + 1));
+    const fresh = {
+      label: "",
+      weight: evenWeight,
+      widget: "MERGED_COUNT",
+      kind: "auto",
+      source: {
+        provider: "combined",
+        metric: "merged_count",
+        window: "30d",
+        target: null,
+      },
+      manual: null,
+    };
+    onChange({
+      ...(scorecard || {}),
+      components: [...components, fresh],
+      aggregate: "weighted",
+    });
+  }
+
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-[var(--radius-sub)] px-2.5 py-2"
+      style={{
+        background: "rgba(255,255,255,0.05)",
+        border: "1px solid rgba(255,255,255,0.14)",
+      }}
+    >
+      <div className="flex items-center justify-between">
+        <span
+          className="uppercase tracking-[0.5px]"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 9,
+            color: "rgba(255,255,255,0.55)",
+          }}
+        >
+          Scorecard components ({components.length}/{SCORECARD_MAX_COMPONENTS})
+        </span>
+        <button
+          type="button"
+          onClick={addComponent}
+          disabled={components.length >= SCORECARD_MAX_COMPONENTS}
+          className="uppercase transition-opacity hover:opacity-90 disabled:opacity-30"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 9.5,
+            letterSpacing: "0.5px",
+            color: "rgba(255,255,255,0.85)",
+            cursor:
+              components.length >= SCORECARD_MAX_COMPONENTS
+                ? "not-allowed"
+                : "pointer",
+          }}
+        >
+          + Add component
+        </button>
+      </div>
+      {components.map((c, i) => (
+        <ComponentEditorRow
+          key={i}
+          index={i}
+          component={c}
+          onPatch={(patch) => setComponentAt(i, patch)}
+          onRemove={() => removeAt(i)}
+          canRemove={components.length > SCORECARD_MIN_COMPONENTS}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * One editable row inside the ScorecardEditor.
+ *
+ * Fields: label, widget dropdown, weight number, target op + value.
+ * Source/manual block changes when the user picks a different
+ * widget — we reseed a sensible default so the spec stays valid
+ * (MERGED_COUNT → combined/merged_count/30d, COUNTER → weekly,
+ * etc.). The user can refine source.window / cadence / target by
+ * hand below.
+ */
+function ComponentEditorRow({ index, component, onPatch, onRemove, canRemove }) {
+  const target =
+    component?.source?.target || component?.manual?.target || null;
+
+  function setWidget(widget) {
+    const meta = SPEC_KIND_META[widget];
+    const variant = meta?.variant || SPEC_VARIANTS.AUTO;
+    const patch = { widget, kind: variant };
+    // Reset source/manual to sensible defaults for the new widget.
+    if (variant === SPEC_VARIANTS.AUTO) {
+      patch.source = defaultSourceFor(widget);
+      patch.manual = null;
+    } else {
+      patch.source = null;
+      patch.manual = defaultManualFor(widget);
+    }
+    onPatch(patch);
+  }
+
+  function setTarget(op, value) {
+    const numeric = Number(value);
+    const t = Number.isFinite(numeric) ? { op, value: numeric } : null;
+    if (component.kind === SPEC_VARIANTS.AUTO) {
+      onPatch({ source: { ...(component.source || {}), target: t } });
+    } else {
+      onPatch({ manual: { ...(component.manual || {}), target: t } });
+    }
+  }
+
+  return (
+    <div
+      className="flex flex-col gap-1.5 rounded-[var(--radius-sub)] px-2 py-1.5"
+      style={{
+        background: "rgba(255,255,255,0.04)",
+        border: "1px solid rgba(255,255,255,0.10)",
+      }}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className="uppercase tracking-[0.5px]"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 9,
+            color: "rgba(255,255,255,0.55)",
+          }}
+        >
+          #{index + 1}
+        </span>
+        <input
+          type="text"
+          value={component.label || ""}
+          onChange={(e) =>
+            onPatch({ label: e.target.value.slice(0, 24) })
+          }
+          placeholder="label"
+          className="flex-1 bg-transparent outline-none"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
+            color: "rgba(255,255,255,0.95)",
+            borderBottom: "1px dashed rgba(255,255,255,0.18)",
+            paddingBottom: 1,
+            minWidth: 120,
+          }}
+        />
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={!canRemove}
+          className="uppercase transition-opacity disabled:opacity-25"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 9,
+            letterSpacing: "0.5px",
+            color: "rgba(255,255,255,0.6)",
+            cursor: canRemove ? "pointer" : "not-allowed",
+          }}
+          title={
+            canRemove
+              ? "Remove this component"
+              : `Need at least ${SCORECARD_MIN_COMPONENTS} components`
+          }
+        >
+          ✕ remove
+        </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <select
+          value={component.widget}
+          onChange={(e) => setWidget(e.target.value)}
+          className="cursor-pointer bg-transparent outline-none"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10.5,
+            color: "rgba(255,255,255,0.95)",
+            border: "1px solid rgba(255,255,255,0.18)",
+            borderRadius: "var(--radius-sub)",
+            padding: "2px 6px",
+          }}
+        >
+          {SCORECARD_COMPONENT_WIDGETS.map((k) => (
+            <option key={k} value={k} style={{ color: "#000" }}>
+              {SPEC_KIND_META[k]?.label || k}
+            </option>
+          ))}
+        </select>
+        <label
+          className="flex items-center gap-1"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            color: "rgba(255,255,255,0.7)",
+          }}
+        >
+          weight
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={component.weight ?? 0}
+            onChange={(e) =>
+              onPatch({ weight: Number(e.target.value) || 0 })
+            }
+            className="w-12 bg-transparent text-right outline-none"
+            style={{
+              border: "1px solid rgba(255,255,255,0.18)",
+              borderRadius: "var(--radius-sub)",
+              padding: "2px 4px",
+              color: "rgba(255,255,255,0.95)",
+            }}
+          />
+        </label>
+        <label
+          className="flex items-center gap-1"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            color: "rgba(255,255,255,0.7)",
+          }}
+        >
+          target
+          <select
+            value={target?.op || ">="}
+            onChange={(e) => setTarget(e.target.value, target?.value ?? "")}
+            className="cursor-pointer bg-transparent outline-none"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10.5,
+              color: "rgba(255,255,255,0.95)",
+              border: "1px solid rgba(255,255,255,0.18)",
+              borderRadius: "var(--radius-sub)",
+              padding: "1px 4px",
+            }}
+          >
+            <option value=">=" style={{ color: "#000" }}>≥</option>
+            <option value="<=" style={{ color: "#000" }}>≤</option>
+            <option value="=" style={{ color: "#000" }}>=</option>
+          </select>
+          <input
+            type="number"
+            value={target?.value ?? ""}
+            onChange={(e) =>
+              setTarget(target?.op || ">=", e.target.value)
+            }
+            placeholder="value"
+            className="w-16 bg-transparent text-right outline-none"
+            style={{
+              border: "1px solid rgba(255,255,255,0.18)",
+              borderRadius: "var(--radius-sub)",
+              padding: "2px 4px",
+              color: "rgba(255,255,255,0.95)",
+            }}
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Pick a sensible default `source` for a freshly-set AUTO widget.
+ * The validator runs the full source check on save; this just gives
+ * us a starting shape so the spec is valid the moment the user
+ * switches a component's widget kind.
+ */
+function defaultSourceFor(widget) {
+  const window = "30d";
+  switch (widget) {
+    case "MERGED_COUNT":
+      return { provider: "combined", metric: "merged_count", window, target: null };
+    case "REVIEW_ROUNDS":
+      return { provider: "combined", metric: "avg_rounds", window, target: null };
+    case "TURNAROUND":
+      return { provider: "combined", metric: "median_turnaround", window, target: null };
+    case "LINKAGE":
+      return { provider: "combined", metric: "linkage_pct", window, target: null };
+    case "TICKET_CYCLE":
+      return { provider: "jira", metric: "ticket_cycle_time", window, target: null };
+    case "FIRST_PASS_RATE":
+      return { provider: "combined", metric: "first_pass_rate", window, target: null };
+    case "DEPLOY_FREQUENCY":
+      return { provider: "github_actions", metric: "deploy_frequency", window, target: null };
+    case "LEAD_TIME":
+      return { provider: "github_actions", metric: "lead_time", window, target: null };
+    case "BUILD_PASS_RATE":
+      return { provider: "github_actions", metric: "build_pass_rate", window, target: null };
+    default:
+      return { provider: "combined", metric: "merged_count", window, target: null };
+  }
+}
+
+/**
+ * Pick a sensible default `manual` for a freshly-set MANUAL widget.
+ * `unit` and `items` are left blank — they're spec-specific text.
+ */
+function defaultManualFor(widget) {
+  switch (widget) {
+    case "COUNTER":
+      return { prompt: "Log a count", cadence: "weekly", target: null };
+    case "SCALE":
+      return { prompt: "Rate 1–5", cadence: "weekly", target: null };
+    case "MILESTONE":
+      return { prompt: "Check off milestones", cadence: "milestone", target: null };
+    case "DATE_LOG":
+      return { prompt: "Log dated events", cadence: "per-incident", target: null };
+    case "FREE_TEXT":
+      return { prompt: "Reflect", cadence: "weekly", target: null };
+    case "BEFORE_AFTER":
+      return { prompt: "Baseline vs current", cadence: "quarterly", target: null };
+    case "INCIDENT_LOG":
+      return { prompt: "Log this incident.", cadence: "per-incident", target: null };
+    case "RECURRING_MILESTONE":
+      return { prompt: "Tick items this period.", cadence: "quarterly", target: null };
+    default:
+      return { prompt: "Log a value", cadence: "weekly", target: null };
+  }
 }
 
 function FieldDropdown({ label, value, onChange, options }) {

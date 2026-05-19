@@ -36,6 +36,7 @@ import { FreeTextWidget } from "./free-text-widget";
 import { BeforeAfterWidget } from "./before-after-widget";
 import { IncidentLogWidget } from "./incident-log-widget";
 import { RecurringMilestoneWidget } from "./recurring-milestone-widget";
+import { ScorecardWidget } from "./scorecard-widget";
 
 // AUTO widgets — read from integration sources via useDataSource.
 registerWidget(SPEC_KINDS.MERGED_COUNT, {
@@ -137,4 +138,13 @@ registerWidget(SPEC_KINDS.RECURRING_MILESTONE, {
   Component: RecurringMilestoneWidget,
   description:
     "Milestone checklist that resets each cadence period. Tracks streak of complete periods.",
+});
+registerWidget(SPEC_KINDS.SCORECARD, {
+  // SCORECARD lists AUTO in the meta but its actual `kind` is auto
+  // or hybrid depending on its components. The registry's `variant`
+  // here is informational; the validator owns the per-spec check.
+  variant: SPEC_VARIANTS.AUTO,
+  Component: ScorecardWidget,
+  description:
+    "Composite scorecard — 2-3 component sub-specs, weighted aggregate.",
 });

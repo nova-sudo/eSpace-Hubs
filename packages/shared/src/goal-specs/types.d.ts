@@ -25,6 +25,7 @@ export const SPEC_KINDS: Readonly<{
   readonly BEFORE_AFTER: "BEFORE_AFTER";
   readonly INCIDENT_LOG: "INCIDENT_LOG";
   readonly RECURRING_MILESTONE: "RECURRING_MILESTONE";
+  readonly SCORECARD: "SCORECARD";
 }>;
 
 export type SpecKind = (typeof SPEC_KINDS)[keyof typeof SPEC_KINDS];
@@ -171,6 +172,33 @@ export interface SpecUntrackable {
   reason: string;
 }
 
+/**
+ * One sub-spec inside a SCORECARD spec.
+ *
+ * Carries the same `widget`+`kind`+`source`+`manual` shape as a
+ * top-level spec but without the metadata fields (goalId, title,
+ * reasoning, context, delegated, untrackable, classifiedAt) — those
+ * live on the parent. The `weight` is a positive number; the
+ * aggregate function normalises by the sum of weights, so absolute
+ * scale doesn't matter (50/50 and 1/1 give the same result), but
+ * 0–100 is the convention.
+ */
+export interface SpecScorecardComponent {
+  label?: string;
+  weight: number;
+  widget: SpecKind;
+  kind: SpecVariant;
+  source: SpecSource | null;
+  manual: SpecManual | null;
+}
+
+export type ScorecardAggregate = "weighted";
+
+export interface SpecScorecard {
+  components: SpecScorecardComponent[];
+  aggregate: ScorecardAggregate;
+}
+
 export interface ValidatedSpec {
   schemaVersion: number;
   goalId: string;
@@ -183,5 +211,7 @@ export interface ValidatedSpec {
   context: SpecContext | null;
   delegated: SpecDelegated | null;
   untrackable: SpecUntrackable | null;
+  /** Phase E: only set when widget === "SCORECARD". */
+  scorecard: SpecScorecard | null;
   classifiedAt: number;
 }

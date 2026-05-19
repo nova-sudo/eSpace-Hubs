@@ -52,6 +52,12 @@ export const SPEC_KINDS = Object.freeze({
   // streak-of-complete-periods.
   INCIDENT_LOG: "INCIDENT_LOG",
   RECURRING_MILESTONE: "RECURRING_MILESTONE",
+  // Phase E: composite scorecard. Hosts 2-3 component sub-specs and
+  // produces a single weighted-aggregate score. The spec doesn't
+  // carry source/manual at the top level (components own those).
+  // Variant is "auto" when every component is AUTO, "hybrid" when
+  // any component is MANUAL.
+  SCORECARD: "SCORECARD",
 });
 
 export const ALL_SPEC_KINDS = Object.freeze(Object.values(SPEC_KINDS));
@@ -235,6 +241,17 @@ export const SPEC_KIND_META = Object.freeze({
   [SPEC_KINDS.RECURRING_MILESTONE]: {
     label: "Recurring milestone",
     variant: SPEC_VARIANTS.MANUAL,
+  },
+  // SCORECARD is its own variant lane — declared AUTO so the
+  // validator's variant cross-check (auto/hybrid for AUTO meta)
+  // accepts both kinds. `requiresSource` and `requiresManual` are
+  // both false because the components hold the data, not the
+  // top-level spec.
+  [SPEC_KINDS.SCORECARD]: {
+    label: "Scorecard",
+    variant: SPEC_VARIANTS.AUTO,
+    requiresSource: false,
+    requiresManual: false,
   },
 });
 
