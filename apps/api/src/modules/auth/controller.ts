@@ -24,6 +24,10 @@ import type { User } from "../../db/types.js";
 import { hashPassword, verifyPassword } from "../../lib/argon2.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { encryptSecret, decryptSecret } from "../../lib/crypto-secret.js";
+import {
+  getEngagementConfig,
+  toPublicEngagementConfig,
+} from "../../lib/engagement-config.js";
 import { emailService } from "../../lib/email.js";
 import {
   renderInviteEmail,
@@ -101,6 +105,7 @@ export function toPublicUser(u: User): PublicUser {
     employeeId: u.employeeId ?? null,
     department: u.department ?? null,
     primaryHub: u.primaryHub ?? null,
+    engagement: u.engagement ?? "espace",
   };
 }
 
@@ -279,6 +284,46 @@ export async function meHandler(
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
     res.json({ user: toPublicUser(user) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── GET /api/v1/auth/me/engagement-config ───────────────────────────
+
+/**
+ * Returns the public (non-secret) integration config bound to the
+ * current user's engagement. Used by the web layer to build OAuth
+ * redirect URLs, Jira link bases, and similar — replacing the
+ * `NEXT_PUBLIC_*` build-time env reads with a per-user runtime
+ * lookup.
+ *
+ * Secret fields (GITHUB_CLIENT_SECRET, JENKINS_API_TOKEN) are
+ * NEVER returned here. The OAuth exchange endpoint and the
+ * server-side Jenkins/Jira proxies read them directly via
+ * `getEngagementConfig()` and use the session's user.engagement to
+ * pick the right set.
+ */
+export async function meEngagementConfigHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const users = await getUsersCollection();
+    const user = await users.findOne({ _id: session.userId });
+    if (!user) {
+      await destroySession(session._id);
+      clearSessionCookie(res);
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const engagement = user.engagement ?? "espace";
+    const cfg = getEngagementConfig(engagement);
+    res.json({ config: toPublicEngagementConfig(engagement, cfg) });
   } catch (err) {
     next(err);
   }

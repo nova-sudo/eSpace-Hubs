@@ -178,7 +178,38 @@ export interface User {
    * onboarding submit time. Zoho will overwrite once it lands.
    */
   department?: string | null;
+
+  /**
+   * Engagement assignment — which client/project this dev's
+   * integration credentials resolve to. Each value maps to an
+   * `<UPPERCASE>_*` env-var prefix that holds the engagement's
+   * OAuth secret, Jira URL, Jenkins creds, etc. (see
+   * `apps/api/src/lib/engagement-config.ts`).
+   *
+   * Optional / nullable on existing rows for backward-compat —
+   * readers default to "espace" when missing. Admin can flip a
+   * user's engagement via PATCH /api/v1/admin/users/:id.
+   *
+   * Today's allowed values: "espace" | "crealogix". Adding more
+   * engagements later means adding the enum value here, the
+   * env-var prefix set, and the route + admin-UI list.
+   */
+  engagement?: Engagement | null;
 }
+
+/**
+ * Engagement enum — keep in sync with the env-var prefix set in
+ * `apps/api/src/lib/engagement-config.ts` and with the dropdown
+ * options in the admin user editor.
+ */
+export type Engagement = "espace" | "crealogix";
+
+export const ALL_ENGAGEMENTS: readonly Engagement[] = [
+  "espace",
+  "crealogix",
+] as const;
+
+export const DEFAULT_ENGAGEMENT: Engagement = "espace";
 
 // ─── sessions ────────────────────────────────────────────────────────
 

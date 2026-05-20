@@ -41,6 +41,7 @@ import {
   inviteHandler,
   loginHandler,
   logoutHandler,
+  meEngagementConfigHandler,
   meHandler,
   passwordResetHandler,
   passwordResetRequestHandler,
@@ -95,6 +96,16 @@ authRouter.get(
 // editing profile fields until they finish setup. Mirrors the
 // "TOTP first, profile second" ordering the AuthGuard enforces.
 authRouter.patch("/me", requireAuth(), updateMeHandler);
+// Engagement-config endpoint returns the per-user public integration
+// config (Jira/GitLab URLs, GitHub client id). Replaces the
+// build-time `NEXT_PUBLIC_*` env reads with a runtime per-user
+// lookup so a Crealogix dev sees Crealogix URLs and an eSpace dev
+// sees eSpace URLs.
+authRouter.get(
+  "/me/engagement-config",
+  requireAuth({ requireTotpEnrolled: false }),
+  meEngagementConfigHandler,
+);
 authRouter.post(
   "/totp/enrol",
   requireAuth({ requireTotpEnrolled: false }),

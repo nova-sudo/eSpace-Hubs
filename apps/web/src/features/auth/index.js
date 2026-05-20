@@ -15,6 +15,7 @@
  */
 
 export { useSession } from "./use-session.js";
+export { useMyEngagementConfig } from "./use-engagement-config.js";
 export { SessionProvider } from "./session-provider.jsx";
 export { LoginForm } from "./login-form.jsx";
 export { AcceptInviteForm } from "./accept-invite-form.jsx";

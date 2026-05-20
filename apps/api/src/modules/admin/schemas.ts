@@ -11,11 +11,18 @@
  */
 
 import { z } from "zod";
-import { ALL_USER_ROLES, ALL_USER_STATUSES } from "../../db/types.js";
+import {
+  ALL_ENGAGEMENTS,
+  ALL_USER_ROLES,
+  ALL_USER_STATUSES,
+} from "../../db/types.js";
 
 const roleEnum = z.enum(ALL_USER_ROLES as readonly [string, ...string[]]);
 const statusEnum = z.enum(
   ALL_USER_STATUSES as readonly [string, ...string[]],
+);
+const engagementEnum = z.enum(
+  ALL_ENGAGEMENTS as readonly [string, ...string[]],
 );
 
 // ─── PATCH /api/v1/admin/users/:id ───────────────────────────────────
@@ -43,6 +50,9 @@ export const updateUserSchema = z.object({
   allowedHubs: z.array(z.string().min(1).max(64)).max(32).optional(),
   primaryHub: z.string().min(1).max(64).nullable().optional(),
   displayName: z.string().min(1).max(200).optional(),
+  // Engagement assignment — admin can flip a user between "espace"
+  // and "crealogix" (or future values). Omit to leave unchanged.
+  engagement: engagementEnum.optional(),
 });
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 

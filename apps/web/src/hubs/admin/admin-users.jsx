@@ -245,6 +245,7 @@ function UserEditor({ user, isSelf, onUpdate }) {
     user.allowedHubs.length > 0 ? user.allowedHubs : [],
   );
   const [primaryHub, setPrimaryHub] = useState(user.primaryHub);
+  const [engagement, setEngagement] = useState(user.engagement || "espace");
   const [saving, setSaving] = useState(false);
 
   // Re-init when the canonical user updates (after a successful save
@@ -255,6 +256,7 @@ function UserEditor({ user, isSelf, onUpdate }) {
     setStatus(user.status);
     setAllowedHubs(user.allowedHubs);
     setPrimaryHub(user.primaryHub);
+    setEngagement(user.engagement || "espace");
   }, [user]);
 
   const dirty = useMemo(() => {
@@ -263,6 +265,7 @@ function UserEditor({ user, isSelf, onUpdate }) {
     if (status !== user.status) return true;
     if (!sameArray(allowedHubs, user.allowedHubs)) return true;
     if (primaryHub !== user.primaryHub) return true;
+    if (engagement !== (user.engagement || "espace")) return true;
     return false;
   }, [
     displayName,
@@ -270,11 +273,13 @@ function UserEditor({ user, isSelf, onUpdate }) {
     status,
     allowedHubs,
     primaryHub,
+    engagement,
     user.displayName,
     user.roles,
     user.status,
     user.allowedHubs,
     user.primaryHub,
+    user.engagement,
   ]);
 
   function toggleRole(roleId) {
@@ -314,6 +319,7 @@ function UserEditor({ user, isSelf, onUpdate }) {
     if (status !== user.status) patch.status = status;
     if (!sameArray(allowedHubs, user.allowedHubs)) patch.allowedHubs = allowedHubs;
     if (primaryHub !== user.primaryHub) patch.primaryHub = primaryHub;
+    if (engagement !== (user.engagement || "espace")) patch.engagement = engagement;
 
     const r = await apiPatch(`/admin/users/${user.id}`, patch);
     setSaving(false);
@@ -452,6 +458,23 @@ function UserEditor({ user, isSelf, onUpdate }) {
                 {h}
               </option>
             ))}
+          </select>
+        </Field>
+
+        {/* Engagement — which client/project this user belongs to.
+            Drives which env-prefixed integration config the API
+            resolves for their data fetches (eSpace's Jira vs.
+            Crealogix's Jira, etc.). Add a new value here in lockstep
+            with the API's ALL_ENGAGEMENTS enum. */}
+        <Field label="Engagement">
+          <select
+            value={engagement}
+            onChange={(e) => setEngagement(e.target.value)}
+            disabled={saving}
+            style={inputStyle}
+          >
+            <option value="espace">eSpace</option>
+            <option value="crealogix">Crealogix</option>
           </select>
         </Field>
       </div>

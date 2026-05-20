@@ -156,4 +156,11 @@ export interface PublicUser {
   department: string | null;
   /** Convenience for the frontend — the user's primary hub id, if set. */
   primaryHub: string | null;
+  /**
+   * Engagement assignment — "espace" / "crealogix" / future values.
+   * Drives which env-prefixed integration config the API resolves
+   * for this user's data fetches. Defaults to "espace" when
+   * unset on legacy rows.
+   */
+  engagement: string;
 }

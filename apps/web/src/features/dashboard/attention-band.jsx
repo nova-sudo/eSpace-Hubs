@@ -6,14 +6,19 @@ import {
   useGitlabOpenMRs,
   useJiraTickets,
 } from "@/features/integrations";
+import { useMyEngagementConfig } from "@/features/auth";
 
 export function AttentionBand() {
   const { data: openMRs } = useGitlabOpenMRs();
   const { data: tickets } = useJiraTickets();
+  const { config: engagementCfg } = useMyEngagementConfig();
   const items = deriveAttention({
     openMRs: openMRs || [],
     tickets: tickets?.issues || [],
-    jiraBaseUrl: process.env.NEXT_PUBLIC_JIRA_URL,
+    // Per-user Jira base — eSpace devs get eSpace's Jira host,
+    // Crealogix devs get Crealogix's. Env fallback for early mount.
+    jiraBaseUrl:
+      engagementCfg?.jiraBaseUrl || process.env.NEXT_PUBLIC_JIRA_URL,
     limit: 3,
   });
 

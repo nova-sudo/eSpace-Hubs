@@ -8,7 +8,11 @@
  */
 
 import type { Document } from "mongodb";
-import { ALL_USER_ROLES, ALL_USER_STATUSES } from "../types.js";
+import {
+  ALL_ENGAGEMENTS,
+  ALL_USER_ROLES,
+  ALL_USER_STATUSES,
+} from "../types.js";
 
 export const usersValidator: Document = {
   $jsonSchema: {
@@ -94,6 +98,12 @@ export const usersValidator: Document = {
       // validate.
       employeeId: { bsonType: ["string", "null"], maxLength: 64 },
       department: { bsonType: ["string", "null"], maxLength: 200 },
+      // Engagement assignment. Nullable for backward-compat with
+      // pre-engagement rows; readers default to "espace".
+      engagement: {
+        bsonType: ["string", "null"],
+        enum: [...ALL_ENGAGEMENTS, null],
+      },
     },
   },
 };
