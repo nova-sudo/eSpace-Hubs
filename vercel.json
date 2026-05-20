@@ -2,10 +2,9 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build --workspace=@espace-devhub/web",
   "installCommand": "npm install",
-  "outputDirectory": "apps/web/.next",
   "framework": "nextjs",
   "functions": {
-    "apps/web/src/pages/api/v1/[...path].ts": {
+    "src/pages/api/v1/[...path].ts": {
       "maxDuration": 60
     }
   }
