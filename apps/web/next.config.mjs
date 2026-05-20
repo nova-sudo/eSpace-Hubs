@@ -3,11 +3,19 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// API service location. Defaults to localhost:4000 in dev. In prod the
-// API is reverse-proxied at the same origin (no rewrite needed) — set
-// NEXT_PUBLIC_API_URL only when frontend and API live on different
-// origins.
-const API_ORIGIN = process.env.API_ORIGIN || "http://localhost:4000";
+// API service location.
+//
+// When `API_ORIGIN` is set (e.g. local dev with `apps/api` running on
+// :4000, or a deployment where the API is a separate host like Railway),
+// requests to `/api/v1/*` get rewritten to that origin.
+//
+// When unset (default on Vercel deploys), the rewrite is skipped and
+// the catch-all serverless function at
+// `apps/web/src/pages/api/v1/[...path].ts` handles `/api/v1/*` in-
+// process by forwarding to the Express app via the
+// `@espace-devhub/api/serverless` barrel. This lets the entire backend
+// ship inside the Next.js deploy on Vercel.
+const API_ORIGIN = process.env.API_ORIGIN;
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -18,32 +26,38 @@ const nextConfig = {
     root: path.join(__dirname, "..", ".."),
   },
 
-  // Same-origin proxy so the browser sees /api/v1/* on :3000 alongside
-  // its own pages. Keeps cookies SameSite-clean in dev and avoids any
-  // CORS preflight on the happy path.
-  //
-  // The only Next.js route handler left is /api/oauth/github/exchange
-  // (still server-side because it consumes GITHUB_CLIENT_SECRET). All
-  // other legacy /api/* proxies (chat, classify-goals, grade-pr,
-  // github/gitlab/jira) were retired in M7.9c — those flows now hit
-  // the API service via /api/v1/* under this rewrite.
+  // Transpile the API workspace package — its dist/*.js is ESM with
+  // `.js` import suffixes (NodeNext output). Next's default bundler
+  // assumes node_modules deps are already-transpiled CommonJS or modern
+  // ESM without the explicit `.js` extensions; listing it here makes
+  // Turbopack/webpack run it through the standard transpile pipeline
+  // so the serverless catch-all can import from it.
+  transpilePackages: ["@espace-devhub/api", "@espace-devhub/shared"],
+
   async rewrites() {
-    return [
-      {
-        source: "/api/v1/:path*",
-        destination: `${API_ORIGIN}/api/v1/:path*`,
-      },
-      // Health endpoints are unversioned — useful for hitting from the
-      // dashboard during development.
-      {
-        source: "/api/healthz",
-        destination: `${API_ORIGIN}/healthz`,
-      },
-      {
-        source: "/api/readyz",
-        destination: `${API_ORIGIN}/readyz`,
-      },
-    ];
+    // Local dev / external-API mode: forward /api/v1/* to the
+    // configured origin so the file-based catch-all is bypassed.
+    // `beforeFiles` ensures the rewrite runs BEFORE Next's
+    // file-based route matching — without that, the catch-all
+    // serverless function would always win and we'd never hit the
+    // standalone Express server.
+    if (!API_ORIGIN) return [];
+    return {
+      beforeFiles: [
+        {
+          source: "/api/v1/:path*",
+          destination: `${API_ORIGIN}/api/v1/:path*`,
+        },
+        {
+          source: "/api/healthz",
+          destination: `${API_ORIGIN}/healthz`,
+        },
+        {
+          source: "/api/readyz",
+          destination: `${API_ORIGIN}/readyz`,
+        },
+      ],
+    };
   },
 };
 
