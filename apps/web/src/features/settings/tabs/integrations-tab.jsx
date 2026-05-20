@@ -12,6 +12,7 @@ import {
   useAllowedProviders,
 } from "@/features/hubs";
 import { startGitHubOAuth } from "@/lib/oauth-pkce";
+import { useMyEngagementConfig } from "@/features/auth";
 import {
   GitLabTokenForm,
   JenkinsTokenForm,
@@ -83,6 +84,7 @@ export function IntegrationsTab() {
 
 function ProviderCard({ provider }) {
   const { integrations, isConnected } = useIntegrations();
+  const { config: engagementCfg } = useMyEngagementConfig();
   const connected = isConnected(provider.id);
   const meta = integrations[provider.id];
 
@@ -149,7 +151,12 @@ function ProviderCard({ provider }) {
                       return;
                     }
                     try {
-                      await start();
+                      // Pass per-user engagement config — the GitHub
+                      // client id depends on whether the user is on
+                      // the eSpace or Crealogix engagement.
+                      await start({
+                        clientId: engagementCfg?.githubClientId,
+                      });
                     } catch (e) {
                       toast.error(e.message);
                     }

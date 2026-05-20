@@ -2,6 +2,7 @@
 
 import { BentoTile, Pill } from "@/components/ui";
 import { useJiraTickets, useIntegrations } from "@/features/integrations";
+import { useMyEngagementConfig } from "@/features/auth";
 import { fullDate } from "@/lib/date";
 
 const COLUMNS = [
@@ -22,6 +23,11 @@ function groupByCategory(issues = []) {
 export function TicketsTile() {
   const { isConnected } = useIntegrations();
   const { data, isLoading } = useJiraTickets();
+  // Per-user Jira base URL — comes from the engagement-config
+  // endpoint. Env fallback covers early-mount / logged-out states.
+  const { config: engagementCfg } = useMyEngagementConfig();
+  const jiraUrl =
+    engagementCfg?.jiraBaseUrl || process.env.NEXT_PUBLIC_JIRA_URL || "";
   const issues = data?.issues || [];
   const grouped = groupByCategory(issues);
 
@@ -34,7 +40,7 @@ export function TicketsTile() {
       titleSize={18}
       right={
         <a
-          href={process.env.NEXT_PUBLIC_JIRA_URL || "#"}
+          href={jiraUrl || "#"}
           target="_blank"
           rel="noreferrer"
           className="text-[10px] uppercase tracking-[0.4px] text-muted-fg hover:text-fg"
@@ -69,7 +75,7 @@ export function TicketsTile() {
                     return (
                       <a
                         key={t.id}
-                        href={`${process.env.NEXT_PUBLIC_JIRA_URL || ""}/browse/${t.key}`}
+                        href={`${jiraUrl}/browse/${t.key}`}
                         target="_blank"
                         rel="noreferrer"
                         className="block rounded-[var(--radius-sub)] border border-border bg-card-alt px-2.5 py-2 transition-colors hover:border-border-strong"

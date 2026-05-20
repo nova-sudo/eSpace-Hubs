@@ -8,10 +8,14 @@ import {
   saveConnection,
 } from "@/features/integrations";
 import { proxyFetch } from "@/features/integrations/api-clients/proxy-fetch";
+import { useMyEngagementConfig } from "@/features/auth";
 
-const GITLAB_URL = process.env.NEXT_PUBLIC_GITLAB_URL;
-const JIRA_URL = process.env.NEXT_PUBLIC_JIRA_URL;
-const JENKINS_URL = process.env.NEXT_PUBLIC_JENKINS_URL;
+// Engagement-scoped URL fallbacks. Used when the engagement-config
+// hook hasn't resolved yet (early mount) or as a final safety net.
+// The runtime values from /auth/me/engagement-config win when set.
+const ENV_FALLBACK_GITLAB_URL = process.env.NEXT_PUBLIC_GITLAB_URL;
+const ENV_FALLBACK_JIRA_URL = process.env.NEXT_PUBLIC_JIRA_URL;
+const ENV_FALLBACK_JENKINS_URL = process.env.NEXT_PUBLIC_JENKINS_URL;
 
 /**
  * Token-form validation flow (post-M7.9c):
@@ -30,13 +34,18 @@ const JENKINS_URL = process.env.NEXT_PUBLIC_JENKINS_URL;
 export function GitLabTokenForm() {
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
+  const { config: engagementCfg } = useMyEngagementConfig();
+  // Resolved per-user — eSpace devs see eSpace's GitLab base URL,
+  // Crealogix devs see Crealogix's. Env fallback covers early mount
+  // before the hook resolves.
+  const gitlabUrl = engagementCfg?.gitlabBaseUrl || ENV_FALLBACK_GITLAB_URL;
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!token) return toast.error("Access token is required.");
-    if (!GITLAB_URL) {
+    if (!gitlabUrl) {
       return toast.error(
-        "NEXT_PUBLIC_GITLAB_URL is not set — set it in apps/web/.env.local and restart.",
+        "GitLab base URL not configured for your engagement. Ask an admin to set <ENGAGEMENT>_GITLAB_URL in the API env.",
       );
     }
     setLoading(true);
@@ -45,12 +54,12 @@ export function GitLabTokenForm() {
       // disk before the proxy call below can use it.
       await saveConnection("gitlab", {
         accessToken: token,
-        endpointUrl: GITLAB_URL,
+        endpointUrl: gitlabUrl,
       });
       const me = await proxyFetch("gitlab", "user");
       await saveConnection("gitlab", {
         accessToken: token,
-        endpointUrl: GITLAB_URL,
+        endpointUrl: gitlabUrl,
         username: me.username,
         displayName: me.name,
         avatarUrl: me.avatar_url,
@@ -98,13 +107,15 @@ export function JiraTokenForm() {
   const [email, setEmail] = useState("");
   const [apiToken, setApiToken] = useState("");
   const [loading, setLoading] = useState(false);
+  const { config: engagementCfg } = useMyEngagementConfig();
+  const jiraUrl = engagementCfg?.jiraBaseUrl || ENV_FALLBACK_JIRA_URL;
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!email || !apiToken) return toast.error("Email and API token are required.");
-    if (!JIRA_URL) {
+    if (!jiraUrl) {
       return toast.error(
-        "NEXT_PUBLIC_JIRA_URL is not set — set it in apps/web/.env.local and restart.",
+        "Jira base URL not configured for your engagement. Ask an admin to set <ENGAGEMENT>_JIRA_URL in the API env.",
       );
     }
     setLoading(true);
@@ -112,13 +123,13 @@ export function JiraTokenForm() {
       await saveConnection("jira", {
         email,
         apiToken,
-        endpointUrl: JIRA_URL,
+        endpointUrl: jiraUrl,
       });
       const me = await proxyFetch("jira", "myself");
       await saveConnection("jira", {
         email,
         apiToken,
-        endpointUrl: JIRA_URL,
+        endpointUrl: jiraUrl,
         username: me.emailAddress || me.name || email,
         displayName: me.displayName,
       });
@@ -202,7 +213,10 @@ export function JiraTokenForm() {
  *   let the user override it.
  */
 export function JenkinsTokenForm() {
-  const [url, setUrl] = useState(JENKINS_URL || "");
+  const { config: engagementCfg } = useMyEngagementConfig();
+  const jenkinsDefault =
+    engagementCfg?.jenkinsBaseUrl || ENV_FALLBACK_JENKINS_URL || "";
+  const [url, setUrl] = useState(jenkinsDefault);
   const [username, setUsername] = useState("");
   const [apiToken, setApiToken] = useState("");
   const [loading, setLoading] = useState(false);

@@ -68,6 +68,10 @@ interface PublicUser {
   invitedBy: string | null;
   lastLoginAt: string | null;
   onboardingCompletedAt: string | null;
+  /** Engagement enum value ("espace" / "crealogix") — defaults to
+   *  "espace" on legacy rows. Drives which env-prefixed integration
+   *  config the API resolves for this user's data fetches. */
+  engagement: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -94,6 +98,7 @@ function toPublicUser(u: User): PublicUser {
     onboardingCompletedAt: u.onboardingCompletedAt
       ? u.onboardingCompletedAt.toISOString()
       : null,
+    engagement: u.engagement ?? "espace",
     createdAt: u.createdAt.toISOString(),
     updatedAt: u.updatedAt.toISOString(),
   };
@@ -277,6 +282,9 @@ function diffPatch(input: {
   }
   if (patch.displayName !== undefined) {
     recordIfChanged("displayName", patch.displayName, target.displayName);
+  }
+  if (patch.engagement !== undefined) {
+    recordIfChanged("engagement", patch.engagement, target.engagement ?? "espace");
   }
 
   if (Object.keys(set).length === 0) return null;
