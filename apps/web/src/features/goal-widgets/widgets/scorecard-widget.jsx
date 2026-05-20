@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { WidgetShell, TargetChip } from "../widget-shell";
 import { useDataSource } from "../data-sources/use-data-source";
 import { useGoalInputs } from "@/features/goal-inputs";
+import { useGoalContext } from "@/features/goal-context";
 import { useGradedPrs } from "@/features/grading";
 import {
   componentScore,
@@ -11,6 +12,7 @@ import {
   passingCount,
   extractValue,
 } from "./scorecard-aggregate";
+import { ScorecardComponentModal } from "./scorecard-component-modal";
 
 /**
  * SCORECARD widget — composite tile that aggregates 2–3 component
@@ -96,54 +98,80 @@ export function ScorecardWidget({
   const score = aggregateScore(scoredEntries, aggregate);
   const { pass, total } = passingCount(scoredEntries);
 
+  // #3: clicking a component row opens a modal with the FULL widget
+  // body — criteria editor + Grade button for CODE_RUBRIC, full
+  // incident logger for INCIDENT_LOG, etc. State lives on the
+  // SCORECARD widget so the modal can render with synthetic spec +
+  // goal that point at the same sub-id storage scope the
+  // ScorecardWidget already uses for its aggregate scoring.
+  const [activeIndex, setActiveIndex] = useState(null);
+  const activeComponent =
+    activeIndex != null ? components[activeIndex] : null;
+
   return (
-    <WidgetShell
-      spec={spec}
-      variant={variant}
-      label={`Scorecard · ${components.length} components`}
-      title={goal?.title || spec.title}
-      onRetry={onRetry}
-      className={className}
-    >
-      <div className="flex h-full flex-col gap-2">
-        <Headline score={score} pass={pass} total={total} variant={variant} />
-        <div
-          className="h-1.5 w-full overflow-hidden rounded-full"
-          style={{
-            background:
-              variant === "light"
-                ? "rgba(255,255,255,0.18)"
-                : "var(--border)",
-          }}
-        >
-          <div
-            className="h-full"
-            style={{
-              width: `${score ?? 0}%`,
-              background:
-                variant === "light" ? "#ffffff" : "var(--accent)",
-            }}
+    <>
+      <WidgetShell
+        spec={spec}
+        variant={variant}
+        label={`Scorecard · ${components.length} components`}
+        title={goal?.title || spec.title}
+        onRetry={onRetry}
+        className={className}
+      >
+        <div className="flex h-full flex-col gap-2">
+          <Headline
+            score={score}
+            pass={pass}
+            total={total}
+            variant={variant}
           />
-        </div>
-        <ul
-          className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-        >
-          {components.map((c, i) => (
-            <ComponentRow
-              key={`${c.widget}-${i}`}
-              component={c}
-              data={rows[i]?.data}
-              score={scoredEntries[i]?.score}
-              loading={scoredEntries[i]?.loading}
-              error={scoredEntries[i]?.error}
-              rubric={rows[i]?.rubric}
-              variant={variant}
+          <div
+            className="h-1.5 w-full overflow-hidden rounded-full"
+            style={{
+              background:
+                variant === "light"
+                  ? "rgba(255,255,255,0.18)"
+                  : "var(--border)",
+            }}
+          >
+            <div
+              className="h-full"
+              style={{
+                width: `${score ?? 0}%`,
+                background:
+                  variant === "light" ? "#ffffff" : "var(--accent)",
+              }}
             />
-          ))}
-        </ul>
-      </div>
-    </WidgetShell>
+          </div>
+          <ul
+            className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1"
+            style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
+          >
+            {components.map((c, i) => (
+              <ComponentRow
+                key={`${c.widget}-${i}`}
+                component={c}
+                data={rows[i]?.data}
+                score={scoredEntries[i]?.score}
+                loading={scoredEntries[i]?.loading}
+                error={scoredEntries[i]?.error}
+                rubric={rows[i]?.rubric}
+                variant={variant}
+                onExpand={() => setActiveIndex(i)}
+              />
+            ))}
+          </ul>
+        </div>
+      </WidgetShell>
+      <ScorecardComponentModal
+        open={activeComponent != null}
+        onClose={() => setActiveIndex(null)}
+        parentSpec={spec}
+        parentGoal={goal}
+        component={activeComponent}
+        index={activeIndex ?? 0}
+      />
+    </>
   );
 }
 
@@ -197,6 +225,7 @@ function ComponentRow({
   error,
   rubric,
   variant,
+  onExpand,
 }) {
   const label =
     component?.label?.trim() ||
@@ -209,13 +238,28 @@ function ComponentRow({
 
   return (
     <li
-      className="flex flex-col gap-1 rounded-[var(--radius-sub)] px-2 py-1.5"
+      // Clicking the row opens the full sub-widget in a modal. The row
+      // stays a <li> for semantics; the click handler + keyboard
+      // handler give it button-like behaviour. We DON'T use a <button>
+      // wrapping the row because the rubric row has its own "Grade now"
+      // button inside, which would nest interactive elements.
+      role="button"
+      tabIndex={0}
+      onClick={onExpand}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onExpand?.();
+        }
+      }}
+      className="group flex cursor-pointer flex-col gap-1 rounded-[var(--radius-sub)] px-2 py-1.5 transition-colors"
       style={{
         background:
           variant === "light"
             ? "rgba(255,255,255,0.06)"
             : "var(--card-alt)",
       }}
+      title="Click to open the full widget"
     >
       <div className="flex items-baseline gap-2">
         <span
@@ -230,6 +274,22 @@ function ComponentRow({
           }}
         >
           {label}
+        </span>
+        <span
+          aria-hidden="true"
+          className="opacity-0 transition-opacity group-hover:opacity-100"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            color:
+              variant === "light"
+                ? "rgba(255,255,255,0.75)"
+                : "var(--muted-fg)",
+            letterSpacing: "0.5px",
+          }}
+          title="Open the full widget view"
+        >
+          expand ↗
         </span>
         <TargetChip target={target} unit={isPercent ? "%" : ""} variant={variant} />
         <span
@@ -350,7 +410,11 @@ function RubricRowFooter({ rubric, data, variant }) {
       {criteriaCount > 0 ? (
         <button
           type="button"
-          onClick={() => {
+          onClick={(e) => {
+            // The whole row is clickable to open the modal — stop
+            // propagation so clicking "Grade now" doesn't also pop
+            // the modal open.
+            e.stopPropagation();
             if (canGrade) rubric.gradeAll();
           }}
           disabled={!canGrade}
@@ -412,7 +476,25 @@ function isPercentMetric(widget) {
  */
 function useRubricForSlot(component, parentGoal, index) {
   const isRubric = component?.widget === "CODE_RUBRIC";
-  const criteria = isRubric ? component?.manual?.items || [] : [];
+  const subGoalId =
+    parentGoal?.id != null ? `${parentGoal.id}::sc${index}` : null;
+  // The modal seeds goal-context for the sub-id from
+  // component.manual.items, and the standalone rubric widget's
+  // "edit truths" flow writes back to the same context store. To
+  // keep the SCORECARD's aggregate score consistent with what the
+  // modal shows, we read criteria from the SAME source — context
+  // when set, manual.items as fallback (covers first render before
+  // the modal has ever opened).
+  const { answers } = useGoalContext(subGoalId);
+  const ctxCriteria = Array.isArray(answers?.["quality-standards"])
+    ? answers["quality-standards"]
+    : [];
+  const seedCriteria = component?.manual?.items || [];
+  const criteria = isRubric
+    ? ctxCriteria.length > 0
+      ? ctxCriteria
+      : seedCriteria
+    : [];
   const firstReviewOnly = isRubric && component?.firstReviewOnly === true;
   const scopeKey =
     isRubric && parentGoal?.id ? `sc${index}:${parentGoal.id}` : null;
