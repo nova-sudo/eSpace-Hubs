@@ -106,6 +106,22 @@ export default async function handler(
   res: NextApiResponse,
 ): Promise<void> {
   const app = await getApp();
+
+  // Next pre-parses cookies onto `req.cookies` before handing the
+  // request to us. Express's `cookie-parser` short-circuits when it
+  // sees an existing `req.cookies`:
+  //
+  //     if (req.cookies) return next();
+  //
+  // …which means it never sets `req.secret` or `req.signedCookies`.
+  // That breaks signed-cookie writes (`res.cookie(..., { signed: true })`
+  // throws `cookieParser("secret") required for signed cookies`) and
+  // signed-cookie reads (the session middleware sees an empty
+  // `req.signedCookies`). Clear Next's pre-parse so cookie-parser
+  // re-parses from the raw `Cookie` header and wires everything up.
+  delete (req as unknown as { cookies?: unknown }).cookies;
+  delete (req as unknown as { signedCookies?: unknown }).signedCookies;
+
   // Express writes to res asynchronously; wrap the call in a promise
   // that settles when the response is fully sent (either normal
   // `finish` or premature `close`). Without this, Next would resolve
