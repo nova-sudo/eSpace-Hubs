@@ -20,8 +20,10 @@
  */
 
 import { useCallback, useMemo } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { toast } from "sonner";
-import { Save, AlertTriangle, ArrowRight } from "lucide-react";
+import { Save, AlertTriangle, ArrowRight, LayoutGrid } from "lucide-react";
 import { useGoals } from "@/features/goals";
 import { useGoalSpecs } from "@/features/goal-specs";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
@@ -68,16 +70,12 @@ export function CheckinPage() {
   // Drives the gap banner. Cheap — both inputs change rarely.
   const gapCount = useUnfilledWeeksBefore(activeLabel);
 
+  const params = useParams();
+  const hubId = params?.hub || "dev";
+
   const onPrev = useCallback(() => setWeekLabel(prevLabel), [setWeekLabel, prevLabel]);
   const onNext = useCallback(() => setWeekLabel(nextLabel), [setWeekLabel, nextLabel]);
   const onToday = useCallback(() => setWeekLabel(todayLabel), [setWeekLabel, todayLabel]);
-  const onCatchUp = useCallback(() => {
-    // Jumps to the immediately-prior week so the dev can fill it,
-    // save, and either keep stepping back or use the navigator to
-    // pick the oldest gap directly. The grid view (PR #2) will
-    // collapse this into a single multi-week page.
-    setWeekLabel(prevLabel);
-  }, [setWeekLabel, prevLabel]);
 
   const onSave = useCallback(() => {
     if (!hasSpecs) {
@@ -161,6 +159,15 @@ export function CheckinPage() {
             onNext={onNext}
             onToday={onToday}
           />
+          <Link
+            href={`/${hubId}/checkin/grid`}
+            className="flex items-center gap-1.5 rounded-md border border-border bg-bg px-2.5 py-1.5 text-[11px] uppercase tracking-[0.5px] text-muted-fg hover:bg-accent-dim/60 hover:text-fg"
+            style={{ fontFamily: "var(--font-mono)" }}
+            title="Multi-week catch-up grid"
+          >
+            <LayoutGrid size={13} />
+            Grid
+          </Link>
           <button
             type="button"
             onClick={onSave}
@@ -174,7 +181,7 @@ export function CheckinPage() {
       </div>
 
       {gapCount > 0 && (
-        <GapBanner count={gapCount} onCatchUp={onCatchUp} prevLabel={prevLabel} />
+        <GapBanner count={gapCount} hubId={hubId} />
       )}
 
       <div className="flex flex-col gap-5">
@@ -238,7 +245,7 @@ function L1Group({ group, children }) {
   );
 }
 
-function GapBanner({ count, onCatchUp, prevLabel }) {
+function GapBanner({ count, hubId }) {
   return (
     <div
       className={cn(
@@ -252,15 +259,14 @@ function GapBanner({ count, onCatchUp, prevLabel }) {
           <strong>{count}</strong> unfilled week{count === 1 ? "" : "s"} before this one
         </span>
       </div>
-      <button
-        type="button"
-        onClick={onCatchUp}
+      <Link
+        href={`/${hubId}/checkin/grid`}
         className="flex items-center gap-1.5 rounded-md border border-border bg-bg px-2.5 py-1 text-[11px] uppercase tracking-[0.5px] text-fg hover:bg-accent-dim/60"
         style={{ fontFamily: "var(--font-mono)" }}
       >
-        Step to {prevLabel}
+        Catch up {count} week{count === 1 ? "" : "s"}
         <ArrowRight size={12} />
-      </button>
+      </Link>
     </div>
   );
 }
