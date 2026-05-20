@@ -55,6 +55,7 @@ export const ALL_PROVIDERS = Object.freeze(["github", "gitlab", "jira", "jenkins
 export const PAGE_SLOTS = Object.freeze([
   "dashboard",
   "goals",
+  "checkin",
   "evidence",
   "snapshots",
   "reviews",
@@ -116,6 +117,7 @@ const DEV_HUB = Object.freeze({
   pages: Object.freeze({
     dashboard: "dev:dashboard",
     goals: "dev:goals",
+    checkin: "dev:checkin",
     evidence: "dev:evidence",
     snapshots: "dev:snapshots",
     reviews: "dev:reviews",

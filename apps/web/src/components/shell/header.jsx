@@ -24,6 +24,7 @@ import { cn } from "@/lib/cn";
  */
 const NAV_ITEMS = [
   { slot: "dashboard", subpath: "" },
+  { slot: "checkin", subpath: "/checkin" },
   { slot: "goals", subpath: "/goals" },
   { slot: "evidence", subpath: "/evidence" },
   { slot: "hub-config", subpath: "/hub-config" },
@@ -41,6 +42,7 @@ const NAV_ITEMS = [
 const DEFAULT_LABELS = {
   dashboard: "Dashboard",
   goals: "Goals",
+  checkin: "Check-in",
   evidence: "Evidence",
   "hub-config": "Hubs",
   users: "Users",
