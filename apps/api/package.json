@@ -4,7 +4,15 @@
   "private": true,
   "type": "module",
   "description": "eSpace Dev Hub — Express + MongoDB backend service.",
-  "main": "dist/server.js",
+  "main": "dist/serverless.js",
+  "types": "dist/serverless.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/serverless.d.ts",
+      "default": "./dist/serverless.js"
+    },
+    "./server": "./dist/server.js"
+  },
   "engines": {
     "node": ">=20"
   },
