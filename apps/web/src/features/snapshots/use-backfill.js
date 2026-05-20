@@ -39,18 +39,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import {
-  readSnapshots,
-  saveSnapshot,
-} from "./snapshots-store";
-import { captureGoalReadings } from "./capture-readings";
+import { readSnapshots } from "./snapshots-store";
+import { synthesiseWeek } from "./synthesise-week";
 import { useGoals } from "@/features/goals";
 import { useGoalSpecs } from "@/features/goal-specs";
 import {
-  avgReviewerComments,
-  countMrComments,
-  linkagePct,
-  medianTurnaroundDays,
   useCombinedEventsSince,
   useCombinedMergedSince,
   useJiraTickets,
@@ -59,8 +52,6 @@ import { readInputs } from "@/features/goal-inputs";
 import { isoDaysAgo, weekLabel } from "@/lib/date";
 
 const DAY = 24 * 60 * 60 * 1000;
-const WEEK = 7 * DAY;
-const EVENTS_HORIZON_DAYS = 90;
 
 /**
  * @returns {{
@@ -105,15 +96,15 @@ export function useBackfill() {
 
     for (let i = 0; i < missing.length; i++) {
       if (cancelledRef.current) break;
-      const range = missing[i];
       synthesiseWeek({
-        range,
+        range: missing[i],
         goals,
         specs,
         mrs: mrs || [],
         events: events || [],
         tickets: Array.isArray(jira?.issues) ? jira.issues : [],
         allInputs,
+        capturedBy: "auto",
       });
       setProgress({ done: i + 1, total: missing.length });
       // Yield to the browser so the banner re-renders.
@@ -178,76 +169,5 @@ function enumerateCompletedWeeks() {
   return out;
 }
 
-/**
- * Synthesise one week's snapshot from the loaded data. Filters merges
- * + events + inputs to the week's window, computes the headline
- * metrics, and runs `captureGoalReadings` for the per-goal map.
- */
-function synthesiseWeek({
-  range,
-  goals,
-  specs,
-  mrs,
-  events,
-  tickets,
-  allInputs,
-}) {
-  const startMs = range.start.getTime();
-  const endMs = range.end.getTime();
-
-  const mrsThisWeek = mrs.filter((m) => {
-    if (!m.merged_at) return false;
-    const t = new Date(m.merged_at).getTime();
-    return t >= startMs && t < endMs;
-  });
-  const eventsThisWeek = events.filter((e) => {
-    const t = new Date(e.created_at || 0).getTime();
-    return t >= startMs && t < endMs;
-  });
-
-  // Was the events feed available for this week? GitHub caps at ~90d.
-  // For weeks older than that, mark partial + gaps so the snapshot
-  // honestly says "events unavailable".
-  const ageDays = Math.floor((Date.now() - endMs) / DAY);
-  const eventsAvailable = ageDays <= EVENTS_HORIZON_DAYS;
-  const partial = !eventsAvailable;
-  const gaps = eventsAvailable ? [] : ["events"];
-
-  const merged = mrsThisWeek.length;
-  const reviews = eventsAvailable ? countMrComments(eventsThisWeek) : 0;
-  const median = medianTurnaroundDays(mrsThisWeek);
-  const linkage = linkagePct(mrsThisWeek)?.pct ?? 0;
-  const rounds = avgReviewerComments(mrsThisWeek) ?? 0;
-
-  // priorReadings: pick up the most recent snapshot already in the
-  // store so monthly/quarterly cumulatives chain through correctly.
-  const existing = readSnapshots();
-  const prior = existing.find((s) => s.week < range.weekLabel);
-
-  const goalReadings = captureGoalReadings({
-    weekStart: range.start,
-    weekEnd: range.end,
-    goals,
-    specs,
-    mrs: mrsThisWeek,
-    events: eventsThisWeek,
-    tickets,
-    allInputs,
-    priorReadings: prior?.goalReadings || null,
-  });
-
-  saveSnapshot({
-    week: range.weekLabel,
-    capturedAt: new Date(endMs).toISOString(),
-    capturedBy: "auto",
-    merged,
-    reviews,
-    turnaround: median == null ? 0 : Math.round(median * 24),
-    linkage,
-    rounds: Math.round(rounds * 10) / 10,
-    note: "",
-    goalReadings,
-    partial,
-    gaps,
-  });
-}
+// `synthesiseWeek` now lives in ./synthesise-week.js so the checkin
+// page can call it directly when saving the active week.

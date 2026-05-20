@@ -16,6 +16,7 @@ export interface HubTheme {
 export type HubPageSlot =
   | "dashboard"
   | "goals"
+  | "checkin"
   | "evidence"
   | "snapshots"
   | "reviews"

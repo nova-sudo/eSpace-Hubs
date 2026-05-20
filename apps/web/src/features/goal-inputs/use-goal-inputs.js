@@ -37,11 +37,15 @@ function getServerSnapshot() {
  * Hook: subscribe to a single goal's time-series entries.
  *
  * Returns:
- *   - entries           : Array<GoalInput>  (ts-ascending)
- *   - latest            : GoalInput | null
- *   - append(value,note?): persist a new entry
- *   - remove(ts)        : delete an entry by timestamp
- *   - clear()           : wipe every entry for this goal
+ *   - entries                   : Array<GoalInput>  (ts-ascending)
+ *   - latest                    : GoalInput | null
+ *   - append(value, note?, ts?) : persist a new entry. `ts` (epoch ms)
+ *                                 is optional — pass it to record an
+ *                                 entry against a past week (used by
+ *                                 the weekly check-in / backfill flow).
+ *                                 Defaults to `Date.now()`.
+ *   - remove(ts)                : delete an entry by timestamp
+ *   - clear()                   : wipe every entry for this goal
  *
  * Demo-mode short-circuit: when demo mode is on AND the goalId looks
  * like a demo goal AND the user has no real entries on it, we return
@@ -81,7 +85,12 @@ export function useGoalInputs(goalId) {
   }, [raw, goalId, demo, demoEntriesByGoal]);
 
   const append = useCallback(
-    (value, note) => appendEntry({ goalId, value, note }),
+    (value, note, ts) =>
+      appendEntry(
+        ts != null
+          ? { goalId, value, note, ts }
+          : { goalId, value, note },
+      ),
     [goalId],
   );
   const remove = useCallback((ts) => removeEntry(goalId, ts), [goalId]);
