@@ -7,7 +7,7 @@
     "dev": "next dev --turbopack",
     "build": "npm run build --workspace=@espace-devhub/api && next build --turbopack",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "node -e \"console.log('lint: skipped — Next 16 removed next lint. Re-enable by installing eslint + @next/eslint-plugin-next and wiring eslint.config.mjs.')\""
   },
   "dependencies": {
     "@api/nim": "file:.api/apis/nim",
