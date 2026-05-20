@@ -41,6 +41,16 @@ import { ANALYSIS } from "./ai/analysis-events";
 /**
  * Flatten the L1/L2 tree into the classifier's input shape.
  *
+ * Only L2s are emitted — L1s are *titles* / category headers in the
+ * eSpace performance-review model and don't get classified as
+ * individual goals with widgets. The dashboard's Goal Tracking
+ * section + the evidence sheet both already render L1s as section
+ * headers above their L2 children even when the L1 has no spec, so
+ * we get the visual grouping without a spurious widget per L1.
+ *
+ * Each L2 carries its parent L1's title so the classifier can use
+ * that hierarchical context when picking a widget.
+ *
  * The `description` field we ship is a RICHLY-STRUCTURED block that
  * concatenates every piece of user-supplied context the AI needs to make
  * a good widget decision. Format (markdown-ish, stable sections):
@@ -55,23 +65,11 @@ import { ANALYSIS } from "./ai/analysis-events";
  *
  *   Rubric:
  *   <Not achieved / Achieved / Over / Role model criteria>
- *
- * L1s also get their L2 titles appended as a hint that the goal is a
- * parent; L2s get their parent L1 title as a separate field.
- *
- * Empty sections are skipped so the model doesn't see noise headers.
  */
 export function flattenGoalsForClassification(tree) {
   const out = [];
   for (const l1 of tree?.l1s || []) {
-    const id = l1.id;
-    if (!id || !l1.title?.trim()) continue;
-    out.push({
-      id,
-      kind: "L1",
-      title: l1.title.trim(),
-      description: buildL1Description(l1),
-    });
+    if (!l1.title?.trim()) continue;
     for (const l2 of l1.l2s || []) {
       if (!l2.id || !l2.title?.trim()) continue;
       out.push({

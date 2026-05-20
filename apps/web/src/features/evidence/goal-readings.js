@@ -23,6 +23,7 @@ import {
   avgReviewerComments,
   countMrComments,
   fmtDurationHours,
+  firstPassRatePct,
   linkagePct,
   medianTurnaroundDays,
   mergedWithin,
@@ -175,6 +176,16 @@ export function summarizeGoal(spec, goal, ctx) {
     };
   }
 
+  // Phase A: explicitly untrackable. Show the reason as the achieved
+  // value so the export carries the user's rationale.
+  if (spec?.untrackable?.reason) {
+    return {
+      value: spec.untrackable.reason,
+      statusTone: TONES.MUTED,
+      statusLabel: "untrackable",
+    };
+  }
+
   switch (spec.widget) {
     case SPEC_KINDS.MERGED_COUNT:
       return readMergedCount(spec, ctx);
@@ -200,6 +211,26 @@ export function summarizeGoal(spec, goal, ctx) {
       return readFreeText(spec, goal, ctx);
     case SPEC_KINDS.BEFORE_AFTER:
       return readBeforeAfter(spec, goal, ctx);
+    // Phase D2: % of merged PRs with ≤ 1 reviewer comment.
+    case SPEC_KINDS.FIRST_PASS_RATE:
+      return readFirstPassRate(spec, ctx);
+    // Phase D1: per-incident logger + period-resetting checklist.
+    case SPEC_KINDS.INCIDENT_LOG:
+      return readIncidentLog(spec, goal, ctx);
+    case SPEC_KINDS.RECURRING_MILESTONE:
+      return readRecurringMilestone(spec, goal, ctx);
+    // Phase D3: CI/CD widgets. No live build-events in the evidence
+    // ctx (the resolver doesn't fetch Jenkins / GH Actions), so we
+    // prefer snapshot compliance when available and otherwise
+    // surface a "needs scope / tracked via dashboard" placeholder.
+    case SPEC_KINDS.DEPLOY_FREQUENCY:
+    case SPEC_KINDS.LEAD_TIME:
+    case SPEC_KINDS.BUILD_PASS_RATE:
+      return readCiCdFromCompliance(spec, ctx);
+    // Phase E: composite. Aggregate score from snapshot compliance
+    // when available; otherwise show component count + a hint.
+    case SPEC_KINDS.SCORECARD:
+      return readScorecard(spec, ctx);
     default:
       return { value: "—", statusTone: TONES.MUTED, statusLabel: "unknown" };
   }
@@ -448,6 +479,123 @@ function readBeforeAfter(_spec, goal, { allInputs }) {
     value: `${baseline} → ${current} (${arrow} ${Math.abs(delta).toFixed(1)})`,
     statusTone: delta > 0 ? TONES.OK : delta < 0 ? TONES.WARN : TONES.MUTED,
     statusLabel: delta > 0 ? "improved" : delta < 0 ? "regressed" : "flat",
+  };
+}
+
+/* ────────── Phase D2 / D3 / E readings ────────── */
+
+/**
+ * FIRST_PASS_RATE — % of merged PRs going through with ≤ 1 reviewer
+ * comment. Prefers snapshot-stream compliance over an in-window
+ * read, same as the other auto-from-MR widgets.
+ */
+function readFirstPassRate(spec, ctx) {
+  const fromCompliance = readingFromCompliance(spec, ctx);
+  if (fromCompliance) return fromCompliance;
+  const result = firstPassRatePct(ctx.mrs);
+  if (!result) return empty();
+  const pct = result.pct ?? 0;
+  return withTarget(pct, spec.source?.target, `${pct}% clean`);
+}
+
+/**
+ * INCIDENT_LOG — per-incident logger. Reads from goal-inputs entries
+ * with `{ severity, downtime, link? }` shape. Headline = total
+ * downtime + incident count, compared against the target's budget
+ * value (e.g. ≤ 43 minutes / quarter).
+ */
+function readIncidentLog(spec, goal, { allInputs }) {
+  const entries = allInputs[goal.id] || [];
+  if (entries.length === 0) return empty("No incidents logged");
+  let total = 0;
+  for (const e of entries) {
+    const d = Number(e?.value?.downtime);
+    if (Number.isFinite(d)) total += d;
+  }
+  const target = spec.manual?.target;
+  const unit = spec.manual?.unit || "minutes";
+  const period = target?.period || spec.manual?.cadence;
+  const periodSuffix = period ? ` / ${period}` : "";
+  if (!target || target.value == null) {
+    return {
+      value: `${entries.length} incidents · Σ ${total} ${unit}`,
+      statusTone: TONES.ACCENT,
+      statusLabel: "tracked",
+    };
+  }
+  // Target is "≤ N minutes per period" — under = good, over = warn.
+  // Use the same withTarget evaluator (lowerIsBetter for "<=").
+  return withTarget(
+    total,
+    target,
+    `${entries.length} incidents · Σ ${total} ${unit}${periodSuffix}`,
+    { lowerIsBetter: target.op === "<=" },
+  );
+}
+
+/**
+ * RECURRING_MILESTONE — checklist that resets each period. Reads the
+ * MOST RECENT entry's items (current period's progress) and reports
+ * "M of N done · pct%". Streak (consecutive complete periods) is a
+ * dashboard nicety we don't recompute here — evidence wants the
+ * latest snapshot, not the history.
+ */
+function readRecurringMilestone(_spec, goal, { allInputs }) {
+  const entries = allInputs[goal.id] || [];
+  const latest = entries[entries.length - 1];
+  const items = Array.isArray(latest?.value?.items) ? latest.value.items : [];
+  if (items.length === 0) return empty("No checklist yet");
+  const done = items.filter((it) => it.done).length;
+  const pct = Math.round((done / items.length) * 100);
+  return {
+    value: `${done} of ${items.length} done · ${pct}%`,
+    statusTone:
+      pct === 100 ? TONES.OK : pct >= 50 ? TONES.ACCENT : TONES.MUTED,
+    statusLabel:
+      pct === 100 ? "period complete" : pct >= 50 ? "in progress" : "early",
+  };
+}
+
+/**
+ * CI/CD widgets (DEPLOY_FREQUENCY / LEAD_TIME / BUILD_PASS_RATE).
+ *
+ * The evidence resolver doesn't fetch build events (no Jenkins /
+ * GH Actions wiring here — that's the dashboard's job). So we try
+ * snapshot-stream compliance first (captured by the dashboard
+ * snapshotter when goal readings are taken) and otherwise show a
+ * "tracked on dashboard" placeholder rather than a blank "—". The
+ * value still appears in exports, just without a numeric headline.
+ */
+function readCiCdFromCompliance(spec, ctx) {
+  const fromCompliance = readingFromCompliance(spec, ctx);
+  if (fromCompliance) return fromCompliance;
+  return {
+    value: "Tracked via dashboard",
+    statusTone: TONES.MUTED,
+    statusLabel: "no snapshot yet",
+  };
+}
+
+/**
+ * SCORECARD — composite widget. We don't recompute its weighted
+ * aggregate here (that would mean re-running every component's
+ * resolution path), so we prefer the snapshot-stream compliance
+ * recorded by the dashboard. Falling back to "N components" gives
+ * the export something readable even when no snapshots exist.
+ */
+function readScorecard(spec, ctx) {
+  const fromCompliance = readingFromCompliance(spec, ctx);
+  if (fromCompliance) return fromCompliance;
+  const n = Array.isArray(spec?.scorecard?.components)
+    ? spec.scorecard.components.length
+    : 0;
+  if (n === 0) {
+    return empty("Scorecard not configured");
+  }
+  return {
+    value: `Scorecard · ${n} component${n === 1 ? "" : "s"}`,
+    statusTone: TONES.MUTED,
+    statusLabel: "tracked on dashboard",
   };
 }
 

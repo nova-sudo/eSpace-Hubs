@@ -96,7 +96,12 @@ export function useGoalWidgetItems() {
 
   const unclassifiedGoals = useMemo(() => {
     const flat = flattenGoals(goals);
-    return flat.filter((g) => !specs.has(g.id));
+    // L1s are titles/category headers in the eSpace performance-review
+    // model — they aren't standalone goals that need classification.
+    // The analyst classifies L2s only; the dashboard renders L1s as
+    // section headers above their L2 children. Filtering them out
+    // here keeps the toolbar's "N goals unclassified" count honest.
+    return flat.filter((g) => g.kind !== "L1" && !specs.has(g.id));
   }, [goals, specs]);
 
   const hasGoals = (goals?.l1s?.length || 0) > 0;
