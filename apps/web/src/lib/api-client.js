@@ -29,6 +29,8 @@ const API_BASE = "/api/v1";
  */
 const PUBLIC_AUTH_PATHS = Object.freeze([
   "/login",
+  "/signup",
+  "/waiting-approval",
   "/forgot-password",
   "/password-reset",
   "/accept-invite",
@@ -38,14 +40,34 @@ const PUBLIC_AUTH_PATHS = Object.freeze([
 ]);
 
 /**
- * Some 401s mean "you have a partial session, finish step 2" rather
- * than "your session is gone." Don't redirect on these — the UI is
- * about to ask for a TOTP code or similar continuation.
+ * ALLOWLIST: the ONLY 401 error codes that mean "your session is gone,
+ * send the user back to /login." Everything else is a 401 from some
+ * OTHER source and should NOT trigger a redirect:
+ *
+ *   - integration_misconfigured  → user's GitHub/GitLab/Jira token is
+ *                                   bad. The widget should render a
+ *                                   reconnect prompt, not bounce auth.
+ *   - http_401 (upstream)        → the integration proxy passed
+ *                                   through a 401 from GitHub/GitLab
+ *                                   /Jira (their auth, not ours).
+ *                                   Same as above.
+ *   - totp_required              → partial session waiting for TOTP.
+ *                                   Login form swaps to step 2; not
+ *                                   a "you're logged out" signal.
+ *   - invalid_credentials,
+ *     invalid_totp_code          → only emitted on /login, which is
+ *                                   already in PUBLIC_AUTH_PATHS, but
+ *                                   defensively NOT in the allowlist.
+ *
+ * Switching from the previous blocklist to this allowlist fixes the
+ * infinite loop where landing in a hub fired off integration calls,
+ * those returned 401 (no tokens yet), api-client redirected to /login,
+ * useSession's /me succeeded (session was fine!), LoginForm saw the
+ * authenticated user and bounced back to the hub, which then fired
+ * the same integration calls and… loop.
  */
-const NON_REDIRECT_401_CODES = Object.freeze(new Set([
-  "totp_required",
-  // Add more here if future endpoints use 401 to signal "you need to
-  // do X first" rather than "you're not logged in."
+const REDIRECT_401_CODES = Object.freeze(new Set([
+  "unauthenticated", // the canonical "no session" signal from requireAuth
 ]));
 
 /**
@@ -59,7 +81,10 @@ let redirectingToLogin = false;
 function maybeRedirectToLogin(errorCode) {
   if (typeof window === "undefined") return;
   if (redirectingToLogin) return;
-  if (errorCode && NON_REDIRECT_401_CODES.has(errorCode)) return;
+  // Allowlist semantics — anything OTHER than the explicit "session is
+  // gone" codes stays on the current page so consumers can render
+  // their own "reconnect integration" / "wrong password" UI.
+  if (!errorCode || !REDIRECT_401_CODES.has(errorCode)) return;
 
   const path = window.location.pathname || "/";
   for (const pub of PUBLIC_AUTH_PATHS) {
