@@ -56,6 +56,46 @@ export const updateUserSchema = z.object({
 });
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 
+// ─── POST /api/v1/admin/signup-codes ─────────────────────────────────
+
+/**
+ * Mint a new signup code for the admin's org. The code is the string
+ * users type at /signup; admin distributes it OOB (DM, Slack DM, etc).
+ *
+ * Constraints:
+ *   - code is required, 4-64 chars, uppercased server-side so callers
+ *     don't have to remember (lookup uses the literal string but UX
+ *     conventions are uppercase).
+ *   - expiresAt is optional. null/missing = never expires. The
+ *     controller refuses dates in the past (defensive — would mint a
+ *     code that's already dead).
+ */
+export const createSignupCodeSchema = z.object({
+  code: z
+    .string()
+    .min(4)
+    .max(64)
+    .regex(
+      /^[A-Za-z0-9._-]+$/,
+      "code must be alphanumeric (plus . _ -)",
+    )
+    .transform((s) => s.trim()),
+  expiresAt: z.string().datetime({ offset: true }).nullable().optional(),
+});
+export type CreateSignupCodeInput = z.infer<typeof createSignupCodeSchema>;
+
+// ─── PATCH /api/v1/admin/signup-codes/:code ──────────────────────────
+
+/**
+ * Disable (or re-enable) a signup code. `disabled: true` writes
+ * disabledAt=now; `disabled: false` clears it. Past usedCount is
+ * preserved in either branch — disabling doesn't erase history.
+ */
+export const updateSignupCodeSchema = z.object({
+  disabled: z.boolean(),
+});
+export type UpdateSignupCodeInput = z.infer<typeof updateSignupCodeSchema>;
+
 // ─── GET /api/v1/admin/audit ─────────────────────────────────────────
 
 /**

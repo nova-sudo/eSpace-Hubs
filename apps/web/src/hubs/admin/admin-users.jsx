@@ -38,7 +38,7 @@ import { HUB_ORDER } from "@espace-devhub/shared/hubs";
 // imported because the shared package doesn't re-export them yet and
 // the list is small + stable.
 const ALL_ROLES = ["admin", "dev", "qa", "manager", "hr", "po", "member"];
-const ALL_STATUSES = ["invited", "active", "disabled"];
+const ALL_STATUSES = ["invited", "pending_admin", "active", "disabled"];
 
 export function AdminUsers() {
   const { user: sessionUser } = useSession();
@@ -144,6 +144,11 @@ export function AdminUsers() {
         />
       ) : null}
 
+      {/* Self-serve signup configuration. Codes admins distribute
+          out-of-band to people who should be able to /signup against
+          this org. */}
+      <SignupCodesPanel />
+
       {loading ? (
         <div
           className="text-muted-fg"
@@ -159,22 +164,321 @@ export function AdminUsers() {
           No users found for this org.
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
-          {users.map((u) => (
-            <UserRow
-              key={u.id}
-              user={u}
-              isSelf={sessionUser?.id === u.id}
-              expanded={openUserId === u.id}
-              onExpand={() =>
-                setOpenUserId(openUserId === u.id ? null : u.id)
-              }
-              onUpdate={applyUpdate}
-            />
-          ))}
-        </div>
+        <>
+          {/* Pending-approval queue surfaced at the top so self-sign-ups
+              don't get lost in the main roster. Empty when there are
+              no pending users — the section header hides itself. */}
+          <PendingApprovalsSection
+            users={users}
+            openUserId={openUserId}
+            onExpand={(id) => setOpenUserId(openUserId === id ? null : id)}
+            onUpdate={applyUpdate}
+            sessionUserId={sessionUser?.id}
+          />
+          <div className="flex flex-col gap-2">
+            <h2
+              className="mt-6 mb-2 uppercase tracking-[0.5px] text-muted-fg"
+              style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
+            >
+              Members
+            </h2>
+            {users.map((u) => (
+              <UserRow
+                key={u.id}
+                user={u}
+                isSelf={sessionUser?.id === u.id}
+                expanded={openUserId === u.id}
+                onExpand={() =>
+                  setOpenUserId(openUserId === u.id ? null : u.id)
+                }
+                onUpdate={applyUpdate}
+              />
+            ))}
+          </div>
+        </>
       )}
     </main>
+  );
+}
+
+/* ─────────────────────── Pending approvals ─────────────────────── */
+
+function PendingApprovalsSection({ users, openUserId, onExpand, onUpdate, sessionUserId }) {
+  const pending = users.filter((u) => u.status === "pending_admin");
+  if (pending.length === 0) return null;
+  return (
+    <section className="mt-2">
+      <div className="mb-2 flex items-baseline justify-between">
+        <h2
+          className="uppercase tracking-[0.5px]"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
+            color: "var(--warn, #d97706)",
+          }}
+        >
+          Pending approvals · {pending.length}
+        </h2>
+        <span
+          className="text-muted-fg"
+          style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
+        >
+          self-sign-ups awaiting role + hub
+        </span>
+      </div>
+      <div className="flex flex-col gap-2">
+        {pending.map((u) => (
+          <UserRow
+            key={u.id}
+            user={u}
+            isSelf={sessionUserId === u.id}
+            expanded={openUserId === u.id}
+            onExpand={() => onExpand(u.id)}
+            onUpdate={onUpdate}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────── Signup codes panel ─────────────────────── */
+
+function SignupCodesPanel() {
+  const [codes, setCodes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const [newCode, setNewCode] = useState("");
+  const [newExpires, setNewExpires] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function reload() {
+    const r = await apiGet("/admin/signup-codes");
+    if (!r.ok) {
+      toast.error(r.error?.message || "Couldn't load signup codes.");
+      setLoading(false);
+      return;
+    }
+    setCodes(r.data?.codes ?? []);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleMint(e) {
+    e.preventDefault();
+    if (!newCode.trim()) return;
+    setSubmitting(true);
+    const body = { code: newCode.trim() };
+    if (newExpires) {
+      // datetime-local sends a tz-less string; assume the admin meant
+      // their local timezone and convert to ISO with offset.
+      body.expiresAt = new Date(newExpires).toISOString();
+    }
+    const r = await apiPost("/admin/signup-codes", body);
+    setSubmitting(false);
+    if (!r.ok) {
+      toast.error(r.error?.message || "Couldn't mint code.");
+      return;
+    }
+    setCodes((prev) => [r.data.code, ...prev]);
+    setNewCode("");
+    setNewExpires("");
+    toast.success(`Code "${r.data.code.code}" minted.`);
+  }
+
+  async function handleToggle(code) {
+    const target = code.disabledAt ? false : true;
+    const r = await apiPatch(`/admin/signup-codes/${encodeURIComponent(code.code)}`, {
+      disabled: target,
+    });
+    if (!r.ok) {
+      toast.error(r.error?.message || "Couldn't update code.");
+      return;
+    }
+    setCodes((prev) =>
+      prev.map((c) => (c.code === code.code ? r.data.code : c)),
+    );
+    toast.success(target ? `Code "${code.code}" disabled.` : `Code "${code.code}" re-enabled.`);
+  }
+
+  return (
+    <section className="mb-6 rounded-md border bg-card" style={{ borderColor: "var(--border-strong)" }}>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between gap-4 px-5 py-3 text-left transition-colors hover:bg-accent-dim/20"
+      >
+        <div className="flex items-baseline gap-3">
+          <span className="text-[14px] font-semibold" style={{ letterSpacing: "-0.2px" }}>
+            Signup codes
+          </span>
+          <span
+            className="text-muted-fg"
+            style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
+          >
+            {loading ? "loading…" : `${codes.filter((c) => !c.disabledAt).length} active · ${codes.length} total`}
+          </span>
+        </div>
+        <span
+          className="text-muted-fg"
+          style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
+        >
+          {expanded ? "▾" : "▸"}
+        </span>
+      </button>
+      {expanded ? (
+        <div className="border-t px-5 py-4" style={{ borderColor: "var(--border)" }}>
+          <p className="mb-3 text-[12.5px] leading-[1.55] text-muted-fg">
+            Distribute these codes out-of-band to people who should be
+            able to create accounts via <code>/signup</code>. Each
+            signup attempt validates the code; disabled / expired codes
+            are rejected.
+          </p>
+
+          <form className="mb-4 flex flex-wrap items-end gap-2" onSubmit={handleMint}>
+            <label className="flex flex-col gap-1">
+              <span
+                className="uppercase tracking-[0.5px] text-muted-fg"
+                style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
+              >
+                Code
+              </span>
+              <input
+                value={newCode}
+                onChange={(e) => setNewCode(e.target.value)}
+                placeholder="ESPACE-2026"
+                disabled={submitting}
+                style={{ ...inputStyle, textTransform: "uppercase", letterSpacing: "1px" }}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span
+                className="uppercase tracking-[0.5px] text-muted-fg"
+                style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
+              >
+                Expires (optional)
+              </span>
+              <input
+                type="datetime-local"
+                value={newExpires}
+                onChange={(e) => setNewExpires(e.target.value)}
+                disabled={submitting}
+                style={inputStyle}
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={!newCode.trim() || submitting}
+              style={{
+                ...primaryButtonStyle,
+                opacity: !newCode.trim() || submitting ? 0.5 : 1,
+              }}
+            >
+              {submitting ? "Minting…" : "+ Mint code"}
+            </button>
+          </form>
+
+          {codes.length === 0 ? (
+            <div
+              className="text-muted-fg"
+              style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
+            >
+              No codes yet. Mint one above to enable self-serve signup.
+            </div>
+          ) : (
+            <ul className="flex flex-col gap-1.5">
+              {codes.map((c) => (
+                <SignupCodeRow key={c.code} code={c} onToggle={() => handleToggle(c)} />
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function SignupCodeRow({ code, onToggle }) {
+  const isDisabled = !!code.disabledAt;
+  const isExpired = code.expiresAt && new Date(code.expiresAt).getTime() <= Date.now();
+  const dim = isDisabled || isExpired;
+  return (
+    <li
+      className="flex flex-wrap items-baseline justify-between gap-2 rounded-md px-3 py-2"
+      style={{
+        background: "var(--bg)",
+        opacity: dim ? 0.55 : 1,
+      }}
+    >
+      <div className="flex items-baseline gap-3">
+        <code
+          className="font-semibold"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 13,
+            letterSpacing: "0.4px",
+            textTransform: "uppercase",
+          }}
+        >
+          {code.code}
+        </code>
+        <span
+          className="text-muted-fg"
+          style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
+        >
+          used {code.usedCount}×
+        </span>
+        {isExpired ? (
+          <span
+            className="rounded-full border border-bad px-1.5 py-px"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              color: "var(--bad)",
+            }}
+          >
+            EXPIRED
+          </span>
+        ) : null}
+        {isDisabled ? (
+          <span
+            className="rounded-full border px-1.5 py-px"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              color: "var(--muted-fg)",
+              borderColor: "var(--muted-fg)",
+            }}
+          >
+            DISABLED
+          </span>
+        ) : null}
+        {code.expiresAt && !isExpired ? (
+          <span
+            className="text-muted-fg"
+            style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
+          >
+            expires {new Date(code.expiresAt).toLocaleDateString()}
+          </span>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.4px] hover:bg-accent-dim/40"
+        style={{
+          fontFamily: "var(--font-mono)",
+          borderColor: "var(--border)",
+          color: "var(--muted-fg)",
+        }}
+      >
+        {isDisabled ? "Enable" : "Disable"}
+      </button>
+    </li>
   );
 }
 
@@ -601,12 +905,17 @@ function Pill({ checked, disabled, onClick, children }) {
 }
 
 function StatusPill({ status }) {
+  // pending_admin is the self-sign-up "awaiting approval" state —
+  // use the amber/warning tone so admins can spot the queue at a
+  // glance in the user list.
   const color =
     status === "active"
       ? "var(--good, #16a34a)"
       : status === "invited"
         ? "var(--accent)"
-        : "var(--bad, #b91c1c)";
+        : status === "pending_admin"
+          ? "var(--warn, #d97706)"
+          : "var(--bad, #b91c1c)";
   return (
     <span
       className="rounded-full px-2 py-0.5"
@@ -619,7 +928,7 @@ function StatusPill({ status }) {
         border: `1px solid ${color}`,
       }}
     >
-      {status}
+      {status === "pending_admin" ? "pending" : status}
     </span>
   );
 }

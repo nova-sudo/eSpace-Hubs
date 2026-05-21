@@ -28,16 +28,24 @@ import { ObjectId } from "mongodb";
 import { findHubById, HUB_ORDER } from "@espace-devhub/shared/hubs";
 import {
   getAuditLogCollection,
+  getOrgsCollection,
   getSessionsCollection,
   getUsersCollection,
 } from "../../db/collections.js";
-import type { AuditLogEntry, User, UserRole } from "../../db/types.js";
+import type {
+  AuditLogEntry,
+  SignupCode,
+  User,
+  UserRole,
+} from "../../db/types.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { logger } from "../../lib/logger.js";
 import { effectiveRoles } from "../../lib/user-roles.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import {
+  createSignupCodeSchema,
   listAuditQuerySchema,
+  updateSignupCodeSchema,
   updateUserSchema,
 } from "./schemas.js";
 
@@ -567,6 +575,216 @@ export async function listAuditHandler(
           ? page[page.length - 1]?.ts.toISOString() ?? null
           : null,
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── signup codes ────────────────────────────────────────────────────
+
+/**
+ * Public-safe shape — the embedded `createdBy` ObjectId is hex-encoded
+ * and Date fields become ISO strings. The raw `code` string itself is
+ * NOT sensitive (admins distribute it OOB; knowing the code is the
+ * whole point), so we expose it as-is.
+ */
+interface PublicSignupCode {
+  code: string;
+  createdAt: string;
+  createdBy: string;
+  expiresAt: string | null;
+  disabledAt: string | null;
+  usedCount: number;
+}
+
+function toPublicSignupCode(c: SignupCode): PublicSignupCode {
+  return {
+    code: c.code,
+    createdAt: c.createdAt.toISOString(),
+    createdBy: c.createdBy.toHexString(),
+    expiresAt: c.expiresAt ? c.expiresAt.toISOString() : null,
+    disabledAt: c.disabledAt ? c.disabledAt.toISOString() : null,
+    usedCount: c.usedCount ?? 0,
+  };
+}
+
+// ─── GET /api/v1/admin/signup-codes ──────────────────────────────────
+
+export async function listSignupCodesHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const orgs = await getOrgsCollection();
+    const org = await orgs.findOne({ _id: session.orgId });
+    const codes = Array.isArray(org?.signupCodes) ? org.signupCodes : [];
+    // Sort active codes first, then disabled, each newest-first.
+    const sorted = [...codes].sort((a, b) => {
+      const aActive = a.disabledAt == null ? 0 : 1;
+      const bActive = b.disabledAt == null ? 0 : 1;
+      if (aActive !== bActive) return aActive - bActive;
+      return b.createdAt.getTime() - a.createdAt.getTime();
+    });
+    res.json({ codes: sorted.map(toPublicSignupCode) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── POST /api/v1/admin/signup-codes ─────────────────────────────────
+
+export async function createSignupCodeHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const body = createSignupCodeSchema.parse(req.body);
+    const now = new Date();
+
+    const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
+    if (expiresAt && expiresAt.getTime() <= now.getTime()) {
+      throw new HttpError(
+        400,
+        "invalid_expires_at",
+        "expiresAt must be in the future (or null for never).",
+      );
+    }
+
+    // Global uniqueness — checking ALL orgs because the /signup
+    // lookup matches any org with this code. Two different orgs
+    // sharing the same code would let a stranger pick the wrong
+    // org by typing it.
+    const orgs = await getOrgsCollection();
+    const collision = await orgs.findOne({
+      "signupCodes.code": body.code,
+    });
+    if (collision) {
+      throw new HttpError(
+        409,
+        "code_taken",
+        "That code is already in use. Pick another.",
+      );
+    }
+
+    const newCode: SignupCode = {
+      code: body.code,
+      createdAt: now,
+      createdBy: session.userId,
+      expiresAt,
+      disabledAt: null,
+      usedCount: 0,
+    };
+
+    const result = await orgs.findOneAndUpdate(
+      { _id: session.orgId },
+      {
+        $push: { signupCodes: newCode },
+        $set: { updatedAt: now },
+      },
+      { returnDocument: "after" },
+    );
+    if (!result) {
+      throw new HttpError(500, "internal_error", "Org not found.");
+    }
+
+    await writeAudit({
+      orgId: session.orgId,
+      actorUserId: session.userId,
+      actorRole: session.role,
+      action: "signup_code.create",
+      targetType: "org",
+      targetId: session.orgId.toHexString(),
+      after: { code: body.code, expiresAt: expiresAt?.toISOString() ?? null },
+      ...networkMeta(req),
+    });
+
+    res.json({ code: toPublicSignupCode(newCode) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── PATCH /api/v1/admin/signup-codes/:code ──────────────────────────
+
+export async function updateSignupCodeHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const code = req.params.code;
+    if (typeof code !== "string" || !code.trim()) {
+      throw new HttpError(400, "invalid_code", "Code path param is required.");
+    }
+    const { disabled } = updateSignupCodeSchema.parse(req.body);
+    const now = new Date();
+    const orgs = await getOrgsCollection();
+
+    // Find current state so the audit row carries a meaningful before/after.
+    const org = await orgs.findOne({
+      _id: session.orgId,
+      "signupCodes.code": code,
+    });
+    if (!org) {
+      throw new HttpError(404, "not_found", "Signup code not found.");
+    }
+    const before = (org.signupCodes ?? []).find((c) => c.code === code);
+    if (!before) {
+      throw new HttpError(404, "not_found", "Signup code not found.");
+    }
+
+    const newDisabledAt = disabled ? now : null;
+    // Idempotency: no-op if already in the requested state.
+    if (
+      (disabled && before.disabledAt != null) ||
+      (!disabled && before.disabledAt == null)
+    ) {
+      res.json({ code: toPublicSignupCode(before) });
+      return;
+    }
+
+    const result = await orgs.findOneAndUpdate(
+      { _id: session.orgId, "signupCodes.code": code },
+      {
+        $set: {
+          "signupCodes.$.disabledAt": newDisabledAt,
+          updatedAt: now,
+        },
+      },
+      { returnDocument: "after" },
+    );
+    const updated = result?.signupCodes?.find((c) => c.code === code);
+    if (!updated) {
+      throw new HttpError(500, "internal_error", "Update returned no code.");
+    }
+
+    await writeAudit({
+      orgId: session.orgId,
+      actorUserId: session.userId,
+      actorRole: session.role,
+      action: disabled ? "signup_code.disable" : "signup_code.enable",
+      targetType: "org",
+      targetId: session.orgId.toHexString(),
+      before: { code, disabledAt: before.disabledAt?.toISOString() ?? null },
+      after: { code, disabledAt: newDisabledAt?.toISOString() ?? null },
+      ...networkMeta(req),
+    });
+
+    res.json({ code: toPublicSignupCode(updated) });
   } catch (err) {
     next(err);
   }

@@ -7,6 +7,10 @@
  *                                       (admin-side recovery for lost
  *                                       authenticators; not allowed on self)
  *
+ *   GET   /signup-codes                admin: list org's self-serve signup codes
+ *   POST  /signup-codes                admin: mint a new signup code
+ *   PATCH /signup-codes/:code          admin: enable / disable a code
+ *
  *   GET   /audit                       admin: filterable audit-log feed
  *
  * Authorization: every route requires a full session AND the admin
@@ -21,9 +25,12 @@ import { Router } from "express";
 import { requireAuth } from "../../middleware/require-auth.js";
 import { requireRole } from "../../middleware/require-role.js";
 import {
+  createSignupCodeHandler,
   listAuditHandler,
+  listSignupCodesHandler,
   listUsersHandler,
   resetUserTotpHandler,
+  updateSignupCodeHandler,
   updateUserHandler,
 } from "./controller.js";
 
@@ -46,6 +53,25 @@ adminRouter.post(
   requireAuth(),
   requireRole("admin"),
   resetUserTotpHandler,
+);
+
+adminRouter.get(
+  "/signup-codes",
+  requireAuth(),
+  requireRole("admin"),
+  listSignupCodesHandler,
+);
+adminRouter.post(
+  "/signup-codes",
+  requireAuth(),
+  requireRole("admin"),
+  createSignupCodeHandler,
+);
+adminRouter.patch(
+  "/signup-codes/:code",
+  requireAuth(),
+  requireRole("admin"),
+  updateSignupCodeHandler,
 );
 
 adminRouter.get(
