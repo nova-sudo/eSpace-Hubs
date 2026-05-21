@@ -34,6 +34,7 @@ import {
   loginLimiter,
   passwordResetLimiter,
   passwordResetRequestLimiter,
+  signupLimiter,
   totpLimiter,
 } from "../../middleware/rate-limit.js";
 import {
@@ -45,6 +46,7 @@ import {
   meHandler,
   passwordResetHandler,
   passwordResetRequestHandler,
+  signupHandler,
   totpDisableHandler,
   totpEnrolHandler,
   totpVerifyEnrolmentHandler,
@@ -60,6 +62,7 @@ export const authRouter: Router = Router();
 // stuffing attack sweeping many accounts from one host.
 authRouter.post("/login", loginLimiter, loginHandler);
 authRouter.post("/logout", logoutHandler);
+authRouter.post("/signup", signupLimiter, signupHandler);
 authRouter.post("/accept-invite", inviteAcceptLimiter, acceptInviteHandler);
 authRouter.post(
   "/password/reset-request",

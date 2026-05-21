@@ -75,6 +75,23 @@ export type PasswordResetRequestInput = z.infer<
   typeof passwordResetRequestSchema
 >;
 
+/**
+ * Self-serve signup payload. Different from invite-accept because the
+ * user proves "you should be allowed here" via the org's `signupCode`,
+ * not a one-time invite token they got from an admin.
+ *
+ * Display name is required (unlike invite-accept where it's optional)
+ * — the invite handler had a placeholder display name on the user
+ * doc the admin typed; signup has no such fallback.
+ */
+export const signupSchema = z.object({
+  email,
+  password,
+  displayName,
+  signupCode: z.string().min(4).max(64),
+});
+export type SignupInput = z.infer<typeof signupSchema>;
+
 export const passwordResetSchema = z.object({
   token: oneTimeToken,
   password,

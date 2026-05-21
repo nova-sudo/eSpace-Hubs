@@ -252,7 +252,7 @@ export function LoginForm({ onSuccess }) {
               just stuck on the 6-digit code; the right recovery there
               is backup codes, not password reset). */}
           <div
-            className="mt-1"
+            className="mt-1 flex flex-col gap-2"
             style={{
               fontFamily: "var(--font-mono)",
               fontSize: 11,
@@ -267,6 +267,16 @@ export function LoginForm({ onSuccess }) {
             >
               Forgot password?
             </Link>
+            <div>
+              Don't have an account?{" "}
+              <Link
+                href="/signup"
+                className="text-accent hover:underline"
+                style={{ fontWeight: 600 }}
+              >
+                Create one
+              </Link>
+            </div>
           </div>
         </form>
       )}

@@ -36,11 +36,39 @@ export interface OrgSettings {
   };
 }
 
+/**
+ * One-shot signup code an admin distributes to people who should be
+ * able to self-sign-up against this org. Embedded as an array on the
+ * org doc so a single Mongo read during signup gets both org +
+ * matching code.
+ *
+ * Codes are globally unique (enforced at insert by the admin
+ * controller). Disabling a code keeps it on the document for
+ * audit-log readability — we never hard-delete used codes.
+ */
+export interface SignupCode {
+  /** The plain-text code users type. Indexed via the parent doc. */
+  code: string;
+  createdAt: Date;
+  createdBy: ObjectId;
+  /** ISO ms. null = never expires (admin's responsibility). */
+  expiresAt: Date | null;
+  /** Set to a Date when admin revokes the code. Null = still active. */
+  disabledAt: Date | null;
+  /** Convenience counter — bumped every successful signup. */
+  usedCount: number;
+}
+
 export interface Org {
   _id: ObjectId;
   slug: string; // url-safe id, e.g. "default"
   name: string;
   settings: OrgSettings;
+  /**
+   * Active + retired signup codes. Optional/nullable for migration
+   * compatibility with pre-signup orgs; readers default to [].
+   */
+  signupCodes?: SignupCode[] | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -72,10 +100,23 @@ export const ALL_USER_ROLES: readonly UserRole[] = [
   "member",
 ] as const;
 
-export type UserStatus = "invited" | "active" | "disabled";
+/**
+ * `pending_admin` is the self-signup status — the user proved email
+ * ownership by knowing the org's signup code, set a password, and (per
+ * policy) completed TOTP enrolment + the onboarding form, but admin
+ * still hasn't assigned them a role / hub. Login works for these
+ * users; they just land on /waiting-approval until admin promotes
+ * them to `active`.
+ */
+export type UserStatus =
+  | "invited"
+  | "pending_admin"
+  | "active"
+  | "disabled";
 
 export const ALL_USER_STATUSES: readonly UserStatus[] = [
   "invited",
+  "pending_admin",
   "active",
   "disabled",
 ] as const;

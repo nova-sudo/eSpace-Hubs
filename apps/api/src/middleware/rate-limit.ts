@@ -132,3 +132,16 @@ export const inviteAcceptLimiter = buildLimiter({
   max: 20,
   label: "invite-accept",
 });
+
+/**
+ * /signup — 10 per hour per IP. Self-service account creation. The
+ * primary anti-abuse mechanism is the org signup CODE — random
+ * sign-ups without a valid code 400 out. The rate-limit is the
+ * secondary layer: it slows a stuffing attack trying to GUESS codes
+ * from a single host, and also caps total account-creation noise.
+ */
+export const signupLimiter = buildLimiter({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  label: "signup",
+});
