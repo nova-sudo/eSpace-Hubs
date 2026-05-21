@@ -76,6 +76,7 @@ import {
   totpVerifySchema,
   type PublicUser,
 } from "./schemas.js";
+import { resolveCompanionPrincipal } from "../companion/bearer-auth.js";
 
 const LOCKOUT_THRESHOLD = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
@@ -1392,8 +1393,11 @@ export async function companionTunnelRegisterHandler(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const session = req.session;
-    if (!session) {
+    // Accept EITHER a browser session OR a companion bearer token.
+    // Phase 3a seeded this from a logged-in browser tab; Phase 3c +
+    // onward the companion app calls it directly with its paired token.
+    const principal = await resolveCompanionPrincipal(req);
+    if (!principal) {
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
     const { hostname } = companionTunnelRegisterSchema.parse(req.body);
@@ -1401,7 +1405,7 @@ export async function companionTunnelRegisterHandler(
     const now = new Date();
 
     // Read current state so we can write an honest before/after audit.
-    const existing = await users.findOne({ _id: session.userId });
+    const existing = await users.findOne({ _id: principal.userId });
     if (!existing) {
       throw new HttpError(404, "not_found", "User not found.");
     }
@@ -1416,21 +1420,21 @@ export async function companionTunnelRegisterHandler(
     };
 
     await users.updateOne(
-      { _id: session.userId },
+      { _id: principal.userId },
       {
         $set: { companionTunnel: next_value, updatedAt: now },
       },
     );
 
     await writeAudit({
-      orgId: session.orgId,
-      actorUserId: session.userId,
-      actorRole: session.role,
+      orgId: principal.orgId,
+      actorUserId: principal.userId,
+      actorRole: principal.role,
       action: "user.companion_tunnel_registered",
       targetType: "user",
-      targetId: session.userId.toHexString(),
+      targetId: principal.userId.toHexString(),
       before: before ? { hostname: before.hostname } : null,
-      after: { hostname },
+      after: { hostname, via: principal.source },
       ...networkMeta(req),
     });
 
@@ -1458,29 +1462,29 @@ export async function companionTunnelClearHandler(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const session = req.session;
-    if (!session) {
+    const principal = await resolveCompanionPrincipal(req);
+    if (!principal) {
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
     const users = await getUsersCollection();
     const now = new Date();
-    const before = await users.findOne({ _id: session.userId });
+    const before = await users.findOne({ _id: principal.userId });
 
     await users.updateOne(
-      { _id: session.userId },
+      { _id: principal.userId },
       { $set: { companionTunnel: null, updatedAt: now } },
     );
 
     if (before?.companionTunnel) {
       await writeAudit({
-        orgId: session.orgId,
-        actorUserId: session.userId,
-        actorRole: session.role,
+        orgId: principal.orgId,
+        actorUserId: principal.userId,
+        actorRole: principal.role,
         action: "user.companion_tunnel_cleared",
         targetType: "user",
-        targetId: session.userId.toHexString(),
+        targetId: principal.userId.toHexString(),
         before: { hostname: before.companionTunnel.hostname },
-        after: null,
+        after: { via: principal.source },
         ...networkMeta(req),
       });
     }
@@ -1509,12 +1513,14 @@ export async function meApiOriginHandler(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const session = req.session;
-    if (!session) {
+    // Mostly called by the browser, but the companion can also poll it
+    // to verify it's the active registration.
+    const principal = await resolveCompanionPrincipal(req);
+    if (!principal) {
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
     const users = await getUsersCollection();
-    const user = await users.findOne({ _id: session.userId });
+    const user = await users.findOne({ _id: principal.userId });
     if (!user) {
       throw new HttpError(404, "not_found", "User not found.");
     }

@@ -17,6 +17,8 @@ import { snapshotsValidator } from "./snapshots.schema.js";
 import { gradingVerdictsValidator } from "./grading-verdicts.schema.js";
 import { integrationsValidator } from "./integrations.schema.js";
 import { hubConfigsValidator } from "./hub-configs.schema.js";
+import { companionDevicesValidator } from "./companion-devices.schema.js";
+import { companionPairingsValidator } from "./companion-pairings.schema.js";
 import type { Document } from "mongodb";
 
 export interface CollectionDef {
@@ -38,4 +40,6 @@ export const COLLECTION_DEFS: readonly CollectionDef[] = [
   { name: "grading_verdicts", validator: gradingVerdictsValidator },
   { name: "integrations", validator: integrationsValidator },
   { name: "hub_configs", validator: hubConfigsValidator },
+  { name: "companion_devices", validator: companionDevicesValidator },
+  { name: "companion_pairings", validator: companionPairingsValidator },
 ] as const;

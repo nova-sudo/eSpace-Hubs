@@ -624,6 +624,80 @@ export interface Integration {
   lastError: string | null;
 }
 
+// ─── companion devices + pairings (Phase 3c) ─────────────────────────
+
+/**
+ * A registered companion-app device. Long-lived bearer tokens that
+ * the companion sends as `Authorization: Bearer …` on its API calls.
+ *
+ * Token storage:
+ *   The raw token is 32 random bytes encoded as base64url (~43 chars).
+ *   We persist only its SHA-256 hash — a database-only compromise
+ *   never yields a working token. On each verify, we hash the
+ *   candidate the same way and look it up by `tokenHash` (indexed).
+ *
+ * Lifetime:
+ *   Tokens DON'T expire by default. The user revokes them explicitly
+ *   from the "Devices" UI (Phase 3e), or admins can mass-revoke if a
+ *   laptop is lost. `revokedAt` flips non-null on revoke; the verify
+ *   path treats those as not-found.
+ *
+ * `lastUsedAt` is bumped on every successful auth (throttled in the
+ * verify helper) so the UI can show "this device last connected 3
+ * minutes ago" without a separate heartbeat collection.
+ */
+export interface CompanionDevice {
+  _id: ObjectId;
+  userId: ObjectId;
+  orgId: ObjectId;
+  /** SHA-256 of the bearer token, base64url-encoded. */
+  tokenHash: string;
+  /** Human-readable label set during the pairing flow (e.g. "Maya's MacBook Pro"). */
+  name: string;
+  createdAt: Date;
+  lastUsedAt: Date;
+  /** When the user revoked the device. Null = active. */
+  revokedAt: Date | null;
+  createdByIp: string | null;
+  createdByUa: string | null;
+}
+
+/**
+ * In-flight device pairing. Created when the companion calls
+ * /companion/pair/start; consumed (turned into a CompanionDevice) when
+ * the user approves it from a logged-in browser tab.
+ *
+ * `_id` IS the pairing code the companion polls with — readable enough
+ * for the user to verify on screen (e.g. "XKCD-1234"). Pairing codes
+ * have a 5-minute TTL via the Mongo index on `expiresAt`; the
+ * approval flow refuses pairings whose expiresAt has passed.
+ */
+export interface CompanionPairing {
+  _id: string;
+  /** Companion's self-reported device name. Stored separately so the
+   * approval UI can show the user what they're approving. */
+  deviceName: string;
+  /** Source IP of the companion's /pair/start call — surfaced in the
+   * approval UI so the user can spot a stranger trying to attach. */
+  createdByIp: string | null;
+  createdByUa: string | null;
+  createdAt: Date;
+  expiresAt: Date;
+  /** Set when the user clicks Approve in the browser. */
+  approvedAt: Date | null;
+  /** The user who approved. Set together with approvedAt. */
+  approvedByUserId: ObjectId | null;
+  /** SHA-256 of the bearer token minted on approval. Returned to the
+   * polling companion ONCE in plaintext on the polling call that
+   * observes the approval, then forgotten — we keep only the hash on
+   * the CompanionDevice row. */
+  pendingTokenHash: string | null;
+  /** Set when the polling companion has fetched its token. After
+   * this, /pair/poll returns "consumed" and the row can be cleaned
+   * up by the TTL index. */
+  consumedAt: Date | null;
+}
+
 // ─── auth tokens (invites + password resets) ────────────────────────
 
 export type AuthTokenKind = "invite" | "password_reset";
