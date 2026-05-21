@@ -22,6 +22,8 @@ export { AcceptInviteForm } from "./accept-invite-form.jsx";
 export { PasswordResetRequestForm } from "./password-reset-request-form.jsx";
 export { PasswordResetForm } from "./password-reset-form.jsx";
 export { TotpSetupForm } from "./totp-setup-form.jsx";
+export { SignupForm } from "./signup-form.jsx";
+export { WaitingApproval } from "./waiting-approval.jsx";
 export { AuthGuard } from "./auth-guard.jsx";
 export { UserChip } from "./user-chip.jsx";
 export {

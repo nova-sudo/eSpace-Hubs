@@ -42,6 +42,21 @@ export const orgsValidator: Document = {
           },
         },
       },
+      signupCodes: {
+        bsonType: ["array", "null"],
+        items: {
+          bsonType: "object",
+          required: ["code", "createdAt", "createdBy", "usedCount"],
+          properties: {
+            code: { bsonType: "string", minLength: 4, maxLength: 64 },
+            createdAt: { bsonType: "date" },
+            createdBy: { bsonType: "objectId" },
+            expiresAt: { bsonType: ["date", "null"] },
+            disabledAt: { bsonType: ["date", "null"] },
+            usedCount: { bsonType: "int", minimum: 0 },
+          },
+        },
+      },
       createdAt: { bsonType: "date" },
       updatedAt: { bsonType: "date" },
     },

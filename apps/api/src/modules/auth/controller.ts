@@ -70,6 +70,7 @@ import {
   passwordResetRequestSchema,
   passwordResetSchema,
   profileUpdateSchema,
+  signupSchema,
   totpDisableSchema,
   totpVerifySchema,
   type PublicUser,
@@ -134,10 +135,14 @@ export async function loginHandler(
       ? await verifyPassword(password, user.passwordHash)
       : await verifyPassword(password, DUMMY_HASH); // burn time anyway
 
+    // Self-sign-up users land with status="pending_admin" — they need
+    // to be able to log in so they can complete TOTP + onboarding and
+    // then sit on the waiting-approval screen. AuthGuard handles the
+    // actual hub-access gating, so accepting them here is safe.
     const validCredentials =
       !!user &&
       !lockedOut &&
-      user.status === "active" &&
+      (user.status === "active" || user.status === "pending_admin") &&
       !!user.passwordHash &&
       passwordOk;
 
@@ -732,9 +737,13 @@ export async function passwordResetRequestHandler(
 
     // Only mint if the user exists AND can actually reset (not
     // disabled, has set up a password). Either way, return ok.
+    // pending_admin users count — they HAVE a password, they just
+    // don't have a role/hub yet; locking them out of reset would
+    // leave them stranded if they forget the password before admin
+    // approves them.
     if (
       user &&
-      user.status === "active" &&
+      (user.status === "active" || user.status === "pending_admin") &&
       user.passwordHash !== null
     ) {
       const meta = networkMeta(req);
@@ -1180,6 +1189,165 @@ export async function totpDisableHandler(
     });
 
     res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+
+// ─── POST /api/v1/auth/signup (public) ───────────────────────────────
+
+/**
+ * Self-serve signup. The user proves they belong to the org by
+ * supplying a signup code an admin distributed; we create a fresh
+ * user row with `status="pending_admin"`, mint a session, and let
+ * them proceed through TOTP setup + onboarding. They land on
+ * /waiting-approval until admin promotes them to "active".
+ *
+ * Security model:
+ *   - The code is the gate. No code, no signup.
+ *   - Codes can be disabled or expire; both branches are checked.
+ *   - One Mongo round-trip finds both the org AND the matching code
+ *     via $elemMatch on the embedded array.
+ *   - Email uniqueness is enforced at the unique index level — a
+ *     duplicate-key error from Mongo becomes the same generic
+ *     "email_taken" response to the client (no enumeration about
+ *     whether the user is invited / active / pending).
+ *   - role + roles + allowedHubs are intentionally left empty / null
+ *     on the new doc. Admin assigns them via the approval queue.
+ *     Until then the user has zero hub access.
+ */
+export async function signupHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { email, password, displayName, signupCode } =
+      signupSchema.parse(req.body);
+
+    const now = new Date();
+    const orgs = await getOrgsCollection();
+    const org = await orgs.findOne({
+      signupCodes: {
+        $elemMatch: {
+          code: signupCode,
+          disabledAt: null,
+          $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
+        },
+      },
+    });
+    if (!org) {
+      throw new HttpError(
+        400,
+        "invalid_signup_code",
+        "Signup code is invalid or expired.",
+      );
+    }
+
+    const users = await getUsersCollection();
+    const existing = await users.findOne({ email });
+    if (existing) {
+      throw new HttpError(
+        400,
+        "email_taken",
+        "An account with this email already exists. Try logging in.",
+      );
+    }
+
+    const passwordHash = await hashPassword(password);
+    const userDoc: User = {
+      _id: undefined as unknown as ObjectId, // assigned by Mongo on insert
+      orgId: org._id,
+      email,
+      passwordHash,
+      // Legacy single-role field needs a value (until the migration
+      // drops it). "member" is the lowest-privilege known role and
+      // confers no hub access on its own — admin assigns real role(s)
+      // during approval.
+      role: "member",
+      roles: null,
+      status: "pending_admin",
+      totpSecret: null,
+      totpEnrolledAt: null,
+      zohoEmployeeId: null,
+      managerId: null,
+      level: null,
+      hireDate: null,
+      displayName,
+      createdAt: now,
+      updatedAt: now,
+      invitedBy: null,
+      invitedAt: null,
+      lastLoginAt: now,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      // Hub access is empty — AuthGuard will trap them at the
+      // /waiting-approval screen after they finish TOTP + onboarding.
+      allowedHubs: [],
+      primaryHub: null,
+      // Onboarding NOT yet complete — guard routes them through
+      // /totp-setup → /onboarding → /waiting-approval.
+      onboardingCompletedAt: null,
+      employeeId: null,
+      department: null,
+      engagement: null,
+    };
+
+    let insertedId: ObjectId;
+    try {
+      const result = await users.insertOne(userDoc);
+      insertedId = result.insertedId;
+    } catch (err) {
+      // Race: another signup landed the same email a millisecond
+      // before us, or the email had a leading-zero unique-index
+      // conflict. Surface as "email_taken" to match the explicit
+      // pre-check above so we never reveal the timing.
+      if (err && typeof err === "object" && "code" in err && err.code === 11000) {
+        throw new HttpError(
+          400,
+          "email_taken",
+          "An account with this email already exists.",
+        );
+      }
+      throw err;
+    }
+
+    // Bump the code's usedCount so admins see traction on each code.
+    await orgs.updateOne(
+      { _id: org._id, "signupCodes.code": signupCode },
+      { $inc: { "signupCodes.$.usedCount": 1 }, $set: { updatedAt: now } },
+    );
+
+    // Mint a session. totpVerified=true because there's nothing to
+    // verify yet (no enrolment); totpEnrolled=false trips the
+    // /totp-setup gate downstream.
+    const meta = networkMeta(req);
+    const { sessionId } = await mintSession({
+      userId: insertedId,
+      orgId: org._id,
+      role: userDoc.role,
+      ip: meta.ip,
+      userAgent: meta.ua,
+      totpVerified: true,
+      totpEnrolled: false,
+    });
+    setSessionCookie(res, sessionId);
+
+    await writeAudit({
+      orgId: org._id,
+      actorUserId: insertedId,
+      actorRole: userDoc.role,
+      action: "user.signup",
+      targetType: "user",
+      targetId: insertedId.toHexString(),
+      after: { email, signupCodeUsed: signupCode },
+      ...meta,
+    });
+
+    res.json({
+      user: toPublicUser({ ...userDoc, _id: insertedId }),
+    });
   } catch (err) {
     next(err);
   }

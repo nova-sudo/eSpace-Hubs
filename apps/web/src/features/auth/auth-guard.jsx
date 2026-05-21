@@ -40,6 +40,7 @@ const AUTH_REQUIRED =
 
 const TOTP_SETUP_PATH = "/totp-setup";
 const ONBOARDING_PATH = "/onboarding";
+const WAITING_APPROVAL_PATH = "/waiting-approval";
 
 export function AuthGuard({ children, fallback = null }) {
   const router = useRouter();
@@ -76,6 +77,21 @@ export function AuthGuard({ children, fallback = null }) {
     !user.onboardingCompletedAt &&
     pathname !== ONBOARDING_PATH;
 
+  // Self-signup gate: TOTP done + onboarding done, but admin hasn't
+  // promoted the user to "active" yet. Trap them at /waiting-approval
+  // regardless of which URL they typed. AuthGuard order matters: this
+  // runs LAST so the user has fully set up their account before we
+  // tell them to wait. Active users skip this branch entirely.
+  const needsApprovalRedirect =
+    AUTH_REQUIRED &&
+    !loading &&
+    !!user &&
+    !needsTotp &&
+    !!user.totpEnrolled &&
+    !!user.onboardingCompletedAt &&
+    user.status === "pending_admin" &&
+    pathname !== WAITING_APPROVAL_PATH;
+
   useEffect(() => {
     if (needsLoginRedirect) {
       const target = `/login${
@@ -92,11 +108,16 @@ export function AuthGuard({ children, fallback = null }) {
     }
     if (needsOnboardingRedirect) {
       router.replace(ONBOARDING_PATH);
+      return;
+    }
+    if (needsApprovalRedirect) {
+      router.replace(WAITING_APPROVAL_PATH);
     }
   }, [
     needsLoginRedirect,
     needsTotpSetupRedirect,
     needsOnboardingRedirect,
+    needsApprovalRedirect,
     pathname,
     router,
   ]);
@@ -106,6 +127,7 @@ export function AuthGuard({ children, fallback = null }) {
   if (!user || needsTotp) return fallback ?? <AuthLoading />;
   if (needsTotpSetupRedirect) return fallback ?? <AuthLoading />;
   if (needsOnboardingRedirect) return fallback ?? <AuthLoading />;
+  if (needsApprovalRedirect) return fallback ?? <AuthLoading />;
   return children;
 }
 
