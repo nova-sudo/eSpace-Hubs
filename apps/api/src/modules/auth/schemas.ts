@@ -181,3 +181,33 @@ export interface PublicUser {
    */
   engagement: string;
 }
+
+// ─── companion-tunnel registration (Phase 3) ─────────────────────────
+
+/**
+ * POST /api/v1/me/companion-tunnel body.
+ *
+ * `hostname` is the public DNS the user's companion app exposes
+ * its local Express server at — e.g. "espace-user-42.cf-tunnel.com".
+ * We accept it as a bare hostname; the proxy always sends HTTPS.
+ *
+ * Constraints:
+ *   - 4..256 chars
+ *   - lower-cased alpha-num + dots + hyphens (basic DNS-host charset)
+ *   - no scheme (https://) — we add it ourselves on outbound proxy
+ *   - no path / query — same reason
+ */
+export const companionTunnelRegisterSchema = z.object({
+  hostname: z
+    .string()
+    .min(4)
+    .max(256)
+    .regex(
+      /^[a-z0-9][a-z0-9.-]*[a-z0-9]$/i,
+      "hostname must be a bare DNS name (no scheme, no path, no query)",
+    )
+    .transform((s) => s.toLowerCase().trim()),
+});
+export type CompanionTunnelRegisterInput = z.infer<
+  typeof companionTunnelRegisterSchema
+>;
