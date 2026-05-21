@@ -25,6 +25,10 @@
     "services:up": "docker compose up -d",
     "services:down": "docker compose down",
     "services:reset": "docker compose down -v",
+    "api:docker:build": "docker compose build api",
+    "api:docker:up": "docker compose up -d api",
+    "api:docker:logs": "docker compose logs -f api",
+    "api:docker:tunnel": "docker compose --profile tunnel up -d",
     "admin:create": "npm run admin:create --workspace=@espace-devhub/api --"
   }
 }
