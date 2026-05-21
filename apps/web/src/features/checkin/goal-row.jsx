@@ -35,6 +35,7 @@ import {
   ScaleEditor,
   UnsupportedStub,
 } from "./editors";
+import { CodeRubricEditor } from "./code-rubric-row";
 
 export function GoalRow({
   goal,
@@ -252,10 +253,17 @@ function EditorFor({
         />
       );
 
+    case SPEC_KINDS.CODE_RUBRIC:
+      return (
+        <CodeRubricEditor
+          spec={spec}
+          weekStart={weekStart}
+          weekEnd={weekEnd}
+        />
+      );
+
     // Phase D/E widgets with richer state — full inline editors land in
     // a later PR. For now, point the user at the dashboard widget.
-    case SPEC_KINDS.CODE_RUBRIC:
-      return <UnsupportedStub message="Grade PRs from the dashboard widget" />;
     case SPEC_KINDS.SCORECARD:
       return <UnsupportedStub message="Edit components from the dashboard widget" />;
     case SPEC_KINDS.DEPLOY_FREQUENCY:
