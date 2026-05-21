@@ -1,0 +1,42 @@
+# Build context tightening — anything below is excluded from `docker
+# build`, which avoids slow uploads + accidental secret leaks.
+
+# Dependency trees (Dockerfile reinstalls cleanly inside the container)
+node_modules
+**/node_modules
+
+# Build outputs (Dockerfile rebuilds from sources)
+**/dist
+**/.next
+**/.turbo
+
+# Local env (NEVER bake into the image — secrets are injected at run
+# time via `--env-file` / docker-compose `env_file`). The .example
+# files are safe to ship.
+.env
+.env.local
+**/.env
+**/.env.local
+!**/.env.example
+
+# Git + editor noise
+.git
+.github
+.vscode
+.idea
+.claude
+*.log
+bash.exe.stackdump
+
+# Frontend — the api image doesn't need apps/web/src at all. The
+# Dockerfile only copies apps/api/ + packages/shared/, but ignoring
+# apps/web reduces context-upload time on large repos.
+apps/web/src
+apps/web/public
+apps/web/.next
+
+# Test / docs noise
+**/*.test.ts
+docs
+.design-reference
+_presentation

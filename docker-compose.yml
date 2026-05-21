@@ -1,11 +1,20 @@
 # Local development services for the eSpace Dev Hub API.
 #
 # Usage:
-#   docker compose up -d                       # start the core service (mongo)
+#   docker compose up -d                       # core (mongo + api)
+#   docker compose --profile api up -d         # api only (uses external Mongo, e.g. Atlas)
+#   docker compose --profile tunnel up -d      # core + Cloudflare Tunnel (public hostname)
 #   docker compose --profile future up -d      # + redis (reserved for M4+)
 #   docker compose --profile qa up -d          # + jenkins (QA Hub dev)
 #   docker compose down                        # stop (data persists)
 #   docker compose down -v                     # stop + wipe ALL data
+#
+# The `api` service is what makes this useful from a public Vercel
+# frontend — when paired with the `tunnel` profile, Vercel's
+# `API_ORIGIN` env points at the public tunnel hostname and /api/v1/*
+# proxies through to this container. Lets you run the backend on any
+# host with the right network access (e.g. a laptop on Crealogix VPN
+# that can resolve `git.bcn.crealogix.net`).
 #
 # Mongo lives at mongodb://localhost:27017/devhub-dev (configured in
 # apps/api/.env.local). Redis + Jenkins ride on `profiles:` flags so
@@ -32,6 +41,86 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  api:
+    # The eSpace Dev Hub Express API. Same code as the Vercel
+    # serverless catch-all (apps/web/src/pages/api/v1/[...path].ts),
+    # just running as a long-lived Node process inside this container.
+    #
+    # Why a separate "api" profile is NOT enabled here: most local
+    # dev wants the api running alongside Mongo, so it's always-on by
+    # default. If you only want the api against an EXTERNAL Mongo
+    # (e.g. Atlas), stop the mongo service: `docker compose stop mongo`.
+    container_name: espace-devhub-api
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    ports:
+      # Localhost-bound by default. Use the tunnel for external
+      # access; if you need LAN access without a tunnel, change to
+      # "0.0.0.0:4000:4000".
+      - "127.0.0.1:4000:4000"
+    env_file:
+      # Same env file `npm run dev` uses. Required keys:
+      #   MONGO_URI, SESSION_SECRET, INTEGRATION_TOKEN_KEY
+      # Plus integration secrets (RESEND_API_KEY, MISTRAL_API_KEY)
+      # and per-engagement keys (<ENGAGEMENT>_GITHUB_CLIENT_ID, …).
+      - apps/api/.env.local
+    environment:
+      NODE_ENV: production
+      # If MONGO_URI in .env.local points at "mongodb://localhost",
+      # rewrite it to the compose service name `mongo` so the api
+      # container can resolve it. The env_file load wins on conflict,
+      # so set MONGO_URI=mongodb://mongo:27017/devhub-dev in
+      # .env.local if you want the local-mongo path.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://espace-hubs.vercel.app,http://localhost:3000}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:4000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    # Uncomment if your host's VPN client (e.g. corporate Cisco /
+    # GlobalProtect) doesn't share routes with Docker's bridge —
+    # network_mode: host bypasses Docker networking and uses the
+    # host's interfaces directly so VPN routes apply.
+    # network_mode: "host"
+
+  tunnel:
+    # Optional Cloudflare Tunnel sidecar. Activate with --profile tunnel.
+    # Use case: expose the api on a public hostname so the Vercel
+    # frontend can call it. No inbound firewall changes needed; the
+    # tunnel opens an OUTBOUND persistent connection to Cloudflare's
+    # edge, which then routes external requests through to the api.
+    #
+    # First-time bootstrap (one-off, on your machine):
+    #   cloudflared tunnel login                                   # opens browser, sign in to CF
+    #   cloudflared tunnel create dev-espace-hub                   # creates the tunnel
+    #   cloudflared tunnel token dev-espace-hub                    # copy the token
+    #
+    # Then in a sibling `.env` file (NOT apps/api/.env.local):
+    #   TUNNEL_TOKEN=eyJhIjoi…
+    #
+    # Then in CF dashboard → Zero Trust → Networks → Tunnels →
+    # your tunnel → Public Hostname, point it at http://api:4000
+    # (Docker's service-name DNS resolves `api` to this container).
+    #
+    # Finally, set `API_ORIGIN=https://<your-public-hostname>` on
+    # Vercel + redeploy.
+    container_name: espace-devhub-api-tunnel
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?TUNNEL_TOKEN required when --profile tunnel is active. See docs/RUN_LOCALLY.md.}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
 
   redis:
     # Reserved for cross-process rate limits + background queues (M4+).
