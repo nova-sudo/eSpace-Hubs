@@ -29,7 +29,9 @@ import {
   CounterCell,
   DateLogCell,
   FreeTextCell,
+  IncidentLogCell,
   MilestoneCell,
+  RecurringMilestoneCell,
   ScaleCell,
   StubCell,
 } from "./grid-cells";
@@ -172,17 +174,43 @@ function CellFor({
       return <AutoCell value={pct} unit="%" target={spec.source?.target} />;
     }
     case SPEC_KINDS.FIRST_PASS_RATE: {
-      const pct = firstPassRatePct(mrsThisWeek);
-      return <AutoCell value={pct} unit="%" target={spec.source?.target} />;
+      // firstPassRatePct returns `{ pct, clean, pingPong }` (or null
+      // when there were no merges this week). Cells render scalars,
+      // so unwrap to the .pct field.
+      const result = firstPassRatePct(mrsThisWeek);
+      return (
+        <AutoCell
+          value={result?.pct ?? null}
+          unit="%"
+          target={spec.source?.target}
+        />
+      );
     }
     case SPEC_KINDS.TICKET_CYCLE:
       return (
         <AutoCell value={ticketsCount} unit="tk" target={spec.source?.target} />
       );
 
-    // Widgets without inline-cell editors yet — placeholder.
     case SPEC_KINDS.INCIDENT_LOG:
+      return (
+        <IncidentLogCell
+          goal={goal}
+          weekStart={weekStart}
+          weekEnd={weekEnd}
+          weekLabel={weekLabel}
+        />
+      );
+
     case SPEC_KINDS.RECURRING_MILESTONE:
+      return (
+        <RecurringMilestoneCell
+          goal={goal}
+          spec={spec}
+          weekLabel={weekLabel}
+        />
+      );
+
+    // Widgets without inline-cell editors yet — placeholder.
     case SPEC_KINDS.CODE_RUBRIC:
     case SPEC_KINDS.SCORECARD:
     case SPEC_KINDS.DEPLOY_FREQUENCY:
