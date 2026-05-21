@@ -29,6 +29,8 @@ import { pingApi } from "./health";
 import { settings } from "./settings";
 import * as vpn from "./vpn";
 import * as keychain from "./keychain";
+import * as pairing from "./pairing";
+import * as tunnelReg from "./tunnel-registration";
 
 // __dirname is available natively in CommonJS — no fileURLToPath
 // gymnastics needed. Electron's main process is CJS by default; we
@@ -95,6 +97,9 @@ function createWindow(): BrowserWindow {
   } else {
     win.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
   }
+
+  // Forward pairing + registration push notifications to this window.
+  wirePushUpdates(win);
 
   return win;
 }
@@ -197,7 +202,15 @@ ipcMain.handle("backend:start", async () => {
       // recoverable state (retry the request after VPN connects).
     }
   }
-  return startBackend();
+  const result = await startBackend();
+  // Re-arm the registration heartbeat (idempotent on already-running
+  // loop) and poke it once so the server learns we're back online
+  // ahead of the next 60s tick.
+  if (result.ok) {
+    tunnelReg.startHeartbeat();
+    tunnelReg.poke();
+  }
+  return result;
 });
 
 ipcMain.handle("vpn:status", async () => {
@@ -239,6 +252,11 @@ ipcMain.handle("credentials:clear", async (_event, key: string) => {
 });
 
 ipcMain.handle("backend:stop", async () => {
+  // The tunnel runs in the same compose stack as the API. Once the
+  // user stops the stack the tunnel is gone — fall back the server's
+  // routing immediately instead of waiting 5 min for staleness to
+  // kick in.
+  void tunnelReg.stopHeartbeatAndUnregister({ silent: true });
   return stopBackend();
 });
 
@@ -260,6 +278,12 @@ ipcMain.handle("settings:get", async () => {
 
 ipcMain.handle("settings:set", async (_event, patch: Record<string, unknown>) => {
   settings.patch(patch);
+  // If the user just changed something that affects tunnel-routing,
+  // nudge the heartbeat so the server learns about it immediately
+  // instead of waiting up to 60s for the next tick.
+  if ("tunnelHostname" in patch || "apiBaseUrl" in patch) {
+    tunnelReg.poke();
+  }
   return settings.all();
 });
 
@@ -274,6 +298,61 @@ ipcMain.handle("shell:open-external", async (_event, url: string) => {
   await shell.openExternal(url);
 });
 
+// ─── pairing + tunnel registration (Phase 3d) ────────────────────────
+
+ipcMain.handle("pairing:start", async (_event, opts: { deviceName?: string } = {}) => {
+  pairing.startPairing(opts);
+  return pairing.getState();
+});
+
+ipcMain.handle("pairing:cancel", async () => {
+  pairing.cancelPairing();
+  return pairing.getState();
+});
+
+ipcMain.handle("pairing:state", async () => pairing.getState());
+
+ipcMain.handle("pairing:status", async () => ({
+  paired: pairing.isPaired(),
+  device: pairing.getPairedDevice(),
+  registration: tunnelReg.getStatus(),
+  state: pairing.getState(),
+}));
+
+ipcMain.handle("pairing:unpair", async () => {
+  // Stop heartbeat + DELETE on the server while the token is still
+  // valid, THEN clear the local token. Order matters — if we cleared
+  // the keychain first, the DELETE would 401 because there's no token
+  // to send.
+  await tunnelReg.stopHeartbeatAndUnregister({ silent: true });
+  pairing.unpair();
+  return { ok: true };
+});
+
+ipcMain.handle("tunnel:registration-status", async () => tunnelReg.getStatus());
+
+ipcMain.handle("tunnel:poke", async () => {
+  tunnelReg.poke();
+  return tunnelReg.getStatus();
+});
+
+// Forward pairing + registration state changes to the renderer so the
+// UI can re-render without polling. Set up once a window exists.
+function wirePushUpdates(win: BrowserWindow): void {
+  const sendPairing = (s: pairing.PairingState) => {
+    if (!win.isDestroyed()) win.webContents.send("pairing:state", s);
+  };
+  const sendReg = (s: tunnelReg.RegistrationStatus) => {
+    if (!win.isDestroyed()) win.webContents.send("tunnel:registration-state", s);
+  };
+  const offPairing = pairing.subscribe(sendPairing);
+  const offReg = tunnelReg.subscribe(sendReg);
+  win.on("closed", () => {
+    offPairing();
+    offReg();
+  });
+}
+
 // ─── lifecycle ──────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
@@ -286,6 +365,11 @@ app.whenReady().then(() => {
   mainWindow = createWindow();
   tray = createTray();
   void tray; // keep the ref alive — tray instances are GC'd otherwise
+
+  // Phase 3d: start the tunnel-registration heartbeat. The loop
+  // gates internally on (paired? hostname set?) so it's safe to
+  // start eagerly — it just no-ops until the user finishes setup.
+  tunnelReg.startHeartbeat();
 });
 
 app.on("activate", () => {
@@ -310,4 +394,8 @@ app.on("before-quit", () => {
   // container running in the background even after the companion is
   // gone — surprising for the user.
   void stopBackend({ silent: true });
+  // Also clear the server-side tunnel registration so the catch-all
+  // falls back to the bundled API immediately (instead of waiting
+  // 5 min for staleness to time it out).
+  void tunnelReg.stopHeartbeatAndUnregister({ silent: true });
 });

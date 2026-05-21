@@ -63,12 +63,53 @@ type CompanionWindow = Window & {
         vpnProfile?: string;
         vpnGatedHost?: string;
         vpnAutoConnectOnStart?: boolean;
+        tunnelHostname?: string;
+        apiBaseUrl?: string;
+        pairedDeviceId?: string;
+        pairedDeviceName?: string;
       }>;
       set: (patch: Record<string, unknown>) => Promise<unknown>;
     };
     shell: { openExternal: (url: string) => Promise<void> };
+    pairing: {
+      start: (opts?: { deviceName?: string }) => Promise<PairingState>;
+      cancel: () => Promise<PairingState>;
+      state: () => Promise<PairingState>;
+      status: () => Promise<{
+        paired: boolean;
+        device: { deviceId: string | null; deviceName: string | null };
+        registration: RegistrationStatus;
+        state: PairingState;
+      }>;
+      unpair: () => Promise<{ ok: boolean }>;
+      onState: (cb: (s: PairingState) => void) => () => void;
+    };
+    tunnel: {
+      registrationStatus: () => Promise<RegistrationStatus>;
+      poke: () => Promise<RegistrationStatus>;
+      onRegistrationState: (cb: (s: RegistrationStatus) => void) => () => void;
+    };
   };
 };
+
+type PairingState =
+  | { phase: "idle" }
+  | { phase: "starting" }
+  | {
+      phase: "pending";
+      code: string;
+      approvalUrl: string;
+      expiresAt: string;
+    }
+  | { phase: "approved"; deviceId: string; deviceName: string }
+  | { phase: "expired" }
+  | { phase: "error"; message: string };
+
+type RegistrationStatus =
+  | { phase: "idle"; reason: string }
+  | { phase: "registering" }
+  | { phase: "registered"; hostname: string; lastSeenAt: string }
+  | { phase: "error"; message: string };
 
 const companion = (window as unknown as CompanionWindow).companion;
 
@@ -93,10 +134,20 @@ export function App() {
   const [vpnPwdDraft, setVpnPwdDraft] = useState("");
   const [busy, setBusy] = useState<"" | "starting" | "stopping" | "vpn-connect" | "vpn-disconnect">("");
   const [error, setError] = useState<string | null>(null);
+  const [pairingState, setPairingState] = useState<PairingState>({ phase: "idle" });
+  const [registration, setRegistration] = useState<RegistrationStatus>({
+    phase: "idle",
+    reason: "loading…",
+  });
+  const [paired, setPaired] = useState(false);
+  const [pairedDevice, setPairedDevice] = useState<{
+    deviceId: string | null;
+    deviceName: string | null;
+  }>({ deviceId: null, deviceName: null });
 
   const refresh = useCallback(async () => {
     try {
-      const [s, p, ll, st, vs, vc, vp] = await Promise.all([
+      const [s, p, ll, st, vs, vc, vp, pairingStatus] = await Promise.all([
         companion.backend.status(),
         companion.api.ping(),
         companion.backend.logs(LOG_LINES),
@@ -104,6 +155,7 @@ export function App() {
         companion.vpn.status(),
         companion.vpn.discoverClient(),
         companion.credentials.has("vpnPassword"),
+        companion.pairing.status(),
       ]);
       setStatus(s);
       setPing(p);
@@ -112,6 +164,10 @@ export function App() {
       setVpn(vs);
       setVpnClient(vc);
       setVpnPwdFlag(vp);
+      setPaired(pairingStatus.paired);
+      setPairedDevice(pairingStatus.device);
+      setRegistration(pairingStatus.registration);
+      setPairingState(pairingStatus.state);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -122,6 +178,17 @@ export function App() {
     const t = setInterval(refresh, POLL_INTERVAL_MS);
     return () => clearInterval(t);
   }, [refresh]);
+
+  // Push subscriptions — pairing + registration state changes flow
+  // through immediately, no need to wait for the 3s polling tick.
+  useEffect(() => {
+    const offPairing = companion.pairing.onState((s) => setPairingState(s));
+    const offReg = companion.tunnel.onRegistrationState((s) => setRegistration(s));
+    return () => {
+      offPairing();
+      offReg();
+    };
+  }, []);
 
   const onStart = async () => {
     setBusy("starting");
@@ -179,6 +246,28 @@ export function App() {
   const onClearPassword = async () => {
     await companion.credentials.clear("vpnPassword");
     await refresh();
+  };
+
+  /* ── Pairing actions ─────────────────────────────────────────── */
+
+  const onStartPairing = async () => {
+    setError(null);
+    await companion.pairing.start({});
+  };
+
+  const onCancelPairing = async () => {
+    await companion.pairing.cancel();
+  };
+
+  const onUnpair = async () => {
+    await companion.pairing.unpair();
+    await refresh();
+  };
+
+  const onOpenApprovalUrl = async () => {
+    if (pairingState.phase === "pending") {
+      await companion.shell.openExternal(pairingState.approvalUrl);
+    }
   };
 
   return (
@@ -396,6 +485,98 @@ export function App() {
         </Field>
       </Section>
 
+      <Section title="Pairing & Routing">
+        <div style={S.row}>
+          <Stat
+            label="Pairing"
+            value={paired ? "linked" : "not paired"}
+            tone={paired ? "good" : "warn"}
+          />
+          <Stat
+            label="Device"
+            value={pairedDevice.deviceName || "—"}
+            tone="muted"
+          />
+          <Stat
+            label="Server routing"
+            value={
+              registration.phase === "registered"
+                ? "active"
+                : registration.phase === "registering"
+                ? "publishing…"
+                : registration.phase === "error"
+                ? "error"
+                : "idle"
+            }
+            tone={
+              registration.phase === "registered"
+                ? "good"
+                : registration.phase === "error"
+                ? "bad"
+                : "muted"
+            }
+          />
+          <Stat
+            label="Last heartbeat"
+            value={
+              registration.phase === "registered"
+                ? new Date(registration.lastSeenAt).toLocaleTimeString()
+                : "—"
+            }
+            tone="muted"
+          />
+        </div>
+
+        {/* Pairing state machine — the active branch swaps in. */}
+        <PairingBlock
+          state={pairingState}
+          paired={paired}
+          onStart={onStartPairing}
+          onCancel={onCancelPairing}
+          onUnpair={onUnpair}
+          onOpenUrl={onOpenApprovalUrl}
+        />
+
+        {/* Inline registration error banner — surfaces "token revoked"
+            etc. so the user knows to re-pair. Idle is silent. */}
+        {registration.phase === "error" && (
+          <div style={S.errorBanner}>{registration.message}</div>
+        )}
+        {registration.phase === "idle" && paired && (
+          <p style={S.helpInline}>
+            {registration.reason === "no tunnel hostname configured"
+              ? "Set your tunnel hostname below to start publishing your routing."
+              : `Registration idle: ${registration.reason}`}
+          </p>
+        )}
+
+        <Field
+          label="Tunnel hostname"
+          help="Public DNS the Cloudflare Tunnel exposes your local backend at — e.g. espace-user-42.cf-tunnel.com. The server PROXIES your /api/v1/* requests here while this companion is online."
+        >
+          <input
+            type="text"
+            value={settings.tunnelHostname || ""}
+            placeholder="espace-user-42.cf-tunnel.com"
+            onChange={(e) => onSettingChange("tunnelHostname", e.target.value)}
+            style={S.input}
+          />
+        </Field>
+
+        <Field
+          label="Web app URL"
+          help="The Vercel deployment the companion calls for pairing + tunnel registration. Defaults to https://espace-hubs.vercel.app — only change for staging/preview."
+        >
+          <input
+            type="text"
+            value={settings.apiBaseUrl || ""}
+            placeholder="https://espace-hubs.vercel.app"
+            onChange={(e) => onSettingChange("apiBaseUrl", e.target.value)}
+            style={S.input}
+          />
+        </Field>
+      </Section>
+
       <Section title="Settings">
         <Field
           label="Repo path"
@@ -438,7 +619,7 @@ export function App() {
 
       <footer style={S.footer}>
         <span>
-          Phase 2 · backend + VPN. Per-user tunnel routing lands in Phase 3.
+          Phase 3 · pairing + per-user tunnel routing active.
         </span>
         <a
           href="#"
@@ -512,6 +693,117 @@ function Stat({
     <div style={S.stat}>
       <div style={S.statLabel}>{label}</div>
       <div style={{ ...S.statValue, color }}>{value}</div>
+    </div>
+  );
+}
+
+function PairingBlock({
+  state,
+  paired,
+  onStart,
+  onCancel,
+  onUnpair,
+  onOpenUrl,
+}: {
+  state: PairingState;
+  paired: boolean;
+  onStart: () => void;
+  onCancel: () => void;
+  onUnpair: () => void;
+  onOpenUrl: () => void;
+}) {
+  // Renderer state is driven by both `paired` (do we have a token in
+  // the keychain?) and `state.phase` (what's the active pairing flow
+  // doing right now?). Six cases — covered explicitly so the surface
+  // is auditable rather than implicit.
+
+  if (state.phase === "pending") {
+    return (
+      <div style={S.pairCard}>
+        <div style={S.pairCode}>{state.code}</div>
+        <p style={S.pairCopy}>
+          Approve this code in your browser. We've opened the approval page —
+          if it didn't open, click below.
+        </p>
+        <div style={S.actions}>
+          <button type="button" style={S.btnPrimary} onClick={onOpenUrl}>
+            Re-open approval page
+          </button>
+          <button type="button" style={S.btnSecondary} onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+        <p style={S.helpInline}>
+          Expires at {new Date(state.expiresAt).toLocaleTimeString()}.
+        </p>
+      </div>
+    );
+  }
+
+  if (state.phase === "starting") {
+    return (
+      <div style={S.pairCard}>
+        <p style={S.pairCopy}>Opening pairing request…</p>
+      </div>
+    );
+  }
+
+  if (state.phase === "approved") {
+    return (
+      <div style={S.pairCard}>
+        <p style={S.pairCopy}>
+          Paired as <strong>{state.deviceName}</strong>. The companion will
+          register its tunnel hostname automatically.
+        </p>
+      </div>
+    );
+  }
+
+  if (state.phase === "expired") {
+    return (
+      <div style={S.pairCard}>
+        <p style={S.pairCopy}>
+          Pairing timed out before approval. Pairing codes are valid for 5
+          minutes — start again to get a new one.
+        </p>
+        <div style={S.actions}>
+          <button type="button" style={S.btnPrimary} onClick={onStart}>
+            Pair again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (state.phase === "error") {
+    return (
+      <div style={S.errorBanner}>
+        Pairing failed: {state.message}
+        <div style={{ ...S.actions, marginTop: 8 }}>
+          <button type="button" style={S.btnSecondary} onClick={onStart}>
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // phase === "idle": either fresh (not paired) or already paired.
+  if (paired) {
+    return (
+      <div style={S.actions}>
+        <button type="button" style={S.btnSecondary} onClick={onUnpair}>
+          Unpair this device
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={S.actions}>
+      <button type="button" style={S.btnPrimary} onClick={onStart}>
+        Pair this device
+      </button>
     </div>
   );
 }
@@ -668,6 +960,28 @@ const S: Record<string, React.CSSProperties> = {
     color: "var(--bad)",
     fontSize: 12,
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  },
+  pairCard: {
+    border: "1px solid var(--border)",
+    borderRadius: 6,
+    padding: 14,
+    background: "var(--bg)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  pairCode: {
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    fontSize: 22,
+    letterSpacing: 4,
+    fontWeight: 700,
+    color: "var(--accent)",
+  },
+  pairCopy: {
+    margin: 0,
+    fontSize: 12.5,
+    color: "var(--fg)",
+    lineHeight: 1.5,
   },
   footer: {
     marginTop: "auto",

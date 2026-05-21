@@ -52,6 +52,38 @@ interface CompanionSchema {
   /** When true, clicking "Start backend" pre-flights the VPN — brings
    * it up first if it's down. */
   vpnAutoConnectOnStart?: boolean;
+
+  // ── Phase 3d: tunnel registration ────────────────────────────────
+  /**
+   * Public hostname the user's Cloudflare Tunnel exposes the local
+   * Express server at — e.g. "espace-user-42.cf-tunnel.com". Used
+   * by the companion's tunnel-registration heartbeat (POST
+   * /api/v1/me/companion-tunnel). The companion has no way to read
+   * this from `cloudflared` itself (the tunnel container only knows
+   * the token, not the hostname mapping), so the user enters it
+   * here once. Required for routing-mode to work.
+   */
+  tunnelHostname?: string;
+  /**
+   * Base URL of the eSpace Dev Hub web app the companion calls for
+   * pairing + tunnel registration. Defaults to the production
+   * Vercel deploy; configurable for staging / preview environments
+   * / on-prem deployments without rebuilding the companion.
+   */
+  apiBaseUrl?: string;
+  /**
+   * Cached server-issued device id from the most recent successful
+   * pairing. Not the bearer token (that's in the keychain) — just a
+   * UUID-shaped string used for "Unpair this device" UI. Cleared on
+   * Unpair.
+   */
+  pairedDeviceId?: string;
+  /**
+   * Display name the user gave their device during pairing. Cached
+   * so the UI can show "Paired as: <name>" without an extra round
+   * trip. Defaults to the OS hostname if the user didn't pick one.
+   */
+  pairedDeviceName?: string;
 }
 
 const FILE_NAME = "config.json";

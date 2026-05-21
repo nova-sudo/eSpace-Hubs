@@ -48,6 +48,35 @@ const api = {
     openExternal: (url: string) =>
       ipcRenderer.invoke("shell:open-external", url),
   },
+  // ── pairing + tunnel registration (Phase 3d) ─────────────────────
+  pairing: {
+    start: (opts: { deviceName?: string } = {}) =>
+      ipcRenderer.invoke("pairing:start", opts),
+    cancel: () => ipcRenderer.invoke("pairing:cancel"),
+    state: () => ipcRenderer.invoke("pairing:state"),
+    status: () => ipcRenderer.invoke("pairing:status"),
+    unpair: () => ipcRenderer.invoke("pairing:unpair"),
+    /**
+     * Subscribe to push updates of the pairing state. Returns an
+     * unsubscribe function — renderers should call it on unmount to
+     * avoid leaking listeners across hot-reloads.
+     */
+    onState: (cb: (s: unknown) => void) => {
+      const handler = (_e: unknown, s: unknown) => cb(s);
+      ipcRenderer.on("pairing:state", handler);
+      return () => ipcRenderer.off("pairing:state", handler);
+    },
+  },
+  tunnel: {
+    registrationStatus: () =>
+      ipcRenderer.invoke("tunnel:registration-status"),
+    poke: () => ipcRenderer.invoke("tunnel:poke"),
+    onRegistrationState: (cb: (s: unknown) => void) => {
+      const handler = (_e: unknown, s: unknown) => cb(s);
+      ipcRenderer.on("tunnel:registration-state", handler);
+      return () => ipcRenderer.off("tunnel:registration-state", handler);
+    },
+  },
 } as const;
 
 contextBridge.exposeInMainWorld("companion", api);
