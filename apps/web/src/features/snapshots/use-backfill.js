@@ -52,6 +52,10 @@ import { readInputs } from "@/features/goal-inputs";
 import { isoDaysAgo, weekLabel } from "@/lib/date";
 
 const DAY = 24 * 60 * 60 * 1000;
+// GitHub's events feed caps at ~90d — that's the furthest back we
+// can fetch event data for backfill. `synthesiseWeek` uses the same
+// constant to mark older weeks as `partial: true` / `gaps: ["events"]`.
+const EVENTS_HORIZON_DAYS = 90;
 
 /**
  * @returns {{
