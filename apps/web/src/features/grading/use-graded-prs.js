@@ -221,9 +221,17 @@ export function useGradedPrs(spec, options = {}) {
   }, [prs, hash, gradingStoreSnap]);
 
   // Step 2 — grade any ungraded PRs when rubric is present.
-  const gradeAll = useCallback(async () => {
-    if (!rubric.length || !prs.length) return;
-    const pending = prs.filter((pr) => !readVerdict(pr.id, hash));
+  //
+  // `grade(subset)` runs the AI grader on the PRs you pass it. Filters
+  // out PRs that already have a verdict for the current rubric hash so
+  // repeat calls are idempotent. Used by:
+  //   - `gradeAll`     — grades every PR in the year window
+  //   - check-in cells — grade ONLY the PRs merged inside the active
+  //                      week so each week's pass-rate is captured on
+  //                      its own schedule
+  const grade = useCallback(async (subset) => {
+    if (!rubric.length || !Array.isArray(subset) || subset.length === 0) return;
+    const pending = subset.filter((pr) => !readVerdict(pr.id, hash));
     if (pending.length === 0) return;
 
     cancelRef.current = { aborted: false };
@@ -315,7 +323,11 @@ export function useGradedPrs(spec, options = {}) {
     if (!token.aborted) {
       setProgress({ done: pending.length, total: pending.length, running: false });
     }
-  }, [prs, rubric, hash]);
+  }, [rubric, hash, firstReviewOnly]);
+
+  // Back-compat alias for the dashboard CodeRubricWidget — grades every
+  // PR in the year window. New callers prefer `grade(subset)`.
+  const gradeAll = useCallback(() => grade(prs), [grade, prs]);
 
   // Cancel any in-flight grading when the hook owner unmounts or the
   // rubric changes — we don't want verdicts for the old hash landing in the
@@ -356,9 +368,12 @@ export function useGradedPrs(spec, options = {}) {
     progress,
     isListLoading,
     listError,
+    grade,
     gradeAll,
     refreshList,
     hasGithub: githubConnected,
+    hash,
+    firstReviewOnly,
   };
 }
 

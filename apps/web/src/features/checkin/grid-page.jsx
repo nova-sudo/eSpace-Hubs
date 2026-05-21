@@ -31,6 +31,7 @@ import {
 import { readInputs } from "@/features/goal-inputs";
 import { synthesiseWeek } from "@/features/snapshots";
 import { isoDaysAgo } from "@/lib/date";
+import { SPEC_KINDS } from "@/features/goal-specs";
 import { useCheckinGridRange } from "./use-checkin-grid-range";
 import { GridRow, RowCopyButton } from "./grid-row";
 
@@ -201,6 +202,11 @@ function GroupBlock({ group, weekCount, weeks, mrsByWeek, eventsByWeek, ticketsC
 }
 
 function RowGroup({ goal, spec, weeks, mrsByWeek, eventsByWeek, ticketsCount }) {
+  // CODE_RUBRIC rows render their own trailing "Bulk · Grade all"
+  // column inside GridRow → CodeRubricGridRow, so we skip appending
+  // RowCopyButton here (which would otherwise overflow the grid
+  // template's column count).
+  const skipBulk = spec.widget === SPEC_KINDS.CODE_RUBRIC;
   return (
     <>
       <GridRow
@@ -211,7 +217,7 @@ function RowGroup({ goal, spec, weeks, mrsByWeek, eventsByWeek, ticketsCount }) 
         eventsByWeek={eventsByWeek}
         ticketsCount={ticketsCount}
       />
-      <RowCopyButton goal={goal} spec={spec} weeks={weeks} />
+      {!skipBulk && <RowCopyButton goal={goal} spec={spec} weeks={weeks} />}
     </>
   );
 }

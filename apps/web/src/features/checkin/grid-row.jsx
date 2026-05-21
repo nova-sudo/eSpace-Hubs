@@ -35,8 +35,17 @@ import {
   ScaleCell,
   StubCell,
 } from "./grid-cells";
+import { CodeRubricGridRow } from "./code-rubric-row";
 
 export function GridRow({ goal, spec, weeks, mrsByWeek, eventsByWeek, ticketsCount }) {
+  // CODE_RUBRIC needs row-level state: one useGradedPrs hook call per
+  // row (a fetch per cell would hammer the GitHub search API). Delegate
+  // the whole row to the dedicated component which owns its label, its
+  // per-week cells, and its trailing bulk-action column.
+  if (spec.widget === SPEC_KINDS.CODE_RUBRIC) {
+    return <CodeRubricGridRow goal={goal} spec={spec} weeks={weeks} />;
+  }
+
   return (
     <>
       <RowLabel goal={goal} spec={spec} />
