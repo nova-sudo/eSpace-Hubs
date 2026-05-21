@@ -1,0 +1,62 @@
+# Electron-builder configuration for packaging the companion app.
+#
+# Phase 1 ships an UNSIGNED NSIS installer for Windows + a portable
+# DMG for macOS. Code signing + auto-update wiring lands in Phase 4
+# (needs Authenticode cert + Apple Developer ID + a release pipeline).
+#
+# Test a local build with:
+#   cd apps/desktop
+#   npm run dist             # → dist-electron/eSpace Dev Hub Companion-0.1.0.exe
+#
+# The installer drops the app under `%LocalAppData%\Programs\eSpace
+# Dev Hub Companion\`. Users can move it elsewhere; the companion
+# resolves the repo path from its settings store, not from its own
+# install path.
+
+appId: ai.trybytes.espace-devhub.companion
+productName: eSpace Dev Hub Companion
+copyright: Copyright © 2026 eSpace
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
+directories:
+  buildResources: build
+  output: dist-electron
+
+# We bundle the dist/ output of `tsc -p tsconfig.node.json` (main +
+# preload) and `vite build` (renderer). `files:` includes everything
+# the runtime needs; node_modules is pulled in automatically.
+files:
+  - dist/**/*
+  - package.json
+  - "!node_modules/**/{CHANGELOG.md,README.md,LICENSE,*.d.ts.map}"
+
+# Don't try to pack the local Docker engine or the user's repo into
+# the installer — the companion ASSUMES Docker Desktop is installed
+# and the user has a checkout somewhere. Both get resolved at runtime.
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: eSpace Dev Hub Companion
+
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+
+linux:
+  target:
+    - AppImage
+  category: Development
+  icon: build/icon.png
