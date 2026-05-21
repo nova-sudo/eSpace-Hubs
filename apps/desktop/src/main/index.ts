@@ -27,6 +27,8 @@ import path from "node:path";
 import { startBackend, stopBackend, backendStatus, tailLogs } from "./docker";
 import { pingApi } from "./health";
 import { settings } from "./settings";
+import * as vpn from "./vpn";
+import * as keychain from "./keychain";
 
 // __dirname is available natively in CommonJS — no fileURLToPath
 // gymnastics needed. Electron's main process is CJS by default; we
@@ -177,7 +179,63 @@ function createTray(): Tray {
 // (or throws — Electron forwards thrown errors back to the renderer).
 
 ipcMain.handle("backend:start", async () => {
+  // Phase 2c — if the user has the auto-connect setting on AND the
+  // VPN is currently down, attempt to bring it up first. The Docker
+  // stack itself doesn't need the VPN to start; what NEEDS the VPN
+  // is the upstream calls the api makes once requests arrive (e.g.
+  // git.bcn.crealogix.net fetches). But pre-flighting here gives
+  // cleaner UX — by the time "Backend: running" lights up, the
+  // user can immediately use the website.
+  if (settings.get<boolean>("vpnAutoConnectOnStart", false)) {
+    const s = await vpn.status();
+    if (!s.connected) {
+      await vpn.connect();
+      // Don't block on VPN completing — the actual connection can
+      // take 5–20s and FortiClient's GUI flow may need user input.
+      // We start Docker in parallel; the user's first integration
+      // call may bounce if the VPN isn't up yet, but that's a
+      // recoverable state (retry the request after VPN connects).
+    }
+  }
   return startBackend();
+});
+
+ipcMain.handle("vpn:status", async () => {
+  return vpn.status();
+});
+
+ipcMain.handle("vpn:connect", async () => {
+  return vpn.connect();
+});
+
+ipcMain.handle("vpn:disconnect", async () => {
+  return vpn.disconnect();
+});
+
+ipcMain.handle("vpn:discover-client", async () => {
+  return vpn.discoverClient();
+});
+
+ipcMain.handle("credentials:has", async (_event, key: string) => {
+  if (typeof key !== "string") throw new Error("key must be a string");
+  return { keychainAvailable: keychain.isAvailable(), set: keychain.has(key) };
+});
+
+ipcMain.handle(
+  "credentials:set",
+  async (_event, { key, value }: { key: string; value: string }) => {
+    if (typeof key !== "string" || typeof value !== "string") {
+      throw new Error("key + value must be strings");
+    }
+    keychain.set(key, value);
+    return { ok: true };
+  },
+);
+
+ipcMain.handle("credentials:clear", async (_event, key: string) => {
+  if (typeof key !== "string") throw new Error("key must be a string");
+  keychain.clear(key);
+  return { ok: true };
 });
 
 ipcMain.handle("backend:stop", async () => {

@@ -22,6 +22,23 @@ const api = {
   api: {
     ping: () => ipcRenderer.invoke("api:ping"),
   },
+  vpn: {
+    status: () => ipcRenderer.invoke("vpn:status"),
+    connect: () => ipcRenderer.invoke("vpn:connect"),
+    disconnect: () => ipcRenderer.invoke("vpn:disconnect"),
+    discoverClient: () => ipcRenderer.invoke("vpn:discover-client"),
+  },
+  credentials: {
+    // `has` returns { keychainAvailable, set } so the UI can show
+    // "stored ✓" vs "not set" without ever receiving the plaintext.
+    has: (key: string) => ipcRenderer.invoke("credentials:has", key),
+    // `set` is fire-and-forget from the renderer's perspective — the
+    // plaintext travels via IPC ONCE, is encrypted in the main
+    // process, and never echoed back.
+    set: (key: string, value: string) =>
+      ipcRenderer.invoke("credentials:set", { key, value }),
+    clear: (key: string) => ipcRenderer.invoke("credentials:clear", key),
+  },
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),
     set: (patch: Record<string, unknown>) =>

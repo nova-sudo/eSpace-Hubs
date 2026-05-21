@@ -32,6 +32,26 @@ interface CompanionSchema {
   repoPath?: string;
   tunnelToken?: string;
   autoStartAtLogin?: boolean;
+  // ── VPN (Phase 2) ────────────────────────────────────────────────
+  // Non-secret VPN config. The PASSWORD lives in keychain.ts, never
+  // here. Kept flat so future engagement-specific tweaks don't need
+  // a migration step.
+  /** Username for FortiClient / openfortivpn auth. */
+  vpnUsername?: string;
+  /** Gateway hostname (used by openfortivpn). Most users with the
+   * GUI FortiClient won't need this — FortiClient stores the gateway
+   * in its own saved profile. */
+  vpnGateway?: string;
+  /** FortiClient saved-profile name (used when shelling out via
+   * `FortiClient.exe -p <profile>`). Defaults to "Crealogix". */
+  vpnProfile?: string;
+  /** Hostname we probe to detect "is the VPN up." Defaults to
+   * git.bcn.crealogix.net. Parameterised so other engagements can
+   * reuse the same machinery without code changes. */
+  vpnGatedHost?: string;
+  /** When true, clicking "Start backend" pre-flights the VPN — brings
+   * it up first if it's down. */
+  vpnAutoConnectOnStart?: boolean;
 }
 
 const FILE_NAME = "config.json";
