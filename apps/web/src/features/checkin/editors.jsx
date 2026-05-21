@@ -319,6 +319,264 @@ export function BeforeAfterEditor({ goal, weekStart, weekEnd, activeLabel }) {
   );
 }
 
+/* ─────────────────────── Incident log ─────────────────────── */
+
+/**
+ * INCIDENT_LOG editor — one entry per incident, stored as
+ *   { severity, downtime, link? }
+ *
+ * The check-in single-week view shows ONLY the incidents logged in
+ * the active week. A "Log incident" inline form below the list lets
+ * the user add a new one with ts = mid-week of the active week.
+ *
+ * Severity scale matches the dashboard widget: P1 (critical) → P4
+ * (minor). The classifier doesn't enforce a specific severity scale
+ * so we adopt the most common one.
+ */
+const SEVERITIES = [
+  { id: "P1", label: "P1 · critical" },
+  { id: "P2", label: "P2 · major" },
+  { id: "P3", label: "P3 · minor" },
+  { id: "P4", label: "P4 · low" },
+];
+
+export function IncidentLogEditor({ goal, weekStart, weekEnd, activeLabel }) {
+  const { entries, append, remove } = useGoalInputs(goal?.id);
+  const inWindow = useMemo(
+    () =>
+      (entries || []).filter(
+        (e) =>
+          e.ts >= weekStart.getTime() &&
+          e.ts < weekEnd.getTime() &&
+          e.value &&
+          typeof e.value === "object",
+      ),
+    [entries, weekStart, weekEnd],
+  );
+
+  const totalDowntime = inWindow.reduce(
+    (sum, e) => sum + (Number(e.value?.downtime) || 0),
+    0,
+  );
+
+  const [severity, setSeverity] = useState("P2");
+  const [downtime, setDowntime] = useState("");
+  const [link, setLink] = useState("");
+
+  const canLog = downtime !== "" && Number.isFinite(Number(downtime));
+
+  const log = () => {
+    if (!canLog) return;
+    const ts = midWeekTs(activeLabel);
+    if (ts == null) return;
+    const minutes = Number(downtime);
+    if (!Number.isFinite(minutes) || minutes < 0) return;
+    append(
+      {
+        severity,
+        downtime: minutes,
+        ...(link.trim() ? { link: link.trim() } : {}),
+      },
+      undefined,
+      ts,
+    );
+    setDowntime("");
+    setLink("");
+  };
+
+  return (
+    <div className="flex w-[320px] flex-col gap-2">
+      <div
+        className="flex items-baseline justify-between text-[11px] text-muted-fg"
+        style={{ fontFamily: "var(--font-mono)" }}
+      >
+        <span>
+          {inWindow.length} incident{inWindow.length === 1 ? "" : "s"} this week
+        </span>
+        {inWindow.length > 0 && (
+          <span>Σ {totalDowntime} min downtime</span>
+        )}
+      </div>
+
+      {inWindow.length > 0 && (
+        <ul className="flex flex-col gap-1 rounded-md border border-border bg-bg/40 p-1.5">
+          {inWindow.map((e) => (
+            <li
+              key={e.ts}
+              className="flex items-center justify-between gap-2 text-[11px]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              <span className="flex items-center gap-1.5">
+                <span className="rounded-[3px] border border-border px-1 py-px text-[9px] uppercase text-muted-fg">
+                  {e.value.severity || "P?"}
+                </span>
+                <span className="text-fg">{e.value.downtime ?? 0}m</span>
+                {e.value.link && (
+                  <a
+                    href={e.value.link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="truncate text-muted-fg underline"
+                  >
+                    link
+                  </a>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => remove(e.ts)}
+                className="text-[10px] text-muted-fg/60 hover:text-fg"
+                title="Remove incident"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div
+        className="flex flex-wrap items-center gap-1.5"
+        style={{ fontFamily: "var(--font-mono)" }}
+      >
+        <select
+          value={severity}
+          onChange={(ev) => setSeverity(ev.target.value)}
+          className="h-7 rounded-md border border-border bg-bg px-1.5 text-[11px]"
+        >
+          {SEVERITIES.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.id}
+            </option>
+          ))}
+        </select>
+        <input
+          type="number"
+          min={0}
+          value={downtime}
+          onChange={(ev) => setDowntime(ev.target.value)}
+          placeholder="min"
+          className="h-7 w-16 rounded-md border border-border bg-bg px-1.5 text-[11px]"
+        />
+        <input
+          type="url"
+          value={link}
+          onChange={(ev) => setLink(ev.target.value)}
+          placeholder="link (optional)"
+          className="h-7 min-w-0 flex-1 rounded-md border border-border bg-bg px-1.5 text-[11px]"
+        />
+        <button
+          type="button"
+          onClick={log}
+          disabled={!canLog}
+          className={cn(
+            "rounded-md bg-accent px-2.5 py-1 text-[10px] uppercase tracking-[0.4px] text-accent-on transition-opacity",
+            !canLog && "opacity-40",
+          )}
+        >
+          Log
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────── Recurring milestone ─────────────────────── */
+
+/**
+ * RECURRING_MILESTONE editor — a checklist that RESETS each period
+ * (e.g. quarterly DR drills). Storage shape: one entry per period,
+ *   { periodKey, items: [{id, label, done}] }
+ *
+ * Important: the editor scopes to the PERIOD the active week falls
+ * in, NOT the active week itself. A quarterly milestone toggled in
+ * W17 reflects in W18, W19, ... up to the quarter boundary — they
+ * all share the same period entry. The write uses `ts = midWeekTs`
+ * of the active week so the entry lives on a known weekday.
+ */
+export function RecurringMilestoneEditor({ goal, spec, activeLabel }) {
+  const { entries, append } = useGoalInputs(goal?.id);
+  const cadence = spec.manual?.cadence || "quarterly";
+
+  // Resolve the active week's period key (e.g. "2026-Q2"). All weeks
+  // inside the same quarter share this key.
+  const activePeriodKey = useMemo(() => {
+    const ts = midWeekTs(activeLabel);
+    return ts == null ? "all" : periodKeyFor(ts, cadence);
+  }, [activeLabel, cadence]);
+
+  // Latest entry whose periodKey matches the active period.
+  const items = useMemo(() => {
+    const matching = (entries || []).filter(
+      (e) => e?.value?.periodKey === activePeriodKey,
+    );
+    const latest = matching[matching.length - 1];
+    const stored = Array.isArray(latest?.value?.items) ? latest.value.items : null;
+    if (stored) return stored;
+    // First time we see this period — seed from spec.manual.items.
+    const seed = Array.isArray(spec.manual?.items) ? spec.manual.items : [];
+    return seed.map((it) => ({
+      id: it.id || slugify(it.label || it),
+      label: it.label || it,
+      done: false,
+    }));
+  }, [entries, activePeriodKey, spec.manual?.items]);
+
+  const done = items.filter((i) => i.done).length;
+  const total = items.length;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  const toggle = (id) => {
+    const ts = midWeekTs(activeLabel);
+    if (ts == null) return;
+    const next = items.map((it) =>
+      it.id === id ? { ...it, done: !it.done } : it,
+    );
+    append({ periodKey: activePeriodKey, items: next }, undefined, ts);
+  };
+
+  return (
+    <div className="flex w-full flex-col gap-1.5">
+      <div
+        className="flex items-baseline justify-between text-[11px] text-muted-fg"
+        style={{ fontFamily: "var(--font-mono)" }}
+      >
+        <span>
+          {done} / {total} this {cadenceWord(cadence)} · {pct}%
+        </span>
+        <span className="opacity-70">{activePeriodKey}</span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {items.length === 0 ? (
+          <span
+            className="text-[10px] text-muted-fg/70"
+            style={{ fontFamily: "var(--font-mono)" }}
+          >
+            No checklist items — define them via the dashboard widget first.
+          </span>
+        ) : (
+          items.map((it) => (
+            <button
+              key={it.id}
+              type="button"
+              onClick={() => toggle(it.id)}
+              className={cn(
+                "flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] transition-colors",
+                it.done
+                  ? "bg-accent-dim text-fg"
+                  : "text-muted-fg hover:bg-accent-dim/40",
+              )}
+            >
+              {it.done && <Check size={11} />}
+              {it.label}
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ─────────────────────── Read-only: auto widgets ─────────────────────── */
 
 export function AutoReadout({ value, unit, target, hint }) {
@@ -457,4 +715,61 @@ function slugify(s) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+/**
+ * Period key for RECURRING_MILESTONE. Matches the dashboard widget's
+ * shape so entries written from the dashboard and from check-in
+ * collide on the same key for the same period.
+ *
+ *   daily      → "YYYY-MM-DD"
+ *   weekly     → "YYYY-W##"   (ISO week, simplified — sun-anchored)
+ *   biweekly   → "YYYY-B##"
+ *   monthly    → "YYYY-MM"
+ *   quarterly  → "YYYY-Q#"
+ */
+function periodKeyFor(ts, cadence) {
+  const d = new Date(ts);
+  if (!Number.isFinite(d.getTime())) return "all";
+  const y = d.getUTCFullYear();
+  switch (cadence) {
+    case "daily":
+      return `${y}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+    case "weekly": {
+      const w = sunWeekOf(d);
+      return `${y}-W${pad2(w)}`;
+    }
+    case "biweekly": {
+      const w = sunWeekOf(d);
+      return `${y}-B${pad2(Math.floor((w - 1) / 2))}`;
+    }
+    case "monthly":
+      return `${y}-${pad2(d.getUTCMonth() + 1)}`;
+    case "quarterly":
+      return `${y}-Q${Math.floor(d.getUTCMonth() / 3) + 1}`;
+    default:
+      return "all";
+  }
+}
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function sunWeekOf(d) {
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const daysSinceJan1 = Math.floor((d.getTime() - yearStart.getTime()) / (24 * 60 * 60 * 1000));
+  return Math.floor(daysSinceJan1 / 7) + 1;
+}
+
+function cadenceWord(cadence) {
+  switch (cadence) {
+    case "daily":     return "day";
+    case "weekly":    return "week";
+    case "biweekly":  return "fortnight";
+    case "monthly":   return "month";
+    case "quarterly": return "quarter";
+    case "yearly":    return "year";
+    default:          return "period";
+  }
 }

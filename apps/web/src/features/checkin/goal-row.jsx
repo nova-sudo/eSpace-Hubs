@@ -29,7 +29,9 @@ import {
   CounterEditor,
   DateLogEditor,
   FreeTextEditor,
+  IncidentLogEditor,
   MilestoneEditor,
+  RecurringMilestoneEditor,
   ScaleEditor,
   UnsupportedStub,
 } from "./editors";
@@ -208,7 +210,10 @@ function EditorFor({
       );
     }
     case SPEC_KINDS.FIRST_PASS_RATE: {
-      const pct = firstPassRatePct(weekMrs);
+      // firstPassRatePct returns `{ pct, clean, pingPong }` (or null).
+      // The read-out displays a scalar — unwrap to .pct.
+      const result = firstPassRatePct(weekMrs);
+      const pct = result?.pct ?? null;
       return (
         <AutoReadout
           value={pct == null ? "—" : pct}
@@ -228,12 +233,27 @@ function EditorFor({
         />
       );
 
+    case SPEC_KINDS.INCIDENT_LOG:
+      return (
+        <IncidentLogEditor
+          goal={goal}
+          weekStart={weekStart}
+          weekEnd={weekEnd}
+          activeLabel={activeLabel}
+        />
+      );
+
+    case SPEC_KINDS.RECURRING_MILESTONE:
+      return (
+        <RecurringMilestoneEditor
+          goal={goal}
+          spec={spec}
+          activeLabel={activeLabel}
+        />
+      );
+
     // Phase D/E widgets with richer state — full inline editors land in
     // a later PR. For now, point the user at the dashboard widget.
-    case SPEC_KINDS.INCIDENT_LOG:
-      return <UnsupportedStub message="Log incidents from the dashboard widget" />;
-    case SPEC_KINDS.RECURRING_MILESTONE:
-      return <UnsupportedStub message="Toggle items from the dashboard widget" />;
     case SPEC_KINDS.CODE_RUBRIC:
       return <UnsupportedStub message="Grade PRs from the dashboard widget" />;
     case SPEC_KINDS.SCORECARD:

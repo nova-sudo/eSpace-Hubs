@@ -391,6 +391,256 @@ export function BeforeAfterCell({ goal, weekStart, weekEnd, weekLabel }) {
   );
 }
 
+/* ─────────────────────── Incident log (cell, popover) ─────────────────────── */
+
+export function IncidentLogCell({ goal, weekStart, weekEnd, weekLabel }) {
+  const { entries, append, remove } = useGoalInputs(goal?.id);
+  const inWindow = useMemo(
+    () =>
+      (entries || []).filter(
+        (e) =>
+          e.ts >= weekStart.getTime() &&
+          e.ts < weekEnd.getTime() &&
+          e.value &&
+          typeof e.value === "object",
+      ),
+    [entries, weekStart, weekEnd],
+  );
+  const totalDowntime = inWindow.reduce(
+    (sum, e) => sum + (Number(e.value?.downtime) || 0),
+    0,
+  );
+
+  const [severity, setSeverity] = useState("P2");
+  const [downtime, setDowntime] = useState("");
+  const [link, setLink] = useState("");
+
+  const canLog = downtime !== "" && Number.isFinite(Number(downtime));
+
+  const log = () => {
+    if (!canLog) return;
+    const ts = midWeekTs(weekLabel);
+    if (ts == null) return;
+    const minutes = Number(downtime);
+    if (!Number.isFinite(minutes) || minutes < 0) return;
+    append(
+      {
+        severity,
+        downtime: minutes,
+        ...(link.trim() ? { link: link.trim() } : {}),
+      },
+      undefined,
+      ts,
+    );
+    setDowntime("");
+    setLink("");
+  };
+
+  const preview =
+    inWindow.length === 0
+      ? "0"
+      : `${inWindow.length} · ${totalDowntime}m`;
+
+  return (
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "rounded-md border border-border bg-bg px-2 py-1 text-[11px]",
+            "hover:bg-accent-dim/40",
+            inWindow.length === 0 ? "text-muted-fg" : "text-fg",
+          )}
+          style={CELL_FONT}
+        >
+          {preview}
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          align="start"
+          sideOffset={4}
+          className="z-50 w-[280px] rounded-md border border-border bg-bg p-2 shadow-lg"
+        >
+          {inWindow.length > 0 && (
+            <ul className="mb-1.5 flex flex-col gap-0.5">
+              {inWindow.map((e) => (
+                <li
+                  key={e.ts}
+                  className="flex items-center justify-between gap-2 rounded-md bg-bg/40 px-1.5 py-0.5 text-[11px]"
+                  style={CELL_FONT}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="rounded-[3px] border border-border px-1 py-px text-[9px] uppercase text-muted-fg">
+                      {e.value.severity || "P?"}
+                    </span>
+                    <span className="text-fg">{e.value.downtime ?? 0}m</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => remove(e.ts)}
+                    className="text-[10px] text-muted-fg/60 hover:text-fg"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex flex-wrap items-center gap-1" style={CELL_FONT}>
+            <select
+              value={severity}
+              onChange={(ev) => setSeverity(ev.target.value)}
+              className="h-7 rounded-md border border-border bg-bg px-1 text-[11px]"
+            >
+              <option value="P1">P1</option>
+              <option value="P2">P2</option>
+              <option value="P3">P3</option>
+              <option value="P4">P4</option>
+            </select>
+            <input
+              type="number"
+              min={0}
+              value={downtime}
+              onChange={(ev) => setDowntime(ev.target.value)}
+              placeholder="min"
+              className="h-7 w-14 rounded-md border border-border bg-bg px-1.5 text-[11px]"
+            />
+            <input
+              type="url"
+              value={link}
+              onChange={(ev) => setLink(ev.target.value)}
+              placeholder="link"
+              className="h-7 min-w-0 flex-1 rounded-md border border-border bg-bg px-1.5 text-[11px]"
+            />
+            <button
+              type="button"
+              onClick={log}
+              disabled={!canLog}
+              className={cn(
+                "rounded-md bg-accent px-1.5 py-1 text-[10px] uppercase text-accent-on",
+                !canLog && "opacity-40",
+              )}
+            >
+              Log
+            </button>
+          </div>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
+/* ─────────────────────── Recurring milestone (cell, popover) ─────────────────────── */
+
+/**
+ * RECURRING_MILESTONE — the checklist resets per cadence period. The
+ * cell scopes its display to the period the active WEEK falls in
+ * (e.g. all weeks of "2026-Q2" share the same checklist state). The
+ * write uses `ts = midWeekTs(weekLabel)` so each toggle lives on a
+ * known weekday inside the cell's week, but the periodKey it carries
+ * is the cadence-level bucket — that's what lets cross-week toggles
+ * collapse to one entry.
+ */
+export function RecurringMilestoneCell({ goal, spec, weekLabel }) {
+  const { entries, append } = useGoalInputs(goal?.id);
+  const cadence = spec.manual?.cadence || "quarterly";
+
+  const periodKey = useMemo(() => {
+    const ts = midWeekTs(weekLabel);
+    return ts == null ? "all" : periodKeyFor(ts, cadence);
+  }, [weekLabel, cadence]);
+
+  const items = useMemo(() => {
+    const matching = (entries || []).filter(
+      (e) => e?.value?.periodKey === periodKey,
+    );
+    const latest = matching[matching.length - 1];
+    const stored = Array.isArray(latest?.value?.items) ? latest.value.items : null;
+    if (stored) return stored;
+    const seed = Array.isArray(spec.manual?.items) ? spec.manual.items : [];
+    return seed.map((it) => ({
+      id: it.id || slugify(it.label || it),
+      label: it.label || it,
+      done: false,
+    }));
+  }, [entries, periodKey, spec.manual?.items]);
+
+  const done = items.filter((i) => i.done).length;
+  const total = items.length;
+
+  const toggle = (id) => {
+    const ts = midWeekTs(weekLabel);
+    if (ts == null) return;
+    const next = items.map((it) =>
+      it.id === id ? { ...it, done: !it.done } : it,
+    );
+    append({ periodKey, items: next }, undefined, ts);
+  };
+
+  return (
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          className="flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-[11px] hover:bg-accent-dim/40"
+          style={CELL_FONT}
+        >
+          <span className="font-semibold text-fg">
+            {done}/{total}
+          </span>
+          <span className="text-[9px] text-muted-fg/70">{periodKey}</span>
+          <ChevronDown size={10} className="text-muted-fg" />
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          align="start"
+          sideOffset={4}
+          className="z-50 max-h-[280px] w-[240px] overflow-y-auto rounded-md border border-border bg-bg p-2 shadow-lg"
+        >
+          <div className="flex flex-col gap-1">
+            {items.length === 0 ? (
+              <span
+                className="px-1 py-2 text-center text-[11px] text-muted-fg"
+                style={CELL_FONT}
+              >
+                Define items via the dashboard widget first
+              </span>
+            ) : (
+              items.map((it) => (
+                <button
+                  key={it.id}
+                  type="button"
+                  onClick={() => toggle(it.id)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] transition-colors",
+                    it.done
+                      ? "bg-accent-dim text-fg"
+                      : "text-muted-fg hover:bg-accent-dim/40",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border",
+                      it.done
+                        ? "border-accent bg-accent text-accent-on"
+                        : "border-border bg-bg",
+                    )}
+                  >
+                    {it.done && <Check size={9} />}
+                  </span>
+                  <span className="truncate">{it.label}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
 /* ─────────────────────── Auto / Read-only (cell) ─────────────────────── */
 
 export function AutoCell({ value, unit, target }) {
@@ -519,4 +769,44 @@ function slugify(s) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+/* Period helpers — duplicated from editors.jsx to keep this module
+   self-contained for cell-only consumers. Shape matches the dashboard
+   RecurringMilestoneWidget's `periodKey`. */
+
+function periodKeyFor(ts, cadence) {
+  const d = new Date(ts);
+  if (!Number.isFinite(d.getTime())) return "all";
+  const y = d.getUTCFullYear();
+  switch (cadence) {
+    case "daily":
+      return `${y}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+    case "weekly": {
+      const w = sunWeekOf(d);
+      return `${y}-W${pad2(w)}`;
+    }
+    case "biweekly": {
+      const w = sunWeekOf(d);
+      return `${y}-B${pad2(Math.floor((w - 1) / 2))}`;
+    }
+    case "monthly":
+      return `${y}-${pad2(d.getUTCMonth() + 1)}`;
+    case "quarterly":
+      return `${y}-Q${Math.floor(d.getUTCMonth() / 3) + 1}`;
+    default:
+      return "all";
+  }
+}
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function sunWeekOf(d) {
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const daysSinceJan1 = Math.floor(
+    (d.getTime() - yearStart.getTime()) / (24 * 60 * 60 * 1000),
+  );
+  return Math.floor(daysSinceJan1 / 7) + 1;
 }
