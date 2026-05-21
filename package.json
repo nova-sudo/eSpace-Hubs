@@ -4,7 +4,8 @@
   "private": true,
   "description": "eSpace Dev Hub — personal performance & evidence tracker for programmers. Integrates Jira, self-hosted GitLab, and GitHub. Monorepo root.",
   "workspaces": [
-    "apps/*",
+    "apps/api",
+    "apps/web",
     "packages/*"
   ],
   "overrides": {
