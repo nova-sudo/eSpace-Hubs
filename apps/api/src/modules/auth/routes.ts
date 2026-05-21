@@ -39,9 +39,12 @@ import {
 } from "../../middleware/rate-limit.js";
 import {
   acceptInviteHandler,
+  companionTunnelClearHandler,
+  companionTunnelRegisterHandler,
   inviteHandler,
   loginHandler,
   logoutHandler,
+  meApiOriginHandler,
   meEngagementConfigHandler,
   meHandler,
   passwordResetHandler,
@@ -108,6 +111,27 @@ authRouter.get(
   "/me/engagement-config",
   requireAuth({ requireTotpEnrolled: false }),
   meEngagementConfigHandler,
+);
+
+// ─── Phase 3: companion-tunnel registration ─────────────────────────
+// Read endpoint open to un-enrolled (frontend reads it on login,
+// before TOTP setup is complete, to know whether to set up routing).
+// Mutation endpoints require full enrollment — companion runs as a
+// real desktop app the user uses regularly, no reason to relax there.
+authRouter.get(
+  "/me/api-origin",
+  requireAuth({ requireTotpEnrolled: false }),
+  meApiOriginHandler,
+);
+authRouter.post(
+  "/me/companion-tunnel",
+  requireAuth(),
+  companionTunnelRegisterHandler,
+);
+authRouter.delete(
+  "/me/companion-tunnel",
+  requireAuth(),
+  companionTunnelClearHandler,
 );
 authRouter.post(
   "/totp/enrol",

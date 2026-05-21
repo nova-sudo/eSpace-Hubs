@@ -26,3 +26,8 @@ export { buildApp } from "./app.js";
 export { connect, disconnect, getDb } from "./db/client.js";
 export { bootstrap } from "./db/collections.js";
 export { seedDefaultOrg } from "./db/seed.js";
+// Phase 3: the catch-all calls this BEFORE invoking the Express app
+// to decide whether to proxy the request to a user-specific companion
+// tunnel instead. Returns the origin to proxy to, or null to fall
+// through to buildApp().
+export { resolveCompanionOrigin } from "./lib/companion-routing.js";

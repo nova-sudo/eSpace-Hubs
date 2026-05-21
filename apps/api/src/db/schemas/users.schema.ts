@@ -104,6 +104,20 @@ export const usersValidator: Document = {
         bsonType: ["string", "null"],
         enum: [...ALL_ENGAGEMENTS, null],
       },
+      // Companion-app registration (Phase 3). When set, the Vercel
+      // catch-all proxies /api/v1/* requests for this user to the
+      // companion's tunnel hostname instead of running the bundled
+      // Express app. Nullable so legacy rows + non-companion users
+      // pass validation.
+      companionTunnel: {
+        bsonType: ["object", "null"],
+        required: ["hostname", "registeredAt", "lastSeenAt"],
+        properties: {
+          hostname: { bsonType: "string", minLength: 4, maxLength: 256 },
+          registeredAt: { bsonType: "date" },
+          lastSeenAt: { bsonType: "date" },
+        },
+      },
     },
   },
 };

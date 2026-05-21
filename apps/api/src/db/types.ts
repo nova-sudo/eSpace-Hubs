@@ -221,6 +221,32 @@ export interface User {
   department?: string | null;
 
   /**
+   * Companion-app registration. When set, the Vercel catch-all
+   * (apps/web/src/pages/api/v1/[...path].ts) PROXIES every /api/v1/*
+   * call for this user to `hostname` instead of running the bundled
+   * Express app. Used by Crealogix-engagement users whose backend
+   * runs on their own laptop because Vercel can't reach private
+   * upstreams like git.bcn.crealogix.net.
+   *
+   *   hostname        Public DNS the companion-side tunnel exposes
+   *                   the local Express server at (e.g.
+   *                   "user-42.cf-tunnel.com"). HTTPS implicit.
+   *   registeredAt    First time the companion announced itself.
+   *   lastSeenAt      Last successful heartbeat. The catch-all
+   *                   refuses to proxy to a stale registration
+   *                   (older than COMPANION_STALE_AFTER_MS); falls
+   *                   back to the bundled API in that case.
+   *
+   * Optional/nullable on existing rows — backward-compatible with
+   * users created before this field shipped.
+   */
+  companionTunnel?: {
+    hostname: string;
+    registeredAt: Date;
+    lastSeenAt: Date;
+  } | null;
+
+  /**
    * Engagement assignment — which client/project this dev's
    * integration credentials resolve to. Each value maps to an
    * `<UPPERCASE>_*` env-var prefix that holds the engagement's

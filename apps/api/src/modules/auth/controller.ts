@@ -65,6 +65,7 @@ import {
 } from "./cookies.js";
 import {
   acceptInviteSchema,
+  companionTunnelRegisterSchema,
   inviteSchema,
   loginSchema,
   passwordResetRequestSchema,
@@ -1347,6 +1348,194 @@ export async function signupHandler(
 
     res.json({
       user: toPublicUser({ ...userDoc, _id: insertedId }),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── Phase 3: companion-tunnel registration + api-origin lookup ──────
+
+const COMPANION_STALE_AFTER_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Returns true if the user's companionTunnel registration is fresh
+ * enough to route real traffic to. A stale registration (no heartbeat
+ * in >5 min) is treated as "companion offline"; the caller falls back
+ * to the bundled API or surfaces an "open companion" banner.
+ */
+function isCompanionFresh(t: {
+  hostname: string;
+  registeredAt: Date;
+  lastSeenAt: Date;
+} | null | undefined): boolean {
+  if (!t || !t.hostname) return false;
+  const ageMs = Date.now() - new Date(t.lastSeenAt).getTime();
+  return ageMs < COMPANION_STALE_AFTER_MS;
+}
+
+// ─── POST /api/v1/me/companion-tunnel ─────────────────────────────────
+//
+// Called by the desktop companion app once its tunnel + Docker stack
+// are up. Registers (or refreshes) the user's tunnel hostname.
+// Authenticated via the regular session cookie (the companion will
+// have one after the Phase 3c device-pairing flow lands; in Phase 3a
+// the user can call this from a logged-in browser tab to seed it).
+//
+// Audit: writes user.companion_tunnel_registered. Lets admins see
+// when a Crealogix dev brought their backend online without exposing
+// the hostname publicly.
+
+export async function companionTunnelRegisterHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const { hostname } = companionTunnelRegisterSchema.parse(req.body);
+    const users = await getUsersCollection();
+    const now = new Date();
+
+    // Read current state so we can write an honest before/after audit.
+    const existing = await users.findOne({ _id: session.userId });
+    if (!existing) {
+      throw new HttpError(404, "not_found", "User not found.");
+    }
+    const before = existing.companionTunnel ?? null;
+
+    const next_value = {
+      hostname,
+      // Preserve original registeredAt across heartbeats so admins
+      // can see "this user first brought their companion online at X."
+      registeredAt: before?.hostname === hostname ? before.registeredAt : now,
+      lastSeenAt: now,
+    };
+
+    await users.updateOne(
+      { _id: session.userId },
+      {
+        $set: { companionTunnel: next_value, updatedAt: now },
+      },
+    );
+
+    await writeAudit({
+      orgId: session.orgId,
+      actorUserId: session.userId,
+      actorRole: session.role,
+      action: "user.companion_tunnel_registered",
+      targetType: "user",
+      targetId: session.userId.toHexString(),
+      before: before ? { hostname: before.hostname } : null,
+      after: { hostname },
+      ...networkMeta(req),
+    });
+
+    res.json({
+      companionTunnel: {
+        hostname,
+        registeredAt: next_value.registeredAt.toISOString(),
+        lastSeenAt: next_value.lastSeenAt.toISOString(),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── DELETE /api/v1/me/companion-tunnel ────────────────────────────────
+//
+// Called by the companion when the user clicks Stop backend / Quit.
+// Cleanly removes the registration so the catch-all stops routing to
+// a dead tunnel and falls back to the bundled API.
+
+export async function companionTunnelClearHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const users = await getUsersCollection();
+    const now = new Date();
+    const before = await users.findOne({ _id: session.userId });
+
+    await users.updateOne(
+      { _id: session.userId },
+      { $set: { companionTunnel: null, updatedAt: now } },
+    );
+
+    if (before?.companionTunnel) {
+      await writeAudit({
+        orgId: session.orgId,
+        actorUserId: session.userId,
+        actorRole: session.role,
+        action: "user.companion_tunnel_cleared",
+        targetType: "user",
+        targetId: session.userId.toHexString(),
+        before: { hostname: before.companionTunnel.hostname },
+        after: null,
+        ...networkMeta(req),
+      });
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── GET /api/v1/me/api-origin ────────────────────────────────────────
+//
+// Frontend calls this on login to decide which origin to route
+// /api/v1/* calls to. Returns:
+//   { origin: "<companion-hostname>", source: "companion" }    when fresh
+//   { origin: null, source: "bundled" }                        otherwise
+//
+// The frontend's apiFetch wrapper uses `source: "companion"` as the
+// signal to set the `X-Companion-Origin` header on subsequent calls
+// so the catch-all knows to proxy. (The catch-all also re-verifies
+// the origin server-side — it doesn't trust the header alone.)
+
+export async function meApiOriginHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const users = await getUsersCollection();
+    const user = await users.findOne({ _id: session.userId });
+    if (!user) {
+      throw new HttpError(404, "not_found", "User not found.");
+    }
+
+    if (isCompanionFresh(user.companionTunnel)) {
+      res.json({
+        origin: `https://${user.companionTunnel!.hostname}`,
+        source: "companion",
+        lastSeenAt: user.companionTunnel!.lastSeenAt.toISOString(),
+      });
+      return;
+    }
+
+    res.json({
+      origin: null,
+      source: "bundled",
+      // Hint to the frontend about why we fell back so the UI can
+      // show a useful banner (e.g. "Companion last seen 2h ago —
+      // open it to resume").
+      lastSeenAt: user.companionTunnel?.lastSeenAt?.toISOString() ?? null,
+      staleHostname: user.companionTunnel?.hostname ?? null,
     });
   } catch (err) {
     next(err);

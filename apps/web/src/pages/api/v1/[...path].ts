@@ -59,8 +59,135 @@
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { Application } from "express";
+import type { IncomingMessage } from "node:http";
+import https from "node:https";
 
 let appPromise: Promise<Application> | null = null;
+let resolveCompanionOrigin:
+  | ((req: IncomingMessage) => Promise<string | null>)
+  | null = null;
+
+// Hop-by-hop headers per RFC 7230 §6.1 — these MUST NOT be forwarded
+// when proxying. The rest of the request headers (including the
+// session Cookie) pass through unchanged so the companion's API sees
+// the same authenticated request the browser sent.
+const HOP_BY_HOP = new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  // Vercel-injected headers — the companion has no use for them and
+  // some confuse cookie/CSP middleware downstream.
+  "host",
+  "x-vercel-id",
+  "x-vercel-deployment-url",
+  "x-vercel-forwarded-for",
+  "x-vercel-ip-city",
+  "x-vercel-ip-country",
+  "x-vercel-ip-country-region",
+  "x-vercel-ip-latitude",
+  "x-vercel-ip-longitude",
+  "x-vercel-ip-timezone",
+  "x-vercel-ip-as-number",
+  "x-vercel-ip-continent",
+  "x-vercel-proxied-for",
+  "x-vercel-proxy-signature",
+  "x-vercel-proxy-signature-ts",
+  "x-vercel-sc-basepath",
+  "x-vercel-sc-headers",
+  "x-vercel-sc-host",
+  "x-vercel-enable-rewrite-caching",
+  "x-vercel-internal-timing",
+  "x-vercel-oidc-token",
+  "x-vercel-ja4-digest",
+  "x-vercel-ept",
+  "x-matched-path",
+  "x-real-ip",
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "x-forwarded-port",
+  "forwarded",
+  "x-invocation-id",
+]);
+
+function filterHeaders(
+  headers: NextApiRequest["headers"],
+  targetHost: string,
+): Record<string, string> {
+  const out: Record<string, string> = { host: targetHost };
+  for (const [k, v] of Object.entries(headers)) {
+    if (v == null) continue;
+    if (HOP_BY_HOP.has(k.toLowerCase())) continue;
+    out[k] = Array.isArray(v) ? v.join(", ") : v;
+  }
+  return out;
+}
+
+function proxyToCompanion(
+  req: NextApiRequest,
+  res: NextApiResponse,
+  origin: string,
+): Promise<void> {
+  const target = new URL(req.url || "/", origin);
+  return new Promise((resolve) => {
+    const proxyReq = https.request(
+      {
+        hostname: target.hostname,
+        port: target.port || 443,
+        path: target.pathname + target.search,
+        method: req.method,
+        headers: filterHeaders(req.headers, target.hostname),
+      },
+      (proxyRes) => {
+        // Forward all upstream headers verbatim. Notably Set-Cookie
+        // (if the companion mints a session) flows back to the
+        // browser; the browser scopes it to espace-hubs.vercel.app
+        // because the response comes from there, not the tunnel
+        // hostname directly.
+        const headers = { ...proxyRes.headers };
+        for (const k of Object.keys(headers)) {
+          if (HOP_BY_HOP.has(k.toLowerCase())) delete headers[k];
+        }
+        res.writeHead(proxyRes.statusCode || 502, headers);
+        proxyRes.pipe(res);
+        proxyRes.on("end", () => resolve());
+        proxyRes.on("error", () => resolve());
+      },
+    );
+    proxyReq.on("error", (err) => {
+      // Companion unreachable — surface a clear error so the frontend
+      // can show "open your companion." We DON'T fall back to the
+      // bundled API here because the bundled API can't fetch from the
+      // user's private upstreams anyway (that was the whole reason
+      // we routed to the companion). A bundled response would just
+      // produce broken tile data and confuse the user.
+      // eslint-disable-next-line no-console
+      console.warn("[catch-all] companion proxy failed:", err.message);
+      if (!res.headersSent) {
+        res.statusCode = 502;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            error: {
+              code: "companion_unreachable",
+              message: `Couldn't reach your companion at ${target.hostname}: ${err.message}. Open the companion app and try again.`,
+            },
+          }),
+        );
+      }
+      resolve();
+    });
+    // Stream the request body through — handles large bodies +
+    // streaming uploads without buffering everything in memory.
+    req.pipe(proxyReq);
+    req.on("error", () => proxyReq.destroy());
+  });
+}
 
 async function getApp(): Promise<Application> {
   if (!appPromise) {
@@ -71,6 +198,9 @@ async function getApp(): Promise<Application> {
       // the first /api/v1/* hit on a fresh container).
       const mod = await import("@espace-devhub/api");
       const app = mod.buildApp();
+      // Phase 3: capture the companion-routing resolver so we can
+      // ask it on every request whether to proxy instead.
+      resolveCompanionOrigin = mod.resolveCompanionOrigin;
       // Kick off the Mongo + bootstrap pipeline in the background.
       // We don't `await` it here so the first request can start
       // processing immediately — any handler that needs the DB
@@ -106,6 +236,30 @@ export default async function handler(
   res: NextApiResponse,
 ): Promise<void> {
   const app = await getApp();
+
+  // Phase 3 routing decision — does this user have a fresh companion
+  // tunnel registered? If yes, proxy the whole request there and skip
+  // the bundled Express app entirely. The resolver does a Mongo
+  // lookup keyed by the user's session; on null we fall through to
+  // the bundled path, preserving today's behavior for the 99% of
+  // users (and 100% of unauthenticated requests).
+  if (resolveCompanionOrigin) {
+    try {
+      const origin = await resolveCompanionOrigin(req);
+      if (origin) {
+        return proxyToCompanion(req, res, origin);
+      }
+    } catch (err) {
+      // Routing decision MUST be non-fatal — if Mongo is briefly
+      // unreachable for the resolver, we still want to serve the
+      // request via the bundled app rather than 500.
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[catch-all] companion-routing resolution failed:",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
 
   // Next pre-parses cookies onto `req.cookies` before handing the
   // request to us. Express's `cookie-parser` short-circuits when it
