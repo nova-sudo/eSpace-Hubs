@@ -6,19 +6,24 @@ calls through to it (via a Cloudflare Tunnel), giving the user access
 to private resources their machine can reach but Vercel cannot — for
 example, Crealogix's internal GitLab at `git.bcn.crealogix.net`.
 
-## Phase 1 (this directory, today)
+## Status (Phase 2)
 
-What works:
+What works today:
 
-- ✅ Tray icon + window UI
-- ✅ Start / stop the `docker compose --profile tunnel` stack
-- ✅ Live API healthcheck against `localhost:4000/healthz`
-- ✅ Persisted settings (repo path, Cloudflare Tunnel token, auto-start)
-- ✅ Logs panel tailing the docker compose output
+- ✅ Tray icon + window UI (Phase 1)
+- ✅ Start / stop the `docker compose --profile tunnel` stack (Phase 1)
+- ✅ Live API healthcheck against `localhost:4000/healthz` (Phase 1)
+- ✅ Persisted settings (repo path, Cloudflare Tunnel token, auto-start) (Phase 1)
+- ✅ Logs panel tailing the docker compose output (Phase 1)
+- ✅ VPN status detection — DNS probe of `git.bcn.crealogix.net` (Phase 2)
+- ✅ VPN credentials in OS keychain via electron's `safeStorage` (Phase 2)
+- ✅ FortiClient client discovery + best-effort connect (Phase 2)
+- ✅ `openfortivpn` headless auto-connect when present (Phase 2)
+- ✅ Auto-connect VPN when starting backend (toggleable) (Phase 2)
 
 What's deferred:
 
-- 🚧 FortiClient VPN automation (Phase 2)
+- 🚧 Reliable FortiClient disconnect (currently manual — Phase 2b polish)
 - 🚧 Per-user Cloudflare Tunnel auto-provisioning (Phase 3)
 - 🚧 Server-side per-user `API_ORIGIN` routing (Phase 3)
 - 🚧 Code signing + auto-update (Phase 4)

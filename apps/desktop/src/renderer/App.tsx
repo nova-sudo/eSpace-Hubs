@@ -33,11 +33,36 @@ type CompanionWindow = Window & {
         error: string | null;
       }>;
     };
+    vpn: {
+      status: () => Promise<{
+        connected: boolean;
+        resolution: "private" | "public" | "nxdomain" | "error";
+        resolvedIp: string | null;
+        gatedHost: string;
+        message: string;
+      }>;
+      connect: () => Promise<{ ok: boolean; attempted: string; message: string }>;
+      disconnect: () => Promise<{ ok: boolean; attempted: string; message: string }>;
+      discoverClient: () => Promise<{
+        kind: "forticlient" | "openfortivpn" | "none";
+        path: string | null;
+      }>;
+    };
+    credentials: {
+      has: (key: string) => Promise<{ keychainAvailable: boolean; set: boolean }>;
+      set: (key: string, value: string) => Promise<{ ok: boolean }>;
+      clear: (key: string) => Promise<{ ok: boolean }>;
+    };
     settings: {
       get: () => Promise<{
         repoPath?: string;
         tunnelToken?: string;
         autoStartAtLogin?: boolean;
+        vpnUsername?: string;
+        vpnGateway?: string;
+        vpnProfile?: string;
+        vpnGatedHost?: string;
+        vpnAutoConnectOnStart?: boolean;
       }>;
       set: (patch: Record<string, unknown>) => Promise<unknown>;
     };
@@ -50,6 +75,9 @@ const companion = (window as unknown as CompanionWindow).companion;
 type BackendStatus = Awaited<ReturnType<typeof companion.backend.status>>;
 type ApiPing = Awaited<ReturnType<typeof companion.api.ping>>;
 type Settings = Awaited<ReturnType<typeof companion.settings.get>>;
+type VpnStatus = Awaited<ReturnType<typeof companion.vpn.status>>;
+type VpnClient = Awaited<ReturnType<typeof companion.vpn.discoverClient>>;
+type CredentialFlag = Awaited<ReturnType<typeof companion.credentials.has>>;
 
 const POLL_INTERVAL_MS = 3000;
 const LOG_LINES = 50;
@@ -59,21 +87,31 @@ export function App() {
   const [ping, setPing] = useState<ApiPing | null>(null);
   const [settings, setSettings] = useState<Settings>({});
   const [logs, setLogs] = useState<string[]>([]);
-  const [busy, setBusy] = useState<"" | "starting" | "stopping">("");
+  const [vpn, setVpn] = useState<VpnStatus | null>(null);
+  const [vpnClient, setVpnClient] = useState<VpnClient | null>(null);
+  const [vpnPwdFlag, setVpnPwdFlag] = useState<CredentialFlag | null>(null);
+  const [vpnPwdDraft, setVpnPwdDraft] = useState("");
+  const [busy, setBusy] = useState<"" | "starting" | "stopping" | "vpn-connect" | "vpn-disconnect">("");
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [s, p, ll, st] = await Promise.all([
+      const [s, p, ll, st, vs, vc, vp] = await Promise.all([
         companion.backend.status(),
         companion.api.ping(),
         companion.backend.logs(LOG_LINES),
         companion.settings.get(),
+        companion.vpn.status(),
+        companion.vpn.discoverClient(),
+        companion.credentials.has("vpnPassword"),
       ]);
       setStatus(s);
       setPing(p);
       setLogs(ll);
       setSettings(st);
+      setVpn(vs);
+      setVpnClient(vc);
+      setVpnPwdFlag(vp);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -104,6 +142,42 @@ export function App() {
 
   const onSettingChange = async (key: string, value: unknown) => {
     await companion.settings.set({ [key]: value });
+    await refresh();
+  };
+
+  /* ── VPN actions ─────────────────────────────────────────────── */
+
+  const onVpnConnect = async () => {
+    setBusy("vpn-connect");
+    setError(null);
+    const r = await companion.vpn.connect();
+    if (!r.ok) setError(r.message);
+    setBusy("");
+    await refresh();
+  };
+
+  const onVpnDisconnect = async () => {
+    setBusy("vpn-disconnect");
+    setError(null);
+    const r = await companion.vpn.disconnect();
+    if (!r.ok) setError(r.message);
+    setBusy("");
+    await refresh();
+  };
+
+  const onSavePassword = async () => {
+    if (!vpnPwdDraft) return;
+    try {
+      await companion.credentials.set("vpnPassword", vpnPwdDraft);
+      setVpnPwdDraft("");
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const onClearPassword = async () => {
+    await companion.credentials.clear("vpnPassword");
     await refresh();
   };
 
@@ -167,6 +241,161 @@ export function App() {
         )}
       </Section>
 
+      <Section title="VPN (Crealogix)">
+        <div style={S.row}>
+          <Stat
+            label="Tunnel"
+            value={vpn?.connected ? "up" : "down"}
+            tone={vpn?.connected ? "good" : "bad"}
+          />
+          <Stat
+            label="Gated host"
+            value={vpn?.gatedHost || "—"}
+            tone="muted"
+          />
+          <Stat
+            label="Resolves to"
+            value={vpn?.resolvedIp || vpn?.resolution || "—"}
+            tone={
+              vpn?.resolution === "private"
+                ? "good"
+                : vpn?.resolution === "nxdomain"
+                ? "bad"
+                : "muted"
+            }
+          />
+          <Stat
+            label="Client"
+            value={
+              vpnClient?.kind === "none"
+                ? "not found"
+                : `${vpnClient?.kind} ✓`
+            }
+            tone={vpnClient?.kind === "none" ? "warn" : "good"}
+          />
+        </div>
+        <p style={S.helpInline}>{vpn?.message || ""}</p>
+        <div style={S.actions}>
+          <button
+            type="button"
+            style={S.btnPrimary}
+            disabled={!!busy || vpn?.connected === true}
+            onClick={onVpnConnect}
+          >
+            {busy === "vpn-connect" ? "Connecting…" : "Connect VPN"}
+          </button>
+          <button
+            type="button"
+            style={S.btnSecondary}
+            disabled={!!busy || vpn?.connected === false}
+            onClick={onVpnDisconnect}
+          >
+            {busy === "vpn-disconnect" ? "Disconnecting…" : "Disconnect VPN"}
+          </button>
+          <button
+            type="button"
+            style={S.btnSecondary}
+            onClick={() => void refresh()}
+          >
+            Refresh status
+          </button>
+        </div>
+
+        {/* Credentials sub-block ─ The plaintext password is sent to
+            main ONCE (here) and never echoed back to the renderer. */}
+        <Field
+          label="Username"
+          help="Crealogix VPN username. Sent only when openfortivpn is the active client; FortiClient uses its own saved profile."
+        >
+          <input
+            type="text"
+            value={settings.vpnUsername || ""}
+            onChange={(e) => onSettingChange("vpnUsername", e.target.value)}
+            style={S.input}
+          />
+        </Field>
+
+        <div style={S.field}>
+          <span style={S.fieldLabel}>Password</span>
+          {vpnPwdFlag?.set ? (
+            <div style={S.row}>
+              <span style={{ ...S.statValue, color: "var(--good)" }}>
+                stored ✓ in OS keychain
+              </span>
+              <button
+                type="button"
+                style={S.btnGhost}
+                onClick={onClearPassword}
+              >
+                Clear
+              </button>
+            </div>
+          ) : (
+            <div style={S.row}>
+              <input
+                type="password"
+                value={vpnPwdDraft}
+                onChange={(e) => setVpnPwdDraft(e.target.value)}
+                placeholder="Crealogix VPN password"
+                style={{ ...S.input, flex: 1 }}
+              />
+              <button
+                type="button"
+                style={S.btnPrimary}
+                disabled={!vpnPwdDraft}
+                onClick={onSavePassword}
+              >
+                Save to keychain
+              </button>
+            </div>
+          )}
+          <span style={S.fieldHelp}>
+            {vpnPwdFlag?.keychainAvailable
+              ? "Encrypted at rest using your OS keychain (Windows DPAPI / macOS Keychain)."
+              : "OS keychain isn't available — install libsecret on Linux, then restart the companion."}
+          </span>
+        </div>
+
+        <Field
+          label="FortiClient saved-profile name"
+          help="Profile created inside FortiClient's UI. Used when the companion launches FortiClient.exe with `-p <profile>`."
+        >
+          <input
+            type="text"
+            value={settings.vpnProfile || ""}
+            placeholder="Crealogix"
+            onChange={(e) => onSettingChange("vpnProfile", e.target.value)}
+            style={S.input}
+          />
+        </Field>
+
+        <Field
+          label="Gated host (probe)"
+          help="The companion checks if this hostname resolves to a private IP to know whether the VPN is up."
+        >
+          <input
+            type="text"
+            value={settings.vpnGatedHost || ""}
+            placeholder="git.bcn.crealogix.net"
+            onChange={(e) => onSettingChange("vpnGatedHost", e.target.value)}
+            style={S.input}
+          />
+        </Field>
+
+        <Field
+          label="Auto-connect VPN when starting backend"
+          help="When the backend starts, bring up the VPN first if it's down."
+        >
+          <input
+            type="checkbox"
+            checked={!!settings.vpnAutoConnectOnStart}
+            onChange={(e) =>
+              onSettingChange("vpnAutoConnectOnStart", e.target.checked)
+            }
+          />
+        </Field>
+      </Section>
+
       <Section title="Settings">
         <Field
           label="Repo path"
@@ -209,7 +438,7 @@ export function App() {
 
       <footer style={S.footer}>
         <span>
-          Phase 1 · backend control + healthcheck. FortiClient automation lands in Phase 2.
+          Phase 2 · backend + VPN. Per-user tunnel routing lands in Phase 3.
         </span>
         <a
           href="#"
@@ -389,6 +618,22 @@ const S: Record<string, React.CSSProperties> = {
     padding: "8px 14px",
     fontSize: 12,
     cursor: "pointer",
+  },
+  btnGhost: {
+    background: "transparent",
+    color: "var(--muted)",
+    border: 0,
+    padding: "4px 8px",
+    fontSize: 11,
+    cursor: "pointer",
+    textDecoration: "underline",
+  },
+  helpInline: {
+    fontSize: 11,
+    color: "var(--muted)",
+    margin: 0,
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    lineHeight: 1.4,
   },
   field: { display: "flex", flexDirection: "column", gap: 4 },
   fieldLabel: { fontSize: 12, color: "var(--fg)" },
