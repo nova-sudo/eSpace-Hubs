@@ -1,17 +1,33 @@
 # Electron-builder configuration for packaging the companion app.
 #
-# Phase 1 ships an UNSIGNED NSIS installer for Windows + a portable
-# DMG for macOS. Code signing + auto-update wiring lands in Phase 4
-# (needs Authenticode cert + Apple Developer ID + a release pipeline).
+# Phase 4 adds: publish to GitHub Releases (enabling electron-updater),
+# code-signing slots for Windows + macOS, and notarization wiring.
 #
 # Test a local build with:
 #   cd apps/desktop
-#   npm run dist             # → dist-electron/eSpace Dev Hub Companion-0.1.0.exe
+#   npm run dist             # → dist-electron/eSpace Dev Hub Companion-…-win-x64.exe
 #
-# The installer drops the app under `%LocalAppData%\Programs\eSpace
-# Dev Hub Companion\`. Users can move it elsewhere; the companion
-# resolves the repo path from its settings store, not from its own
-# install path.
+# Cut a release with:
+#   cd apps/desktop && npm version <patch|minor|major>
+#   git tag desktop-v$(node -p "require('./package.json').version")
+#   git push --follow-tags
+#
+# That triggers .github/workflows/release-desktop.yml which builds on
+# every platform, signs (if certs available via secrets), and publishes
+# to https://github.com/nova-sudo/eSpaceDev/releases.
+#
+# Signing precedence (all OPTIONAL — unsigned build is the fallback):
+#   - Windows: env CSC_LINK + CSC_KEY_PASSWORD point at an Authenticode
+#              .pfx. Without those, the build emits an unsigned .exe;
+#              users see a SmartScreen warning on first run.
+#   - macOS:   env CSC_LINK + CSC_KEY_PASSWORD point at a Developer ID
+#              Application cert (.p12). Notarization needs APPLE_ID,
+#              APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID.
+#
+# Without signing, electron-updater's "is this update trustworthy?"
+# check still works (uses SHA-512 hashes from latest*.yml served
+# alongside the installer), but OS-level "is this app from a
+# trusted publisher?" checks will warn the user.
 
 appId: ai.trybytes.espace-devhub.companion
 productName: eSpace Dev Hub Companion
@@ -34,11 +50,31 @@ files:
 # the installer — the companion ASSUMES Docker Desktop is installed
 # and the user has a checkout somewhere. Both get resolved at runtime.
 
+# Publish to GitHub Releases. electron-updater reads the same target
+# at runtime to find newer versions of `latest{,-mac,-linux}.yml`.
+publish:
+  provider: github
+  owner: nova-sudo
+  repo: eSpaceDev
+  # `releaseType: release` would auto-promote the draft on publish.
+  # We keep `draft` so a human flips the toggle to "Published" once
+  # they've smoke-tested the artifacts on each OS.
+  releaseType: draft
+
 win:
   target:
     - target: nsis
       arch: [x64]
   icon: build/icon.ico
+  # publisherName surfaces in Windows' SmartScreen + Add/Remove
+  # Programs. When the .pfx's CN differs from this exact string,
+  # SmartScreen warns the user the app "is from an unknown publisher"
+  # despite being signed. Keep them aligned with the cert's CN.
+  publisherName: "eSpace"
+  # Signing is opt-in via env (CSC_LINK + CSC_KEY_PASSWORD). When
+  # those vars are absent, electron-builder logs a warning and emits
+  # an unsigned installer; we accept that for first releases.
+  signingHashAlgorithms: ["sha256"]
 
 nsis:
   oneClick: false
@@ -47,6 +83,10 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: eSpace Dev Hub Companion
+  # `differentialPackage: true` would let electron-updater download
+  # just the patch chunks; turn on later once we publish a few
+  # versions and want to validate the size savings.
+  differentialPackage: false
 
 mac:
   target:
@@ -54,6 +94,21 @@ mac:
       arch: [arm64, x64]
   category: public.app-category.developer-tools
   icon: build/icon.icns
+  # Hardened runtime is mandatory for notarization. The two entitlement
+  # flags below let Electron's IPC + tray work under the runtime:
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  # Sign + notarize is enabled by env (CSC_LINK + APPLE_ID + …). The
+  # entitlements file lives in build/entitlements.mac.plist — created
+  # alongside the icons. Notarization happens during the build via
+  # electron-builder's "notarize: true" once Apple creds are present.
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+
+dmg:
+  # Sign the .dmg itself in addition to the .app inside. Some macOS
+  # versions complain when only the inner bundle is signed.
+  sign: true
 
 linux:
   target:

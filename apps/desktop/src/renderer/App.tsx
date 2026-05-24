@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { Onboarding } from "./Onboarding";
 
 type CompanionWindow = Window & {
   companion: {
@@ -66,8 +67,20 @@ type CompanionWindow = Window & {
         apiBaseUrl?: string;
         tunnelHostname?: string;
         tunnelAutoRegister?: boolean;
+        onboardingCompletedAt?: string | null;
       }>;
       set: (patch: Record<string, unknown>) => Promise<unknown>;
+    };
+    onboarding: {
+      checkDocker: () => Promise<{
+        installed: boolean;
+        version: string | null;
+        message: string;
+      }>;
+      chooseDirectory: (title?: string) => Promise<{
+        canceled: boolean;
+        path: string | null;
+      }>;
     };
     shell: { openExternal: (url: string) => Promise<void> };
     pair: {
@@ -264,8 +277,24 @@ export function App() {
     await refresh();
   };
 
+  // First-run wizard overlays the main UI until `onboardingCompletedAt`
+  // is set. We let the rest of the panel render underneath so the user
+  // can see what's coming, but they can't interact through the overlay.
+  const onboardingDone = !!settings.onboardingCompletedAt;
+  const showOnboarding = !!status && !onboardingDone;
+
   return (
     <main style={S.shell}>
+      {showOnboarding && (
+        <Onboarding
+          onComplete={() => {
+            // settings.set already happened inside the wizard; refresh
+            // pulls the new value into local state so this component
+            // re-renders without the overlay.
+            void refresh();
+          }}
+        />
+      )}
       <header style={S.header}>
         <div>
           <h1 style={S.title}>eSpace Dev Hub Companion</h1>

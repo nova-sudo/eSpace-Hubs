@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened-runtime entitlements for the macOS notarized build.
+
+  Each <key> below opts the app INTO a runtime exception we actually
+  need. Default-deny is the rule; add an entry only when something
+  breaks under the hardened runtime and the fix is impossible without
+  it.
+
+  com.apple.security.cs.allow-jit:
+    Electron's V8 generates JIT'd machine code for JS execution. The
+    hardened runtime blocks JIT pages by default; this allows them.
+
+  com.apple.security.cs.allow-unsigned-executable-memory:
+    Some Electron subsystems (especially when GPU acceleration is
+    active) allocate executable pages without re-signing them. Same
+    reason as the JIT entitlement.
+
+  com.apple.security.cs.disable-library-validation:
+    Electron + native modules (we don't have any today, but
+    electron-updater pulls in app-builder-bin) load .dylib code
+    paths the hardened runtime would otherwise reject.
+
+  com.apple.security.network.client:
+    The companion makes outbound HTTPS calls (Dev Hub /api/v1/*,
+    Cloudflare Tunnel registration, electron-updater feed). Required.
+
+  com.apple.security.inherit:
+    The Electron main process spawns child processes (docker,
+    openfortivpn). Inherits the runtime so the children stay
+    sandboxed-but-functional.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <key>com.apple.security.inherit</key>
+  <true/>
+</dict>
+</plist>

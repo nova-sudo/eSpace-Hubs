@@ -68,6 +68,11 @@ interface CompanionSchema {
    *  paired bearer token AND backend:stop clears it. Defaults to true
    *  on a fresh install. */
   tunnelAutoRegister?: boolean;
+  // ── Phase 4: onboarding wizard ──────────────────────────────────
+  /** ISO timestamp the user finished the first-run wizard. While
+   *  null/undefined the renderer overlays the wizard on top of the
+   *  main companion UI until all required steps are done. */
+  onboardingCompletedAt?: string | null;
 }
 
 const FILE_NAME = "config.json";

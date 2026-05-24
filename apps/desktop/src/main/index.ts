@@ -22,7 +22,7 @@
  * the tunnel with the server).
  */
 
-import { app, BrowserWindow, Tray, Menu, ipcMain, shell, nativeImage } from "electron";
+import { app, BrowserWindow, Tray, Menu, dialog, ipcMain, shell, nativeImage } from "electron";
 import path from "node:path";
 import { startBackend, stopBackend, backendStatus, tailLogs } from "./docker";
 import { pingApi } from "./health";
@@ -31,6 +31,8 @@ import * as vpn from "./vpn";
 import * as keychain from "./keychain";
 import * as pair from "./pair";
 import * as tunnel from "./tunnel-register";
+import { checkDocker } from "./docker-check";
+import { initAutoUpdater } from "./auto-update";
 
 // __dirname is available natively in CommonJS — no fileURLToPath
 // gymnastics needed. Electron's main process is CJS by default; we
@@ -329,6 +331,32 @@ ipcMain.handle("shell:open-external", async (_event, url: string) => {
   await shell.openExternal(url);
 });
 
+// ─── onboarding wizard IPC ───────────────────────────────────────────
+// The first-run wizard needs to verify Docker is on PATH + let the
+// user pick their repo path via a native folder picker. Both are
+// scoped to main because the renderer has no file-system access.
+
+ipcMain.handle("docker:check", async () => {
+  return checkDocker();
+});
+
+ipcMain.handle("dialog:choose-directory", async (_event, title?: string) => {
+  // returnFocus is the only place we care about the window-handle
+  // origin — falls back to undefined cleanly if no window is open.
+  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  const opts: Electron.OpenDialogOptions = {
+    title: typeof title === "string" && title.trim() ? title : "Choose a folder",
+    properties: ["openDirectory"],
+  };
+  const result = win
+    ? await dialog.showOpenDialog(win, opts)
+    : await dialog.showOpenDialog(opts);
+  if (result.canceled || result.filePaths.length === 0) {
+    return { canceled: true, path: null };
+  }
+  return { canceled: false, path: result.filePaths[0] };
+});
+
 // ─── lifecycle ──────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
@@ -341,6 +369,10 @@ app.whenReady().then(() => {
   mainWindow = createWindow();
   tray = createTray();
   void tray; // keep the ref alive — tray instances are GC'd otherwise
+
+  // Phase 4 — auto-update polling. Background; no-op in dev / when
+  // unpackaged. See apps/desktop/src/main/auto-update.ts.
+  initAutoUpdater();
 });
 
 app.on("activate", () => {
