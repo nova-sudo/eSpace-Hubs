@@ -22,7 +22,6 @@ export const sessionsValidator: Document = {
       "lastSeenAt",
       "ip",
       "userAgent",
-      "demo",
       "totpVerified",
     ],
     additionalProperties: false,
@@ -41,13 +40,18 @@ export const sessionsValidator: Document = {
       lastSeenAt: { bsonType: "date" },
       ip: { bsonType: ["string", "null"] },
       userAgent: { bsonType: ["string", "null"] },
-      demo: { bsonType: "bool" },
       totpVerified: { bsonType: "bool" },
       // Optional for backward-compat with sessions minted before this
       // field existed. New mintSession calls always write it; the
       // startup migration `backfill-totp-enrolled-sessions` backfills
       // pre-existing rows.
       totpEnrolled: { bsonType: ["bool", "null"] },
+      // Legacy demo-mode flag — kept in `properties` (not `required`)
+      // until the `unset-session-demo` migration sweeps all existing
+      // rows. Once migrated rows are gone, a follow-up PR drops this
+      // property entirely. Today this just lets lingering demo:bool
+      // values pass validation on update.
+      demo: { bsonType: "bool" },
     },
   },
 };

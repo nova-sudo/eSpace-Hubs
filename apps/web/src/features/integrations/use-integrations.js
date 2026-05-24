@@ -2,9 +2,6 @@
 
 import { useSyncExternalStore } from "react";
 import { readIntegrations, INTEGRATIONS_CHANGE_EVENT } from "./integrations-store";
-import { useDemoMode, DEMO_ME } from "@/features/demo-mode";
-
-const DEMO_PROVIDERS = ["github", "gitlab", "jira"];
 
 function subscribe(callback) {
   if (typeof window === "undefined") return () => {};
@@ -45,23 +42,6 @@ function initialsOf(name) {
 export function useIntegrations() {
   const raw = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const integrations = JSON.parse(raw);
-  const demo = useDemoMode();
-
-  // Demo mode pretends every provider is connected so connection-gated UI
-  // (the "connect now" empty states) doesn't shadow the synthetic data.
-  if (demo) {
-    return {
-      integrations,
-      connectedProviders: DEMO_PROVIDERS,
-      me: {
-        name: DEMO_ME.name,
-        handle: DEMO_ME.handle,
-        initials: initialsOf(DEMO_ME.name),
-        team: DEMO_ME.team,
-      },
-      isConnected: (id) => DEMO_PROVIDERS.includes(id),
-    };
-  }
 
   const connectedProviders = Object.keys(integrations).filter(
     (id) => integrations[id]?.accessToken || integrations[id]?.apiToken,

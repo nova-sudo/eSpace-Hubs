@@ -68,13 +68,8 @@ export function SubTabsTag() {
       // Pinned just under the header (which is `sticky top-0` and ~57px tall).
       // z-15 lifts above the dashboard content but stays below the analyst
       // overlay (z-20+) and the command palette (z-100).
-      //
-      // The `--demo-banner-h` var (set on the AppShell swipe-wrapper) shifts
-      // this offset down by the demo banner's height when demo mode is on.
-      // Falls back to 0px outside demo so the bookmarks sit cleanly under
-      // the header in normal use.
       className="fixed left-0 z-[15] flex flex-col items-start gap-[3px]"
-      style={{ top: "calc(76px + var(--demo-banner-h, 0px))" }}
+      style={{ top: 76 }}
     >
       {items.map((it) => {
         const active =

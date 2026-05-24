@@ -3,7 +3,6 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { SPECS_CHANGE_EVENT, readSpecs } from "./specs-store";
 import { validateSpec } from "@espace-devhub/shared/goal-specs";
-import { buildDemoSpecs, useDemoMode } from "@/features/demo-mode";
 
 function subscribe(callback) {
   if (typeof window === "undefined") return () => {};
@@ -41,16 +40,9 @@ function getServerSnapshot() {
  */
 export function useGoalSpecs() {
   const raw = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  const demo = useDemoMode();
 
   const parsed = useMemo(() => {
-    const real = JSON.parse(raw);
-    // Demo-mode override: when demo is on, ALWAYS use the synthetic
-    // specs (real specs stay in localStorage untouched and come back
-    // when demo flips off). The override has to be unconditional —
-    // demo's goal ids and any real classified specs likely differ, so
-    // a half-merge would leave most widgets unclassified.
-    const state = demo ? buildDemoSpecs() : real;
+    const state = JSON.parse(raw);
     const specs = new Map();
     for (const [goalId, value] of Object.entries(state.specs || {})) {
       const res = validateSpec(value);
@@ -61,7 +53,7 @@ export function useGoalSpecs() {
       rawSpecs: state.specs || {},
       lastAnalyzedAt: state.lastAnalyzedAt || 0,
     };
-  }, [raw, demo]);
+  }, [raw]);
 
   const isClassified = useCallback(
     (goalId) => parsed.specs.has(goalId),

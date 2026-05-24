@@ -39,11 +39,6 @@ import {
   readInputs,
 } from "@/features/goal-inputs";
 import { goalCompliance, useSnapshots } from "@/features/snapshots";
-import {
-  DEMO_GOAL_ID_PREFIX,
-  buildDemoInputs,
-  useDemoMode,
-} from "@/features/demo-mode";
 import { readContextFor } from "@/features/goal-context";
 import { isoDaysAgo } from "@/lib/date";
 import { rubricHash, readVerdict } from "@/features/grading";
@@ -73,24 +68,10 @@ export function useGoalReadings(days = 90) {
   const { data: events } = useCombinedEventsSince(isoDaysAgo(days));
   const { data: jira } = useJiraTickets();
   const { snapshots } = useSnapshots();
-  const demo = useDemoMode();
 
   return useMemo(() => {
     const out = [];
-    // Merge demo entries on top of the real input store when demo is on.
-    // Real entries always win — flipping demo never shadows user data.
-    const realInputs = readInputs();
-    const allInputs = { ...realInputs };
-    if (demo) {
-      const demoInputs = buildDemoInputs();
-      for (const [gid, list] of Object.entries(demoInputs)) {
-        if (!gid.startsWith(DEMO_GOAL_ID_PREFIX)) continue;
-        if (Array.isArray(realInputs[gid]) && realInputs[gid].length > 0) {
-          continue;
-        }
-        allInputs[gid] = list.map((e) => ({ ...e, goalId: gid }));
-      }
-    }
+    const allInputs = readInputs();
     const mrs = mergedWithin(merged || [], days);
     const tickets = Array.isArray(jira?.issues) ? jira.issues : [];
 
@@ -112,7 +93,7 @@ export function useGoalReadings(days = 90) {
       }
     }
     return out;
-  }, [goals, specs, merged, events, jira, snapshots, days, demo]);
+  }, [goals, specs, merged, events, jira, snapshots, days]);
 }
 
 function pushReading(out, goal, level, ctx) {

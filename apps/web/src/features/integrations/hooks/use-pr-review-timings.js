@@ -1,15 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
 import useSWR from "swr";
 import { useCombinedMergedSince } from "./use-combined";
 import { githubApi } from "../api-clients/github";
 import { computePrReviewTiming } from "../metrics/review-timing";
-import {
-  buildDemoDetailsMap,
-  buildDemoPrs,
-  useDemoMode,
-} from "@/features/demo-mode";
 
 /**
  * For every merged PR in the window, fetch its conversation + review-line
@@ -32,58 +26,6 @@ import {
 const CONCURRENCY = 4;
 
 export function usePrReviewTimings(since) {
-  const demo = useDemoMode();
-
-  // ── ALL hooks must be called unconditionally on every render. We
-  //    compute both the demo-mode result and the live-data SWR result,
-  //    then return one or the other at the end. The cost of the unused
-  //    branch is negligible (SWR's `null` key is a no-op fetch; demo
-  //    memo is cheap synthetic generation).
-
-  // Demo-mode synthetic timings, computed once per toggle.
-  const demoTimings = useMemo(() => {
-    if (!demo) return null;
-    const prs = buildDemoPrs();
-    const details = buildDemoDetailsMap();
-    return prs
-      .map((pr) => {
-        const d = details.get(pr.id);
-        if (!d) return null;
-        const timing = computePrReviewTiming(
-          { createdAt: d.createdAt, author: d.author },
-          d.comments || [],
-        );
-        const loc = parseOwnerRepoFromUrl(pr.web_url) || {
-          owner: "demo",
-          repo: "demo",
-        };
-        return {
-          pr: {
-            id: pr.id,
-            number: pr.number,
-            title: pr.title,
-            htmlUrl: pr.web_url,
-            owner: loc.owner,
-            repo: loc.repo,
-            createdAt: d.createdAt,
-            mergedAt: d.mergedAt,
-            author: d.author,
-            source: "github",
-          },
-          details: d,
-          timing,
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => {
-        const am = a.pr.mergedAt ? Date.parse(a.pr.mergedAt) : 0;
-        const bm = b.pr.mergedAt ? Date.parse(b.pr.mergedAt) : 0;
-        return bm - am;
-      });
-  }, [demo]);
-
-  // Live-data path — runs on every render, but useCombinedMergedSince
-  // itself short-circuits to demo data when demo is on, so it stays cheap.
   const { data: prs, isLoading: listLoading, error: listError } =
     useCombinedMergedSince(since);
 
@@ -184,20 +126,11 @@ export function usePrReviewTimings(since) {
     },
   );
 
-  if (demo) {
-    return { data: demoTimings, isLoading: false, error: null };
-  }
   return {
     data: swr.data,
     isLoading: listLoading || (!!swrKey && !swr.data && !swr.error),
     error: listError || swr.error || null,
   };
-}
-
-/** Local helper — used only by the demo path to fill `pr.owner` / `pr.repo`. */
-function parseOwnerRepoFromUrl(url) {
-  const m = /github\.com\/([^/]+)\/([^/]+)\/pull\/\d+/.exec(url || "");
-  return m ? { owner: m[1], repo: m[2] } : null;
 }
 
 /**

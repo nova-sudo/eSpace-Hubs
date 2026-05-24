@@ -82,8 +82,6 @@ export function buildCommands(ctx) {
     provider,
     setProvider,
     snapshotNow,
-    demo,
-    toggleDemo,
     link,
   } = ctx;
   const cmds = [];
@@ -144,19 +142,6 @@ export function buildCommands(ctx) {
     sub: "browser print → save as PDF",
     keywords: ["pdf", "print", "export"],
     run: () => router.push(link ? link("/evidence?print=1") : "/evidence?print=1"),
-  });
-
-  // Demo mode toggle — surfaced in actions because flipping it during a
-  // tour or screen-share is the most common path.
-  cmds.push({
-    id: "action:toggle-demo",
-    category: "Actions",
-    label: demo ? "Turn demo mode OFF" : "Turn demo mode ON",
-    sub: demo
-      ? "drop synthetic data, restore live integrations"
-      : "synthetic 14-PR dataset for testing the dashboard",
-    keywords: ["demo", "mock", "sample", "test data", "synthetic"],
-    run: () => (toggleDemo ? toggleDemo() : null),
   });
 
   // ── AI provider switcher ───────────────────────────────────────────

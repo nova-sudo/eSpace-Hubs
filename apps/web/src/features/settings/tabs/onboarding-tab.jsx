@@ -2,11 +2,10 @@
 
 import Link from "next/link";
 import { Check, X } from "lucide-react";
-import { Button, Card, MonoLabel, Section } from "@/components/ui";
+import { Card, MonoLabel, Section } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { PROVIDERS, useIntegrations } from "@/features/integrations";
 import { GoalsEditor } from "@/features/goals";
-import { setDemoMode, useDemoMode } from "@/features/demo-mode";
 
 /**
  * Onboarding tab — a one-pager walkthrough for new users.
@@ -26,11 +25,7 @@ export function OnboardingTab() {
         <IntegrationSummary />
       </Section>
 
-      <Section num="02 /" title="Try it with demo data">
-        <DemoModeCard />
-      </Section>
-
-      <Section num="03 /" title="Map your L1 / L2 goals">
+      <Section num="02 /" title="Map your L1 / L2 goals">
         <div className="flex flex-col gap-4">
           <p className="max-w-2xl text-[13px] leading-[1.55] text-muted-fg">
             We don&apos;t pull goals from Zoho — role permissions block the
@@ -44,52 +39,6 @@ export function OnboardingTab() {
         </div>
       </Section>
     </>
-  );
-}
-
-/**
- * Demo-mode toggle. Renders the consequences plainly so toggling never
- * feels mysterious: which 14 PRs, what spread, where they show up.
- */
-function DemoModeCard() {
-  const demo = useDemoMode();
-  return (
-    <Card className="p-6">
-      <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
-        <div>
-          <MonoLabel>{demo ? "Demo mode is ON" : "Demo mode is OFF"}</MonoLabel>
-          <p className="mt-2 max-w-2xl text-[13.5px] leading-[1.55]">
-            Loads a deterministic synthetic dataset — 14 PRs across 4 repos,
-            comments from 4 reviewers spread over the last 90 days — so you
-            can see the dashboard&apos;s review-timing section, the{" "}
-            <code style={{ fontFamily: "var(--font-mono)" }}>/reviews</code>{" "}
-            page, and every metric tile populated with realistic data. No
-            tokens needed; no real API calls fire while it&apos;s on.
-          </p>
-          <ul className="mt-3 grid gap-1 text-[12px] text-muted-fg md:grid-cols-2">
-            <li>· TTFR ranging from minutes to days</li>
-            <li>· ATTNR varying per PR</li>
-            <li>· Mix of merged + still-open PRs</li>
-            <li>· Real diff hunks on review comments</li>
-            <li>· Activity heatmap with weekday-realistic shape</li>
-            <li>· 5-reviewer high-turnover PR for stress-test</li>
-          </ul>
-          <p className="mt-3 max-w-2xl text-[12px] text-muted-fg">
-            A blue banner stays pinned at the top while demo mode is on so
-            you can&apos;t mistake demo data for real metrics. One click on
-            that banner — or the button here — flips back to live data.
-          </p>
-        </div>
-        <div className="md:pt-1">
-          <Button
-            onClick={() => setDemoMode(!demo)}
-            variant={demo ? "ghost" : undefined}
-          >
-            {demo ? "Turn demo off" : "Turn demo on"}
-          </Button>
-        </div>
-      </div>
-    </Card>
   );
 }
 

@@ -42,8 +42,9 @@ function ScrollBody({ children }) {
         id="scroll-root"
         className="devhub-scroll-root relative z-[2]"
         style={{
-          // Banner-aware viewport math — see app-shell.jsx for the var.
-          height: "calc(100vh - 57px - var(--demo-banner-h, 0px))",
+          // 57px = sticky header height. Viewport minus header gives the
+          // scroll region.
+          height: "calc(100vh - 57px)",
           overflowY: "scroll",
           scrollSnapType: "y mandatory",
           scrollBehavior: "smooth",

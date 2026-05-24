@@ -48,12 +48,8 @@ export function Section({
         // Strict viewport height (not min-height) so `flex-1` grids inside
         // actually constrain their rows. `min-height` would let the section
         // grow to fit tall tile content, which defeats the 1fr grid rows and
-        // pushes content past the viewport.
-        //
-        // Subtract the demo banner's height when demo mode is on (the
-        // `--demo-banner-h` var is set on the AppShell wrapper, falls
-        // back to 0 in normal use).
-        height: "calc(100vh - 57px - var(--demo-banner-h, 0px))",
+        // pushes content past the viewport. 57px = sticky header height.
+        height: "calc(100vh - 57px)",
         padding: "36px 40px 44px",
         display: "flex",
         flexDirection: "column",

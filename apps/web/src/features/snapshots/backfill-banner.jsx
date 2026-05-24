@@ -1,25 +1,19 @@
 "use client";
 
 /**
- * Backfill banner — surfaces below the demo banner / above the page
- * content. Self-hides when there's nothing to backfill, expands into
- * a progress bar while a run is in flight.
+ * Backfill banner — surfaces above the page content. Self-hides when
+ * there's nothing to backfill, expands into a progress bar while a
+ * run is in flight.
  *
  * Mount this once at the AppShell level. The hook (`useBackfill`)
  * decides whether to surface anything via its `missingWeeks` count.
  */
 
 import { useBackfill } from "./use-backfill";
-import { useDemoMode } from "@/features/demo-mode";
 
 export function BackfillBanner() {
   const { run, isRunning, progress, missingWeeks } = useBackfill();
-  const demo = useDemoMode();
 
-  // Demo mode supplies its own pre-populated snapshot stream covering
-  // Jan → now, so there's nothing to backfill. The banner would just
-  // be visual noise. Suppress.
-  if (demo) return null;
   if (!isRunning && missingWeeks === 0) return null;
 
   return (

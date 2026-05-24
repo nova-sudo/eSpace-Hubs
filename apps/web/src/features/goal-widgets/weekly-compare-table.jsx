@@ -72,9 +72,9 @@ export function WeeklyCompareTable({ groups }) {
         className="rounded-[var(--radius-tile)] border border-dashed border-border bg-card-alt px-5 py-6 text-muted-fg"
         style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, lineHeight: 1.55 }}
       >
-        Compare-weeks table needs at least one captured snapshot. Either
-        flip on demo mode for synthetic history, or wait for the
-        Thursday-EOD auto-capture to populate the stream.
+        Compare-weeks table needs at least one captured snapshot. Connect
+        your integrations and wait for the Thursday-EOD auto-capture to
+        populate the stream — or check back next week.
       </div>
     );
   }
