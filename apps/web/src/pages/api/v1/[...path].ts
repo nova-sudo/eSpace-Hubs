@@ -231,6 +231,39 @@ export const config = {
   },
 };
 
+/**
+ * Path prefixes that MUST always hit Vercel's bundled API, never the
+ * companion tunnel — regardless of whether the user has a fresh
+ * registration. Two failure modes drove this list:
+ *
+ *   1. Dead tunnel masks core endpoints. If the user's cloudflared
+ *      stops sending heartbeats but the registration is still inside
+ *      the 5-minute freshness window, a POST /auth/login would 530
+ *      via CF Tunnel error 1033 — the user can't sign in to fix it
+ *      from the same browser.
+ *
+ *   2. Circular routing. The /companion/* pairing endpoints and
+ *      /auth/me/companion-tunnel + /auth/me/api-origin ARE the
+ *      routing-management surface. Proxying them to a companion is
+ *      either circular ("ask the companion where the companion is")
+ *      or pointless (the companion doesn't know about the pairing
+ *      flow because the pairing collection lives only in the
+ *      Vercel-side Mongo).
+ *
+ * The integration-proxy endpoints (/integrations/proxy/<provider>/*)
+ * stay proxied — those are the entire reason companions exist
+ * (upstream calls to private resources behind the user's VPN).
+ */
+function shouldBypassCompanion(rawUrl: string): boolean {
+  // Strip query string — we're only matching on the path.
+  const path = rawUrl.split("?", 1)[0] || "";
+  return (
+    path.startsWith("/api/v1/auth/") ||
+    path.startsWith("/api/v1/admin/") ||
+    path.startsWith("/api/v1/companion/")
+  );
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
@@ -243,7 +276,11 @@ export default async function handler(
   // lookup keyed by the user's session; on null we fall through to
   // the bundled path, preserving today's behavior for the 99% of
   // users (and 100% of unauthenticated requests).
-  if (resolveCompanionOrigin) {
+  //
+  // Hard-bypass for auth/admin/companion-pairing paths — see
+  // `shouldBypassCompanion` above for why. Even if the user has a
+  // fresh companion registration, these endpoints must hit Vercel.
+  if (resolveCompanionOrigin && !shouldBypassCompanion(req.url || "")) {
     try {
       const origin = await resolveCompanionOrigin(req);
       if (origin) {
