@@ -29,6 +29,7 @@ import {
   listAuditHandler,
   listSignupCodesHandler,
   listUsersHandler,
+  resetUserPersonalDataHandler,
   resetUserTotpHandler,
   updateSignupCodeHandler,
   updateUserHandler,
@@ -53,6 +54,16 @@ adminRouter.post(
   requireAuth(),
   requireRole("admin"),
   resetUserTotpHandler,
+);
+// Wipes the user's dashboard data (goals + snapshots + verdicts +
+// specs + context + inputs) across the collections that were polluted
+// by the pre-#117 localStorage-mirror upload bug. Does NOT delete the
+// user account, integrations, sessions, or audit history.
+adminRouter.delete(
+  "/users/:id/personal-data",
+  requireAuth(),
+  requireRole("admin"),
+  resetUserPersonalDataHandler,
 );
 
 adminRouter.get(
