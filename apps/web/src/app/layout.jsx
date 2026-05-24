@@ -8,7 +8,6 @@ import { SnapshotsSync } from "@/features/snapshots";
 import { ContextSync } from "@/features/goal-context";
 import { InputsSync } from "@/features/goal-inputs";
 import { SpecsSync } from "@/features/goal-specs";
-import { GoalsSync } from "@/features/goals";
 import { MigrateOnce } from "@/features/migrate";
 import { HubsFetcher } from "@/features/hubs";
 
@@ -63,12 +62,16 @@ export default function RootLayout({ children }) {
               (app/[hub]/layout.jsx) and the root redirect read from
               that store synchronously. */}
           <HubsFetcher />
+          {/* The remaining *Sync components are scheduled to be removed
+              feature-by-feature alongside goals (the localStorage-cache
+              architecture they implement is being replaced by direct
+              API fetches inside each feature's hook). Goals already
+              uses the API-direct pattern below. */}
           <GradingSync />
           <SnapshotsSync />
           <ContextSync />
           <InputsSync />
           <SpecsSync />
-          <GoalsSync />
           {children}
         </SessionProvider>
         <Toaster

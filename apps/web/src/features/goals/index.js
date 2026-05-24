@@ -13,9 +13,10 @@ export {
   replaceGoals,
   clearGoals,
   loadTestGoals,
+  fetchGoals,
+  resetGoals,
   GOAL_PRIORITIES,
   GOAL_CATEGORIES,
   GOALS_SCHEMA_VERSION,
 } from "./goals-store";
 export { parseImportFile, mergeImport } from "./import-parser";
-export { GoalsSync } from "./goals-sync-mount";

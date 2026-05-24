@@ -1,51 +1,51 @@
+"use client";
+
 /**
- * localStorage-backed store for the user's manually-entered L1 / L2 goal
- * tree. Mirrors Zoho People's Performance Management → KRA / Goals module.
+ * In-memory + API-backed goal-tree store.
  *
- * Schema v2 (current):
+ * History: this used to be a localStorage-mirrored store with a separate
+ * sync layer (`goals-sync.js` + `GoalsSync` mount component). The mirror
+ * created two cross-user data leaks:
+ *
+ *   1. `pullGoalsFromApi` short-circuited on empty server response,
+ *      leaving stale local data intact when a fresh user signed in.
+ *   2. `writeAll` POSTed the local tree to the API on every mutation,
+ *      so any stale localStorage data got uploaded under the new
+ *      session's user id.
+ *
+ * Fix: the API is now the only source of truth. State lives in a
+ * module-level value; useGoals subscribes via useSyncExternalStore.
+ * Mutations optimistically update local state and PUT to the API in
+ * the background — failures roll back and surface in `error`.
+ *
+ * Auth transitions: the auth feature dispatches
+ * `auth:user-storage-cleared` after wiping localStorage (logout, login,
+ * signup, etc.). We listen and reset our in-memory state to the empty
+ * baseline. The next consumer that mounts triggers a fresh `fetchGoals`.
+ *
+ * Schema v2:
  *
  *   {
  *     schemaVersion: 2,
  *     l1s: [
  *       {
- *         id:          string,  // local uuid
- *         code:        string,  // e.g. "R-L0-3-PSCS-L1-06" (optional, from Zoho)
- *         title:       string,  // the goal statement
- *         description: string,  // short explanation beyond the title
- *         rubric:      string,  // Not-achieved / Achieved / Over / Role-model criteria
- *         weightage:   number,  // 0-100 (should sum to 100 across L1s)
- *         category:    string,  // free-form tag: "delivery"|"quality"|"people"|…
+ *         id, code, title, description, rubric, weightage, category,
  *         l2s: [
  *           {
- *             id:          string,
- *             code:        string,
- *             title:       string,
- *             description: string,  // NEW v2: Zoho's "Description" column
- *             rubric:      string,
- *             weightage:   number,  // weight within parent L1 (0-100)
- *             priority:    "low"|"medium"|"high"|"",
- *             startDate:   string,  // ISO YYYY-MM-DD
- *             dueDate:     string,  // ISO YYYY-MM-DD
- *             category:    string,
+ *             id, code, title, description, rubric, weightage,
+ *             priority, startDate, dueDate, category,
  *           }
  *         ]
  *       }
  *     ]
  *   }
  *
- * DELIBERATE removal from v1: `status` / `progress`. The AI Analyst now
- * derives progress per-goal via the widget it generates; the user no
- * longer self-reports it here.
- *
- * Migration: `readGoals()` detects pre-v2 records and promotes them in
- * memory (it doesn't rewrite storage until the next mutation, so a user
- * that opens then closes the app without editing stays safely on v1 on
- * disk).
+ * DELIBERATE removal from v1: `status` / `progress`. The AI Analyst
+ * now derives progress per-goal via the widget it generates.
  */
 
-import { mirrorPutTree } from "./goals-sync";
+import { apiGet, apiPut } from "@/lib/api-client";
 
-const STORAGE_KEY = "espace-devhub:goals";
 const CHANGE_EVENT = "goals:change";
 
 export const GOALS_CHANGE_EVENT = CHANGE_EVENT;
@@ -78,76 +78,113 @@ export const GOAL_CATEGORIES = Object.freeze([
   { value: "other", label: "Other" },
 ]);
 
-export function readGoals() {
-  if (typeof window === "undefined") return defaultState();
-  try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    return migrate(raw);
-  } catch {
-    return defaultState();
-  }
+const INITIAL_STATE = {
+  /** True while the initial `GET /goals` is in flight. */
+  loading: false,
+  /** Whether a successful `GET /goals` has completed for the active
+   *  session. Used to gate "show empty state" UI vs "still loading." */
+  fetched: false,
+  /** Last write/fetch error envelope ({code, message}) or null. */
+  error: null,
+  /** The L1 tree. Empty array until the first fetch lands. */
+  l1s: [],
+};
+
+let state = { ...INITIAL_STATE };
+let inflightFetch = null;
+
+function emit() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 
-function defaultState() {
-  return { schemaVersion: GOALS_SCHEMA_VERSION, l1s: [] };
+function setState(patch) {
+  state = { ...state, ...patch };
+  emit();
+}
+
+/** Read the current state synchronously. Used by useSyncExternalStore
+ *  + ad-hoc reads (e.g. the import-merge dedupe). */
+export function getGoalsState() {
+  return state;
 }
 
 /**
- * Accept any prior shape and promote it to the current schema in memory.
- * Disk stays untouched until the next write — lets users roll back.
+ * Subscribe to state changes. Returns an unsubscribe.
  */
-function migrate(raw) {
-  if (!raw || typeof raw !== "object" || !Array.isArray(raw.l1s)) {
-    return defaultState();
-  }
-  const l1s = raw.l1s.map((l1) => promoteL1(l1));
-  return { schemaVersion: GOALS_SCHEMA_VERSION, l1s };
+export function subscribeGoals(cb) {
+  if (typeof window === "undefined") return () => {};
+  const handler = () => cb();
+  window.addEventListener(CHANGE_EVENT, handler);
+  return () => window.removeEventListener(CHANGE_EVENT, handler);
 }
 
-function promoteL1(l1) {
-  if (!l1 || typeof l1 !== "object") return emptyL1();
-  return {
-    ...emptyL1(),
-    ...l1,
-    l2s: Array.isArray(l1.l2s) ? l1.l2s.map(promoteL2) : [],
-  };
+/** Clear in-memory state and the in-flight fetch promise. Called by
+ *  the auth-transition listener below + exposed for tests. */
+export function resetGoals() {
+  state = { ...INITIAL_STATE };
+  inflightFetch = null;
+  emit();
 }
 
-function promoteL2(l2) {
-  if (!l2 || typeof l2 !== "object") return emptyL2();
-  const out = { ...emptyL2(), ...l2 };
-  // Drop legacy `status` explicitly — not in v2. We leave it off the
-  // returned object even if it was persisted, so spec-consuming layers
-  // don't accidentally read it.
-  delete out.status;
-  return out;
-}
-
-function writeAll(next) {
-  if (typeof window === "undefined") return;
-  const stamped = { ...next, schemaVersion: GOALS_SCHEMA_VERSION };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(stamped));
-  window.dispatchEvent(new Event(CHANGE_EVENT));
-  // Mirror PUT /goals after every local write. Fire-and-forget; the
-  // local state is already persisted. The sync's pull path uses
-  // `_replaceLocalNoMirror` below to avoid a write→PUT→pull→write loop.
-  void mirrorPutTree(stamped);
+// Reset state on every auth transition so the next user's mount
+// triggers a fresh fetch and never sees the prior user's tree.
+if (typeof window !== "undefined") {
+  window.addEventListener("auth:user-storage-cleared", resetGoals);
 }
 
 /**
- * Internal-ish: replace the local tree without firing a mirror PUT.
- * Only used by goals-sync-mount.jsx on the pull path. Direct
- * localStorage write — bypasses writeAll's mirror trigger.
+ * Idempotent — multiple concurrent callers share the same in-flight
+ * promise. Returns the resolved state's l1s on success, [] on failure.
+ *
+ * Empty-server case: setState({ l1s: [], fetched: true }) — this
+ * REPLACES whatever was previously in memory, so a stale tree from a
+ * prior session can't survive an empty pull.
  */
-export function _replaceLocalNoMirror(next) {
-  if (typeof window === "undefined") return;
-  const stamped = {
-    ...next,
-    schemaVersion: GOALS_SCHEMA_VERSION,
-    l1s: Array.isArray(next.l1s) ? next.l1s : [],
-  };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(stamped));
-  window.dispatchEvent(new Event(CHANGE_EVENT));
+export async function fetchGoals() {
+  if (inflightFetch) return inflightFetch;
+  setState({ loading: true, error: null });
+  inflightFetch = (async () => {
+    const r = await apiGet("/goals");
+    inflightFetch = null;
+    if (!r.ok) {
+      // Don't blow away whatever might be in memory on a transient
+      // failure — but DO mark loading false + capture the error so the
+      // UI can show a banner.
+      const isAuth =
+        r.error?.code === "unauthenticated" || r.error?.code === "totp_required";
+      setState({
+        loading: false,
+        // Auth failures are normal during logout flushes; not an error
+        // state the user needs to see.
+        error: isAuth ? null : r.error,
+      });
+      return state.l1s;
+    }
+    const l1s = Array.isArray(r.data?.l1s) ? r.data.l1s : [];
+    setState({ loading: false, fetched: true, error: null, l1s });
+    return l1s;
+  })();
+  return inflightFetch;
+}
+
+/**
+ * Send a new l1s list to /goals. Optimistically updates local state;
+ * rolls back on failure.
+ */
+async function persistL1s(nextL1s) {
+  const prevL1s = state.l1s;
+  setState({ l1s: nextL1s, error: null });
+  const r = await apiPut("/goals", { l1s: nextL1s });
+  if (!r.ok) {
+    setState({ l1s: prevL1s, error: r.error });
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[goals] save failed:",
+      r.error?.code,
+      r.error?.message,
+    );
+  }
 }
 
 function uid() {
@@ -182,84 +219,95 @@ function emptyL2() {
   };
 }
 
+// ─── Back-compat read helper ─────────────────────────────────────────
+// The pre-refactor store exposed `readGoals()` that synchronously
+// returned `{ schemaVersion, l1s }`. We keep that shape so call sites
+// that didn't expect async (e.g. AI analyst seeders) keep working.
+// They'll see an empty tree until `fetchGoals()` completes; consumers
+// that care about loading state should use `useGoals()` instead.
+export function readGoals() {
+  return { schemaVersion: GOALS_SCHEMA_VERSION, l1s: state.l1s };
+}
+
+// ─── Mutations ───────────────────────────────────────────────────────
+// All are fire-and-forget from the caller's perspective. Optimistic
+// update happens synchronously; PUT runs in background; failures roll
+// back state and surface in `error`. Editor components subscribe to
+// state via useGoals and re-render on either success or rollback.
+
 export function addL1() {
-  const state = readGoals();
-  state.l1s.push(emptyL1());
-  writeAll(state);
+  void persistL1s([...state.l1s, emptyL1()]);
 }
 
 export function updateL1(id, patch) {
-  const state = readGoals();
-  state.l1s = state.l1s.map((l1) => (l1.id === id ? { ...l1, ...patch } : l1));
-  writeAll(state);
+  void persistL1s(
+    state.l1s.map((l1) => (l1.id === id ? { ...l1, ...patch } : l1)),
+  );
 }
 
 export function removeL1(id) {
-  const state = readGoals();
-  state.l1s = state.l1s.filter((l1) => l1.id !== id);
-  writeAll(state);
+  void persistL1s(state.l1s.filter((l1) => l1.id !== id));
 }
 
 export function addL2(l1Id) {
-  const state = readGoals();
-  state.l1s = state.l1s.map((l1) =>
-    l1.id === l1Id ? { ...l1, l2s: [...l1.l2s, emptyL2()] } : l1,
+  void persistL1s(
+    state.l1s.map((l1) =>
+      l1.id === l1Id ? { ...l1, l2s: [...l1.l2s, emptyL2()] } : l1,
+    ),
   );
-  writeAll(state);
 }
 
 export function updateL2(l1Id, l2Id, patch) {
-  const state = readGoals();
-  state.l1s = state.l1s.map((l1) => {
-    if (l1.id !== l1Id) return l1;
-    return {
-      ...l1,
-      l2s: l1.l2s.map((l2) => (l2.id === l2Id ? { ...l2, ...patch } : l2)),
-    };
-  });
-  writeAll(state);
+  void persistL1s(
+    state.l1s.map((l1) => {
+      if (l1.id !== l1Id) return l1;
+      return {
+        ...l1,
+        l2s: l1.l2s.map((l2) => (l2.id === l2Id ? { ...l2, ...patch } : l2)),
+      };
+    }),
+  );
 }
 
 export function removeL2(l1Id, l2Id) {
-  const state = readGoals();
-  state.l1s = state.l1s.map((l1) => {
-    if (l1.id !== l1Id) return l1;
-    return { ...l1, l2s: l1.l2s.filter((l2) => l2.id !== l2Id) };
-  });
-  writeAll(state);
+  void persistL1s(
+    state.l1s.map((l1) => {
+      if (l1.id !== l1Id) return l1;
+      return { ...l1, l2s: l1.l2s.filter((l2) => l2.id !== l2Id) };
+    }),
+  );
 }
 
 export function clearGoals() {
-  writeAll(defaultState());
+  void persistL1s([]);
 }
 
 /**
- * Replace the entire goal tree (used by the Zoho import flow). Every row
- * is passed through the empty-record factory first so partial imports
- * never end up missing v2 fields.
+ * Replace the entire goal tree (used by the Zoho import flow). Every
+ * row is passed through the empty-record factory first so partial
+ * imports never end up missing v2 fields.
  */
 export function replaceGoals(tree) {
-  const l1s = Array.isArray(tree?.l1s) ? tree.l1s : [];
-  writeAll({
-    l1s: l1s.map((l1) => ({
-      ...emptyL1(),
-      ...l1,
-      id: l1.id || uid(),
-      l2s: Array.isArray(l1.l2s)
-        ? l1.l2s.map((l2) => ({
-            ...emptyL2(),
-            ...l2,
-            id: l2.id || uid(),
-          }))
-        : [],
-    })),
-  });
+  const incoming = Array.isArray(tree?.l1s) ? tree.l1s : [];
+  const l1s = incoming.map((l1) => ({
+    ...emptyL1(),
+    ...l1,
+    id: l1.id || uid(),
+    l2s: Array.isArray(l1.l2s)
+      ? l1.l2s.map((l2) => ({
+          ...emptyL2(),
+          ...l2,
+          id: l2.id || uid(),
+        }))
+      : [],
+  }));
+  void persistL1s(l1s);
 }
 
 /**
- * Replace the goal tree with the curated test set (one L2 per widget kind
- * + delegated + context-required cases). Used to exercise the AI Analyst
- * end-to-end without typing 13 goals by hand.
+ * Replace the goal tree with the curated test set (one L2 per widget
+ * kind + delegated + context-required cases). Used to exercise the AI
+ * Analyst end-to-end without typing 13 goals by hand.
  *
  * Lazy-imports `test-goals` so the test data isn't part of the regular
  * client bundle on routes that don't use it.
@@ -270,24 +318,27 @@ export async function loadTestGoals() {
 }
 
 /**
- * Append new L1s on top of the existing tree. Dedupes by `code` when set.
+ * Append new L1s on top of the existing tree. Dedupes by `code` when
+ * set.
  */
 export function appendGoals(tree) {
-  const state = readGoals();
-  const existingCodes = new Set(state.l1s.map((l1) => l1.code).filter(Boolean));
+  const existingCodes = new Set(
+    state.l1s.map((l1) => l1.code).filter(Boolean),
+  );
   const incoming = Array.isArray(tree?.l1s) ? tree.l1s : [];
-  const deduped = incoming.filter((l1) => !l1.code || !existingCodes.has(l1.code));
-  writeAll({
-    l1s: [
-      ...state.l1s,
-      ...deduped.map((l1) => ({
-        ...emptyL1(),
-        ...l1,
-        id: l1.id || uid(),
-        l2s: Array.isArray(l1.l2s)
-          ? l1.l2s.map((l2) => ({ ...emptyL2(), ...l2, id: l2.id || uid() }))
-          : [],
-      })),
-    ],
-  });
+  const deduped = incoming.filter(
+    (l1) => !l1.code || !existingCodes.has(l1.code),
+  );
+  const next = [
+    ...state.l1s,
+    ...deduped.map((l1) => ({
+      ...emptyL1(),
+      ...l1,
+      id: l1.id || uid(),
+      l2s: Array.isArray(l1.l2s)
+        ? l1.l2s.map((l2) => ({ ...emptyL2(), ...l2, id: l2.id || uid() }))
+        : [],
+    })),
+  ];
+  void persistL1s(next);
 }

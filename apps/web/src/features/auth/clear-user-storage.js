@@ -38,7 +38,9 @@
  * When adding a new store with user-scoped data, ADD ITS KEY HERE.
  */
 const USER_SCOPED_KEYS = Object.freeze([
-  "espace-devhub:goals",
+  // goals moved to API-direct (no localStorage) — see goals-store.js.
+  // Subscribers reset their in-memory state via the
+  // "auth:user-storage-cleared" event we still dispatch below.
   "espace-devhub:snapshots",
   "espace-devhub:evidence",
   "espace-devhub:grading",
