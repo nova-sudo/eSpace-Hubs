@@ -23,6 +23,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiPost } from "@/lib/api-client";
 import { useSession } from "./use-session.js";
+import { clearAllUserScopedStorage } from "./clear-user-storage.js";
 
 const MIN_PASSWORD_LENGTH = 12;
 
@@ -69,8 +70,14 @@ export function AcceptInviteForm({ onSuccess }) {
       return;
     }
 
-    // Cookie's already set by the API. Refresh the session store so
-    // useSession() sees the new user, then bubble up.
+    // Cookie's already set by the API. Wipe any localStorage left by
+    // a prior user on this browser (cross-user data leak fix) BEFORE
+    // refreshing the session — `refresh()` flips `user` and the
+    // *Sync effects mount; if localStorage still has the prior user's
+    // data they'd race / upload it via MigrateOnce.
+    clearAllUserScopedStorage();
+    // Refresh the session store so useSession() sees the new user,
+    // then bubble up.
     await refresh();
     onSuccess?.(r.data?.user);
     // Default destination: /onboarding. AuthGuard would route here

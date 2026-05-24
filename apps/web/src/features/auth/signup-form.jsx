@@ -19,6 +19,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { apiPost } from "@/lib/api-client";
 import { setSession } from "./session-store.js";
+import { clearAllUserScopedStorage } from "./clear-user-storage.js";
 
 const INPUT_STYLE = {
   fontFamily: "var(--font-mono)",
@@ -61,6 +62,12 @@ export function SignupForm({ onSuccess }) {
       setError(result.error);
       return;
     }
+    // Cross-user data leak fix: wipe any localStorage the previous
+    // user left on this machine BEFORE handing the new user a session.
+    // Without this, the new user inherits the prior user's goals /
+    // snapshots / evidence / integrations etc., AND MigrateOnce
+    // uploads that stale payload under the new user's account.
+    clearAllUserScopedStorage();
     // Push the new user into the session store so AuthGuard /
     // useSession reflect the auth state without a /me round-trip.
     setSession({

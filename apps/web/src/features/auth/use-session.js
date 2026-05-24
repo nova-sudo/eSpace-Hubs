@@ -7,6 +7,7 @@ import {
   setSession,
   subscribeSession,
 } from "./session-store.js";
+import { clearAllUserScopedStorage } from "./clear-user-storage.js";
 
 // React's useSyncExternalStore compares snapshot return values by
 // reference (Object.is). If getServerSnapshot allocates a new object on
@@ -107,6 +108,12 @@ export function useSession() {
       return { ok: false, error: result.error };
     }
     const { user, needsTotp } = result.data;
+    // Cross-user data leak fix: wipe prior user's localStorage BEFORE
+    // promoting the new user into the session store. The *Sync
+    // components react to `user.id` change and will pull the new
+    // user's real data from the API; wiping first ensures they don't
+    // race against (or upload via MigrateOnce) the prior user's data.
+    clearAllUserScopedStorage();
     setSession({
       user: needsTotp ? null : user,
       loading: false,
@@ -128,6 +135,11 @@ export function useSession() {
       });
       return { ok: false, error: result.error };
     }
+    // Same reasoning as in login() — wipe before promoting the user.
+    // This branch matters for the two-step-login path: step 1 sets
+    // `needsTotp:true` and leaves user=null, then step 2 here flips
+    // user to the real user. The flip is the dangerous transition.
+    clearAllUserScopedStorage();
     setSession({
       user: result.data?.user ?? null,
       loading: false,
@@ -139,6 +151,11 @@ export function useSession() {
 
   const logout = useCallback(async () => {
     const result = await apiPost("/auth/logout");
+    // Wipe localStorage so the next user on this browser doesn't
+    // inherit anything from the session that just ended. Order
+    // doesn't matter here — there's no new user about to mount, just
+    // the bare /login screen.
+    clearAllUserScopedStorage();
     setSession({
       user: null,
       loading: false,
