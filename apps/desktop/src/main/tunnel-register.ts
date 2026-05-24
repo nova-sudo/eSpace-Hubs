@@ -367,17 +367,20 @@ async function heartbeat(): Promise<void> {
  * spawn.hostname and we ignore it.
  */
 async function probeHostname(_hostname: string): Promise<boolean> {
+  const port = tunnelSpawn.getMetricsPort();
+  if (!port) {
+    // Spawn hasn't allocated a port yet — treat as not-ready, the
+    // next tick will retry once spawn has populated it.
+    return false;
+  }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
   try {
-    const res = await fetch(
-      `http://127.0.0.1:${tunnelSpawn.METRICS_PORT}/ready`,
-      {
-        method: "GET",
-        signal: ctrl.signal,
-        headers: { "user-agent": "espace-devhub-companion/probe" },
-      },
-    );
+    const res = await fetch(`http://127.0.0.1:${port}/ready`, {
+      method: "GET",
+      signal: ctrl.signal,
+      headers: { "user-agent": "espace-devhub-companion/probe" },
+    });
     return res.ok;
   } catch {
     return false;
