@@ -42,7 +42,12 @@ export function GitLabTokenForm() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!token) return toast.error("Access token is required.");
+    // Trim before everything — copy-paste from password managers and
+    // GitLab's UI commonly drags a trailing space/newline that breaks
+    // the upstream Authorization header. We don't want to lose that
+    // to undici's "fetch failed" black hole.
+    const cleanToken = token.trim();
+    if (!cleanToken) return toast.error("Access token is required.");
     if (!gitlabUrl) {
       return toast.error(
         "GitLab base URL not configured for your engagement. Ask an admin to set <ENGAGEMENT>_GITLAB_URL in the API env.",
@@ -53,12 +58,12 @@ export function GitLabTokenForm() {
       // Save + await the mirror — the API needs the encrypted token on
       // disk before the proxy call below can use it.
       await saveConnection("gitlab", {
-        accessToken: token,
+        accessToken: cleanToken,
         endpointUrl: gitlabUrl,
       });
       const me = await proxyFetch("gitlab", "user");
       await saveConnection("gitlab", {
-        accessToken: token,
+        accessToken: cleanToken,
         endpointUrl: gitlabUrl,
         username: me.username,
         displayName: me.name,
@@ -136,7 +141,11 @@ export function JiraTokenForm() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!identity || !secret) {
+    // Trim both — copy-paste of either field commonly drags whitespace
+    // that breaks the upstream Basic-auth header encoding.
+    const cleanIdentity = identity.trim();
+    const cleanSecret = secret.trim();
+    if (!cleanIdentity || !cleanSecret) {
       return toast.error(
         isEspace
           ? "Username and password are required."
@@ -153,22 +162,24 @@ export function JiraTokenForm() {
       // Persist into the SAME columns either way — server-side proxy
       // reads engagement at request time and decides v2 vs v3.
       await saveConnection("jira", {
-        email: identity,
-        apiToken: secret,
+        email: cleanIdentity,
+        apiToken: cleanSecret,
         endpointUrl: jiraUrl,
       });
       const me = await proxyFetch("jira", "myself");
       await saveConnection("jira", {
-        email: identity,
-        apiToken: secret,
+        email: cleanIdentity,
+        apiToken: cleanSecret,
         endpointUrl: jiraUrl,
         // Jira Server's /myself returns `name` (the login id) + may not
         // expose `emailAddress` depending on user-privacy settings.
         // Cloud reliably has `emailAddress`. Fall through gracefully.
-        username: me.name || me.emailAddress || identity,
+        username: me.name || me.emailAddress || cleanIdentity,
         displayName: me.displayName,
       });
-      toast.success(`Connected to Jira as ${me.displayName || identity}`);
+      toast.success(
+        `Connected to Jira as ${me.displayName || cleanIdentity}`,
+      );
     } catch (err) {
       disconnectProvider("jira");
       toast.error(err.message);
@@ -267,7 +278,13 @@ export function JenkinsTokenForm() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!url || !username || !apiToken) {
+    // Trim all three — copy-paste artifacts of any field break the
+    // upstream Basic-auth header. We don't want a stray newline to
+    // surface as "fetch failed" with no diagnostic.
+    const cleanUrl = url.trim().replace(/\/$/, "");
+    const cleanUsername = username.trim();
+    const cleanApiToken = apiToken.trim();
+    if (!cleanUrl || !cleanUsername || !cleanApiToken) {
       return toast.error("URL, username, and API token are all required.");
     }
     setLoading(true);
@@ -276,21 +293,21 @@ export function JenkinsTokenForm() {
       // reuse the same field for any "second auth identity" — see
       // Jira). The proxy reads it as the Basic-auth username.
       await saveConnection("jenkins", {
-        email: username,
-        apiToken,
-        endpointUrl: url.replace(/\/$/, ""),
+        email: cleanUsername,
+        apiToken: cleanApiToken,
+        endpointUrl: cleanUrl,
       });
       // /api/json on the Jenkins root returns instance metadata
       // when auth is valid (no specific job needed).
       const root = await proxyFetch("jenkins", "api/json");
       await saveConnection("jenkins", {
-        email: username,
-        apiToken,
-        endpointUrl: url.replace(/\/$/, ""),
-        username,
-        displayName: root?.nodeDescription || username,
+        email: cleanUsername,
+        apiToken: cleanApiToken,
+        endpointUrl: cleanUrl,
+        username: cleanUsername,
+        displayName: root?.nodeDescription || cleanUsername,
       });
-      toast.success(`Connected to Jenkins as ${username}`);
+      toast.success(`Connected to Jenkins as ${cleanUsername}`);
     } catch (err) {
       disconnectProvider("jenkins");
       toast.error(err.message);

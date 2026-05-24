@@ -36,7 +36,17 @@ import { HttpError } from "../../middleware/error-handler.js";
 
 // ─── input schema ────────────────────────────────────────────────────
 
-const tokenString = z.string().min(1).max(2_048);
+// Trim whitespace BEFORE the min-length check so a token that's
+// "just whitespace" rejects, and a token with trailing newline /
+// space (the standard copy-paste mistake) is normalised to the
+// clean string. Without this, the bytes flow through encryption,
+// decryption, and into the upstream Authorization header — where
+// undici rejects newlines as invalid header values and the proxy
+// surfaces a useless "fetch failed".
+const tokenString = z
+  .string()
+  .transform((s) => s.trim())
+  .pipe(z.string().min(1).max(2_048));
 
 const upsertSchema = z.object({
   providerId: z.string().min(1).max(64),

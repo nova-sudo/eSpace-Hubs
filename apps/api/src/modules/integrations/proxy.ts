@@ -323,17 +323,45 @@ async function runProxy(
         ...(body !== undefined ? { body } : {}),
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      // Node's undici-backed fetch throws a generic `TypeError: fetch
+      // failed` for every network-layer failure — the actual cause
+      // (ENOTFOUND, ECONNREFUSED, UND_ERR_CONNECT_TIMEOUT, TLS chain
+      // errors, etc.) lives on `err.cause`. We pull it out so the
+      // error envelope and the integration's `lastError` field show
+      // something operators can act on instead of the useless
+      // "fetch failed" string.
+      const baseMsg = err instanceof Error ? err.message : String(err);
+      const cause = (err as { cause?: unknown }).cause;
+      const causeMsg =
+        cause instanceof Error
+          ? cause.message
+          : cause && typeof cause === "object"
+          ? // Undici causes are typically `{ code, message }` shaped.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ((cause as any).code ?? (cause as any).message ?? "")
+          : "";
+      const detail = causeMsg ? `${baseMsg} (${causeMsg})` : baseMsg;
+      // Log the FULL exception for ops — the response message keeps
+      // it concise but Pino captures the structured error.
+      logger.warn(
+        {
+          err,
+          providerId: ctx.providerId,
+          targetUrl,
+          reqId: req.id,
+        },
+        "[proxy] upstream fetch failed",
+      );
       void markIntegrationError({
         orgId: session.orgId,
         userId: session.userId,
         providerId: ctx.providerId,
-        message: `Network: ${msg}`,
+        message: `Network: ${detail}`,
       });
       throw new HttpError(
         502,
         "integration_unreachable",
-        `Network error reaching ${ctx.providerId}: ${msg}`,
+        `Network error reaching ${ctx.providerId}: ${detail}`,
       );
     }
 
