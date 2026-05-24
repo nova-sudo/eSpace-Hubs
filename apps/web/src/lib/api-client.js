@@ -20,7 +20,37 @@
  * is configured.
  */
 
+import { toast } from "sonner";
+
 const API_BASE = "/api/v1";
+
+/**
+ * Phase 3e — surface "companion_unreachable" 502s to the user as a
+ * one-shot toast. The catch-all (apps/web/src/pages/api/v1/[...path].ts)
+ * emits this code when the user's paired companion fails to answer a
+ * proxied request: the tunnel is registered fresh but the local backend
+ * is down, the laptop's asleep, the VPN dropped, etc.
+ *
+ * Throttling: every component that fires a /api/v1/* call would
+ * otherwise pile up a toast each. We coalesce inside a 30s window so
+ * the user sees one banner, not twenty.
+ */
+let lastCompanionUnreachableToastAt = 0;
+const COMPANION_UNREACHABLE_THROTTLE_MS = 30_000;
+function maybeToastCompanionUnreachable(message) {
+  if (typeof window === "undefined") return;
+  const now = Date.now();
+  if (now - lastCompanionUnreachableToastAt < COMPANION_UNREACHABLE_THROTTLE_MS) {
+    return;
+  }
+  lastCompanionUnreachableToastAt = now;
+  toast.error("Companion offline", {
+    description:
+      message ||
+      "Couldn't reach your companion. Open the desktop app to resume routing.",
+    duration: 8000,
+  });
+}
 
 /**
  * Pages where a 401 is normal and shouldn't bounce the user back to
@@ -176,6 +206,13 @@ async function request(method, path, body, init = {}) {
     // already on a public auth page. See PUBLIC_AUTH_PATHS above.
     if (res.status === 401) {
       maybeRedirectToLogin(apiError.code);
+    }
+    // Companion offline (Phase 3e). The catch-all returns 502 with
+    // this specific code when proxying to the user's paired
+    // companion-tunnel hostname fails. We don't want individual
+    // callers to each render their own error — one global toast.
+    if (res.status === 502 && apiError.code === "companion_unreachable") {
+      maybeToastCompanionUnreachable(apiError.message);
     }
     return { ok: false, status: res.status, error: apiError };
   }

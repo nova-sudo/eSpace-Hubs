@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Button, PageHeader } from "@/components/ui";
+import { useSession } from "@/features/auth";
 import { useActiveHub, useHubLink } from "@/features/hubs";
 import { cn } from "@/lib/cn";
 import {
   AccountTab,
+  CompanionTab,
   DangerTab,
   IntegrationsTab,
   OnboardingTab,
@@ -15,10 +17,9 @@ import {
 } from "./tabs";
 
 // `hubFilter` makes a tab hub-scoped — only shown when the active
-// hub's id matches. Tabs without `hubFilter` show for every hub.
-// This is how per-hub configuration (e.g. QA's project keys, future
-// Manager Hub roster picks) lives inside the shared SettingsPage
-// without sprouting per-hub conditional branches inside each tab.
+// hub's id matches. `engagementFilter` is analogous: a tab opt-in for
+// users whose `engagement` matches (e.g. Crealogix-only Companion
+// tab). Tabs without either filter show universally.
 const ALL_TABS = [
   { id: "onboarding", label: "Onboarding", Component: OnboardingTab },
   { id: "integrations", label: "Integrations", Component: IntegrationsTab },
@@ -28,6 +29,12 @@ const ALL_TABS = [
     Component: QaConfigTab,
     hubFilter: "qa",
   },
+  {
+    id: "companion",
+    label: "Companion",
+    Component: CompanionTab,
+    engagementFilter: "crealogix",
+  },
   { id: "account", label: "Account", Component: AccountTab },
   { id: "snapshots", label: "Snapshots & privacy", Component: SnapshotsPrefsTab },
   { id: "danger", label: "Danger zone", Component: DangerTab },
@@ -35,12 +42,19 @@ const ALL_TABS = [
 
 export function SettingsPage() {
   const activeHub = useActiveHub();
+  const { user } = useSession();
   const tabs = useMemo(
     () =>
-      ALL_TABS.filter(
-        (t) => !t.hubFilter || (activeHub && t.hubFilter === activeHub.id),
-      ),
-    [activeHub],
+      ALL_TABS.filter((t) => {
+        if (t.hubFilter && !(activeHub && t.hubFilter === activeHub.id)) {
+          return false;
+        }
+        if (t.engagementFilter && t.engagementFilter !== (user?.engagement ?? "espace")) {
+          return false;
+        }
+        return true;
+      }),
+    [activeHub, user?.engagement],
   );
 
   const [tab, setTab] = useState("onboarding");
