@@ -150,12 +150,39 @@ const GITLAB: ProxyContext = {
   },
 };
 
+/**
+ * Per-engagement path translation for Jira endpoints that have
+ * different names between Server (v2) and Cloud (v3).
+ *
+ * The frontend uses Cloud-style paths uniformly (the active path
+ * forward — Atlassian deprecated several v2-style names). For the
+ * eSpace engagement (Jira Server 8.x), we map those back to the
+ * names Server actually exposes.
+ *
+ * Add a row here whenever you discover a new Server-vs-Cloud
+ * endpoint-name divergence. Common ones already covered below.
+ *
+ * Response shape differences are the caller's problem — for the
+ * search endpoints used today, both shapes have an `issues` array
+ * at the top level so the dashboard widgets work uniformly.
+ */
+function translateJiraPathForServer(restPath: string): string {
+  // "search/jql" → "search" — Cloud's new endpoint vs Server's classic
+  if (restPath === "search/jql") return "search";
+  if (restPath.startsWith("search/jql?")) {
+    return "search?" + restPath.slice("search/jql?".length);
+  }
+  // Future mappings live here. Keep them exact-match or
+  // prefix-with-? to avoid catching unrelated subpaths.
+  return restPath;
+}
+
 const JIRA: ProxyContext = {
   providerId: "jira",
   /**
-   * Path version branches on engagement:
-   *   - "espace"     → on-prem Jira Server 8.16: /rest/api/2/*
-   *                    (v3 doesn't exist on those installs and would 404)
+   * Path version + endpoint-name both branch on engagement:
+   *   - "espace"     → on-prem Jira Server 8.x: /rest/api/2/* + Server
+   *                    endpoint names (e.g. `search`, not `search/jql`)
    *   - everything else → Jira Cloud-style /rest/api/3/*
    *
    * Field semantics on the integration row also differ:
@@ -168,7 +195,11 @@ const JIRA: ProxyContext = {
   buildUrl: ({ restPath, search, endpointUrl, engagement }) => {
     const base = endpointUrl?.replace(/\/$/, "") ?? "";
     const version = engagement === "espace" ? "2" : "3";
-    return `${base}/rest/api/${version}/${restPath}${search}`;
+    const path =
+      engagement === "espace"
+        ? translateJiraPathForServer(restPath)
+        : restPath;
+    return `${base}/rest/api/${version}/${path}${search}`;
   },
   buildHeaders: ({ apiToken, email }) => {
     const basic = Buffer.from(`${email}:${apiToken}`).toString("base64");
