@@ -9,24 +9,34 @@ import { fullDate } from "@/lib/date";
  * Incident log — one entry per SLA-affecting event.
  *
  * Each entry stores `{ severity, downtime, link? }` as the input
- * `value`. The widget computes:
- *   - Total downtime over the goal's window (or all-time if no target.period).
- *   - MTTR (mean downtime per incident).
- *   - Count of incidents.
- *   - % of SLA budget consumed when `spec.manual.target.value` is set
- *     (target.value = the budget in minutes for the period).
+ * `value`. The widget runs in one of two modes, chosen by
+ * `spec.manual.unit`:
  *
- * UX: the headline is "<minutes consumed> / <budget>" when a budget
- * exists, else just total downtime. A small severity chip strip
- * shows distribution. Entries below are the raw log (newest first).
+ *   1. **Duration mode** (unit = "minutes" / "hours" / time-words):
+ *      the budget is in minutes of downtime ("≤ 43 minutes/quarter").
+ *      Headline shows `Σ downtime / budget`. The numeric input is
+ *      required so MTTR makes sense. This is the classic SLA case.
+ *
+ *   2. **Count mode** (unit = "defects" / "incidents" / "bugs" / …):
+ *      the budget is in events ("≤ 10 defects/quarter"). Headline
+ *      shows `count / budget`. The numeric input becomes an optional
+ *      duration field so users can still record how long each took
+ *      without it being required.
+ *
+ * Mode inference is conservative: unknown units fall into count mode,
+ * because saying "0 / 10 defects" but accumulating minutes is the
+ * surprising bug the widget was reported for. Time-words stay in
+ * duration mode for backward compatibility with existing reliability
+ * goals.
  *
  * Why a dedicated widget vs. COUNTER + DATE_LOG?
  *   - The structured `{ severity, downtime, link }` shape lets MTTR
  *     and severity-mix render without each user inventing their own
  *     convention.
  *   - "Budget consumed" framing matches how reliability goals are
- *     written in practice ("≤ 43 minutes/quarter") — a plain counter
- *     of incidents doesn't tell you whether you're inside the budget.
+ *     written in practice ("≤ 43 minutes/quarter", "≤ 10 defects/
+ *     quarter") — a plain counter of incidents doesn't tell you
+ *     whether you're inside the budget.
  */
 export function IncidentLogWidget({
   spec,
@@ -52,26 +62,56 @@ export function IncidentLogWidget({
 
   const totals = useMemo(() => computeTotals(windowed), [windowed]);
   const unit = spec.manual?.unit || "minutes";
+  const mode = inferMode(unit);
+  const isCountMode = mode === "count";
   const promptCopy =
-    spec.manual?.prompt || "Log this incident: severity, downtime, link.";
+    spec.manual?.prompt ||
+    (isCountMode
+      ? `Log this ${singularUnit(unit)}: severity, optional duration, link.`
+      : "Log this incident: severity, downtime, link.");
+
+  // Mode-aware "what's the big number" lookup. Count mode sums entries,
+  // duration mode sums their downtime field. Everything downstream of
+  // here (headline, progress bar, over-budget detection) uses this value.
+  const headlineValue = isCountMode ? totals.count : totals.totalDowntime;
+
+  // Parsed minutes value — drives both the disabled state and what gets
+  // persisted. In count mode an empty input is fine; in duration mode
+  // we still require a non-negative number.
+  const trimmedDowntime = downtime.trim();
+  const minutesValue =
+    trimmedDowntime === "" ? null : Number(trimmedDowntime);
+  const minutesValid =
+    trimmedDowntime === ""
+      ? isCountMode
+      : Number.isFinite(minutesValue) && minutesValue >= 0;
 
   function logIncident() {
-    const minutes = Number(downtime);
-    if (!Number.isFinite(minutes) || minutes < 0) return;
+    if (!minutesValid) return;
     append({
       severity,
-      downtime: minutes,
+      ...(Number.isFinite(minutesValue) && minutesValue >= 0
+        ? { downtime: minutesValue }
+        : {}),
       ...(link.trim() ? { link: link.trim() } : {}),
     });
     setDowntime("");
     setLink("");
   }
 
+  // Label shows the configured unit in count mode (so "Defects · 3"
+  // matches a goal titled "Post-Delivery Defect Control"); in duration
+  // mode the unit is "minutes" so we stick with the generic "Incidents"
+  // label since the count and the budgeted quantity differ.
+  const shellLabel = isCountMode
+    ? `${capitalize(pluralUnit(unit))} · ${totals.count}`
+    : `Incidents · ${totals.count}`;
+
   return (
     <WidgetShell
       spec={spec}
       variant={variant}
-      label={`Incidents · ${entries.length}`}
+      label={shellLabel}
       title={goal?.title || spec.title}
       onRetry={onRetry}
       className={className}
@@ -79,10 +119,12 @@ export function IncidentLogWidget({
       <div className="flex h-full flex-col gap-2">
         <Headline
           totals={totals}
+          headlineValue={headlineValue}
           budget={target?.value}
           unit={unit}
           period={period}
           variant={variant}
+          mode={mode}
         />
         <div
           style={{
@@ -137,7 +179,7 @@ export function IncidentLogWidget({
             min={0}
             value={downtime}
             onChange={(e) => setDowntime(e.target.value)}
-            placeholder="min"
+            placeholder={isCountMode ? "min (opt)" : "min"}
             className="w-16 min-w-0 rounded-[var(--radius-sub)] bg-transparent px-2 py-1.5 outline-none"
             style={{
               fontFamily: "var(--font-mono)",
@@ -148,6 +190,9 @@ export function IncidentLogWidget({
                   ? "1px solid rgba(255,255,255,0.22)"
                   : "1px solid var(--border)",
             }}
+            aria-label={
+              isCountMode ? "Duration (optional, minutes)" : "Downtime (minutes)"
+            }
           />
           <input
             value={link}
@@ -167,7 +212,7 @@ export function IncidentLogWidget({
           <button
             type="button"
             onClick={logIncident}
-            disabled={!Number.isFinite(Number(downtime))}
+            disabled={!minutesValid}
             className="shrink-0 rounded-[var(--radius-sub)] px-3 py-1.5 font-bold uppercase transition-opacity disabled:opacity-40"
             style={{
               fontFamily: "var(--font-mono)",
@@ -273,21 +318,30 @@ export function IncidentLogWidget({
 const SEVERITY_LEVELS = ["P1", "P2", "P3", "P4"];
 
 /**
- * Headline mode 1 — a budget is set:
+ * Headline — branches on mode AND on whether a budget is configured.
  *
- *     43 / 60 min consumed
- *     [████████░░░░░░] 71%
- *     · 4 incidents · MTTR 11m
+ *   Duration + budget:
+ *       43 / 60 minutes · quarter
+ *       [████████░░░░░░] 71%
+ *       4 incidents · MTTR 11m
  *
- * Mode 2 — no budget, no period:
+ *   Count + budget:
+ *       3 / 10 defects · quarter
+ *       [████░░░░░░] 30%
+ *       MTTR 11m · 33m total              (only if any downtime logged)
  *
- *     Σ 43m
- *     4 incidents · MTTR 11m
+ *   Duration, no budget:
+ *       Σ 43 minutes
+ *       4 incidents · MTTR 11m
  *
- * The MTTR rounds to the nearest minute — sub-minute precision is
- * noise for outage tracking.
+ *   Count, no budget:
+ *       3 defects
+ *       MTTR 11m · 33m total              (only if any downtime logged)
+ *
+ * MTTR rounds to the nearest minute — sub-minute precision is noise
+ * for outage tracking.
  */
-function Headline({ totals, budget, unit, period, variant }) {
+function Headline({ totals, headlineValue, budget, unit, period, variant, mode }) {
   const muted =
     variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)";
   const monoStyle = {
@@ -296,13 +350,24 @@ function Headline({ totals, budget, unit, period, variant }) {
     color: muted,
     lineHeight: 1.4,
   };
+  const isCountMode = mode === "count";
+  const hasDowntime = totals.totalDowntime > 0;
+  // Secondary stats line. Count mode shows MTTR + total minutes (only
+  // if anyone bothered to log durations); duration mode shows the
+  // incident count + MTTR (the original behaviour).
+  const secondary = isCountMode
+    ? hasDowntime
+      ? `MTTR ${Math.round(totals.mttr)}m · ${totals.totalDowntime}m total`
+      : ""
+    : `${totals.count} incident${totals.count === 1 ? "" : "s"}${
+        totals.count > 0
+          ? ` · MTTR ${Math.round(totals.mttr)}${unit === "minutes" ? "m" : ""}`
+          : ""
+      }`;
 
   if (Number.isFinite(budget) && budget > 0) {
-    const pct = Math.min(
-      100,
-      Math.round((totals.totalDowntime / budget) * 100),
-    );
-    const over = totals.totalDowntime > budget;
+    const pct = Math.min(100, Math.round((headlineValue / budget) * 100));
+    const over = headlineValue > budget;
     return (
       <div className="flex flex-col gap-1.5">
         <div className="flex items-baseline gap-2">
@@ -319,7 +384,7 @@ function Headline({ totals, budget, unit, period, variant }) {
                 : "inherit",
             }}
           >
-            {totals.totalDowntime}
+            {headlineValue}
           </div>
           <div style={monoStyle}>
             / {budget} {unit}
@@ -349,13 +414,12 @@ function Headline({ totals, budget, unit, period, variant }) {
             }}
           />
         </div>
-        <div style={monoStyle}>
-          {totals.count} incident{totals.count === 1 ? "" : "s"}
-          {totals.count > 0
-            ? ` · MTTR ${Math.round(totals.mttr)}${unit === "minutes" ? "m" : ""}`
-            : ""}
-          {over ? " · over budget" : ""}
-        </div>
+        {secondary || over ? (
+          <div style={monoStyle}>
+            {secondary}
+            {over ? `${secondary ? " · " : ""}over budget` : ""}
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -372,16 +436,11 @@ function Headline({ totals, budget, unit, period, variant }) {
             letterSpacing: "-1.4px",
           }}
         >
-          Σ {totals.totalDowntime}
+          {isCountMode ? headlineValue : `Σ ${headlineValue}`}
         </div>
         <div style={monoStyle}>{unit}</div>
       </div>
-      <div style={monoStyle}>
-        {totals.count} incident{totals.count === 1 ? "" : "s"}
-        {totals.count > 0
-          ? ` · MTTR ${Math.round(totals.mttr)}${unit === "minutes" ? "m" : ""}`
-          : ""}
-      </div>
+      {secondary ? <div style={monoStyle}>{secondary}</div> : null}
     </div>
   );
 }
@@ -515,4 +574,61 @@ function periodToDays(period) {
     default:
       return 0;
   }
+}
+
+/**
+ * Pick the widget mode from the configured unit.
+ *
+ * Time-words → duration mode (downtime budget, current behaviour).
+ * Everything else (defects, incidents, bugs, tickets, …) → count mode.
+ *
+ * Falling unknown units into count mode is deliberate: the original
+ * bug was "0 / 10 defects · quarter" silently summing minutes, so the
+ * safer default for ambiguous units is to count events.
+ */
+const DURATION_UNITS = new Set([
+  "minute",
+  "minutes",
+  "min",
+  "mins",
+  "m",
+  "hour",
+  "hours",
+  "hr",
+  "hrs",
+  "h",
+  "second",
+  "seconds",
+  "sec",
+  "secs",
+  "s",
+]);
+
+function inferMode(unit) {
+  if (typeof unit !== "string") return "duration";
+  const u = unit.toLowerCase().trim();
+  if (DURATION_UNITS.has(u)) return "duration";
+  return "count";
+}
+
+function pluralUnit(unit) {
+  if (typeof unit !== "string" || !unit.trim()) return "incidents";
+  const u = unit.trim();
+  // Already plural? Heuristic-only: if it ends with 's' assume plural,
+  // unless it's a known singular ending in 's' (none here yet).
+  if (/s$/i.test(u)) return u;
+  return `${u}s`;
+}
+
+function singularUnit(unit) {
+  if (typeof unit !== "string" || !unit.trim()) return "incident";
+  const u = unit.trim();
+  if (/ies$/i.test(u)) return `${u.slice(0, -3)}y`;
+  if (/s$/i.test(u)) return u.slice(0, -1);
+  return u;
+}
+
+function capitalize(s) {
+  if (typeof s !== "string" || !s) return s;
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

@@ -481,37 +481,82 @@ function readFirstPassRate(spec, ctx) {
 
 /**
  * INCIDENT_LOG — per-incident logger. Reads from goal-inputs entries
- * with `{ severity, downtime, link? }` shape. Headline = total
- * downtime + incident count, compared against the target's budget
- * value (e.g. ≤ 43 minutes / quarter).
+ * with `{ severity, downtime, link? }` shape.
+ *
+ * Two modes (matches the widget — `inferIncidentMode` mirrors the
+ * `inferMode` helper in incident-log-widget.jsx):
+ *   - **Duration** (unit = "minutes" / time-words): headline value is
+ *     Σ downtime, compared against `≤ N minutes / quarter` budgets.
+ *   - **Count** (unit = "defects" / "incidents" / …): headline value
+ *     is the entry count, compared against `≤ N defects / quarter`
+ *     budgets — the natural reading for defect-control goals.
  */
 function readIncidentLog(spec, goal, { allInputs }) {
   const entries = allInputs[goal.id] || [];
   if (entries.length === 0) return empty("No incidents logged");
-  let total = 0;
+  let totalDowntime = 0;
   for (const e of entries) {
     const d = Number(e?.value?.downtime);
-    if (Number.isFinite(d)) total += d;
+    if (Number.isFinite(d)) totalDowntime += d;
   }
   const target = spec.manual?.target;
   const unit = spec.manual?.unit || "minutes";
   const period = target?.period || spec.manual?.cadence;
   const periodSuffix = period ? ` / ${period}` : "";
+  const isCountMode = inferIncidentMode(unit) === "count";
+  // The headline value is what the target compares against. Count mode
+  // looks at entry count (so "Σ 10 defects · quarter" reads as
+  // "defects in window"); duration mode looks at downtime minutes.
+  const headlineValue = isCountMode ? entries.length : totalDowntime;
+  const summary = isCountMode
+    ? `${entries.length} ${unit}${
+        totalDowntime > 0 ? ` · Σ ${totalDowntime}m downtime` : ""
+      }`
+    : `${entries.length} incidents · Σ ${totalDowntime} ${unit}`;
   if (!target || target.value == null) {
     return {
-      value: `${entries.length} incidents · Σ ${total} ${unit}`,
+      value: summary,
       statusTone: TONES.ACCENT,
       statusLabel: "tracked",
     };
   }
-  // Target is "≤ N minutes per period" — under = good, over = warn.
-  // Use the same withTarget evaluator (lowerIsBetter for "<=").
+  // Target is "≤ N [units] per period" — under = good, over = warn.
   return withTarget(
-    total,
+    headlineValue,
     target,
-    `${entries.length} incidents · Σ ${total} ${unit}${periodSuffix}`,
+    `${summary}${periodSuffix}`,
     { lowerIsBetter: target.op === "<=" },
   );
+}
+
+/**
+ * Local copy of the widget's `inferMode` — kept here so the evidence
+ * resolver doesn't have to depend on the React widget bundle. If the
+ * DURATION_UNITS list ever grows, sync both files.
+ */
+const INCIDENT_DURATION_UNITS = new Set([
+  "minute",
+  "minutes",
+  "min",
+  "mins",
+  "m",
+  "hour",
+  "hours",
+  "hr",
+  "hrs",
+  "h",
+  "second",
+  "seconds",
+  "sec",
+  "secs",
+  "s",
+]);
+
+function inferIncidentMode(unit) {
+  if (typeof unit !== "string") return "duration";
+  const u = unit.toLowerCase().trim();
+  if (INCIDENT_DURATION_UNITS.has(u)) return "duration";
+  return "count";
 }
 
 /**
