@@ -29,6 +29,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiPost } from "@/lib/api-client";
 import { useSession } from "@/features/auth";
+import { refreshApiOrigin } from "./use-api-origin.js";
 
 export function CompanionPairForm() {
   const params = useSearchParams();
@@ -98,6 +99,10 @@ export function CompanionPairForm() {
     }
     setDevice(r.data?.device || null);
     setPhase("approved");
+    // The companion will heartbeat the tunnel within seconds; pre-empt
+    // the next 60s store refresh so the header chip / setup guide
+    // update immediately when the user navigates back to the app.
+    void refreshApiOrigin();
   }
 
   return (

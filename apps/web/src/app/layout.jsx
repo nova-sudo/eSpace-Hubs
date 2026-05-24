@@ -2,6 +2,7 @@ import "./globals.css";
 import { Inter_Tight, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { SessionProvider } from "@/features/auth";
+import { CompanionApiOriginProvider } from "@/features/companion";
 import { GradingSync } from "@/features/grading";
 import { SnapshotsSync } from "@/features/snapshots";
 import { ContextSync } from "@/features/goal-context";
@@ -44,6 +45,12 @@ export default function RootLayout({ children }) {
             the API once on session establishment, merging into
             localStorage. M7.2 mirror-mode rollout. */}
         <SessionProvider>
+          {/* Drives the api-origin store — fetches /me/api-origin on
+              session establishment, then refreshes every 60s and on
+              tab focus so the header chip flips within a heartbeat
+              window of the companion going up/down. Side-effect only;
+              doesn't gate children. */}
+          <CompanionApiOriginProvider />
           {/* MigrateOnce runs the first-session localStorage→API upload
               for devices that carry pre-M7 legacy data. It's silent
               on devices with no legacy data and idempotent on the

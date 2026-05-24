@@ -6,6 +6,7 @@ import { LogoMark } from "./logo-mark";
 import { AnalystActivator } from "@/features/analyst";
 import { useIntegrations } from "@/features/integrations";
 import { UserChip } from "@/features/auth";
+import { CompanionIndicator } from "@/features/companion";
 import { useActiveHub, HubSwitcher } from "@/features/hubs";
 import { cn } from "@/lib/cn";
 
@@ -153,6 +154,9 @@ export function Header() {
         </div>
         {/* Inverse-themed activator — opens the accent-ground analyst page. */}
         <AnalystActivator />
+        {/* Companion-routing indicator — self-hides when the user has
+            no companion. Engagement-agnostic; espace devs see nothing. */}
+        <CompanionIndicator />
         {/* Session-aware chip with logout dropdown. */}
         <UserChip />
       </div>
