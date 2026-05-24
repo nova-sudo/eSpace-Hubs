@@ -39,6 +39,7 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
+import net from "node:net";
 import { pushLog } from "./docker.js";
 
 const RESTART_BASE_MS = 2_000;
@@ -49,12 +50,43 @@ const HOSTNAME_WAIT_MS = 30_000;
 const TRYCLOUDFLARE_RE = /https?:\/\/([a-z0-9-]+\.trycloudflare\.com)/i;
 
 /**
- * Pinned port for cloudflared's metrics + readiness endpoint. Default
- * cloudflared picks a free port; we pin so tunnel-register can probe
- * `http://127.0.0.1:<port>/ready` deterministically. Exported so the
- * register module can reach the same URL.
+ * Ephemeral port for cloudflared's metrics + readiness endpoint. We
+ * grab a free port from the OS at spawn time (rather than hardcoding)
+ * so a stray cloudflared from a prior session — or any other dev
+ * tool — doesn't collide on the same port. The probe in
+ * tunnel-register reads this via `getMetricsPort()`.
  */
-export const METRICS_PORT = 20241;
+let metricsPort: number | null = null;
+export function getMetricsPort(): number | null {
+  return metricsPort;
+}
+
+/**
+ * Ask the OS for a free TCP port bound to 127.0.0.1. Returns the
+ * port number; the server is closed before resolving so cloudflared
+ * can bind to it.
+ *
+ * Tiny race window between us closing + cloudflared binding — if
+ * another process steals the port in that window, cloudflared will
+ * crash on EADDRINUSE and our auto-restart logic re-attempts with a
+ * fresh port. Acceptable.
+ */
+function findFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address();
+      if (addr && typeof addr === "object") {
+        const port = addr.port;
+        server.close(() => resolve(port));
+      } else {
+        reject(new Error("net.createServer().address() returned unexpected shape"));
+      }
+    });
+  });
+}
 
 export interface TunnelSpawnState {
   /** Roughly tracks the lifecycle. */
@@ -220,6 +252,25 @@ export async function start({ port }: StartOptions): Promise<TunnelSpawnState> {
     // successful "running" transition below.
   });
 
+  // Grab a free port for cloudflared's metrics/readiness endpoint
+  // BEFORE entering the Promise executor (which can't be async).
+  // Hardcoding (we tried 20241) collides with prior cloudflared
+  // sessions still holding the port + with any other dev tool that
+  // grabbed it. Pre-allocating via the OS is race-free except for a
+  // microscopic window before cloudflared binds — caught by our
+  // auto-restart loop if it ever matters.
+  try {
+    metricsPort = await findFreePort();
+  } catch (err) {
+    const msg =
+      err instanceof Error
+        ? `couldn't find a free metrics port: ${err.message}`
+        : "couldn't find a free metrics port";
+    pushLog(`[tunnel-spawn] ${msg}`);
+    setState({ status: "crashed", lastError: msg });
+    throw new Error(msg);
+  }
+
   return new Promise<TunnelSpawnState>((resolve, reject) => {
     let resolved = false;
     let hostnameSeen = false;
@@ -238,7 +289,7 @@ export async function start({ port }: StartOptions): Promise<TunnelSpawnState> {
     }, HOSTNAME_WAIT_MS);
 
     pushLog(
-      `[tunnel-spawn] starting: cloudflared tunnel --protocol http2 --metrics 127.0.0.1:${METRICS_PORT} --url http://localhost:${port}`,
+      `[tunnel-spawn] starting: cloudflared tunnel --protocol http2 --metrics 127.0.0.1:${metricsPort} --url http://localhost:${port}`,
     );
 
     try {
@@ -263,14 +314,11 @@ export async function start({ port }: StartOptions): Promise<TunnelSpawnState> {
           // reliability gain.
           "--protocol",
           "http2",
-          // Pin the metrics endpoint to a known port. By default
-          // cloudflared picks a free port and prints it; we'd have
-          // to parse stdout to find it. Pinning lets the heartbeat's
-          // probe target a deterministic `http://127.0.0.1:<port>/ready`
-          // URL. Picked 20241 because that's what cloudflared used
-          // for both observed sessions in testing.
+          // Bind cloudflared's metrics + readiness endpoint to the
+          // free port we just claimed. tunnel-register reads the same
+          // value via getMetricsPort() to know where to probe.
           "--metrics",
-          `127.0.0.1:${METRICS_PORT}`,
+          `127.0.0.1:${metricsPort}`,
           "--url",
           `http://localhost:${port}`,
         ],
