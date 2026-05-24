@@ -7,63 +7,68 @@
  * request gets proxied to that hostname instead of the bundled
  * Express app.
  *
- * This module is what keeps that row fresh while the companion is
- * running:
+ * This module keeps that row fresh — but ONLY when the local tunnel is
+ * actually reachable. The pre-rewrite version re-POSTed the last-known
+ * hostname every 60s with no verification, which produced a real bug:
+ * if cloudflared crashed or the trycloudflare DNS went stale, the
+ * server believed we were healthy and the Vercel catch-all proxied
+ * requests to a hostname that returned CF Tunnel Error 1033.
  *
- *   start()    POSTs /me/companion-tunnel once (sets registeredAt
- *              + lastSeenAt), then schedules heartbeat() on a 60s
- *              interval.
+ * Every heartbeat tick now does three things:
  *
- *   heartbeat() re-POSTs (the server preserves registeredAt and just
- *              bumps lastSeenAt). Each tick re-asserts our hostname so
- *              if the user's tunnel hostname changed, the server
- *              learns about it within a heartbeat window.
+ *   1. Read `tunnelSpawn.getState()`. The spawn module is the source
+ *      of truth for what cloudflared is actually doing.
+ *        - "running" + hostname  → continue to step 2
+ *        - "starting"            → skip this tick (transient)
+ *        - "crashed" / "stopped" → clear server-side registration,
+ *                                  halt our heartbeat loop
  *
- *   stop()     DELETE /me/companion-tunnel. Best-effort — we don't
- *              block app quit on the network call succeeding.
+ *   2. Probe the hostname locally with HEAD https://<host>/healthz
+ *      (4s timeout). The request flows laptop → public DNS → CF edge
+ *      → tunnel → local Express, so a 200 verifies the entire path
+ *      including CF's view of the tunnel. Three consecutive probe
+ *      failures escalate to a server-side stop so the catch-all
+ *      falls back to bundled cleanly instead of 502'ing.
+ *
+ *   3. POST /me/companion-tunnel with the spawn's CURRENT hostname
+ *      (not a cached value). If spawn rotated to a new hostname
+ *      after a crash + auto-restart, this tick re-registers the new
+ *      one within a heartbeat window.
  *
  * Auth: every request carries `Authorization: Bearer <token>` where
  * `<token>` came out of the Phase 3c device-pairing flow (see
  * apps/desktop/src/main/pair.ts). Without a paired token, start()
  * returns `{ ok: false, reason: "not_paired" }` and never touches
  * the network.
- *
- * Why the heartbeat at all
- * ────────────────────────
- * The catch-all decides "fresh enough to proxy?" by comparing
- * `lastSeenAt` to a 5-minute stale threshold. If the companion
- * crashed or the laptop sleeps, the row goes stale and the catch-all
- * falls back to the bundled API — which is the right behaviour. The
- * heartbeat is what keeps a healthy companion's row green; without
- * it, requests would start failing after exactly 5 minutes of normal
- * operation.
  */
 
 import { getToken } from "./pair.js";
 import { settings } from "./settings.js";
-
-/**
- * Phase 4-followup: the hostname now comes from tunnel-spawn (the
- * managed `cloudflared tunnel --url` subprocess) rather than from a
- * user-typed setting. Calling start() before spawn has a hostname is
- * a no-op (returns reason="missing_hostname"); the spawn module's
- * onHostname callback wires the two together in main/index.ts.
- */
+import * as tunnelSpawn from "./tunnel-spawn.js";
 
 const DEFAULT_API_BASE_URL = "https://espace-hubs.vercel.app";
 const HEARTBEAT_INTERVAL_MS = 60_000;
+const PROBE_TIMEOUT_MS = 4_000;
+const PROBE_FAIL_THRESHOLD = 3;
 
 export interface TunnelState {
   /** Whether the heartbeat loop is currently running. */
   active: boolean;
-  /** The hostname we're keeping registered. Null when inactive. */
+  /** Last hostname we successfully registered with the server. Null
+   *  when inactive. May lag the spawn's current hostname by up to
+   *  one heartbeat tick during rotation. */
   hostname: string | null;
   /** ISO ts of the most recent successful POST/heartbeat. Null when
    *  inactive OR when the first POST has not yet returned. */
   lastSeenAt: string | null;
-  /** Last error from a register or heartbeat call, surfaced to the
-   *  renderer so the user can fix configuration. Null on success. */
+  /** Last error from a register, heartbeat, or probe call. Surfaced
+   *  to the renderer so the user can see why routing dropped. Null
+   *  on success. */
   lastError: string | null;
+  /** Consecutive failed probes since the last success. Resets on
+   *  any successful probe. Escalates to a server-side stop at
+   *  PROBE_FAIL_THRESHOLD. */
+  probeFailures: number;
 }
 
 type StartResult =
@@ -74,17 +79,39 @@ type StartResult =
         | "not_paired"
         | "missing_hostname"
         | "network_error"
-        | "server_error";
+        | "server_error"
+        | "spawn_not_running";
       message: string;
     };
 
-let state: TunnelState = {
+const INITIAL_STATE: TunnelState = {
   active: false,
   hostname: null,
   lastSeenAt: null,
   lastError: null,
+  probeFailures: 0,
 };
+
+let state: TunnelState = { ...INITIAL_STATE };
 let heartbeatTimer: NodeJS.Timeout | null = null;
+let spawnSubscriptionInstalled = false;
+
+/**
+ * Subscribe once to spawn-state changes so a hostname rotation OR a
+ * cloudflared crash drives an immediate heartbeat tick instead of
+ * waiting up to 60s for the next interval. Idempotent — wired on the
+ * first start() and stays alive for the process lifetime; the
+ * heartbeat function's `state.active` guard makes the callback a
+ * no-op when the registration loop isn't running.
+ */
+function ensureSpawnSubscription(): void {
+  if (spawnSubscriptionInstalled) return;
+  spawnSubscriptionInstalled = true;
+  tunnelSpawn.subscribe(() => {
+    if (!state.active) return;
+    void heartbeat();
+  });
+}
 
 function apiBaseUrl(): string {
   const explicit = settings.get<string>("apiBaseUrl", "");
@@ -99,18 +126,22 @@ export function getState(): TunnelState {
 }
 
 /**
- * Register the configured tunnel hostname with the Dev Hub and start
- * the heartbeat. Idempotent — calling while already active replaces
- * the heartbeat schedule and re-fires an immediate POST so a hostname
- * change propagates immediately.
+ * Kick off the registration loop. Reads the current spawn state to
+ * decide whether to register right now or wait for the next tick.
+ *
+ * The hostname argument is accepted for back-compat with the
+ * pre-rewrite call site but is IGNORED — the heartbeat always reads
+ * the live spawn state. Pass anything (or nothing).
+ *
+ * Idempotent: calling while already active just re-fires an immediate
+ * heartbeat so a hostname rotation propagates fast.
  */
-export async function start(hostname: string): Promise<StartResult> {
+export async function start(_hostname?: string): Promise<StartResult> {
+  ensureSpawnSubscription();
   const token = getToken();
   if (!token) {
     state = {
-      active: false,
-      hostname: null,
-      lastSeenAt: null,
+      ...INITIAL_STATE,
       lastError:
         "Companion is not paired. Pair it in the companion settings before starting the backend.",
     };
@@ -120,60 +151,58 @@ export async function start(hostname: string): Promise<StartResult> {
       message: state.lastError!,
     };
   }
-  const trimmed = hostname.trim();
-  if (!trimmed) {
+
+  const spawn = tunnelSpawn.getState();
+  if (spawn.status !== "running" || !spawn.hostname) {
+    // Spawn isn't ready yet — schedule the heartbeat anyway so the
+    // next tick picks up the hostname once cloudflared finishes
+    // starting. This avoids a deadlock where start() returned
+    // "missing_hostname" and nothing ever kicked the loop.
     state = {
-      active: false,
-      hostname: null,
-      lastSeenAt: null,
+      ...INITIAL_STATE,
+      active: true, // loop is running, just waiting for spawn
       lastError:
-        "No tunnel hostname allocated yet. Wait for cloudflared to come up.",
+        spawn.status === "starting"
+          ? "Waiting for cloudflared to allocate a hostname…"
+          : "cloudflared isn't running. Will register when it comes up.",
     };
+    scheduleHeartbeat();
     return {
       ok: false,
-      reason: "missing_hostname",
+      reason: "spawn_not_running",
       message: state.lastError!,
     };
   }
 
-  const post = await postRegister(token, trimmed);
-  if (!post.ok) {
-    state = {
-      active: false,
-      hostname: trimmed,
-      lastSeenAt: null,
-      lastError: post.message,
-    };
-    return post;
-  }
-
-  state = {
-    active: true,
-    hostname: trimmed,
-    lastSeenAt: new Date().toISOString(),
-    lastError: null,
-  };
+  // Run one immediate tick — registers right away on the happy path
+  // so the user doesn't wait 60s for the first heartbeat.
+  state = { ...INITIAL_STATE, active: true };
   scheduleHeartbeat();
-  return { ok: true, hostname: trimmed };
+  await heartbeat();
+  if (state.hostname) {
+    return { ok: true, hostname: state.hostname };
+  }
+  return {
+    ok: false,
+    reason: "network_error",
+    message: state.lastError ?? "Initial register failed.",
+  };
 }
 
-/** Stop the heartbeat and clear the server-side registration. */
+/** Stop the heartbeat and clear the server-side registration. Safe
+ *  to call from anywhere — idempotent, doesn't throw on network
+ *  failure. */
 export async function stop(): Promise<void> {
   if (heartbeatTimer) {
     clearInterval(heartbeatTimer);
     heartbeatTimer = null;
   }
-  const wasActive = state.active;
-  state = {
-    active: false,
-    hostname: null,
-    lastSeenAt: null,
-    lastError: null,
-  };
+  const wasActive = state.active && state.hostname !== null;
+  state = { ...INITIAL_STATE };
   if (!wasActive) return;
 
   const token = getToken();
-  if (!token) return; // nothing to do server-side without auth
+  if (!token) return;
 
   try {
     const res = await fetch(
@@ -184,9 +213,6 @@ export async function stop(): Promise<void> {
       },
     );
     if (!res.ok && res.status !== 401) {
-      // 401 just means our token was revoked — there's nothing to
-      // unregister anyway. Other failures are best-effort; log and
-      // move on so we don't block shutdown.
       console.warn(
         "[tunnel-register] DELETE failed",
         res.status,
@@ -208,44 +234,139 @@ function scheduleHeartbeat(): void {
   }, HEARTBEAT_INTERVAL_MS);
 }
 
+/**
+ * Single heartbeat tick. Returns no value; mutates `state` and may
+ * issue a stop() side-effect on terminal spawn states.
+ */
 async function heartbeat(): Promise<void> {
-  if (!state.active || !state.hostname) return;
+  if (!state.active) return;
+
   const token = getToken();
   if (!token) {
-    // Token was revoked while we were running. Stop trying.
-    state = {
-      active: false,
-      hostname: state.hostname,
-      lastSeenAt: state.lastSeenAt,
-      lastError: "Companion token was revoked — re-pair to reconnect.",
-    };
+    // Token was revoked while we were running. Halt cleanly.
     if (heartbeatTimer) {
       clearInterval(heartbeatTimer);
       heartbeatTimer = null;
     }
+    state = {
+      ...INITIAL_STATE,
+      lastError: "Companion token was revoked — re-pair to reconnect.",
+    };
     return;
   }
-  const post = await postRegister(token, state.hostname);
+
+  const spawn = tunnelSpawn.getState();
+
+  // Spawn-state branching is the heart of this rewrite. Each branch
+  // resolves the "what's actually happening?" question before we
+  // touch the network — no more re-POSTing a hostname that doesn't
+  // resolve.
+  if (spawn.status === "starting") {
+    state = {
+      ...state,
+      lastError: "Waiting for cloudflared to allocate a hostname…",
+    };
+    return;
+  }
+  if (spawn.status !== "running" || !spawn.hostname) {
+    // Spawn is crashed / stopped / idle. The local tunnel isn't
+    // serving anything. Clear the server registration so the
+    // catch-all falls back to bundled cleanly. Halts the heartbeat
+    // loop — main/index.ts is responsible for calling start() again
+    // when the backend comes back up.
+    await stop();
+    state = {
+      ...INITIAL_STATE,
+      lastError:
+        spawn.lastError ||
+        "Local cloudflared exited — server registration cleared.",
+    };
+    return;
+  }
+
+  // Step 2 — probe. Verifies the hostname is actually routable end-
+  // to-end (laptop → public DNS → CF edge → tunnel → local Express).
+  const probeOk = await probeHostname(spawn.hostname);
+  if (!probeOk) {
+    const nextFailures = state.probeFailures + 1;
+    state = {
+      ...state,
+      probeFailures: nextFailures,
+      lastError: `Tunnel hostname ${spawn.hostname} didn't respond (probe failure ${nextFailures}/${PROBE_FAIL_THRESHOLD}).`,
+    };
+    if (nextFailures >= PROBE_FAIL_THRESHOLD) {
+      // Three strikes — assume the tunnel is genuinely broken even
+      // though cloudflared claims to be running. Clear the server
+      // registration so the catch-all stops proxying to a dead
+      // hostname. The next heartbeat will retry the probe; if it
+      // succeeds we re-register.
+      const lastError = state.lastError;
+      await stop();
+      // stop() resets state — preserve our error message + leave the
+      // loop running so a recovered tunnel re-registers itself.
+      state = {
+        ...INITIAL_STATE,
+        active: true,
+        lastError: `${lastError} Cleared server registration; falling back to bundled until the tunnel recovers.`,
+      };
+      scheduleHeartbeat();
+    }
+    return;
+  }
+
+  // Step 3 — actually register. Uses the spawn's current hostname,
+  // not whatever we registered last tick. A rotated hostname (CF
+  // edge rotation, cloudflared respawn) propagates within one tick.
+  const post = await postRegister(token, spawn.hostname);
   if (post.ok) {
     state = {
       ...state,
+      hostname: spawn.hostname,
       lastSeenAt: new Date().toISOString(),
       lastError: null,
+      probeFailures: 0,
     };
   } else {
-    // Keep the loop alive — a transient blip shouldn't unregister us
-    // (the server will fall back to the bundled API once lastSeenAt
-    // ages past 5 minutes, which gives us multiple recovery
-    // heartbeats). Surface the latest error to the UI.
     state = { ...state, lastError: post.message };
-    // BUT: if the token's been revoked server-side, stop trying.
+    // Server says our token's been revoked (401). Stop trying — the
+    // user needs to re-pair.
     if (post.reason === "server_error" && post.message.includes("401")) {
       if (heartbeatTimer) {
         clearInterval(heartbeatTimer);
         heartbeatTimer = null;
       }
-      state = { ...state, active: false };
+      state = {
+        ...INITIAL_STATE,
+        lastError: "Server rejected our token — re-pair to reconnect.",
+      };
     }
+  }
+}
+
+/**
+ * HEAD https://<hostname>/healthz with a hard timeout. Verifies the
+ * entire request path (DNS → CF edge → tunnel → local Express)
+ * actually works — cheaper + more honest than re-POSTing blindly.
+ *
+ * Treats any non-2xx as a failure, including the 502 / 530 envelope
+ * CF returns when its edge can't reach the tunnel.
+ */
+async function probeHostname(hostname: string): Promise<boolean> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
+  try {
+    const res = await fetch(`https://${hostname}/healthz`, {
+      method: "HEAD",
+      signal: ctrl.signal,
+      // Avoid sending random cookies / referrers from the Electron
+      // main process. This call is purely a liveness probe.
+      headers: { "user-agent": "espace-devhub-companion/probe" },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
