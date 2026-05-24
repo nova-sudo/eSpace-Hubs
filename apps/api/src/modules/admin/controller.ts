@@ -28,8 +28,14 @@ import { ObjectId } from "mongodb";
 import { findHubById, HUB_ORDER } from "@espace-devhub/shared/hubs";
 import {
   getAuditLogCollection,
+  getGoalContextCollection,
+  getGoalInputsCollection,
+  getGoalSpecsCollection,
+  getGoalsCollection,
+  getGradingVerdictsCollection,
   getOrgsCollection,
   getSessionsCollection,
+  getSnapshotsCollection,
   getUsersCollection,
 } from "../../db/collections.js";
 import type {
@@ -523,6 +529,119 @@ export async function resetUserTotpHandler(
     });
 
     res.json({ user: toPublicUser(updated), reset: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── DELETE /api/v1/admin/users/:id/personal-data ────────────────────
+//
+// Wipe a target user's accumulated dashboard data across the
+// collections that used to mirror localStorage (and so were susceptible
+// to the cross-user upload bug fixed in PR #117). Cleans up:
+//
+//   - goals             (one row per user)
+//   - snapshots         (many)
+//   - grading_verdicts  (many — verdict cache)
+//   - goal_specs        (many — AI classifier output)
+//   - goal_context      (many — per-goal answers)
+//   - goal_inputs       (many — time-series entries)
+//
+// Deliberately NOT touched:
+//   - users             (the account itself — admin uses PATCH /users/:id
+//                        for that)
+//   - integrations      (OAuth tokens — never written by the mirror bug)
+//   - sessions          (kicking users out is a separate admin action)
+//   - audit_log         (history is preserved)
+//
+// Idempotent + admin-only + cross-org-safe (every filter pins orgId).
+// Audited.
+
+export async function resetUserPersonalDataHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const targetId = requireUserId(req);
+
+    // Verify target exists in this org before deleting anything.
+    const users = await getUsersCollection();
+    const target = await users.findOne({
+      _id: targetId,
+      orgId: session.orgId,
+    });
+    if (!target) {
+      throw new HttpError(404, "not_found", "User not found in this org.");
+    }
+
+    // Collect every affected collection up front so we can audit
+    // exact delete counts. Parallel deletes — the collections are
+    // independent and the bottleneck would otherwise be the round
+    // trips.
+    const [
+      goals,
+      snapshots,
+      grading,
+      specs,
+      context,
+      inputs,
+    ] = await Promise.all([
+      getGoalsCollection(),
+      getSnapshotsCollection(),
+      getGradingVerdictsCollection(),
+      getGoalSpecsCollection(),
+      getGoalContextCollection(),
+      getGoalInputsCollection(),
+    ]);
+
+    const filter = { orgId: session.orgId, userId: targetId };
+
+    const [
+      goalsRes,
+      snapshotsRes,
+      gradingRes,
+      specsRes,
+      contextRes,
+      inputsRes,
+    ] = await Promise.all([
+      goals.deleteMany(filter),
+      snapshots.deleteMany(filter),
+      grading.deleteMany(filter),
+      specs.deleteMany(filter),
+      context.deleteMany(filter),
+      inputs.deleteMany(filter),
+    ]);
+
+    const deleted = {
+      goals: goalsRes.deletedCount,
+      snapshots: snapshotsRes.deletedCount,
+      gradingVerdicts: gradingRes.deletedCount,
+      goalSpecs: specsRes.deletedCount,
+      goalContext: contextRes.deletedCount,
+      goalInputs: inputsRes.deletedCount,
+    };
+
+    await writeAudit({
+      orgId: session.orgId,
+      actorUserId: session.userId,
+      actorRole: session.role,
+      action: "user.personal_data_reset_by_admin",
+      targetType: "user",
+      targetId: targetId.toHexString(),
+      after: { deleted },
+      ...networkMeta(req),
+    });
+
+    res.json({
+      ok: true,
+      user: toPublicUser(target),
+      deleted,
+    });
   } catch (err) {
     next(err);
   }

@@ -29,7 +29,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { apiGet, apiPatch, apiPost } from "@/lib/api-client";
+import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api-client";
 import { useSession } from "@/features/auth";
 import { CAPABILITIES } from "@espace-devhub/shared/capabilities";
 import { HUB_ORDER } from "@espace-devhub/shared/hubs";
@@ -662,6 +662,47 @@ function UserEditor({ user, isSelf, onUpdate }) {
     }
   }
 
+  // Wipe the user's dashboard data (goals, snapshots, grading verdicts,
+  // goal specs/context/inputs). Useful when the pre-#117 localStorage-
+  // mirror bug uploaded another user's data under this user's account
+  // and you want to start them with a clean slate.
+  async function handleResetPersonalData() {
+    if (
+      !window.confirm(
+        `Wipe all dashboard data for ${user.displayName}?\n\nDeletes their goals, snapshots, AI verdicts, goal specs/context/inputs. Does NOT touch their account, integrations, or sessions. Use this to clean up data left over from the cross-user mirror bug. Irreversible.`,
+      )
+    ) {
+      return;
+    }
+    setSaving(true);
+    const r = await apiDelete(`/admin/users/${user.id}/personal-data`);
+    setSaving(false);
+    if (!r.ok) {
+      toast.error(r.error?.message || "Couldn't reset personal data.");
+      return;
+    }
+    const d = r.data?.deleted || {};
+    const total =
+      (d.goals || 0) +
+      (d.snapshots || 0) +
+      (d.gradingVerdicts || 0) +
+      (d.goalSpecs || 0) +
+      (d.goalContext || 0) +
+      (d.goalInputs || 0);
+    if (total === 0) {
+      toast.info(`${user.displayName} had nothing to clean up.`);
+    } else {
+      toast.success(
+        `Wiped ${total} row${total === 1 ? "" : "s"} for ${user.displayName} ` +
+          `(goals:${d.goals || 0} · snapshots:${d.snapshots || 0} · verdicts:${
+            d.gradingVerdicts || 0
+          } · specs:${d.goalSpecs || 0} · context:${d.goalContext || 0} · inputs:${
+            d.goalInputs || 0
+          }).`,
+      );
+    }
+  }
+
   return (
     <div
       className="border-t px-5 py-5"
@@ -804,6 +845,22 @@ function UserEditor({ user, isSelf, onUpdate }) {
               Reset TOTP
             </button>
           ) : null}
+          {/* Wipe accumulated dashboard data — useful for cleaning up
+              pre-#117 mirror-bug pollution. Always available (idempotent
+              if there's nothing to delete). */}
+          <button
+            type="button"
+            onClick={handleResetPersonalData}
+            disabled={saving}
+            style={{
+              ...dangerButtonStyle,
+              opacity: saving ? 0.55 : 1,
+              cursor: saving ? "wait" : "pointer",
+            }}
+            title="Wipes goals/snapshots/verdicts/specs/context/inputs. Does NOT touch the account itself, integrations, or sessions."
+          >
+            Wipe dashboard data
+          </button>
           <button
             type="button"
             onClick={handleSave}
