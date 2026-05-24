@@ -201,22 +201,38 @@ async function getApp(): Promise<Application> {
       // Phase 3: capture the companion-routing resolver so we can
       // ask it on every request whether to proxy instead.
       resolveCompanionOrigin = mod.resolveCompanionOrigin;
-      // Kick off the Mongo + bootstrap pipeline in the background.
-      // We don't `await` it here so the first request can start
-      // processing immediately — any handler that needs the DB
-      // awaits the same in-flight `connect()` singleton via
-      // `getDb()` (see apps/api/src/db/client.ts).
-      void mod
-        .connect()
-        .then(() => mod.bootstrap())
-        .then(() => mod.seedDefaultOrg())
-        .catch((err: unknown) => {
-          // eslint-disable-next-line no-console
-          console.warn(
-            "[boot] serverless mongo bootstrap failed:",
-            err instanceof Error ? err.message : String(err),
-          );
-        });
+
+      // Await the Mongo + bootstrap pipeline BEFORE returning the
+      // app. Earlier this was fire-and-forget so the first request
+      // could start immediately — but that races schema-changing
+      // deploys: any deploy that removes a `required` field from a
+      // validator (e.g. the demo-mode removal) leaves Mongo still
+      // requiring the old field until `bootstrap()` runs
+      // `collMod`. Requests that landed in that window failed
+      // validation on insert ("missingProperties: [demo]").
+      //
+      // Cost of awaiting: cold-start latency goes up by the
+      // duration of bootstrap (~1-2s on Atlas — validator alignment
+      // + index ensure + boot-time migrations). Warm invocations
+      // still hit the cached appPromise and pay nothing. Worth it
+      // for correctness.
+      try {
+        await mod.connect();
+        await mod.bootstrap();
+        await mod.seedDefaultOrg();
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[boot] serverless mongo bootstrap failed:",
+          err instanceof Error ? err.message : String(err),
+        );
+        // We DON'T reset appPromise on failure — the next request
+        // would just retry the failing path. Better: serve the app
+        // so handlers can surface a clean 500 with a logged cause.
+        // The retry happens on the next cold start (new container)
+        // which is the right scope.
+      }
+
       return app;
     })();
   }
