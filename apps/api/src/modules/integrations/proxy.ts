@@ -40,8 +40,11 @@
 
 import type { NextFunction, Request, Response } from "express";
 import { Readable } from "node:stream";
+import type { ObjectId } from "mongodb";
 import { logger } from "../../lib/logger.js";
 import { HttpError } from "../../middleware/error-handler.js";
+import { getUsersCollection } from "../../db/collections.js";
+import { DEFAULT_ENGAGEMENT, type Engagement } from "../../db/types.js";
 import {
   loadDecryptedTokens,
   markIntegrationError,
@@ -80,8 +83,18 @@ const PASSTHROUGH_RESPONSE_HEADERS = new Set([
 
 interface ProxyContext {
   providerId: "github" | "gitlab" | "jira" | "jenkins";
-  /** Builds the upstream URL from the captured rest-of-path + querystring. */
-  buildUrl(args: { restPath: string; search: string; endpointUrl: string | null }): string;
+  /**
+   * Builds the upstream URL from the captured rest-of-path +
+   * querystring. `engagement` lets a provider branch on the user's
+   * engagement — the Jira proxy uses it to pick REST API v2 (Server
+   * 8.x, espace) vs v3 (Cloud, crealogix).
+   */
+  buildUrl(args: {
+    restPath: string;
+    search: string;
+    endpointUrl: string | null;
+    engagement: Engagement;
+  }): string;
   /** Builds the Authorization header (and any provider-specific extras). */
   buildHeaders(tokens: {
     accessToken: string | null;
@@ -90,14 +103,20 @@ interface ProxyContext {
   }): Record<string, string>;
   /**
    * Validates that this provider has what it needs to proxy. Returns
-   * an error message string if misconfigured, null if ready.
+   * an error message string if misconfigured, null if ready. The
+   * `engagement` flag is passed so error wording can match the user's
+   * mental model — eSpace users see "username/password," Crealogix
+   * users see "email/API token."
    */
-  validate(tokens: {
-    accessToken: string | null;
-    apiToken: string | null;
-    email: string | null;
-    endpointUrl: string | null;
-  }): string | null;
+  validate(
+    tokens: {
+      accessToken: string | null;
+      apiToken: string | null;
+      email: string | null;
+      endpointUrl: string | null;
+    },
+    engagement: Engagement,
+  ): string | null;
 }
 
 const GITHUB: ProxyContext = {
@@ -133,9 +152,23 @@ const GITLAB: ProxyContext = {
 
 const JIRA: ProxyContext = {
   providerId: "jira",
-  buildUrl: ({ restPath, search, endpointUrl }) => {
+  /**
+   * Path version branches on engagement:
+   *   - "espace"     → on-prem Jira Server 8.16: /rest/api/2/*
+   *                    (v3 doesn't exist on those installs and would 404)
+   *   - everything else → Jira Cloud-style /rest/api/3/*
+   *
+   * Field semantics on the integration row also differ:
+   *   - eSpace      stores Server username (in `email`) + Server password (in `apiToken`)
+   *   - Crealogix   stores Atlassian email (in `email`) + Atlassian API token (in `apiToken`)
+   *
+   * The Basic-auth wire format is identical (`<id>:<secret>` base64);
+   * only the URL path + the user-facing labels differ.
+   */
+  buildUrl: ({ restPath, search, endpointUrl, engagement }) => {
     const base = endpointUrl?.replace(/\/$/, "") ?? "";
-    return `${base}/rest/api/3/${restPath}${search}`;
+    const version = engagement === "espace" ? "2" : "3";
+    return `${base}/rest/api/${version}/${restPath}${search}`;
   },
   buildHeaders: ({ apiToken, email }) => {
     const basic = Buffer.from(`${email}:${apiToken}`).toString("base64");
@@ -144,9 +177,18 @@ const JIRA: ProxyContext = {
       Accept: "application/json",
     };
   },
-  validate: (t) => {
-    if (!t.apiToken) return "Jira API token missing — reconnect required.";
-    if (!t.email) return "Jira email missing on the integration.";
+  validate: (t, engagement) => {
+    const espace = engagement === "espace";
+    if (!t.apiToken) {
+      return espace
+        ? "Jira password missing — reconnect required."
+        : "Jira API token missing — reconnect required.";
+    }
+    if (!t.email) {
+      return espace
+        ? "Jira username missing on the integration."
+        : "Jira email missing on the integration.";
+    }
     if (!t.endpointUrl) return "Jira endpoint URL not set on the integration.";
     return null;
   },
@@ -231,7 +273,13 @@ async function runProxy(
       );
     }
 
-    const configError = ctx.validate(tokens);
+    // Resolve the user's engagement once per proxy call. Jira uses it
+    // to pick REST v2 (Server 8.x) vs v3 (Cloud); other providers
+    // accept the arg + ignore it. Falls back to DEFAULT_ENGAGEMENT
+    // for legacy users that pre-date the engagement field.
+    const engagement = await getUserEngagement(session.userId);
+
+    const configError = ctx.validate(tokens, engagement);
     if (configError) {
       throw new HttpError(401, "integration_misconfigured", configError);
     }
@@ -247,6 +295,7 @@ async function runProxy(
       restPath,
       search,
       endpointUrl: tokens.endpointUrl,
+      engagement,
     });
 
     const upstreamHeaders: Record<string, string> = {
@@ -337,6 +386,33 @@ async function runProxy(
       );
       if (!res.writableEnded) res.end();
     }
+  }
+}
+
+// ─── helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Resolve the user's engagement for a proxy call. Read-only, single
+ * lookup — every proxy route already does a Mongo round-trip for the
+ * tokens, one more is acceptable per request.
+ *
+ * Falls back to DEFAULT_ENGAGEMENT for users created before the field
+ * existed.
+ */
+async function getUserEngagement(userId: ObjectId): Promise<Engagement> {
+  try {
+    const users = await getUsersCollection();
+    const u = await users.findOne(
+      { _id: userId },
+      { projection: { engagement: 1 } },
+    );
+    return (u?.engagement ?? DEFAULT_ENGAGEMENT) as Engagement;
+  } catch (err) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "[proxy] engagement lookup failed — defaulting",
+    );
+    return DEFAULT_ENGAGEMENT;
   }
 }
 

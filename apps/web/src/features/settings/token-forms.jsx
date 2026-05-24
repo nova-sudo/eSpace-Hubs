@@ -8,7 +8,7 @@ import {
   saveConnection,
 } from "@/features/integrations";
 import { proxyFetch } from "@/features/integrations/api-clients/proxy-fetch";
-import { useMyEngagementConfig } from "@/features/auth";
+import { useMyEngagementConfig, useSession } from "@/features/auth";
 
 // Engagement-scoped URL fallbacks. Used when the engagement-config
 // hook hasn't resolved yet (early mount) or as a final safety net.
@@ -103,16 +103,46 @@ export function GitLabTokenForm() {
   );
 }
 
+/**
+ * Jira connect form. Branches labels + helper text on the user's
+ * engagement so the same form serves both flavours:
+ *
+ *   - Crealogix (Jira Cloud):   "Atlassian email" + "API token"
+ *     Auth is Basic email:apiToken; proxy hits /rest/api/3/…
+ *
+ *   - eSpace (Jira Server 8.16): "Username" + "Password"
+ *     Auth is Basic username:password; proxy hits /rest/api/2/…
+ *     v3 doesn't exist on Server 8.x, so the user-facing label and
+ *     the upstream URL flip together. Storage stays in the SAME
+ *     `email` + `apiToken` fields on the integration row — that's
+ *     intentional; we just relabel the meaning.
+ */
 export function JiraTokenForm() {
-  const [email, setEmail] = useState("");
-  const [apiToken, setApiToken] = useState("");
+  const [identity, setIdentity] = useState("");
+  const [secret, setSecret] = useState("");
   const [loading, setLoading] = useState(false);
   const { config: engagementCfg } = useMyEngagementConfig();
+  const { user } = useSession();
+  const isEspace = (user?.engagement ?? "espace") === "espace";
   const jiraUrl = engagementCfg?.jiraBaseUrl || ENV_FALLBACK_JIRA_URL;
+
+  // Labels + copy flip together — keep the two consts side-by-side so
+  // future engagements don't drift one without the other.
+  const idLabel = isEspace ? "Username" : "Atlassian email";
+  const secretLabel = isEspace ? "Password" : "API token";
+  const idPlaceholder = isEspace ? "your.username" : "you@espace.com.eg";
+  const secretPlaceholder = isEspace ? "•••••••••" : "ATATT3xFfGF0T...";
+  const idType = isEspace ? "text" : "email";
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!email || !apiToken) return toast.error("Email and API token are required.");
+    if (!identity || !secret) {
+      return toast.error(
+        isEspace
+          ? "Username and password are required."
+          : "Email and API token are required.",
+      );
+    }
     if (!jiraUrl) {
       return toast.error(
         "Jira base URL not configured for your engagement. Ask an admin to set <ENGAGEMENT>_JIRA_URL in the API env.",
@@ -120,20 +150,25 @@ export function JiraTokenForm() {
     }
     setLoading(true);
     try {
+      // Persist into the SAME columns either way — server-side proxy
+      // reads engagement at request time and decides v2 vs v3.
       await saveConnection("jira", {
-        email,
-        apiToken,
+        email: identity,
+        apiToken: secret,
         endpointUrl: jiraUrl,
       });
       const me = await proxyFetch("jira", "myself");
       await saveConnection("jira", {
-        email,
-        apiToken,
+        email: identity,
+        apiToken: secret,
         endpointUrl: jiraUrl,
-        username: me.emailAddress || me.name || email,
+        // Jira Server's /myself returns `name` (the login id) + may not
+        // expose `emailAddress` depending on user-privacy settings.
+        // Cloud reliably has `emailAddress`. Fall through gracefully.
+        username: me.name || me.emailAddress || identity,
         displayName: me.displayName,
       });
-      toast.success(`Connected to Jira as ${me.displayName || email}`);
+      toast.success(`Connected to Jira as ${me.displayName || identity}`);
     } catch (err) {
       disconnectProvider("jira");
       toast.error(err.message);
@@ -144,36 +179,45 @@ export function JiraTokenForm() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-      <Field label="Atlassian email">
+      <Field label={idLabel}>
         <Input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@espace.com.eg"
+          type={idType}
+          value={identity}
+          onChange={(e) => setIdentity(e.target.value)}
+          placeholder={idPlaceholder}
         />
       </Field>
       <Field
-        label="API token"
+        label={secretLabel}
         hint={
-          <>
-            Generate at{" "}
-            <a
-              className="underline hover:text-fg"
-              href="https://id.atlassian.com/manage-profile/security/api-tokens"
-              target="_blank"
-              rel="noreferrer"
-            >
-              id.atlassian.com → API tokens
-            </a>
-            .
-          </>
+          isEspace ? (
+            <>
+              Your Jira Server login password. Stored encrypted at rest
+              with AES-256-GCM and used as Basic auth against{" "}
+              <code className="font-mono text-[11px]">/rest/api/2/…</code>{" "}
+              on your on-prem Jira (v8.16).
+            </>
+          ) : (
+            <>
+              Generate at{" "}
+              <a
+                className="underline hover:text-fg"
+                href="https://id.atlassian.com/manage-profile/security/api-tokens"
+                target="_blank"
+                rel="noreferrer"
+              >
+                id.atlassian.com → API tokens
+              </a>
+              .
+            </>
+          )
         }
       >
         <Input
           type="password"
-          value={apiToken}
-          onChange={(e) => setApiToken(e.target.value)}
-          placeholder="ATATT3xFfGF0T..."
+          value={secret}
+          onChange={(e) => setSecret(e.target.value)}
+          placeholder={secretPlaceholder}
           mono
         />
       </Field>
