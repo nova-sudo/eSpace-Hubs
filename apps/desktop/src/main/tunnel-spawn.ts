@@ -229,12 +229,35 @@ export async function start({ port }: StartOptions): Promise<TunnelSpawnState> {
       reject(new Error(msg));
     }, HOSTNAME_WAIT_MS);
 
-    pushLog(`[tunnel-spawn] starting: cloudflared tunnel --url http://localhost:${port}`);
+    pushLog(
+      `[tunnel-spawn] starting: cloudflared tunnel --protocol http2 --url http://localhost:${port}`,
+    );
 
     try {
       child = spawn(
         "cloudflared",
-        ["tunnel", "--no-autoupdate", "--url", `http://localhost:${port}`],
+        [
+          "tunnel",
+          "--no-autoupdate",
+          // Force HTTP/2 instead of cloudflared's default QUIC. QUIC
+          // (UDP-based) is routinely blocked by corporate VPNs —
+          // FortiClient in particular drops the handshake, resulting
+          // in `Failed to dial a quic connection error="failed to
+          // dial to edge with quic: timeout: handshake did not
+          // complete in time"` and indefinite retries that never
+          // fall back. HTTP/2 (TCP/443) goes through the same TLS
+          // pipes regular HTTPS uses, which corporate networks
+          // basically always allow.
+          //
+          // The trade-off: HTTP/2 is fractionally slower than QUIC
+          // for our use case (no 0-RTT, no multipath). Negligible
+          // for a low-volume management API; well worth the
+          // reliability gain.
+          "--protocol",
+          "http2",
+          "--url",
+          `http://localhost:${port}`,
+        ],
         {
           // shell:true on Windows so cmd.exe resolves cloudflared's
           // location via PATHEXT — Electron's main process PATH can
