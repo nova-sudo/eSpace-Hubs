@@ -319,16 +319,26 @@ function PctRow({ pct, variant }) {
 }
 
 /**
- * Inline summary of the current Sun → Fri work-week. Shows the per-week
- * pass/graded fraction so the headline number (YTD %) is paired with
- * the granularity the user is actually being asked to grade. Hidden
- * when there are no PRs merged this week (nothing to surface).
+ * Inline summary of the current Sun → Fri work-week. Always rendered
+ * so the YTD headline number sits alongside the granularity users are
+ * being asked to grade — even when no PRs were merged this week,
+ * showing "0 PRs merged" is more informative than the row vanishing
+ * (which made the user think the per-week framing wasn't deployed).
  */
 function ThisWeekRow({ variant, weekLabel, stats, prCount }) {
-  if (prCount === 0) return null;
   const muted =
     variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)";
   const fg = variant === "light" ? "#ffffff" : "var(--fg)";
+  let right;
+  if (prCount === 0) {
+    right = "0 PRs merged";
+  } else if (stats.graded === 0) {
+    right = `${prCount} to grade`;
+  } else {
+    right = `${stats.pass}/${stats.graded} pass${
+      stats.ungraded > 0 ? ` · ${stats.ungraded} to grade` : ""
+    }`;
+  }
   return (
     <div
       className="flex items-baseline justify-between gap-2"
@@ -341,10 +351,7 @@ function ThisWeekRow({ variant, weekLabel, stats, prCount }) {
       <span className="uppercase tracking-[0.4px]">
         This week{weekLabel ? ` · ${weekLabel}` : ""}
       </span>
-      <span style={{ color: fg }}>
-        {stats.pass}/{stats.graded} pass
-        {stats.ungraded > 0 ? ` · ${stats.ungraded} to grade` : ""}
-      </span>
+      <span style={{ color: fg }}>{right}</span>
     </div>
   );
 }
