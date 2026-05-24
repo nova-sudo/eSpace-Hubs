@@ -188,13 +188,27 @@ export function CodeRubricGridRow({ goal, spec, weeks }) {
     return { pass, graded, ungraded };
   }, [prsByWeek, verdictsByPr]);
 
-  const gradeAllWeeks = useCallback(() => {
-    const flat = [];
-    for (const list of prsByWeek.values()) flat.push(...list);
-    grade(flat);
-  }, [grade, prsByWeek]);
+  // "Next ungraded week" — the earliest week that has PRs AND at least
+  // one ungraded verdict. Pressing the button grades JUST that week;
+  // the user reviews the verdicts that drop in, then presses again
+  // for the next. This replaces the old "Grade all weeks" CTA, which
+  // fired the entire row at once and made the user wait for ~12 weeks
+  // of grading to settle before they could even check the first.
+  const nextUngradedWeek = useMemo(() => {
+    for (const wk of weeks) {
+      const weekPrs = prsByWeek.get(wk.weekLabel) || [];
+      if (weekPrs.length === 0) continue;
+      const s = summariseVerdicts(weekPrs, verdictsByPr);
+      if (s.ungraded > 0) return { week: wk, weekPrs, ungraded: s.ungraded };
+    }
+    return null;
+  }, [weeks, prsByWeek, verdictsByPr]);
 
-  const disabledAll = !hasGithub || rubric.length === 0 || rowTotals.ungraded === 0 || progress.running;
+  const gradeNextWeek = useCallback(() => {
+    if (nextUngradedWeek) grade(nextUngradedWeek.weekPrs);
+  }, [grade, nextUngradedWeek]);
+
+  const disabledNext = !hasGithub || rubric.length === 0 || !nextUngradedWeek || progress.running;
 
   return (
     <>
@@ -230,27 +244,34 @@ export function CodeRubricGridRow({ goal, spec, weeks }) {
         />
       ))}
 
-      {/* Trailing "Bulk" column — Grade-all-weeks for this row */}
+      {/* Trailing "Next" column — jump to the earliest ungraded week.
+          Click → grade JUST that week's PRs. After verdicts settle,
+          click again to advance. The label changes to reflect which
+          week is up next so the user knows what they're committing to. */}
       <div className="flex items-center justify-end border-b border-border px-2">
         <button
           type="button"
-          onClick={gradeAllWeeks}
-          disabled={disabledAll}
+          onClick={gradeNextWeek}
+          disabled={disabledNext}
           title={
             rubric.length === 0
               ? "Define rubric in the dashboard widget first"
-              : rowTotals.ungraded === 0
-              ? "All graded"
-              : `Analyze ${rowTotals.ungraded} ungraded across these weeks`
+              : !nextUngradedWeek
+              ? "All weeks graded"
+              : `Grade ${nextUngradedWeek.week.weekLabel} (${nextUngradedWeek.ungraded} ungraded)`
           }
           className={cn(
             "flex items-center gap-1 rounded-md border border-border bg-bg px-1.5 py-0.5 text-[10px] uppercase tracking-[0.4px] text-muted-fg hover:bg-accent-dim/60 hover:text-fg",
-            disabledAll && "opacity-40",
+            disabledNext && "opacity-40",
           )}
           style={CELL_FONT}
         >
           <Sparkles size={10} />
-          Grade all
+          {progress.running
+            ? `${progress.done}/${progress.total}`
+            : nextUngradedWeek
+            ? `Next · ${nextUngradedWeek.week.weekLabel}`
+            : "All graded"}
         </button>
       </div>
     </>

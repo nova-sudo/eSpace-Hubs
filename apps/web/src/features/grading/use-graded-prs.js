@@ -4,28 +4,39 @@
  * Orchestrator hook for the CODE_RUBRIC widget.
  *
  * Lifecycle:
- *   1. Load the user's PRs from Jan 1 of the current year (open + merged,
- *      no drafts) via `githubApi.myPrsSince`.
- *   2. For each PR, check the local verdict cache keyed on
+ *   1. On first mount per session, hydrate the verdict cache from the
+ *      API via `fetchVerdicts()`. Idempotent — multiple consumers
+ *      (dashboard widget, check-in row, SCORECARD components) share
+ *      the in-flight promise so only one GET fires.
+ *   2. Load the user's PRs from Jan 1 of the current year (open +
+ *      merged, no drafts) via `githubApi.myPrsSince`.
+ *   3. For each PR, check the hydrated verdict cache keyed on
  *      `(prId, rubricHash)`. Cache hit → done for that PR.
- *   3. For cache misses, fetch the PR body + comments via
+ *   4. For cache misses, fetch the PR body + comments via
  *      `githubApi.pullDetails`, then POST to `/api/v1/ai/grade-pr`. The
- *      concurrency cap is wired into the loop, not the endpoint — keeps
- *      us from thrashing the upstream model's rate limits.
- *   4. Verdicts are persisted in `grading-store` as each comes back; the
- *      widget re-renders from the store in the same tick.
+ *      concurrency cap is wired into the loop, not the endpoint —
+ *      keeps us from thrashing the upstream model's rate limits.
+ *   5. Verdicts are persisted via `saveVerdict()` as each comes back
+ *      (optimistic in-memory update + background POST). The widget
+ *      re-renders from the verdicts-store in the same tick.
  *
- * SSR: safe. Returns empty state server-side; all work gated on `window`.
+ * SSR: safe. Returns empty state server-side; all work gated on
+ * `window` inside verdicts-store + githubApi.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useIntegrations, githubApi } from "@/features/integrations";
 import { useGoalContext } from "@/features/goal-context";
+import { useSession } from "@/features/auth";
 import {
-  GRADING_CHANGE_EVENT,
+  fetchVerdicts,
+  getVerdictsSnapshot,
+  getVerdictsServerSnapshot,
+  getVerdictsState,
   readVerdict,
   saveVerdict,
-} from "./grading-store";
+  subscribeVerdicts,
+} from "./verdicts-store";
 import { normalizeRubric, rubricHash } from "./rubric-hash";
 import { firstReviewComments } from "./first-review-comments";
 
@@ -57,30 +68,12 @@ function startOfYearIso() {
   return new Date(Date.UTC(now.getUTCFullYear(), 0, 1)).toISOString();
 }
 
-/**
- * Subscribe to grading-store changes so React re-reads verdicts after a
- * fresh grade persists without us needing to keep the whole verdict table
- * in component state.
- */
-function subscribeToStore(cb) {
-  if (typeof window === "undefined") return () => {};
-  const handler = () => cb();
-  window.addEventListener(GRADING_CHANGE_EVENT, handler);
-  window.addEventListener("storage", handler);
-  return () => {
-    window.removeEventListener(GRADING_CHANGE_EVENT, handler);
-    window.removeEventListener("storage", handler);
-  };
-}
-
-function getStoreSnapshot() {
-  // We don't use the snapshot value directly — it just changes whenever the
-  // store changes, which is enough to trigger a re-render + re-read via
-  // `readVerdict` in the render body.
-  return typeof window !== "undefined"
-    ? localStorage.getItem("espace-devhub:grading") || ""
-    : "";
-}
+// verdicts-store provides `subscribeVerdicts` + `getVerdictsSnapshot` so
+// useSyncExternalStore re-renders the hook the moment a verdict lands in
+// the in-memory Map (whether from a fresh grade or from the hydration
+// pull). The snapshot is a monotonically-incrementing tick — that's all
+// React needs to know the verdicts Map changed; the actual lookups happen
+// via `readVerdict` in the render body below.
 
 /**
  * @typedef {Object} GradedPrsOptions
@@ -140,17 +133,32 @@ export function useGradedPrs(spec, options = {}) {
     return rubricHash(rubric, tagBits.length > 0 ? tagBits.join(":") : null);
   }, [rubric, scopeKey, firstReviewOnly]);
 
-  // Subscribe to grading store changes so we re-render when verdicts land.
-  // Capture the snapshot value — `verdictsByPr` memo below uses it as a
-  // dep so it actually recomputes when a verdict lands. Without that
-  // dep the memo keys off (prs, hash) only and returns a stale map
-  // forever after the first paint, which is what made graded verdicts
-  // only appear after a hard refresh.
+  // Subscribe to verdicts-store changes so we re-render when verdicts
+  // land (either freshly graded or hydrated from the API on mount).
+  // Capture the snapshot value as a memo dep so verdictsByPr below
+  // recomputes whenever the Map changes — without that, the memo keys
+  // off (prs, hash) only and returns a stale Map forever after the
+  // first paint, which is what made fresh verdicts only appear after
+  // a hard refresh in the old localStorage design.
   const gradingStoreSnap = useSyncExternalStore(
-    subscribeToStore,
-    getStoreSnapshot,
-    () => "",
+    subscribeVerdicts,
+    getVerdictsSnapshot,
+    getVerdictsServerSnapshot,
   );
+
+  // Hydrate from the API on first mount per session. fetchVerdicts is
+  // idempotent (concurrent callers share the in-flight promise) and
+  // sets `fetched: true` so subsequent SCORECARD-embedded hooks don't
+  // re-fire the GET. The dep on the session user.id makes the pull
+  // re-trigger on a fresh login (the auth-transition reset wiped the
+  // in-memory Map and `fetched: false` so the gate opens again).
+  const { user, loading: sessionLoading } = useSession();
+  useEffect(() => {
+    if (sessionLoading || !user || !enabled) return;
+    const verdictsState = getVerdictsState();
+    if (verdictsState.fetched || verdictsState.loading) return;
+    void fetchVerdicts();
+  }, [user, sessionLoading, enabled]);
 
   const [prs, setPrs] = useState([]);
   const [listError, setListError] = useState(null);
