@@ -31,6 +31,7 @@ import * as vpn from "./vpn";
 import * as keychain from "./keychain";
 import * as pair from "./pair";
 import * as tunnel from "./tunnel-register";
+import * as tunnelSpawn from "./tunnel-spawn";
 import { checkDocker } from "./docker-check";
 import { initAutoUpdater } from "./auto-update";
 
@@ -203,17 +204,29 @@ ipcMain.handle("backend:start", async () => {
   }
   const result = await startBackend();
 
-  // Phase 3d — after Docker is up, register the tunnel hostname with
-  // the Dev Hub so its catch-all proxies this user's API calls here
-  // instead of running the bundled Express app. Best-effort: if
-  // pairing isn't done or the hostname isn't configured we surface
-  // the reason in tunnel.getState() but don't fail the start.
+  // Phase 3d + auto-tunnel — after Docker is up:
+  //   1. spawn cloudflared (TryCloudflare); when it allocates the
+  //      *.trycloudflare.com hostname, the onHostname callback wired
+  //      below auto-fires tunnel.start(hostname) to register with the
+  //      Dev Hub.
+  //   2. tunnel.start runs the heartbeat that keeps lastSeenAt fresh.
+  //
+  // Best-effort end-to-end: a missing cloudflared binary or unpaired
+  // companion is surfaced via tunnel-spawn.getState() / tunnel.getState()
+  // — but the backend itself still starts cleanly so the user can
+  // pair / install cloudflared and retry.
   if (
     result.ok &&
     settings.get<boolean>("tunnelAutoRegister", true) &&
     pair.status().paired
   ) {
-    void tunnel.start();
+    void tunnelSpawn.start({ port: 4000 }).catch((err: unknown) => {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[main] tunnel-spawn failed:",
+        err instanceof Error ? err.message : String(err),
+      );
+    });
   }
 
   return result;
@@ -258,13 +271,21 @@ ipcMain.handle("credentials:clear", async (_event, key: string) => {
 });
 
 ipcMain.handle("backend:stop", async () => {
-  // Phase 3d — clear the tunnel registration BEFORE tearing down
-  // Docker. Order matters: if we stop Docker first, the catch-all
-  // could route an in-flight request to a hostname that no longer
-  // resolves, surfacing "companion_unreachable" instead of a clean
-  // bundled-API fallback.
+  // Phase 3d + auto-tunnel — teardown order matters:
+  //   1. clear the tunnel registration (so the Dev Hub catch-all stops
+  //      routing to a hostname we're about to take down)
+  //   2. kill the cloudflared subprocess (severs the public hostname)
+  //   3. stop Docker
+  // Reversing 1-2 would leave the Dev Hub briefly routing to a dead
+  // cloudflared, surfacing "companion_unreachable" toasts to anyone
+  // mid-request.
   await tunnel.stop();
+  await tunnelSpawn.stop();
   return stopBackend();
+});
+
+ipcMain.handle("tunnel:spawn-state", async () => {
+  return tunnelSpawn.getState();
 });
 
 // ─── companion pairing IPC ───────────────────────────────────────────
@@ -291,7 +312,18 @@ ipcMain.handle("companion:unpair", async () => {
 });
 
 ipcMain.handle("tunnel:register", async () => {
-  return tunnel.start();
+  // Manual register from the main UI. Use whatever hostname cloudflared
+  // has currently allocated; if spawn isn't running, surface that.
+  const spawnState = tunnelSpawn.getState();
+  if (!spawnState.hostname) {
+    return {
+      ok: false as const,
+      reason: "missing_hostname" as const,
+      message:
+        "No tunnel hostname allocated yet. Start the backend first — cloudflared launches and assigns a hostname automatically.",
+    };
+  }
+  return tunnel.start(spawnState.hostname);
 });
 
 ipcMain.handle("tunnel:clear", async () => {
@@ -340,6 +372,10 @@ ipcMain.handle("docker:check", async () => {
   return checkDocker();
 });
 
+ipcMain.handle("cloudflared:check", async () => {
+  return tunnelSpawn.check();
+});
+
 ipcMain.handle("dialog:choose-directory", async (_event, title?: string) => {
   // returnFocus is the only place we care about the window-handle
   // origin — falls back to undefined cleanly if no window is open.
@@ -373,6 +409,20 @@ app.whenReady().then(() => {
   // Phase 4 — auto-update polling. Background; no-op in dev / when
   // unpackaged. See apps/desktop/src/main/auto-update.ts.
   initAutoUpdater();
+
+  // Wire tunnel-spawn → tunnel-register: every time cloudflared
+  // allocates (or re-allocates after a respawn) a hostname, register
+  // it with the Dev Hub. tunnel.start() is idempotent, so calling it
+  // with a fresh hostname cleanly replaces the prior registration.
+  tunnelSpawn.onHostname((hostname) => {
+    void tunnel.start(hostname).catch((err: unknown) => {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[main] tunnel.start failed after hostname allocation:",
+        err instanceof Error ? err.message : String(err),
+      );
+    });
+  });
 });
 
 app.on("activate", () => {
@@ -392,11 +442,13 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
-  // Best-effort: clear the tunnel registration so the Vercel
-  // catch-all stops proxying to a hostname we're about to take down,
-  // then stop the backend container. Without this, `docker compose
-  // up -d` would leave a container running in the background even
-  // after the companion is gone — surprising for the user.
+  // Best-effort cleanup, ordered like backend:stop:
+  //   1. clear Dev Hub registration
+  //   2. kill cloudflared
+  //   3. stop Docker
+  // We don't await any of these — quit shouldn't stall waiting on
+  // network calls or subprocess teardown.
   void tunnel.stop();
+  void tunnelSpawn.stop();
   void stopBackend({ silent: true });
 });

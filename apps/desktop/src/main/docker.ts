@@ -50,11 +50,15 @@ function repoPath(): string {
 }
 
 function dockerComposeArgs(...extra: string[]): string[] {
-  // `--profile tunnel` brings up the optional CF tunnel sidecar
-  // alongside mongo + api. The companion's whole job is to expose
-  // the api to a Vercel frontend through CF Tunnel, so we want the
-  // tunnel container running by default.
-  return ["compose", "--profile", "tunnel", ...extra];
+  // TEMP (TryCloudflare path): the `--profile tunnel` flag was
+  // dropped so docker compose doesn't try to start the cloudflared
+  // sidecar that requires TUNNEL_TOKEN. Run
+  // `cloudflared tunnel --url http://localhost:4000` on the host
+  // instead and paste the printed *.trycloudflare.com hostname into
+  // the companion's tunnel-hostname field.
+  // TODO: make the flag conditional on TUNNEL_TOKEN presence so a
+  // named-tunnel user gets the sidecar back automatically.
+  return ["compose", ...extra];
 }
 
 function run(args: string[]): Promise<RunResult> {

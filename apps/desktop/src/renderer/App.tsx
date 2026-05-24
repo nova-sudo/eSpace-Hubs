@@ -601,19 +601,18 @@ export function App() {
         </div>
         <Field
           label="Tunnel hostname"
-          help="Public hostname your Cloudflare Tunnel exposes the local backend at (e.g. user-42.cf-tunnel.com). Used on backend start to register with the Dev Hub."
+          help="Auto-allocated by cloudflared on backend start. Read-only — TryCloudflare assigns a new hostname per session; the companion re-registers it automatically."
         >
           <input
             type="text"
-            value={settings.tunnelHostname || ""}
-            placeholder="your-name.cf-tunnel.com"
-            onChange={(e) => onSettingChange("tunnelHostname", e.target.value.trim())}
-            style={S.input}
+            readOnly
+            value={pairState?.tunnel.hostname || "(not running)"}
+            style={{ ...S.input, opacity: 0.75, cursor: "default" }}
           />
         </Field>
         <Field
           label="Auto-register tunnel on backend start"
-          help="POST the hostname above when the backend comes up, DELETE when it goes down. Heartbeats every 60s while running."
+          help="Spawn cloudflared + POST the hostname when the backend comes up, DELETE when it goes down. Heartbeats every 60s while running."
         >
           <input
             type="checkbox"
