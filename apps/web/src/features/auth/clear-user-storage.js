@@ -38,9 +38,12 @@
  * When adding a new store with user-scoped data, ADD ITS KEY HERE.
  */
 const USER_SCOPED_KEYS = Object.freeze([
-  // goals moved to API-direct (no localStorage) — see goals-store.js.
-  // Subscribers reset their in-memory state via the
-  // "auth:user-storage-cleared" event we still dispatch below.
+  // goals + grading moved to API-direct (no localStorage) — see
+  // goals-store.js + verdicts-store.js. Subscribers reset their
+  // in-memory state via the "auth:user-storage-cleared" event we
+  // dispatch below. We still wipe "espace-devhub:grading" here to
+  // clean up legacy localStorage data that may still exist on
+  // devices that ran the pre-API-direct version.
   "espace-devhub:snapshots",
   "espace-devhub:evidence",
   "espace-devhub:grading",

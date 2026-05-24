@@ -3,7 +3,6 @@ import { Inter_Tight, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { SessionProvider } from "@/features/auth";
 import { CompanionApiOriginProvider } from "@/features/companion";
-import { GradingSync } from "@/features/grading";
 import { SnapshotsSync } from "@/features/snapshots";
 import { ContextSync } from "@/features/goal-context";
 import { InputsSync } from "@/features/goal-inputs";
@@ -38,11 +37,7 @@ export default function RootLayout({ children }) {
         {/* SessionProvider kicks off the initial /auth/me lookup so
             useSession() reads from a populated store on first render.
             It's a no-op when the user has no cookie (returns 401 →
-            user: null, loading: false).
-            GradingSync sits inside the provider so it can read
-            useSession() — it pulls the user's verdict cache from
-            the API once on session establishment, merging into
-            localStorage. M7.2 mirror-mode rollout. */}
+            user: null, loading: false). */}
         <SessionProvider>
           {/* Drives the api-origin store — fetches /me/api-origin on
               session establishment, then refreshes every 60s and on
@@ -65,9 +60,9 @@ export default function RootLayout({ children }) {
           {/* The remaining *Sync components are scheduled to be removed
               feature-by-feature alongside goals (the localStorage-cache
               architecture they implement is being replaced by direct
-              API fetches inside each feature's hook). Goals already
-              uses the API-direct pattern below. */}
-          <GradingSync />
+              API fetches inside each feature's hook). Goals and grading
+              already use the API-direct pattern — their hooks self-
+              hydrate on session establishment. */}
           <SnapshotsSync />
           <ContextSync />
           <InputsSync />

@@ -22,11 +22,20 @@
  * component is purely presentational.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { WidgetShell } from "../widget-shell";
 import { useGradedPrs } from "@/features/grading";
+import { weekLabel, weekRangeFromLabel } from "@/lib/date";
 
 export function CodeRubricWidget({ spec, goal, variant = "light", className, onRetry }) {
+  // When the widget is rendered inside the SCORECARD modal (synthetic
+  // spec carries `scopeKey`), pass that through to useGradedPrs so the
+  // rubric hash matches what `useRubricForSlot` uses on the scorecard
+  // row. Without this, grading from the modal stores verdicts under
+  // one hash and the row reads under another — the user sees
+  // different pass counts in the two places. spec.scopeKey is null
+  // for the standalone widget so behaviour stays unchanged outside
+  // SCORECARD.
   const {
     prs,
     verdictsByPr,
@@ -35,10 +44,15 @@ export function CodeRubricWidget({ spec, goal, variant = "light", className, onR
     progress,
     isListLoading,
     listError,
+    grade,
     gradeAll,
     refreshList,
     hasGithub,
-  } = useGradedPrs(spec);
+  } = useGradedPrs(spec, {
+    scopeKey: spec?.scopeKey || null,
+    firstReviewOnly:
+      spec?.firstReviewOnly === true ? true : undefined,
+  });
 
   const [expandedPrId, setExpandedPrId] = useState(null);
   // PR list is COLLAPSED by default — the widget's headline (pass-rate
@@ -51,6 +65,29 @@ export function CodeRubricWidget({ spec, goal, variant = "light", className, onR
 
   const year = new Date().getFullYear();
   const label = `Rubric · ${year} YTD`;
+
+  // "This week" is the current Sun → Fri work-week (matches the
+  // check-in week boundaries — same `weekLabel` helper). The widget
+  // surfaces it as a secondary stat so users see the slice they're
+  // most likely to grade next, without losing the YTD anchor.
+  const thisWeek = useMemo(() => {
+    const lbl = weekLabel(new Date());
+    return weekRangeFromLabel(lbl);
+  }, []);
+  const thisWeekPrs = useMemo(() => {
+    if (!thisWeek) return [];
+    const s = thisWeek.start.getTime();
+    const e = thisWeek.end.getTime();
+    return prs.filter((pr) => {
+      if (!pr.mergedAt) return false;
+      const t = new Date(pr.mergedAt).getTime();
+      return t >= s && t < e;
+    });
+  }, [prs, thisWeek]);
+  const thisWeekStats = useMemo(
+    () => summarisePrs(thisWeekPrs, verdictsByPr),
+    [thisWeekPrs, verdictsByPr],
+  );
 
   // Empty / setup states come first — short-circuit before the grid.
   if (!hasGithub) {
@@ -172,6 +209,8 @@ export function CodeRubricWidget({ spec, goal, variant = "light", className, onR
   }
 
   const hasUngraded = summary.ungraded > 0;
+  const hasUngradedThisWeek = thisWeekStats.ungraded > 0;
+  const onGradeThisWeek = () => grade(thisWeekPrs);
 
   return (
     <WidgetShell
@@ -200,11 +239,21 @@ export function CodeRubricWidget({ spec, goal, variant = "light", className, onR
             }}
           />
         </div>
+        <ThisWeekRow
+          variant={variant}
+          weekLabel={thisWeek?.weekLabel}
+          stats={thisWeekStats}
+          prCount={thisWeekPrs.length}
+        />
         <GradeActionRow
           variant={variant}
           progress={progress}
           hasUngraded={hasUngraded}
-          onGrade={gradeAll}
+          hasUngradedThisWeek={hasUngradedThisWeek}
+          thisWeekUngraded={thisWeekStats.ungraded}
+          ytdUngraded={summary.ungraded}
+          onGradeThisWeek={onGradeThisWeek}
+          onGradeAll={gradeAll}
           totalPrs={prs.length}
         />
         <ListDisclosure
@@ -269,16 +318,74 @@ function PctRow({ pct, variant }) {
   );
 }
 
-function GradeActionRow({ variant, progress, hasUngraded, onGrade, totalPrs }) {
-  const buttonDisabled = progress.running || !hasUngraded;
-  let buttonLabel;
-  if (progress.running) {
-    buttonLabel = `Grading ${progress.done}/${progress.total}…`;
-  } else if (hasUngraded) {
-    buttonLabel = "Grade now";
-  } else {
-    buttonLabel = "All graded";
-  }
+/**
+ * Inline summary of the current Sun → Fri work-week. Shows the per-week
+ * pass/graded fraction so the headline number (YTD %) is paired with
+ * the granularity the user is actually being asked to grade. Hidden
+ * when there are no PRs merged this week (nothing to surface).
+ */
+function ThisWeekRow({ variant, weekLabel, stats, prCount }) {
+  if (prCount === 0) return null;
+  const muted =
+    variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)";
+  const fg = variant === "light" ? "#ffffff" : "var(--fg)";
+  return (
+    <div
+      className="flex items-baseline justify-between gap-2"
+      style={{
+        fontFamily: "var(--font-mono)",
+        fontSize: 10,
+        color: muted,
+      }}
+    >
+      <span className="uppercase tracking-[0.4px]">
+        This week{weekLabel ? ` · ${weekLabel}` : ""}
+      </span>
+      <span style={{ color: fg }}>
+        {stats.pass}/{stats.graded} pass
+        {stats.ungraded > 0 ? ` · ${stats.ungraded} to grade` : ""}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Two-button action row: "Grade this week" is the primary action
+ * (user mostly works in week-sized chunks); "Grade YTD" is the
+ * escape hatch for catching up the full year. Disabling logic:
+ *
+ *   - both disabled while a grade pass is running (progress.running)
+ *   - "this week" disabled when no ungraded PRs merged in current week
+ *   - "YTD"  disabled when nothing is ungraded anywhere
+ *
+ * When everything's graded both collapse to "All graded".
+ */
+function GradeActionRow({
+  variant,
+  progress,
+  hasUngraded,
+  hasUngradedThisWeek,
+  thisWeekUngraded,
+  ytdUngraded,
+  onGradeThisWeek,
+  onGradeAll,
+  totalPrs,
+}) {
+  const running = progress.running;
+  const thisWeekDisabled = running || !hasUngradedThisWeek;
+  const ytdDisabled = running || !hasUngraded;
+
+  let thisWeekLabel;
+  if (running) thisWeekLabel = `Grading ${progress.done}/${progress.total}…`;
+  else if (hasUngradedThisWeek)
+    thisWeekLabel = `Grade week (${thisWeekUngraded})`;
+  else thisWeekLabel = "Week done";
+
+  let ytdLabel;
+  if (running) ytdLabel = "…";
+  else if (hasUngraded) ytdLabel = `YTD (${ytdUngraded})`;
+  else ytdLabel = "All graded";
+
   return (
     <div className="flex items-center justify-between gap-2">
       <div
@@ -291,23 +398,77 @@ function GradeActionRow({ variant, progress, hasUngraded, onGrade, totalPrs }) {
       >
         {totalPrs} PR{totalPrs === 1 ? "" : "s"} YTD
       </div>
-      <button
-        type="button"
-        onClick={onGrade}
-        disabled={buttonDisabled}
-        className="rounded-[var(--radius-sub)] px-3 py-1 uppercase font-bold transition-opacity disabled:opacity-40"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          letterSpacing: "0.5px",
-          background: variant === "light" ? "#ffffff" : "var(--accent)",
-          color: variant === "light" ? "var(--accent)" : "var(--accent-on)",
-        }}
-      >
-        {buttonLabel}
-      </button>
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onGradeThisWeek}
+          disabled={thisWeekDisabled}
+          className="rounded-[var(--radius-sub)] px-3 py-1 uppercase font-bold transition-opacity disabled:opacity-40"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            letterSpacing: "0.5px",
+            background: variant === "light" ? "#ffffff" : "var(--accent)",
+            color: variant === "light" ? "var(--accent)" : "var(--accent-on)",
+          }}
+        >
+          {thisWeekLabel}
+        </button>
+        <button
+          type="button"
+          onClick={onGradeAll}
+          disabled={ytdDisabled}
+          title={
+            ytdDisabled && !hasUngraded
+              ? "Nothing left to grade"
+              : "Grade everything ungraded this year"
+          }
+          className="rounded-[var(--radius-sub)] border px-2 py-1 uppercase font-bold transition-opacity disabled:opacity-40"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 9.5,
+            letterSpacing: "0.5px",
+            background: "transparent",
+            borderColor:
+              variant === "light"
+                ? "rgba(255,255,255,0.4)"
+                : "var(--border)",
+            color: variant === "light" ? "#ffffff" : "var(--fg)",
+          }}
+        >
+          {ytdLabel}
+        </button>
+      </div>
     </div>
   );
+}
+
+/**
+ * Same shape as the check-in's `summariseVerdicts` — kept inlined
+ * here rather than imported so the widget bundle doesn't pull in the
+ * check-in tree. If we ever extract this to a shared helper, the
+ * canonical home is `apps/web/src/features/grading/summary.js`.
+ */
+function summarisePrs(prList, verdictsByPr) {
+  let pass = 0;
+  let graded = 0;
+  let errored = 0;
+  for (const pr of prList) {
+    const v = verdictsByPr.get(pr.id);
+    if (!v) continue;
+    if (v.errored) {
+      errored += 1;
+      continue;
+    }
+    graded += 1;
+    if (v.pass) pass += 1;
+  }
+  return {
+    pass,
+    graded,
+    errored,
+    ungraded: prList.length - graded - errored,
+  };
 }
 
 /**
