@@ -94,6 +94,13 @@ type CompanionWindow = Window & {
           lastSeenAt: string | null;
           lastError: string | null;
         };
+        spawn: {
+          status: "idle" | "starting" | "running" | "crashed" | "stopped";
+          hostname: string | null;
+          port: number | null;
+          restarts: number;
+          lastError: string | null;
+        };
       }>;
       start: () => Promise<{
         ok: boolean;
@@ -521,14 +528,29 @@ export function App() {
           />
           <Stat
             label="Tunnel"
+            value={tunnelStatusValue(pairState)}
+            tone={tunnelStatusTone(pairState)}
+          />
+          <Stat
+            label="Cloudflared"
             value={
-              pairState?.tunnel.active
-                ? `live · ${pairState.tunnel.hostname || ""}`
-                : pairState?.tunnel.hostname
-                ? "registered (stopped)"
-                : "off"
+              pairState?.spawn
+                ? `${pairState.spawn.status}${
+                    pairState.spawn.restarts > 0
+                      ? ` · restarts: ${pairState.spawn.restarts}`
+                      : ""
+                  }`
+                : "—"
             }
-            tone={pairState?.tunnel.active ? "good" : "muted"}
+            tone={
+              pairState?.spawn?.status === "running"
+                ? "good"
+                : pairState?.spawn?.status === "starting"
+                ? "muted"
+                : pairState?.spawn?.status === "crashed"
+                ? "bad"
+                : "muted"
+            }
           />
           <Stat
             label="Last seen"
@@ -540,6 +562,11 @@ export function App() {
             tone="muted"
           />
         </div>
+        {pairState?.spawn?.lastError && (
+          <p style={{ ...S.helpInline, color: "var(--bad)" }}>
+            cloudflared: {pairState.spawn.lastError}
+          </p>
+        )}
         {pairState?.tunnel.lastError && (
           <p style={S.helpInline}>{pairState.tunnel.lastError}</p>
         )}
@@ -698,6 +725,41 @@ export function App() {
 }
 
 /* ─────────────────── primitives ─────────────────── */
+
+/**
+ * Disambiguate the tunnel display across three independent states:
+ *   - spawn is running but register is mid-handshake (was misleadingly
+ *     "live · " with empty hostname pre-fix)
+ *   - register is live with a confirmed hostname
+ *   - register has gone offline / stopped
+ * Reads from spawn AND register because the renderer can only safely
+ * say "live · hostname" when the register has actually confirmed a
+ * working probe + POST.
+ */
+function tunnelStatusValue(s: PairStatus | null): string {
+  if (!s) return "off";
+  if (s.tunnel.active && s.tunnel.hostname) {
+    return `live · ${s.tunnel.hostname}`;
+  }
+  if (s.tunnel.active) {
+    return "registering…";
+  }
+  if (s.spawn?.status === "running" && s.spawn.hostname) {
+    return `spawn up · awaiting probe`;
+  }
+  if (s.tunnel.hostname) return "registered (stopped)";
+  return "off";
+}
+
+function tunnelStatusTone(
+  s: PairStatus | null,
+): "good" | "bad" | "muted" | "warn" {
+  if (!s) return "muted";
+  if (s.tunnel.active && s.tunnel.hostname) return "good";
+  if (s.spawn?.status === "crashed") return "bad";
+  if (s.tunnel.active || s.spawn?.status === "running") return "warn";
+  return "muted";
+}
 
 function Badge({
   ping,

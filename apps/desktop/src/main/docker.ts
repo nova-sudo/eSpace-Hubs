@@ -93,7 +93,12 @@ function run(args: string[]): Promise<RunResult> {
   });
 }
 
-function pushLog(line: string): void {
+// Exported so tunnel-spawn (and any future sibling subprocess module)
+// can pipe its own output into the same shared log buffer the renderer
+// reads via the `backend:logs` IPC. Centralising the buffer keeps the
+// Logs panel showing the complete picture: docker output + cloudflared
+// output + any other companion subprocess.
+export function pushLog(line: string): void {
   // Keep the most-recent LOG_TAIL_MAX lines in memory so the UI's
   // "tail logs" panel can show context after the fact, without the
   // app holding onto unbounded buffers.

@@ -39,6 +39,7 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
+import { pushLog } from "./docker.js";
 
 const RESTART_BASE_MS = 2_000;
 const RESTART_MAX_MS = 60_000;
@@ -228,16 +229,29 @@ export async function start({ port }: StartOptions): Promise<TunnelSpawnState> {
       reject(new Error(msg));
     }, HOSTNAME_WAIT_MS);
 
+    pushLog(`[tunnel-spawn] starting: cloudflared tunnel --url http://localhost:${port}`);
+
     try {
       child = spawn(
         "cloudflared",
         ["tunnel", "--no-autoupdate", "--url", `http://localhost:${port}`],
-        { shell: false, windowsHide: true },
+        {
+          // shell:true on Windows so cmd.exe resolves cloudflared's
+          // location via PATHEXT — Electron's main process PATH can
+          // drift from the user's interactive shell PATH (especially
+          // when cloudflared was installed via winget after Electron
+          // launched), and shell:false won't find a bare `cloudflared`
+          // without explicit `.exe`. shell:true is safe here because
+          // none of our args contain spaces or shell meta-characters.
+          shell: process.platform === "win32",
+          windowsHide: true,
+        },
       );
     } catch (err) {
       clearTimeout(waitTimer);
       resolved = true;
       const msg = err instanceof Error ? err.message : String(err);
+      pushLog(`[tunnel-spawn] spawn threw: ${msg}`);
       setState({ status: "crashed", lastError: msg });
       reject(new Error(msg));
       return;
@@ -268,17 +282,24 @@ export async function start({ port }: StartOptions): Promise<TunnelSpawnState> {
       }
     };
 
+    // Pipe EVERY line from cloudflared into the shared log buffer so
+    // the renderer's Logs panel can show what's happening. Previously
+    // these lines were swallowed by the closure handler and the user
+    // had no way to see why spawn failed.
+    //
     // cloudflared writes the banner to STDERR (zerolog default). We
     // listen on both streams defensively in case a future version
     // changes that.
-    child.stderr?.on("data", (chunk) => {
+    const consume = (stream: "out" | "err") => (chunk: Buffer) => {
       const text = chunk.toString();
-      for (const line of text.split(/\r?\n/)) handleLine(line);
-    });
-    child.stdout?.on("data", (chunk) => {
-      const text = chunk.toString();
-      for (const line of text.split(/\r?\n/)) handleLine(line);
-    });
+      for (const line of text.split(/\r?\n/)) {
+        if (!line) continue;
+        pushLog(`[cloudflared${stream === "err" ? "/err" : ""}] ${line}`);
+        handleLine(line);
+      }
+    };
+    child.stderr?.on("data", consume("err"));
+    child.stdout?.on("data", consume("out"));
 
     child.on("error", (err) => {
       clearTimeout(waitTimer);
@@ -288,6 +309,7 @@ export async function start({ port }: StartOptions): Promise<TunnelSpawnState> {
       const msg = isMissing
         ? "cloudflared not found on PATH. Install via: winget install --id Cloudflare.cloudflared (Windows), brew install cloudflared (macOS)."
         : err.message;
+      pushLog(`[tunnel-spawn] child error: ${msg}`);
       setState({ status: "crashed", lastError: msg });
       if (!resolved) {
         resolved = true;
@@ -298,6 +320,9 @@ export async function start({ port }: StartOptions): Promise<TunnelSpawnState> {
     child.on("close", (code) => {
       const wasRunning = state.status === "running";
       child = null;
+      pushLog(
+        `[tunnel-spawn] cloudflared exited (code=${code}, wasRunning=${wasRunning}, hostnameSeen=${hostnameSeen})`,
+      );
       if (stopping) {
         setState({ status: "stopped", hostname: null });
         return;
@@ -309,13 +334,15 @@ export async function start({ port }: StartOptions): Promise<TunnelSpawnState> {
           RESTART_BASE_MS * 2 ** state.restarts,
           RESTART_MAX_MS,
         );
+        const msg = `cloudflared exited with code ${code} — restarting in ${
+          delay / 1000
+        }s (attempt ${state.restarts + 1}/${MAX_RESTARTS})…`;
+        pushLog(`[tunnel-spawn] ${msg}`);
         setState({
           status: "crashed",
           hostname: null,
           restarts: state.restarts + 1,
-          lastError: `cloudflared exited with code ${code} — restarting in ${
-            delay / 1000
-          }s (attempt ${state.restarts + 1}/${MAX_RESTARTS})…`,
+          lastError: msg,
         });
         restartTimer = setTimeout(() => {
           restartTimer = null;
@@ -324,12 +351,14 @@ export async function start({ port }: StartOptions): Promise<TunnelSpawnState> {
           });
         }, delay);
       } else {
+        const msg = wasRunning
+          ? `cloudflared restart budget exhausted (${MAX_RESTARTS} attempts). Stop + start backend to retry.`
+          : `cloudflared exited with code ${code} before allocating a hostname.`;
+        pushLog(`[tunnel-spawn] ${msg}`);
         setState({
           status: "crashed",
           hostname: null,
-          lastError: wasRunning
-            ? `cloudflared restart budget exhausted (${MAX_RESTARTS} attempts). Stop + start backend to retry.`
-            : `cloudflared exited with code ${code} before allocating a hostname.`,
+          lastError: msg,
         });
       }
     });

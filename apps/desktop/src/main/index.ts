@@ -290,7 +290,14 @@ ipcMain.handle("tunnel:spawn-state", async () => {
 
 // ─── companion pairing IPC ───────────────────────────────────────────
 ipcMain.handle("companion:status", async () => {
-  return { ...pair.status(), tunnel: tunnel.getState() };
+  // Include tunnel-spawn state so the renderer can surface spawn-side
+  // errors (ENOENT on cloudflared, bad CF edge, etc.) instead of just
+  // showing "Tunnel: off" with no clue why.
+  return {
+    ...pair.status(),
+    tunnel: tunnel.getState(),
+    spawn: tunnelSpawn.getState(),
+  };
 });
 
 ipcMain.handle("companion:pair", async () => {
