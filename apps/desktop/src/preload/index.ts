@@ -56,6 +56,12 @@ const api = {
         version: string | null;
         message: string;
       }>,
+    checkCloudflared: () =>
+      ipcRenderer.invoke("cloudflared:check") as Promise<{
+        installed: boolean;
+        version: string | null;
+        message: string;
+      }>,
     chooseDirectory: (title?: string) =>
       ipcRenderer.invoke("dialog:choose-directory", title) as Promise<{
         canceled: boolean;
@@ -75,6 +81,14 @@ const api = {
   tunnel: {
     register: () => ipcRenderer.invoke("tunnel:register"),
     clear: () => ipcRenderer.invoke("tunnel:clear"),
+    spawnState: () =>
+      ipcRenderer.invoke("tunnel:spawn-state") as Promise<{
+        status: "idle" | "starting" | "running" | "crashed" | "stopped";
+        hostname: string | null;
+        port: number | null;
+        restarts: number;
+        lastError: string | null;
+      }>,
   },
 } as const;
 

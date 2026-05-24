@@ -8,10 +8,14 @@
  * on next refresh and unmounts this component.
  *
  * Steps (linear, can't skip ahead):
- *   1. Docker check
- *   2. Repo path (native folder picker)
- *   3. Tunnel hostname
- *   4. Pair this device
+ *   1. System requirements (Docker + cloudflared)
+ *   2. Repo folder (native folder picker)
+ *   3. Pair this device
+ *
+ * The tunnel hostname is no longer a step — the companion auto-spawns
+ * `cloudflared tunnel --url http://localhost:4000` when the user
+ * clicks Start backend, parses the *.trycloudflare.com hostname from
+ * its log output, and auto-registers with the Dev Hub. Zero typing.
  *
  * Why not a multi-page router
  * ───────────────────────────
@@ -31,6 +35,11 @@ type CompanionApi = (Window & {
         version: string | null;
         message: string;
       }>;
+      checkCloudflared: () => Promise<{
+        installed: boolean;
+        version: string | null;
+        message: string;
+      }>;
       chooseDirectory: (title?: string) => Promise<{
         canceled: boolean;
         path: string | null;
@@ -45,6 +54,7 @@ type CompanionApi = (Window & {
       start: () => Promise<{ ok: boolean; message: string }>;
       cancel: () => Promise<{ ok: boolean }>;
     };
+    shell: { openExternal: (url: string) => Promise<void> };
   };
 })["companion"];
 
@@ -56,16 +66,22 @@ interface OnboardingProps {
   onComplete: (completedAt: string) => void;
 }
 
-type DockerState =
+type ToolState =
   | { phase: "idle" }
   | { phase: "checking" }
   | { phase: "ok"; version: string }
   | { phase: "missing"; message: string };
 
+const cfInstallHint = {
+  win: "winget install --id Cloudflare.cloudflared",
+  mac: "brew install cloudflared",
+  linux: "apt install cloudflared  # or your distro's equivalent",
+};
+
 export function Onboarding({ onComplete }: OnboardingProps) {
-  const [dockerState, setDockerState] = useState<DockerState>({ phase: "idle" });
+  const [dockerState, setDockerState] = useState<ToolState>({ phase: "idle" });
+  const [cfState, setCfState] = useState<ToolState>({ phase: "idle" });
   const [repoPath, setRepoPath] = useState("");
-  const [tunnelHostname, setTunnelHostname] = useState("");
   const [apiBaseUrl, setApiBaseUrl] = useState("");
   const [paired, setPaired] = useState(false);
   const [pairBusy, setPairBusy] = useState(false);
@@ -74,12 +90,11 @@ export function Onboarding({ onComplete }: OnboardingProps) {
 
   // Hydrate any pre-existing settings — useful when the user
   // partially configured the app from the main UI before triggering
-  // the wizard, OR when "Restart onboarding" is added later.
+  // the wizard.
   useEffect(() => {
     void (async () => {
       const s = await companion.settings.get();
       if (typeof s.repoPath === "string") setRepoPath(s.repoPath);
-      if (typeof s.tunnelHostname === "string") setTunnelHostname(s.tunnelHostname);
       if (typeof s.apiBaseUrl === "string") setApiBaseUrl(s.apiBaseUrl);
       const p = await companion.pair.status();
       setPaired(p.paired);
@@ -87,18 +102,29 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   }, []);
 
   const dockerOk = dockerState.phase === "ok";
+  const cfOk = cfState.phase === "ok";
+  const sysOk = dockerOk && cfOk;
   const repoOk = !!repoPath.trim();
-  const tunnelOk = !!tunnelHostname.trim() && tunnelHostname.includes(".");
-  const canFinish = dockerOk && repoOk && tunnelOk && paired;
+  const canFinish = sysOk && repoOk && paired;
 
   async function runDockerCheck() {
     setDockerState({ phase: "checking" });
     const r = await companion.onboarding.checkDocker();
-    if (r.installed) {
-      setDockerState({ phase: "ok", version: r.version || "Docker found." });
-    } else {
-      setDockerState({ phase: "missing", message: r.message });
-    }
+    setDockerState(
+      r.installed
+        ? { phase: "ok", version: r.version || "Docker found." }
+        : { phase: "missing", message: r.message },
+    );
+  }
+
+  async function runCfCheck() {
+    setCfState({ phase: "checking" });
+    const r = await companion.onboarding.checkCloudflared();
+    setCfState(
+      r.installed
+        ? { phase: "ok", version: r.version || "cloudflared found." }
+        : { phase: "missing", message: r.message },
+    );
   }
 
   async function chooseRepo() {
@@ -114,11 +140,9 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   async function startPair() {
     setPairBusy(true);
     setPairMessage(null);
-    // Persist current hostname/url BEFORE pairing so the user doesn't
-    // have to remember to save them — the next backend:start can
-    // immediately register.
+    // Persist any advanced override BEFORE pairing so the pair flow
+    // hits the right Dev Hub.
     await companion.settings.set({
-      tunnelHostname: tunnelHostname.trim(),
       apiBaseUrl: apiBaseUrl.trim() || undefined,
     });
     const r = await companion.pair.start();
@@ -146,44 +170,81 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         <header style={S.header}>
           <h1 style={S.title}>Welcome to the Companion.</h1>
           <p style={S.subtitle}>
-            Four steps to route the eSpace Dev Hub through your laptop.
+            Three quick steps to route the eSpace Dev Hub through your laptop.
             You only do this once.
           </p>
         </header>
 
         <Step
           n={1}
-          title="Docker Desktop"
-          done={dockerOk}
+          title="System requirements"
+          done={sysOk}
           locked={false}
-          help="The companion runs the backend as a Docker compose stack. We just need to know the CLI is on PATH; the daemon itself starts on demand."
+          help="The companion runs the backend in Docker and exposes it via Cloudflare Tunnel. Both tools just need to be on PATH; the companion starts and stops them for you."
         >
-          {dockerState.phase === "idle" && (
-            <Button onClick={runDockerCheck} variant="primary">
-              Check for Docker
-            </Button>
-          )}
-          {dockerState.phase === "checking" && (
-            <span style={S.muted}>Checking…</span>
-          )}
-          {dockerState.phase === "ok" && (
-            <span style={S.good}>✓ {dockerState.version}</span>
-          )}
-          {dockerState.phase === "missing" && (
-            <div style={S.errorBlock}>
-              <span style={S.bad}>{dockerState.message}</span>
-              <Button onClick={runDockerCheck} variant="secondary">
-                Recheck
+          {/* Docker */}
+          <div style={S.toolRow}>
+            <span style={S.toolLabel}>Docker</span>
+            {dockerState.phase === "idle" && (
+              <Button onClick={runDockerCheck} variant="primary">
+                Check
               </Button>
-            </div>
-          )}
+            )}
+            {dockerState.phase === "checking" && (
+              <span style={S.muted}>Checking…</span>
+            )}
+            {dockerState.phase === "ok" && (
+              <span style={S.good}>✓ {dockerState.version}</span>
+            )}
+            {dockerState.phase === "missing" && (
+              <div style={S.errorBlock}>
+                <span style={S.bad}>{dockerState.message}</span>
+                <Button onClick={runDockerCheck} variant="secondary">
+                  Recheck
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* cloudflared */}
+          <div style={S.toolRow}>
+            <span style={S.toolLabel}>cloudflared</span>
+            {cfState.phase === "idle" && (
+              <Button onClick={runCfCheck} variant="primary">
+                Check
+              </Button>
+            )}
+            {cfState.phase === "checking" && (
+              <span style={S.muted}>Checking…</span>
+            )}
+            {cfState.phase === "ok" && (
+              <span style={S.good}>✓ {cfState.version}</span>
+            )}
+            {cfState.phase === "missing" && (
+              <div style={S.errorBlock}>
+                <span style={S.bad}>{cfState.message}</span>
+                <p style={S.installHint}>
+                  Install with:{" "}
+                  <code style={S.code}>{cfInstallHint.win}</code>{" "}
+                  (Windows),{" "}
+                  <code style={S.code}>{cfInstallHint.mac}</code>{" "}
+                  (macOS), or{" "}
+                  <code style={S.code}>{cfInstallHint.linux}</code>{" "}
+                  (Linux). Restart this wizard after install.
+                </p>
+                <Button onClick={runCfCheck} variant="secondary">
+                  Recheck
+                </Button>
+              </div>
+            )}
+          </div>
         </Step>
 
         <Step
           n={2}
           title="Repository folder"
           done={repoOk}
-          locked={!dockerOk}
+          locked={!sysOk}
           help="Absolute path to your espace-devhub checkout. The companion runs `docker compose` from there."
         >
           <div style={S.row}>
@@ -194,7 +255,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
               placeholder="No folder selected"
               style={{ ...S.input, flex: 1 }}
             />
-            <Button onClick={chooseRepo} variant="primary" disabled={!dockerOk}>
+            <Button onClick={chooseRepo} variant="primary" disabled={!sysOk}>
               Pick folder
             </Button>
           </div>
@@ -202,43 +263,9 @@ export function Onboarding({ onComplete }: OnboardingProps) {
 
         <Step
           n={3}
-          title="Tunnel hostname"
-          done={tunnelOk}
-          locked={!repoOk}
-          help="Public hostname your Cloudflare Tunnel exposes the local backend at (e.g. user-42.cf-tunnel.com). The Dev Hub website asks this hostname for /api/v1/* once you click Start backend."
-        >
-          <input
-            type="text"
-            value={tunnelHostname}
-            onChange={(e) => setTunnelHostname(e.target.value.trim())}
-            placeholder="your-name.cf-tunnel.com"
-            style={S.input}
-            disabled={!repoOk}
-          />
-          <details style={S.details}>
-            <summary style={S.detailsSummary}>
-              Advanced: override Dev Hub URL
-            </summary>
-            <input
-              type="text"
-              value={apiBaseUrl}
-              onChange={(e) => setApiBaseUrl(e.target.value.trim())}
-              placeholder="https://espace-hubs.vercel.app"
-              style={{ ...S.input, marginTop: 8 }}
-              disabled={!repoOk}
-            />
-            <p style={S.help}>
-              Leave blank to use production. Override only when developing
-              against a preview deploy or localhost.
-            </p>
-          </details>
-        </Step>
-
-        <Step
-          n={4}
           title="Pair this device"
           done={paired}
-          locked={!tunnelOk}
+          locked={!repoOk}
           help="Opens your default browser to the eSpace Dev Hub approval page. You'll see the pairing code and the IP that initiated it before approving."
         >
           {paired ? (
@@ -254,13 +281,30 @@ export function Onboarding({ onComplete }: OnboardingProps) {
               </Button>
             </div>
           ) : (
-            <Button onClick={startPair} variant="primary" disabled={!tunnelOk}>
+            <Button onClick={startPair} variant="primary" disabled={!repoOk}>
               Pair this device
             </Button>
           )}
           {pairMessage && !paired && (
             <span style={S.muted}>{pairMessage}</span>
           )}
+
+          <details style={S.details}>
+            <summary style={S.detailsSummary}>
+              Advanced: override Dev Hub URL
+            </summary>
+            <input
+              type="text"
+              value={apiBaseUrl}
+              onChange={(e) => setApiBaseUrl(e.target.value.trim())}
+              placeholder="https://espace-hubs.vercel.app"
+              style={{ ...S.input, marginTop: 8 }}
+            />
+            <p style={S.help}>
+              Leave blank to use production. Override only when developing
+              against a preview deploy or localhost.
+            </p>
+          </details>
         </Step>
 
         <footer style={S.footer}>
@@ -397,12 +441,40 @@ const S: Record<string, React.CSSProperties> = {
     fontWeight: 700,
   },
   stepTitle: { margin: 0, fontSize: 15 },
-  stepBody: { display: "flex", flexDirection: "column", gap: 8 },
+  stepBody: { display: "flex", flexDirection: "column", gap: 12 },
+  toolRow: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    paddingBottom: 8,
+    borderBottom: "1px solid var(--border)",
+  },
+  toolLabel: {
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    fontSize: 11,
+    color: "var(--muted)",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
   help: {
     margin: 0,
     fontSize: 12,
     color: "var(--muted)",
     lineHeight: 1.5,
+  },
+  installHint: {
+    margin: 0,
+    fontSize: 12,
+    color: "var(--muted)",
+    lineHeight: 1.6,
+  },
+  code: {
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    fontSize: 11,
+    background: "var(--bg)",
+    border: "1px solid var(--border)",
+    borderRadius: 3,
+    padding: "1px 4px",
   },
   row: { display: "flex", gap: 8, alignItems: "center" },
   input: {

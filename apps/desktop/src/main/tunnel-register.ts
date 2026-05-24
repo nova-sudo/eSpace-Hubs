@@ -42,6 +42,14 @@
 import { getToken } from "./pair.js";
 import { settings } from "./settings.js";
 
+/**
+ * Phase 4-followup: the hostname now comes from tunnel-spawn (the
+ * managed `cloudflared tunnel --url` subprocess) rather than from a
+ * user-typed setting. Calling start() before spawn has a hostname is
+ * a no-op (returns reason="missing_hostname"); the spawn module's
+ * onHostname callback wires the two together in main/index.ts.
+ */
+
 const DEFAULT_API_BASE_URL = "https://espace-hubs.vercel.app";
 const HEARTBEAT_INTERVAL_MS = 60_000;
 
@@ -96,7 +104,7 @@ export function getState(): TunnelState {
  * the heartbeat schedule and re-fires an immediate POST so a hostname
  * change propagates immediately.
  */
-export async function start(): Promise<StartResult> {
+export async function start(hostname: string): Promise<StartResult> {
   const token = getToken();
   if (!token) {
     state = {
@@ -112,14 +120,14 @@ export async function start(): Promise<StartResult> {
       message: state.lastError!,
     };
   }
-  const hostname = settings.get<string>("tunnelHostname", "").trim();
-  if (!hostname) {
+  const trimmed = hostname.trim();
+  if (!trimmed) {
     state = {
       active: false,
       hostname: null,
       lastSeenAt: null,
       lastError:
-        "Tunnel hostname is empty. Set the public CF tunnel hostname in settings.",
+        "No tunnel hostname allocated yet. Wait for cloudflared to come up.",
     };
     return {
       ok: false,
@@ -128,11 +136,11 @@ export async function start(): Promise<StartResult> {
     };
   }
 
-  const post = await postRegister(token, hostname);
+  const post = await postRegister(token, trimmed);
   if (!post.ok) {
     state = {
       active: false,
-      hostname,
+      hostname: trimmed,
       lastSeenAt: null,
       lastError: post.message,
     };
@@ -141,12 +149,12 @@ export async function start(): Promise<StartResult> {
 
   state = {
     active: true,
-    hostname,
+    hostname: trimmed,
     lastSeenAt: new Date().toISOString(),
     lastError: null,
   };
   scheduleHeartbeat();
-  return { ok: true, hostname };
+  return { ok: true, hostname: trimmed };
 }
 
 /** Stop the heartbeat and clear the server-side registration. */
