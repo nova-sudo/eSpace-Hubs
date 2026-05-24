@@ -5,7 +5,7 @@
  * special state (delegated, context-required) gets exercised at least
  * once. Useful for:
  *   - Manual QA when iterating on the classifier prompt
- *   - Demos: load → classify → all 12 widget types appear in section 5
+ *   - Examples: load → classify → all 12 widget types appear in section 5
  *   - Catching regressions ("did we break MILESTONE seeding?")
  *
  * Coverage matrix (one L2 per widget):

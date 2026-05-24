@@ -297,8 +297,6 @@ export interface Session {
   lastSeenAt: Date;
   ip: string | null;
   userAgent: string | null;
-  /** Demo mode flips on per-session; doesn't pollute the user doc. */
-  demo: boolean;
   /** Whether the second factor was satisfied this session. */
   totpVerified: boolean;
   /**

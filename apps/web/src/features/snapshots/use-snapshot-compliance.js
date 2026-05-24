@@ -5,8 +5,8 @@
  *
  * Reads the snapshot stream from `useSnapshots()` and runs the per-goal
  * compliance walk. Re-fires when the snapshot store changes (new auto
- * capture, manual snapshot, demo toggle), so widget compliance numbers
- * tick up week-by-week without callers wiring their own subscriptions.
+ * capture, manual snapshot), so widget compliance numbers tick up
+ * week-by-week without callers wiring their own subscriptions.
  *
  * Returned shape mirrors `goalCompliance(...)`:
  *   {

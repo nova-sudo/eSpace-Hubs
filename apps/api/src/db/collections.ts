@@ -484,4 +484,22 @@ async function runMigrations(): Promise<void> {
       "[migrate] totp-enrolled-sessions step failed — retries on next boot",
     );
   }
+
+  // Strip the legacy `demo` field from every session row. Demo mode
+  // was removed in the demo-mode-cleanup PR; the validator still lists
+  // `demo` in `properties` for backward-compat — this migration
+  // proactively cleans up live rows so a future PR can drop the
+  // property declaration entirely.
+  try {
+    const { runUnsetSessionDemoMigration } = await import(
+      "./migrations/unset-session-demo.js"
+    );
+    const sessions = await getSessionsCollection();
+    await runUnsetSessionDemoMigration(sessions);
+  } catch (err) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "[migrate] unset-session-demo step failed — retries on next boot",
+    );
+  }
 }

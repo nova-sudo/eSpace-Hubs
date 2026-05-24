@@ -41,7 +41,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAiProvider, AI_PROVIDERS } from "@/features/analyst/use-ai-provider";
 import { useSnapshotNow } from "@/features/snapshots";
-import { setDemoMode, useDemoMode } from "@/features/demo-mode";
 import { useHubLink } from "@/features/hubs";
 import { buildCommands } from "./commands";
 
@@ -58,7 +57,6 @@ export function CommandPalette() {
   const pathname = usePathname();
   const { provider, setProvider } = useAiProvider();
   const snapshotNow = useSnapshotNow();
-  const demo = useDemoMode();
   const link = useHubLink();
 
   const [isOpen, setIsOpen] = useState(false);
@@ -134,11 +132,9 @@ export function CommandPalette() {
         provider,
         setProvider,
         snapshotNow,
-        demo,
-        toggleDemo: () => setDemoMode(!demo),
         link,
       }),
-    [pathname, router, provider, setProvider, snapshotNow, demo, link],
+    [pathname, router, provider, setProvider, snapshotNow, link],
   );
 
   // Filtered + ranked. Ranking is deliberate-and-tiny: fuzzy by token match,

@@ -47,8 +47,6 @@ export interface MintSessionInput {
   role: UserRole;
   ip: string | null;
   userAgent: string | null;
-  /** Demo flag — set when the frontend toggles demo mode. M3+. */
-  demo?: boolean;
   /** Whether the second factor was satisfied. M2.3c onwards toggles
    *  this true after a TOTP verify; for now always true (no TOTP
    *  enforcement yet). */
@@ -85,7 +83,6 @@ export async function mintSession(input: MintSessionInput): Promise<{
     lastSeenAt: now,
     ip: input.ip,
     userAgent: input.userAgent,
-    demo: input.demo ?? false,
     totpVerified: input.totpVerified ?? true,
     totpEnrolled: input.totpEnrolled ?? true,
   };
