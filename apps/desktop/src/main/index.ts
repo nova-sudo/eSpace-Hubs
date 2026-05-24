@@ -29,6 +29,8 @@ import { pingApi } from "./health";
 import { settings } from "./settings";
 import * as vpn from "./vpn";
 import * as keychain from "./keychain";
+import * as pair from "./pair";
+import * as tunnel from "./tunnel-register";
 
 // __dirname is available natively in CommonJS — no fileURLToPath
 // gymnastics needed. Electron's main process is CJS by default; we
@@ -197,7 +199,22 @@ ipcMain.handle("backend:start", async () => {
       // recoverable state (retry the request after VPN connects).
     }
   }
-  return startBackend();
+  const result = await startBackend();
+
+  // Phase 3d — after Docker is up, register the tunnel hostname with
+  // the Dev Hub so its catch-all proxies this user's API calls here
+  // instead of running the bundled Express app. Best-effort: if
+  // pairing isn't done or the hostname isn't configured we surface
+  // the reason in tunnel.getState() but don't fail the start.
+  if (
+    result.ok &&
+    settings.get<boolean>("tunnelAutoRegister", true) &&
+    pair.status().paired
+  ) {
+    void tunnel.start();
+  }
+
+  return result;
 });
 
 ipcMain.handle("vpn:status", async () => {
@@ -239,7 +256,45 @@ ipcMain.handle("credentials:clear", async (_event, key: string) => {
 });
 
 ipcMain.handle("backend:stop", async () => {
+  // Phase 3d — clear the tunnel registration BEFORE tearing down
+  // Docker. Order matters: if we stop Docker first, the catch-all
+  // could route an in-flight request to a hostname that no longer
+  // resolves, surfacing "companion_unreachable" instead of a clean
+  // bundled-API fallback.
+  await tunnel.stop();
   return stopBackend();
+});
+
+// ─── companion pairing IPC ───────────────────────────────────────────
+ipcMain.handle("companion:status", async () => {
+  return { ...pair.status(), tunnel: tunnel.getState() };
+});
+
+ipcMain.handle("companion:pair", async () => {
+  return pair.pair();
+});
+
+ipcMain.handle("companion:pair-cancel", async () => {
+  pair.cancelPairing();
+  return { ok: true };
+});
+
+ipcMain.handle("companion:unpair", async () => {
+  // Local-only forget. Devices-UI revoke (Phase 3e) is a separate
+  // path that hits DELETE /api/v1/companion/devices/:id with the
+  // browser session.
+  await tunnel.stop();
+  pair.unpair();
+  return { ok: true };
+});
+
+ipcMain.handle("tunnel:register", async () => {
+  return tunnel.start();
+});
+
+ipcMain.handle("tunnel:clear", async () => {
+  await tunnel.stop();
+  return { ok: true };
 });
 
 ipcMain.handle("backend:status", async () => {
@@ -305,9 +360,11 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
-  // Best-effort: stop the backend container when the user quits the
-  // companion. Without this, `docker compose up -d` would leave a
-  // container running in the background even after the companion is
-  // gone — surprising for the user.
+  // Best-effort: clear the tunnel registration so the Vercel
+  // catch-all stops proxying to a hostname we're about to take down,
+  // then stop the backend container. Without this, `docker compose
+  // up -d` would leave a container running in the background even
+  // after the companion is gone — surprising for the user.
+  void tunnel.stop();
   void stopBackend({ silent: true });
 });
