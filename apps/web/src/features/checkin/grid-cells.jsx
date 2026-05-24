@@ -393,7 +393,7 @@ export function BeforeAfterCell({ goal, weekStart, weekEnd, weekLabel }) {
 
 /* ─────────────────────── Incident log (cell, popover) ─────────────────────── */
 
-export function IncidentLogCell({ goal, weekStart, weekEnd, weekLabel }) {
+export function IncidentLogCell({ goal, spec, weekStart, weekEnd, weekLabel }) {
   const { entries, append, remove } = useGoalInputs(goal?.id);
   const inWindow = useMemo(
     () =>
@@ -411,22 +411,34 @@ export function IncidentLogCell({ goal, weekStart, weekEnd, weekLabel }) {
     0,
   );
 
+  // Match the dashboard widget's mode inference so the grid cell shows
+  // "3" for a defect-count goal instead of "3 · 0m" (which reads as a
+  // downtime tally even when nothing was timed).
+  const unit = spec?.manual?.unit || "minutes";
+  const isCountMode = inferIncidentCellMode(unit) === "count";
+
   const [severity, setSeverity] = useState("P2");
   const [downtime, setDowntime] = useState("");
   const [link, setLink] = useState("");
 
-  const canLog = downtime !== "" && Number.isFinite(Number(downtime));
+  const trimmedDowntime = downtime.trim();
+  const minutesValue =
+    trimmedDowntime === "" ? null : Number(trimmedDowntime);
+  const canLog =
+    trimmedDowntime === ""
+      ? isCountMode
+      : Number.isFinite(minutesValue) && minutesValue >= 0;
 
   const log = () => {
     if (!canLog) return;
     const ts = midWeekTs(weekLabel);
     if (ts == null) return;
-    const minutes = Number(downtime);
-    if (!Number.isFinite(minutes) || minutes < 0) return;
     append(
       {
         severity,
-        downtime: minutes,
+        ...(Number.isFinite(minutesValue) && minutesValue >= 0
+          ? { downtime: minutesValue }
+          : {}),
         ...(link.trim() ? { link: link.trim() } : {}),
       },
       undefined,
@@ -436,10 +448,15 @@ export function IncidentLogCell({ goal, weekStart, weekEnd, weekLabel }) {
     setLink("");
   };
 
+  // Cell preview: count mode shows just the count (the budget is in
+  // events, so downtime is a side-detail); duration mode keeps the
+  // legacy "N · Tm" form because both numbers are meaningful.
   const preview =
     inWindow.length === 0
       ? "0"
-      : `${inWindow.length} · ${totalDowntime}m`;
+      : isCountMode
+        ? String(inWindow.length)
+        : `${inWindow.length} · ${totalDowntime}m`;
 
   return (
     <Popover.Root>
@@ -503,7 +520,12 @@ export function IncidentLogCell({ goal, weekStart, weekEnd, weekLabel }) {
               min={0}
               value={downtime}
               onChange={(ev) => setDowntime(ev.target.value)}
-              placeholder="min"
+              placeholder={isCountMode ? "min (opt)" : "min"}
+              aria-label={
+                isCountMode
+                  ? "Duration (optional, minutes)"
+                  : "Downtime (minutes)"
+              }
               className="h-7 w-14 rounded-md border border-border bg-bg px-1.5 text-[11px]"
             />
             <input
@@ -809,4 +831,34 @@ function sunWeekOf(d) {
     (d.getTime() - yearStart.getTime()) / (24 * 60 * 60 * 1000),
   );
   return Math.floor(daysSinceJan1 / 7) + 1;
+}
+
+/**
+ * Mode inference for the incident-log grid cell. Mirrors the helper
+ * in incident-log-widget.jsx and the check-in editor — keep the three
+ * DURATION_UNITS sets aligned.
+ */
+const INCIDENT_CELL_DURATION_UNITS = new Set([
+  "minute",
+  "minutes",
+  "min",
+  "mins",
+  "m",
+  "hour",
+  "hours",
+  "hr",
+  "hrs",
+  "h",
+  "second",
+  "seconds",
+  "sec",
+  "secs",
+  "s",
+]);
+
+function inferIncidentCellMode(unit) {
+  if (typeof unit !== "string") return "duration";
+  const u = unit.toLowerCase().trim();
+  if (INCIDENT_CELL_DURATION_UNITS.has(u)) return "duration";
+  return "count";
 }

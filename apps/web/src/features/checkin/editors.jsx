@@ -340,7 +340,7 @@ const SEVERITIES = [
   { id: "P4", label: "P4 · low" },
 ];
 
-export function IncidentLogEditor({ goal, weekStart, weekEnd, activeLabel }) {
+export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel }) {
   const { entries, append, remove } = useGoalInputs(goal?.id);
   const inWindow = useMemo(
     () =>
@@ -359,22 +359,37 @@ export function IncidentLogEditor({ goal, weekStart, weekEnd, activeLabel }) {
     0,
   );
 
+  // Mode mirrors the dashboard widget: time-words → duration (minutes
+  // required), anything else → count (each Log = +1 event, minutes
+  // optional). Keeps the check-in UX honest with how the goal-spec
+  // wants the budget to be measured.
+  const unit = spec?.manual?.unit || "minutes";
+  const isCountMode = inferIncidentEditorMode(unit) === "count";
+  const noun = isCountMode ? singularUnit(unit) : "incident";
+
   const [severity, setSeverity] = useState("P2");
   const [downtime, setDowntime] = useState("");
   const [link, setLink] = useState("");
 
-  const canLog = downtime !== "" && Number.isFinite(Number(downtime));
+  const trimmedDowntime = downtime.trim();
+  const minutesValue =
+    trimmedDowntime === "" ? null : Number(trimmedDowntime);
+  // Count mode: blank duration is fine. Duration mode: blank is invalid.
+  const canLog =
+    trimmedDowntime === ""
+      ? isCountMode
+      : Number.isFinite(minutesValue) && minutesValue >= 0;
 
   const log = () => {
     if (!canLog) return;
     const ts = midWeekTs(activeLabel);
     if (ts == null) return;
-    const minutes = Number(downtime);
-    if (!Number.isFinite(minutes) || minutes < 0) return;
     append(
       {
         severity,
-        downtime: minutes,
+        ...(Number.isFinite(minutesValue) && minutesValue >= 0
+          ? { downtime: minutesValue }
+          : {}),
         ...(link.trim() ? { link: link.trim() } : {}),
       },
       undefined,
@@ -391,9 +406,10 @@ export function IncidentLogEditor({ goal, weekStart, weekEnd, activeLabel }) {
         style={{ fontFamily: "var(--font-mono)" }}
       >
         <span>
-          {inWindow.length} incident{inWindow.length === 1 ? "" : "s"} this week
+          {inWindow.length} {noun}
+          {inWindow.length === 1 ? "" : "s"} this week
         </span>
-        {inWindow.length > 0 && (
+        {totalDowntime > 0 && (
           <span>Σ {totalDowntime} min downtime</span>
         )}
       </div>
@@ -455,7 +471,12 @@ export function IncidentLogEditor({ goal, weekStart, weekEnd, activeLabel }) {
           min={0}
           value={downtime}
           onChange={(ev) => setDowntime(ev.target.value)}
-          placeholder="min"
+          placeholder={isCountMode ? "min (opt)" : "min"}
+          aria-label={
+            isCountMode
+              ? "Duration (optional, minutes)"
+              : "Downtime (minutes)"
+          }
           className="h-7 w-16 rounded-md border border-border bg-bg px-1.5 text-[11px]"
         />
         <input
@@ -772,4 +793,42 @@ function cadenceWord(cadence) {
     case "yearly":    return "year";
     default:          return "period";
   }
+}
+
+/**
+ * Mode inference for the IncidentLogEditor — mirrors `inferMode` in
+ * the dashboard widget. If you grow either set, sync both files (and
+ * the evidence resolver in features/evidence/goal-readings.js).
+ */
+const INCIDENT_EDITOR_DURATION_UNITS = new Set([
+  "minute",
+  "minutes",
+  "min",
+  "mins",
+  "m",
+  "hour",
+  "hours",
+  "hr",
+  "hrs",
+  "h",
+  "second",
+  "seconds",
+  "sec",
+  "secs",
+  "s",
+]);
+
+function inferIncidentEditorMode(unit) {
+  if (typeof unit !== "string") return "duration";
+  const u = unit.toLowerCase().trim();
+  if (INCIDENT_EDITOR_DURATION_UNITS.has(u)) return "duration";
+  return "count";
+}
+
+function singularUnit(unit) {
+  if (typeof unit !== "string" || !unit.trim()) return "incident";
+  const u = unit.trim();
+  if (/ies$/i.test(u)) return `${u.slice(0, -3)}y`;
+  if (/s$/i.test(u)) return u.slice(0, -1);
+  return u;
 }

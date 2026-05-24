@@ -204,6 +204,7 @@ function CellFor({
       return (
         <IncidentLogCell
           goal={goal}
+          spec={spec}
           weekStart={weekStart}
           weekEnd={weekEnd}
           weekLabel={weekLabel}

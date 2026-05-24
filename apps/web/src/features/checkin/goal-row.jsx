@@ -238,6 +238,7 @@ function EditorFor({
       return (
         <IncidentLogEditor
           goal={goal}
+          spec={spec}
           weekStart={weekStart}
           weekEnd={weekEnd}
           activeLabel={activeLabel}
