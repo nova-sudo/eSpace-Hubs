@@ -48,6 +48,14 @@ const HOSTNAME_WAIT_MS = 30_000;
 
 const TRYCLOUDFLARE_RE = /https?:\/\/([a-z0-9-]+\.trycloudflare\.com)/i;
 
+/**
+ * Pinned port for cloudflared's metrics + readiness endpoint. Default
+ * cloudflared picks a free port; we pin so tunnel-register can probe
+ * `http://127.0.0.1:<port>/ready` deterministically. Exported so the
+ * register module can reach the same URL.
+ */
+export const METRICS_PORT = 20241;
+
 export interface TunnelSpawnState {
   /** Roughly tracks the lifecycle. */
   status: "idle" | "starting" | "running" | "crashed" | "stopped";
@@ -230,7 +238,7 @@ export async function start({ port }: StartOptions): Promise<TunnelSpawnState> {
     }, HOSTNAME_WAIT_MS);
 
     pushLog(
-      `[tunnel-spawn] starting: cloudflared tunnel --protocol http2 --url http://localhost:${port}`,
+      `[tunnel-spawn] starting: cloudflared tunnel --protocol http2 --metrics 127.0.0.1:${METRICS_PORT} --url http://localhost:${port}`,
     );
 
     try {
@@ -255,6 +263,14 @@ export async function start({ port }: StartOptions): Promise<TunnelSpawnState> {
           // reliability gain.
           "--protocol",
           "http2",
+          // Pin the metrics endpoint to a known port. By default
+          // cloudflared picks a free port and prints it; we'd have
+          // to parse stdout to find it. Pinning lets the heartbeat's
+          // probe target a deterministic `http://127.0.0.1:<port>/ready`
+          // URL. Picked 20241 because that's what cloudflared used
+          // for both observed sessions in testing.
+          "--metrics",
+          `127.0.0.1:${METRICS_PORT}`,
           "--url",
           `http://localhost:${port}`,
         ],

@@ -344,24 +344,40 @@ async function heartbeat(): Promise<void> {
 }
 
 /**
- * HEAD https://<hostname>/healthz with a hard timeout. Verifies the
- * entire request path (DNS → CF edge → tunnel → local Express)
- * actually works — cheaper + more honest than re-POSTing blindly.
+ * Probe cloudflared's LOCAL readiness endpoint instead of the public
+ * `https://<host>/healthz`. The earlier public-URL probe broke on
+ * laptops whose VPN-forced DNS couldn't resolve `*.trycloudflare.com`
+ * — even though the tunnel itself was working fine from Vercel's
+ * perspective. cloudflared exposes `/ready` on its metrics server
+ * (we pin the port via `--metrics 127.0.0.1:<port>` in tunnel-spawn);
+ * the response is 200 when the tunnel has an active edge connection
+ * and 5xx when it's disconnected.
  *
- * Treats any non-2xx as a failure, including the 502 / 530 envelope
- * CF returns when its edge can't reach the tunnel.
+ * Trade-off: this no longer verifies the FULL data path (DNS → CF
+ * edge → tunnel → local Express). It verifies "cloudflared has an
+ * active connection to CF edge," which is the part that can
+ * legitimately fail in steady state. Local backend liveness is
+ * already covered by the api-ping IPC; DNS-from-Vercel is verified
+ * by every actual user request through the catch-all. This is the
+ * narrowest honest check we can do without piggybacking on the
+ * laptop's broken DNS.
+ *
+ * `_hostname` is kept in the signature for back-compat with future
+ * callers that might want both probes; today's call site just passes
+ * spawn.hostname and we ignore it.
  */
-async function probeHostname(hostname: string): Promise<boolean> {
+async function probeHostname(_hostname: string): Promise<boolean> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
   try {
-    const res = await fetch(`https://${hostname}/healthz`, {
-      method: "HEAD",
-      signal: ctrl.signal,
-      // Avoid sending random cookies / referrers from the Electron
-      // main process. This call is purely a liveness probe.
-      headers: { "user-agent": "espace-devhub-companion/probe" },
-    });
+    const res = await fetch(
+      `http://127.0.0.1:${tunnelSpawn.METRICS_PORT}/ready`,
+      {
+        method: "GET",
+        signal: ctrl.signal,
+        headers: { "user-agent": "espace-devhub-companion/probe" },
+      },
+    );
     return res.ok;
   } catch {
     return false;
