@@ -48,6 +48,20 @@ const api = {
     openExternal: (url: string) =>
       ipcRenderer.invoke("shell:open-external", url),
   },
+  // Phase 4 — onboarding wizard helpers.
+  onboarding: {
+    checkDocker: () =>
+      ipcRenderer.invoke("docker:check") as Promise<{
+        installed: boolean;
+        version: string | null;
+        message: string;
+      }>,
+    chooseDirectory: (title?: string) =>
+      ipcRenderer.invoke("dialog:choose-directory", title) as Promise<{
+        canceled: boolean;
+        path: string | null;
+      }>,
+  },
   // Phase 3d — device-pairing + tunnel-registration. The token NEVER
   // crosses this bridge; `status` returns whether we hold one plus
   // its label, and `start` runs the full pairing handshake in main

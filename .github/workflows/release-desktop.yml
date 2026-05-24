@@ -1,0 +1,110 @@
+# Release the companion desktop app to GitHub Releases on a tag push.
+#
+# Trigger:
+#   git tag desktop-v1.2.3
+#   git push origin desktop-v1.2.3
+#
+# What runs:
+#   - Matrix across macos-latest, windows-latest, ubuntu-latest
+#   - Each runner does: npm ci → build → electron-builder --publish always
+#   - Artifacts land on a DRAFT release (electron-builder.yml sets
+#     releaseType: draft). A human flips the release to "Published"
+#     once they smoke-test all three OS artifacts.
+#
+# Why three jobs instead of cross-building from one host
+#   - Authenticode signing on Windows must run on Windows (signtool).
+#   - Apple notarization needs xcrun (macOS-only).
+#   - Linux AppImage builds fine on Linux without any cert.
+#
+# Optional secrets (the build runs UNSIGNED when these are absent):
+#   WIN_CSC_LINK                base64'd .pfx blob OR https URL
+#   WIN_CSC_KEY_PASSWORD        password for the .pfx
+#   MAC_CSC_LINK                base64'd Developer ID Application .p12
+#   MAC_CSC_KEY_PASSWORD        password for the .p12
+#   APPLE_ID                    Apple ID email for notarization
+#   APPLE_APP_SPECIFIC_PASSWORD app-specific password (NOT the AppleID password)
+#   APPLE_TEAM_ID               10-character team id
+#
+# See apps/desktop/DISTRIBUTING.md for acquisition + setup steps.
+
+name: release-desktop
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+
+permissions:
+  contents: write # required for electron-builder's GitHub publisher
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux
+          - os: macos-latest
+            label: mac
+          - os: windows-latest
+            label: win
+
+    name: build (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          # The workspaces install is run from the repo root; npm
+          # caches the workspace-aware lockfile here.
+          cache: npm
+
+      # Workspace install at repo root. apps/desktop is intentionally
+      # NOT a workspace (Electron's footprint is ~300MB, kept out of
+      # the root install). So we install root deps for any shared
+      # tooling first, then apps/desktop's own deps separately below.
+      - name: Install root workspace deps
+        run: npm ci
+
+      - name: Install desktop deps
+        run: npm ci
+        working-directory: apps/desktop
+
+      - name: Build + publish (${{ matrix.label }})
+        working-directory: apps/desktop
+        env:
+          # electron-builder reads these to push to GitHub Releases.
+          # GITHUB_TOKEN has contents:write per the permissions block.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # Windows code signing — both vars must be set together. When
+          # absent, electron-builder logs a warning and skips signing.
+          CSC_LINK: ${{ matrix.label == 'win' && secrets.WIN_CSC_LINK || (matrix.label == 'mac' && secrets.MAC_CSC_LINK || '') }}
+          CSC_KEY_PASSWORD: ${{ matrix.label == 'win' && secrets.WIN_CSC_KEY_PASSWORD || (matrix.label == 'mac' && secrets.MAC_CSC_KEY_PASSWORD || '') }}
+
+          # macOS notarization. electron-builder auto-detects these and
+          # runs `xcrun notarytool` after signing when all three are set.
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run release
+
+      # Smoke-archive the build output so a failed publish step still
+      # leaves something downloadable from the workflow run page.
+      - name: Upload installer artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: companion-${{ matrix.label }}
+          path: |
+            apps/desktop/dist-electron/*.exe
+            apps/desktop/dist-electron/*.dmg
+            apps/desktop/dist-electron/*.AppImage
+            apps/desktop/dist-electron/*.yml
+          if-no-files-found: warn

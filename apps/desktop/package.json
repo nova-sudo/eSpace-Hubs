@@ -11,9 +11,12 @@
     "build": "tsc -p tsconfig.node.json && vite build",
     "dist": "npm run build && electron-builder --win nsis",
     "dist:all": "npm run build && electron-builder -mwl",
+    "release": "npm run build && electron-builder --publish always",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit"
   },
-  "dependencies": {},
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
   "devDependencies": {
     "@types/node": "^22.18.10",
     "@types/react": "^19.0.0",
