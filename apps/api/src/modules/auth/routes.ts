@@ -114,25 +114,13 @@ authRouter.get(
 );
 
 // ─── Phase 3: companion-tunnel registration ─────────────────────────
-// Read endpoint open to un-enrolled (frontend reads it on login,
-// before TOTP setup is complete, to know whether to set up routing).
-// Mutation endpoints require full enrollment — companion runs as a
-// real desktop app the user uses regularly, no reason to relax there.
-authRouter.get(
-  "/me/api-origin",
-  requireAuth({ requireTotpEnrolled: false }),
-  meApiOriginHandler,
-);
-authRouter.post(
-  "/me/companion-tunnel",
-  requireAuth(),
-  companionTunnelRegisterHandler,
-);
-authRouter.delete(
-  "/me/companion-tunnel",
-  requireAuth(),
-  companionTunnelClearHandler,
-);
+// These accept EITHER a browser session OR a companion bearer token,
+// so we DON'T mount the `requireAuth` middleware (which would 401 any
+// bearer-only request before reaching the handler). Instead each
+// handler calls `resolveCompanionPrincipal(req)` and 401s itself.
+authRouter.get("/me/api-origin", meApiOriginHandler);
+authRouter.post("/me/companion-tunnel", companionTunnelRegisterHandler);
+authRouter.delete("/me/companion-tunnel", companionTunnelClearHandler);
 authRouter.post(
   "/totp/enrol",
   requireAuth({ requireTotpEnrolled: false }),

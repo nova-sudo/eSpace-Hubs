@@ -19,6 +19,8 @@ import { logger } from "../lib/logger.js";
 import type {
   AuditLogEntry,
   AuthToken,
+  CompanionDevice,
+  CompanionPairing,
   GoalContextDoc,
   GoalInputEntry,
   GoalSpecRecord,
@@ -110,6 +112,20 @@ export async function getIntegrationsCollection(): Promise<
 export async function getHubConfigsCollection(): Promise<Collection<HubConfig>> {
   const db = await getDb();
   return db.collection<HubConfig>("hub_configs");
+}
+
+export async function getCompanionDevicesCollection(): Promise<
+  Collection<CompanionDevice>
+> {
+  const db = await getDb();
+  return db.collection<CompanionDevice>("companion_devices");
+}
+
+export async function getCompanionPairingsCollection(): Promise<
+  Collection<CompanionPairing>
+> {
+  const db = await getDb();
+  return db.collection<CompanionPairing>("companion_pairings");
 }
 
 // ─── bootstrap: validators + indexes ─────────────────────────────────
@@ -372,8 +388,37 @@ async function ensureIndexes(): Promise<void> {
     },
   );
 
+  // ─── Phase 3c collections ────────────────────────────────────────
+
+  const companionDevices = await getCompanionDevicesCollection();
+  await companionDevices.createIndexes([
+    {
+      key: { tokenHash: 1 },
+      name: "companion_devices_token_uniq",
+      unique: true,
+      // Each bearer token is its own device — duplicates would mean
+      // two devices share the same credential, defeating revocation.
+    },
+    {
+      key: { userId: 1, createdAt: -1 },
+      name: "companion_devices_user_recent",
+      // "Show me my devices, newest first" — the user-facing list.
+    },
+  ]);
+
+  const companionPairings = await getCompanionPairingsCollection();
+  await companionPairings.createIndexes([
+    {
+      key: { expiresAt: 1 },
+      name: "companion_pairings_ttl",
+      // Pairings live for 5 minutes max. Mongo's TTL monitor cleans
+      // them up automatically — no app-side housekeeping needed.
+      expireAfterSeconds: 0,
+    },
+  ]);
+
   logger.debug(
-    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs, snapshots, grading_verdicts, integrations, hub_configs",
+    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs, snapshots, grading_verdicts, integrations, hub_configs, companion_devices, companion_pairings",
   );
 }
 
