@@ -48,6 +48,20 @@ const api = {
     openExternal: (url: string) =>
       ipcRenderer.invoke("shell:open-external", url),
   },
+  // Phase 3d — device-pairing + tunnel-registration. The token NEVER
+  // crosses this bridge; `status` returns whether we hold one plus
+  // its label, and `start` runs the full pairing handshake in main
+  // and resolves with a success/failure summary.
+  pair: {
+    status: () => ipcRenderer.invoke("companion:status"),
+    start: () => ipcRenderer.invoke("companion:pair"),
+    cancel: () => ipcRenderer.invoke("companion:pair-cancel"),
+    forget: () => ipcRenderer.invoke("companion:unpair"),
+  },
+  tunnel: {
+    register: () => ipcRenderer.invoke("tunnel:register"),
+    clear: () => ipcRenderer.invoke("tunnel:clear"),
+  },
 } as const;
 
 contextBridge.exposeInMainWorld("companion", api);

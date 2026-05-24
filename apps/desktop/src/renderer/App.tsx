@@ -63,10 +63,41 @@ type CompanionWindow = Window & {
         vpnProfile?: string;
         vpnGatedHost?: string;
         vpnAutoConnectOnStart?: boolean;
+        apiBaseUrl?: string;
+        tunnelHostname?: string;
+        tunnelAutoRegister?: boolean;
       }>;
       set: (patch: Record<string, unknown>) => Promise<unknown>;
     };
     shell: { openExternal: (url: string) => Promise<void> };
+    pair: {
+      status: () => Promise<{
+        paired: boolean;
+        deviceName: string | null;
+        deviceId: string | null;
+        tunnel: {
+          active: boolean;
+          hostname: string | null;
+          lastSeenAt: string | null;
+          lastError: string | null;
+        };
+      }>;
+      start: () => Promise<{
+        ok: boolean;
+        deviceId?: string;
+        deviceName?: string;
+        message: string;
+      }>;
+      cancel: () => Promise<{ ok: boolean }>;
+      forget: () => Promise<{ ok: boolean }>;
+    };
+    tunnel: {
+      register: () => Promise<
+        | { ok: true; hostname: string }
+        | { ok: false; reason: string; message: string }
+      >;
+      clear: () => Promise<{ ok: boolean }>;
+    };
   };
 };
 
@@ -78,6 +109,7 @@ type Settings = Awaited<ReturnType<typeof companion.settings.get>>;
 type VpnStatus = Awaited<ReturnType<typeof companion.vpn.status>>;
 type VpnClient = Awaited<ReturnType<typeof companion.vpn.discoverClient>>;
 type CredentialFlag = Awaited<ReturnType<typeof companion.credentials.has>>;
+type PairStatus = Awaited<ReturnType<typeof companion.pair.status>>;
 
 const POLL_INTERVAL_MS = 3000;
 const LOG_LINES = 50;
@@ -91,12 +123,21 @@ export function App() {
   const [vpnClient, setVpnClient] = useState<VpnClient | null>(null);
   const [vpnPwdFlag, setVpnPwdFlag] = useState<CredentialFlag | null>(null);
   const [vpnPwdDraft, setVpnPwdDraft] = useState("");
-  const [busy, setBusy] = useState<"" | "starting" | "stopping" | "vpn-connect" | "vpn-disconnect">("");
+  const [pairState, setPairState] = useState<PairStatus | null>(null);
+  const [busy, setBusy] = useState<
+    | ""
+    | "starting"
+    | "stopping"
+    | "vpn-connect"
+    | "vpn-disconnect"
+    | "pairing"
+    | "tunnel-register"
+  >("");
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [s, p, ll, st, vs, vc, vp] = await Promise.all([
+      const [s, p, ll, st, vs, vc, vp, ps] = await Promise.all([
         companion.backend.status(),
         companion.api.ping(),
         companion.backend.logs(LOG_LINES),
@@ -104,6 +145,7 @@ export function App() {
         companion.vpn.status(),
         companion.vpn.discoverClient(),
         companion.credentials.has("vpnPassword"),
+        companion.pair.status(),
       ]);
       setStatus(s);
       setPing(p);
@@ -112,6 +154,7 @@ export function App() {
       setVpn(vs);
       setVpnClient(vc);
       setVpnPwdFlag(vp);
+      setPairState(ps);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -178,6 +221,46 @@ export function App() {
 
   const onClearPassword = async () => {
     await companion.credentials.clear("vpnPassword");
+    await refresh();
+  };
+
+  /* ── Pairing + tunnel actions ────────────────────────────────── */
+
+  const onPair = async () => {
+    setBusy("pairing");
+    setError(null);
+    // Pairing blocks up to ~4½ minutes while the user clicks Approve.
+    // We don't want the polling status-refresh interval to fire a
+    // duplicate pair attempt; the main process holds an internal
+    // single-flight guard, but we also avoid spamming the UI.
+    const r = await companion.pair.start();
+    if (!r.ok) setError(r.message);
+    setBusy("");
+    await refresh();
+  };
+
+  const onCancelPair = async () => {
+    await companion.pair.cancel();
+    setBusy("");
+    await refresh();
+  };
+
+  const onUnpair = async () => {
+    await companion.pair.forget();
+    await refresh();
+  };
+
+  const onTunnelRegister = async () => {
+    setBusy("tunnel-register");
+    setError(null);
+    const r = await companion.tunnel.register();
+    if (!r.ok) setError(r.message);
+    setBusy("");
+    await refresh();
+  };
+
+  const onTunnelClear = async () => {
+    await companion.tunnel.clear();
     await refresh();
   };
 
@@ -396,6 +479,135 @@ export function App() {
         </Field>
       </Section>
 
+      <Section title="Pairing & tunnel routing">
+        <div style={S.row}>
+          <Stat
+            label="Companion"
+            value={
+              pairState?.paired
+                ? `paired · ${pairState.deviceName || "(unnamed)"}`
+                : "not paired"
+            }
+            tone={pairState?.paired ? "good" : "warn"}
+          />
+          <Stat
+            label="Tunnel"
+            value={
+              pairState?.tunnel.active
+                ? `live · ${pairState.tunnel.hostname || ""}`
+                : pairState?.tunnel.hostname
+                ? "registered (stopped)"
+                : "off"
+            }
+            tone={pairState?.tunnel.active ? "good" : "muted"}
+          />
+          <Stat
+            label="Last seen"
+            value={
+              pairState?.tunnel.lastSeenAt
+                ? new Date(pairState.tunnel.lastSeenAt).toLocaleTimeString()
+                : "—"
+            }
+            tone="muted"
+          />
+        </div>
+        {pairState?.tunnel.lastError && (
+          <p style={S.helpInline}>{pairState.tunnel.lastError}</p>
+        )}
+        <div style={S.actions}>
+          {pairState?.paired ? (
+            <>
+              <button
+                type="button"
+                style={S.btnSecondary}
+                onClick={onUnpair}
+                disabled={!!busy}
+              >
+                Forget pairing
+              </button>
+              {pairState.tunnel.active ? (
+                <button
+                  type="button"
+                  style={S.btnSecondary}
+                  onClick={onTunnelClear}
+                  disabled={!!busy}
+                >
+                  Clear tunnel registration
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  style={S.btnPrimary}
+                  onClick={onTunnelRegister}
+                  disabled={!!busy}
+                >
+                  {busy === "tunnel-register" ? "Registering…" : "Register tunnel"}
+                </button>
+              )}
+            </>
+          ) : busy === "pairing" ? (
+            <>
+              <span style={S.helpInline}>
+                Approve the device in your browser — this window will update
+                as soon as the server sees the approval.
+              </span>
+              <button
+                type="button"
+                style={S.btnSecondary}
+                onClick={onCancelPair}
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              style={S.btnPrimary}
+              onClick={onPair}
+              disabled={!!busy}
+            >
+              Pair this device
+            </button>
+          )}
+        </div>
+        <Field
+          label="Tunnel hostname"
+          help="Public hostname your Cloudflare Tunnel exposes the local backend at (e.g. user-42.cf-tunnel.com). Used on backend start to register with the Dev Hub."
+        >
+          <input
+            type="text"
+            value={settings.tunnelHostname || ""}
+            placeholder="your-name.cf-tunnel.com"
+            onChange={(e) => onSettingChange("tunnelHostname", e.target.value.trim())}
+            style={S.input}
+          />
+        </Field>
+        <Field
+          label="Auto-register tunnel on backend start"
+          help="POST the hostname above when the backend comes up, DELETE when it goes down. Heartbeats every 60s while running."
+        >
+          <input
+            type="checkbox"
+            checked={settings.tunnelAutoRegister !== false}
+            onChange={(e) =>
+              onSettingChange("tunnelAutoRegister", e.target.checked)
+            }
+          />
+        </Field>
+        <Field
+          label="Dev Hub URL"
+          help="Where the companion talks to. Defaults to the production deployment; override to point at a preview or localhost for development."
+        >
+          <input
+            type="text"
+            value={settings.apiBaseUrl || ""}
+            placeholder="https://espace-hubs.vercel.app"
+            onChange={(e) => onSettingChange("apiBaseUrl", e.target.value.trim())}
+            style={S.input}
+          />
+        </Field>
+      </Section>
+
       <Section title="Settings">
         <Field
           label="Repo path"
@@ -438,7 +650,7 @@ export function App() {
 
       <footer style={S.footer}>
         <span>
-          Phase 2 · backend + VPN. Per-user tunnel routing lands in Phase 3.
+          Phase 3d · pairing + auto-register. Devices UI lands in Phase 3e.
         </span>
         <a
           href="#"
