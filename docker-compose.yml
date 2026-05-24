@@ -116,7 +116,19 @@ services:
     image: cloudflare/cloudflared:latest
     command: tunnel --no-autoupdate run
     environment:
-      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?TUNNEL_TOKEN required when --profile tunnel is active. See docs/RUN_LOCALLY.md.}
+      # Default to empty so the compose file parses cleanly when the
+      # tunnel sidecar isn't activated. docker-compose interpolates
+      # EVERY service's env vars on load, even profile-gated ones —
+      # `${...:?error}` would block `docker compose up -d` (no tunnel
+      # profile) on users without TUNNEL_TOKEN set.
+      #
+      # The companion's auto-spawn cloudflared on the HOST (not in this
+      # sidecar) is the default path; this sidecar is only relevant
+      # for users running a named tunnel via `docker compose --profile
+      # tunnel up -d` directly. Those users set TUNNEL_TOKEN themselves;
+      # the sidecar would crash on launch with an empty value, which
+      # is the correct failure mode for the named-tunnel use case.
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
     depends_on:
       api:
         condition: service_healthy

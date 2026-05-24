@@ -106,7 +106,7 @@ function pushLog(line: string): void {
 
 export async function startBackend(): Promise<{ ok: boolean; message: string }> {
   lastError = null;
-  pushLog("[companion] starting docker compose --profile tunnel up -d");
+  pushLog("[companion] starting docker compose up -d");
   const res = await run(dockerComposeArgs("up", "-d"));
   if (!res.ok) {
     running = false;
