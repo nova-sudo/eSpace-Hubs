@@ -15,6 +15,10 @@
  */
 
 export { useSession } from "./use-session.js";
+export {
+  clearAllUserScopedStorage,
+  USER_SCOPED_LOCAL_STORAGE_KEYS,
+} from "./clear-user-storage.js";
 export { useMyEngagementConfig } from "./use-engagement-config.js";
 export { SessionProvider } from "./session-provider.jsx";
 export { LoginForm } from "./login-form.jsx";
