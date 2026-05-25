@@ -146,19 +146,54 @@ DNS, works the same inside the container as outside.
 
 ### "Cannot reach git.bcn.crealogix.net from inside the container"
 
-The container shares the host's network via the default bridge
-driver — but some VPN clients (Cisco AnyConnect, GlobalProtect)
-don't push routes into the bridge. If the api inside Docker can't
-reach an upstream that the host CAN reach, edit
+Symptom: the dashboard surfaces
+`integration_unreachable: Network error reaching gitlab: fetch failed`
+(usually with `(ENOTFOUND)` in the cause) while a `curl` to the same
+URL from the host succeeds. The container's DNS resolver can't
+reach the corporate DNS server (typically `10.x.x.x` served by your
+VPN client).
+
+#### Fix 1 — map the hostname directly (preferred)
+
+Find the IP on the VPN-connected host:
+
+```bash
+ping git.bcn.crealogix.net          # Windows shows IP in output
+# or
+Resolve-DnsName git.bcn.crealogix.net   # PowerShell
+```
+
+`docker-compose.yml` has commented-out `extra_hosts` entries for
+the common engagement targets. Uncomment + paste the IP:
+
+```yaml
+api:
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+    - "git.bcn.crealogix.net:192.168.104.31"     # uncomment + your IP
+    # - "jira.bcn.crealogix.net:10.x.x.x"
+    # - "jenkins.bcn.crealogix.net:10.x.x.x"
+```
+
+Then `docker compose down && docker compose up -d`. Corporate-internal
+IPs are static for the life of the engagement (no cloud load-balancing
+on internal infra); if IT ever migrates the host, just update the IP.
+
+#### Fix 2 — host networking (fallback)
+
+If the container can resolve but still can't reach the IP (some VPN
+split-tunnel configs don't share routes with Docker's bridge), edit
 `docker-compose.yml`:
 
 ```yaml
 api:
-  network_mode: "host"    # uncomment this; remove `ports:` (no needed)
+  network_mode: "host"    # uncomment this; remove `ports:` (not needed)
 ```
 
 This makes the container share the host's loopback + interfaces
-directly, so VPN routes apply unchanged.
+directly, so VPN routes apply unchanged. Has limitations on
+Docker Desktop Windows with WSL2 — works best on Docker Engine
+running on a Linux host that's directly on the VPN.
 
 ### Tunnel won't start: "TUNNEL_TOKEN required"
 
