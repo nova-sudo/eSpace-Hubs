@@ -15,7 +15,7 @@
  * builds inline editors for them too.
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { SPEC_KINDS } from "@/features/goal-specs";
 import {
   avgReviewerComments,
@@ -36,6 +36,11 @@ import {
   UnsupportedStub,
 } from "./editors";
 import { CodeRubricEditor } from "./code-rubric-row";
+import {
+  buildSubGoal,
+  buildSubSpec,
+  seedRubricContextIfNeeded,
+} from "@/features/goal-widgets/widgets/scorecard-subspec";
 
 export function GoalRow({
   goal,
@@ -48,6 +53,53 @@ export function GoalRow({
   tickets,
 }) {
   const widget = spec.widget;
+
+  // SCORECARD goals expand into ONE banner row + N child rows, one per
+  // sub-component. Each child renders a regular GoalRow with the
+  // synthetic sub-spec, so the dispatch below picks the correct
+  // editor (CODE_RUBRIC, RECURRING_MILESTONE, etc.) automatically.
+  // The CODE_RUBRIC seed effect lives a step deeper inside
+  // ScorecardChildRow so the goal-context is populated before
+  // useGradedPrs reads it.
+  if (widget === SPEC_KINDS.SCORECARD) {
+    const components = spec?.scorecard?.components || [];
+    if (components.length === 0) {
+      return (
+        <div className="flex items-start justify-between gap-4 rounded-md border border-border bg-bg/40 px-3 py-2.5">
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <ScorecardBannerInner goal={goal} components={0} />
+          </div>
+          <div className="flex-shrink-0">
+            <UnsupportedStub message="No components defined — add some in the dashboard widget" />
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="flex flex-col gap-1.5">
+        <div className="rounded-md border border-border/60 bg-bg/30 px-3 py-2">
+          <ScorecardBannerInner goal={goal} components={components.length} />
+        </div>
+        <div className="flex flex-col gap-1.5 pl-3">
+          {components.map((component, i) => (
+            <ScorecardChildRow
+              key={i}
+              parentGoal={goal}
+              parentSpec={spec}
+              component={component}
+              index={i}
+              weekStart={weekStart}
+              weekEnd={weekEnd}
+              activeLabel={activeLabel}
+              mrs={mrs}
+              events={events}
+              tickets={tickets}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   // Filter integration data to this week's window once for any auto
   // widget that wants it.
@@ -91,6 +143,80 @@ export function GoalRow({
         />
       </div>
     </div>
+  );
+}
+
+/**
+ * Banner row at the top of an expanded SCORECARD — shows the kind
+ * chip + parent goal title + a small "N components" hint. Stays
+ * compact (single line) so the expanded children below get the
+ * visual focus.
+ */
+function ScorecardBannerInner({ goal, components }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className="rounded-[3px] border border-border px-1 py-px text-[9px] uppercase tracking-[0.6px] text-muted-fg"
+        style={{ fontFamily: "var(--font-mono)" }}
+      >
+        scorecard
+      </span>
+      <div className="truncate text-[13px] font-medium text-fg">
+        {goal?.title || "Untitled"}
+      </div>
+      <span
+        className="ml-auto shrink-0 text-[10px] uppercase tracking-[0.4px] text-muted-fg/70"
+        style={{ fontFamily: "var(--font-mono)" }}
+      >
+        {components} component{components === 1 ? "" : "s"}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * One row inside an expanded SCORECARD. Builds the synthetic sub-spec
+ * + sub-goal, seeds CODE_RUBRIC goal-context once on mount (so the
+ * check-in works even when the user hasn't opened the dashboard modal
+ * first), then renders a regular GoalRow which picks the correct
+ * editor by sub-widget kind.
+ */
+function ScorecardChildRow({
+  parentGoal,
+  parentSpec,
+  component,
+  index,
+  weekStart,
+  weekEnd,
+  activeLabel,
+  mrs,
+  events,
+  tickets,
+}) {
+  const subSpec = useMemo(
+    () => buildSubSpec(parentSpec, component, index),
+    [parentSpec, component, index],
+  );
+  const subGoal = useMemo(
+    () => buildSubGoal(parentGoal, subSpec),
+    [parentGoal, subSpec],
+  );
+  // Idempotent seed — only writes when the sub-id has no rubric
+  // context yet AND the component is CODE_RUBRIC with seed items.
+  useEffect(() => {
+    seedRubricContextIfNeeded(subSpec.goalId, component);
+  }, [subSpec.goalId, component]);
+  return (
+    <GoalRow
+      goal={subGoal}
+      spec={subSpec}
+      weekStart={weekStart}
+      weekEnd={weekEnd}
+      activeLabel={activeLabel}
+      mrs={mrs}
+      events={events}
+      tickets={tickets}
+    />
   );
 }
 

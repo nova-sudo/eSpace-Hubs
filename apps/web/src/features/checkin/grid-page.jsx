@@ -17,7 +17,7 @@
  * header (top). Scrolls in both directions when content overflows.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Save, ChevronLeft, ChevronRight } from "lucide-react";
 import { useGoals } from "@/features/goals";
@@ -34,6 +34,11 @@ import { isoDaysAgo } from "@/lib/date";
 import { SPEC_KINDS } from "@/features/goal-specs";
 import { useCheckinGridRange } from "./use-checkin-grid-range";
 import { GridRow, RowCopyButton } from "./grid-row";
+import {
+  buildSubGoal,
+  buildSubSpec,
+  seedRubricContextIfNeeded,
+} from "@/features/goal-widgets/widgets/scorecard-subspec";
 
 const LABEL_COL = 240;
 const CELL_COL = 130;
@@ -202,6 +207,62 @@ function GroupBlock({ group, weekCount, weeks, mrsByWeek, eventsByWeek, ticketsC
 }
 
 function RowGroup({ goal, spec, weeks, mrsByWeek, eventsByWeek, ticketsCount }) {
+  // SCORECARD goals expand into a parent banner row + N child
+  // RowGroups, one per sub-component. Each child uses a synthetic
+  // sub-spec routed through this same RowGroup recursively, so the
+  // dispatch picks the correct cell renderer (CODE_RUBRIC → grade
+  // cells, RECURRING_MILESTONE → checklist cells, etc.) per child.
+  // The trailing "Bulk" column is per-child too, so per-row Copy /
+  // Grade-next affordances still work.
+  if (spec.widget === SPEC_KINDS.SCORECARD) {
+    const components = spec?.scorecard?.components || [];
+    const totalCols = 1 + weeks.length + 1;
+    if (components.length === 0) {
+      return (
+        <>
+          <div
+            className="sticky left-0 z-10 col-span-full border-b border-dashed border-border/60 bg-bg/30 px-3 py-1.5 text-[11px] uppercase tracking-[0.5px] text-muted-fg/80"
+            style={{
+              fontFamily: "var(--font-mono)",
+              gridColumn: `1 / span ${totalCols}`,
+            }}
+          >
+            scorecard · {goal?.title || spec.title} · no components defined yet
+          </div>
+        </>
+      );
+    }
+    return (
+      <>
+        <div
+          className="sticky left-0 z-10 col-span-full border-b border-dashed border-border/60 bg-bg/30 px-3 py-1.5 text-[11px] uppercase tracking-[0.5px] text-muted-fg/90"
+          style={{
+            fontFamily: "var(--font-mono)",
+            gridColumn: `1 / span ${totalCols}`,
+          }}
+        >
+          scorecard · {goal?.title || spec.title} ·{" "}
+          <span className="text-muted-fg/70">
+            {components.length} component{components.length === 1 ? "" : "s"}
+          </span>
+        </div>
+        {components.map((component, i) => (
+          <ScorecardChildRowGroup
+            key={i}
+            parentGoal={goal}
+            parentSpec={spec}
+            component={component}
+            index={i}
+            weeks={weeks}
+            mrsByWeek={mrsByWeek}
+            eventsByWeek={eventsByWeek}
+            ticketsCount={ticketsCount}
+          />
+        ))}
+      </>
+    );
+  }
+
   // CODE_RUBRIC rows render their own trailing "Bulk · Grade all"
   // column inside GridRow → CodeRubricGridRow, so we skip appending
   // RowCopyButton here (which would otherwise overflow the grid
@@ -219,6 +280,49 @@ function RowGroup({ goal, spec, weeks, mrsByWeek, eventsByWeek, ticketsCount }) 
       />
       {!skipBulk && <RowCopyButton goal={goal} spec={spec} weeks={weeks} />}
     </>
+  );
+}
+
+/**
+ * One sub-row inside an expanded SCORECARD on the catch-up grid.
+ *
+ * Builds the synthetic sub-spec, seeds CODE_RUBRIC goal-context on
+ * mount so the rubric isn't empty even when the dashboard modal
+ * hasn't been opened, then routes through RowGroup recursively. The
+ * RowGroup handles the per-child cell dispatch + the trailing column
+ * (CodeRubricGridRow's own bulk button, or RowCopyButton for manual
+ * widgets, or a "—" for stub cases).
+ */
+function ScorecardChildRowGroup({
+  parentGoal,
+  parentSpec,
+  component,
+  index,
+  weeks,
+  mrsByWeek,
+  eventsByWeek,
+  ticketsCount,
+}) {
+  const subSpec = useMemo(
+    () => buildSubSpec(parentSpec, component, index),
+    [parentSpec, component, index],
+  );
+  const subGoal = useMemo(
+    () => buildSubGoal(parentGoal, subSpec),
+    [parentGoal, subSpec],
+  );
+  useEffect(() => {
+    seedRubricContextIfNeeded(subSpec.goalId, component);
+  }, [subSpec.goalId, component]);
+  return (
+    <RowGroup
+      goal={subGoal}
+      spec={subSpec}
+      weeks={weeks}
+      mrsByWeek={mrsByWeek}
+      eventsByWeek={eventsByWeek}
+      ticketsCount={ticketsCount}
+    />
   );
 }
 
