@@ -245,6 +245,16 @@ export const config = {
     responseLimit: false,
     externalResolver: true,
   },
+  // Lift the function-execution cap to 60s (Pro/Enterprise) so slow
+  // upstream integrations — Crealogix's self-hosted GitLab takes
+  // ~20–40s to scan a 60-day `updated_after` window for heavy
+  // authors — finish inside the function lifetime instead of getting
+  // killed mid-flight and returning an empty 502. Hobby plans cap at
+  // 10s regardless of this setting; on Pro it's honoured up to 60s,
+  // and Enterprise up to 900s. The companion-side proxy.ts now
+  // aborts its own fetch at 45s with a 504 `integration_timeout`
+  // so the user sees a clear error rather than a bare 502.
+  maxDuration: 60,
 };
 
 /**
