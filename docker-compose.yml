@@ -74,31 +74,39 @@ services:
       # so set MONGO_URI=mongodb://mongo:27017/devhub-dev in
       # .env.local if you want the local-mongo path.
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://espace-hubs.vercel.app,http://localhost:3000}
+    # Static hostname mappings injected into the container's /etc/hosts.
+    #
+    # Mapping form (`host: ip`) is used here rather than the list
+    # form (`- "host:ip"`) — newer Docker Compose versions (v2.27+)
+    # reject the list form with "extra_hosts must be a mapping"
+    # while older versions accepted both. Mapping form works on every
+    # version.
+    #
+    # `host.docker.internal: host-gateway` is the standard gateway-
+    # style hostname that lets the container reach the Docker host.
+    # Always available; harmless when unused.
+    #
+    # Corporate hosts whose DNS only resolves via a VPN's internal
+    # resolver need entries here too. The container's bridge network
+    # can't reach the corporate DNS (10.x.x.x), so
+    # `git.bcn.crealogix.net` fails to resolve with ENOTFOUND /
+    # EAI_AGAIN even though the host (on VPN) resolves it fine.
+    # Mapping the hostname directly bypasses DNS — corporate internal
+    # IPs are stable for the life of the engagement so a one-time
+    # mapping holds.
+    #
+    # Find the IP on the host:
+    #   ping git.bcn.crealogix.net   # output starts with the IP
+    #
+    # Then uncomment + adjust the matching line below.
+    # Symptom that means you need this: the dashboard surfaces
+    # `integration_unreachable: Network error reaching gitlab:
+    # fetch failed` while a `curl` from the host succeeds.
     extra_hosts:
-      # `host.docker.internal` is the standard gateway-style hostname
-      # that lets the container reach the Docker host. Always
-      # available; harmless when unused.
-      - "host.docker.internal:host-gateway"
-      # Corporate hosts whose DNS only resolves via a VPN's internal
-      # resolver. The container's bridge network can't reach the
-      # corporate DNS (10.x.x.x) so `git.bcn.crealogix.net` fails to
-      # resolve with ENOTFOUND even though the host (on VPN) resolves
-      # it fine. Map the hostname directly to bypass DNS — the IP is
-      # stable for the life of the engagement (corporate internal
-      # infra doesn't load-balance), so a one-time mapping holds.
-      #
-      # Find the IP on the host:
-      #   ping git.bcn.crealogix.net   # output starts with the IP
-      #
-      # Then uncomment the matching line below and replace the IP.
-      # Symptom that means you need this: the dashboard surfaces
-      # `integration_unreachable: Network error reaching gitlab:
-      # fetch failed (ENOTFOUND)` while a `curl` from the host
-      # succeeds.
-      #
-      # - "git.bcn.crealogix.net:192.168.104.31"
-      # - "jira.bcn.crealogix.net:10.x.x.x"
-      # - "jenkins.bcn.crealogix.net:10.x.x.x"
+      host.docker.internal: host-gateway
+      # git.bcn.crealogix.net: 192.168.104.31
+      # jira.bcn.crealogix.net: 10.x.x.x
+      # jenkins.bcn.crealogix.net: 10.x.x.x
     depends_on:
       mongo:
         condition: service_healthy
