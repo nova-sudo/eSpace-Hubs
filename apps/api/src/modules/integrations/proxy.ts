@@ -346,14 +346,57 @@ async function runProxy(
       body = JSON.stringify(req.body ?? {});
     }
 
+    // Bound the upstream call so a slow self-hosted GitLab / Jira
+    // doesn't sit on the connection until Vercel's function timeout
+    // kills the whole chain (which produces a bare 502 with no body).
+    // 45s gives headroom for genuinely slow corporate boxes while
+    // staying under the typical 60s Vercel maxDuration so the abort
+    // happens with a clean 504 surface before Vercel intervenes.
+    const FETCH_TIMEOUT_MS = 45_000;
+    const abortController = new AbortController();
+    const timeoutHandle = setTimeout(
+      () => abortController.abort(),
+      FETCH_TIMEOUT_MS,
+    );
     let upstream;
     try {
       upstream = await fetch(targetUrl, {
         method: req.method,
         headers: upstreamHeaders,
+        signal: abortController.signal,
         ...(body !== undefined ? { body } : {}),
       });
     } catch (err) {
+      // Differentiate timeout aborts from generic network failures so
+      // the UI can suggest a smaller time window instead of "check
+      // your token / VPN".
+      const aborted =
+        err instanceof Error &&
+        (err.name === "AbortError" ||
+          (err as { cause?: { name?: string } }).cause?.name ===
+            "AbortError");
+      if (aborted) {
+        logger.warn(
+          {
+            providerId: ctx.providerId,
+            targetUrl,
+            reqId: req.id,
+            timeoutMs: FETCH_TIMEOUT_MS,
+          },
+          "[proxy] upstream fetch timed out",
+        );
+        void markIntegrationError({
+          orgId: session.orgId,
+          userId: session.userId,
+          providerId: ctx.providerId,
+          message: `Timeout after ${FETCH_TIMEOUT_MS / 1000}s`,
+        });
+        throw new HttpError(
+          504,
+          "integration_timeout",
+          `Upstream ${ctx.providerId} took longer than ${FETCH_TIMEOUT_MS / 1000}s to respond. Try a shorter time window or check upstream availability.`,
+        );
+      }
       // Node's undici-backed fetch throws a generic `TypeError: fetch
       // failed` for every network-layer failure — the actual cause
       // (ENOTFOUND, ECONNREFUSED, UND_ERR_CONNECT_TIMEOUT, TLS chain
@@ -394,6 +437,8 @@ async function runProxy(
         "integration_unreachable",
         `Network error reaching ${ctx.providerId}: ${detail}`,
       );
+    } finally {
+      clearTimeout(timeoutHandle);
     }
 
     // Allowlist response headers — drop everything else.
