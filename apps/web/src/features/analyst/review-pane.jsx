@@ -565,6 +565,7 @@ function PendingCard({
       {isScorecard && !isUntrackable ? (
         <ScorecardEditor
           scorecard={spec.scorecard}
+          repoOptions={repoOptions}
           onChange={onChangeScorecard}
         />
       ) : null}
@@ -957,7 +958,7 @@ const SCORECARD_MIN_COMPONENTS = 2;
  * normalises by Σweights anyway, so adding a 4th 50-weight component
  * to two 50-weight ones just means each has weight 1/3 effectively.
  */
-function ScorecardEditor({ scorecard, onChange }) {
+function ScorecardEditor({ scorecard, repoOptions = [], onChange }) {
   const components = scorecard?.components || [];
 
   function setComponentAt(index, patch) {
@@ -1039,6 +1040,7 @@ function ScorecardEditor({ scorecard, onChange }) {
           key={i}
           index={i}
           component={c}
+          repoOptions={repoOptions}
           onPatch={(patch) => setComponentAt(i, patch)}
           onRemove={() => removeAt(i)}
           canRemove={components.length > SCORECARD_MIN_COMPONENTS}
@@ -1058,9 +1060,31 @@ function ScorecardEditor({ scorecard, onChange }) {
  * etc.). The user can refine source.window / cadence / target by
  * hand below.
  */
-function ComponentEditorRow({ index, component, onPatch, onRemove, canRemove }) {
+function ComponentEditorRow({
+  index,
+  component,
+  repoOptions = [],
+  onPatch,
+  onRemove,
+  canRemove,
+}) {
   const target =
     component?.source?.target || component?.manual?.target || null;
+  // Repo scoping is meaningful when the component reads from a code-host
+  // provider (GitHub / GitLab / combined / github_actions). Manual
+  // widgets (COUNTER, SCALE, …) and CODE_RUBRIC have no `source.filter`
+  // so the picker stays hidden for them.
+  const provider = component?.source?.provider;
+  const supportsRepoScope =
+    component?.kind === "auto" &&
+    (provider === "github" ||
+      provider === "gitlab" ||
+      provider === "combined" ||
+      provider === "github_actions");
+  const currentRepo = component?.source?.filter?.repo || null;
+  const onChangeRepo = (next) => {
+    onPatch({ source: patchFilter(component.source, "repo", next) });
+  };
 
   function setWidget(widget) {
     const meta = SPEC_KIND_META[widget];
@@ -1245,6 +1269,20 @@ function ComponentEditorRow({ index, component, onPatch, onRemove, canRemove }) 
           />
         </label>
       </div>
+      {/* Repo scope picker — only for AUTO components reading from a
+          code-host provider. Lets the user pin a FIRST_PASS_RATE
+          (or MERGED_COUNT / LINKAGE / TURNAROUND / etc.) component
+          to one specific repo, or leave it on "all repos" to count
+          across every connected repo. `source.filter.repo` already
+          exists in the spec schema and is honoured by useDataSource
+          before the metric is computed. */}
+      {supportsRepoScope ? (
+        <RepoPicker
+          value={currentRepo}
+          options={repoOptions}
+          onChange={onChangeRepo}
+        />
+      ) : null}
       {/* Phase F: rubric criteria + first-review toggle, only when
           this component is CODE_RUBRIC. The criteria live on the
           component's `manual.items` array (re-uses the existing
