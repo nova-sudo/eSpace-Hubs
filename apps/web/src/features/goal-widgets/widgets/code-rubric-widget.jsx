@@ -23,6 +23,8 @@
  */
 
 import { useMemo, useState } from "react";
+import * as Popover from "@radix-ui/react-popover";
+import { ChevronDown } from "lucide-react";
 import { WidgetShell } from "../widget-shell";
 import { useGradedPrs } from "@/features/grading";
 import { weekLabel, weekRangeFromLabel } from "@/lib/date";
@@ -88,6 +90,31 @@ export function CodeRubricWidget({ spec, goal, variant = "light", className, onR
     () => summarisePrs(thisWeekPrs, verdictsByPr),
     [thisWeekPrs, verdictsByPr],
   );
+
+  // All weeks YTD that have at least one PR — drives the "pick a past
+  // week" dropdown next to the Grade button. Sorted newest-first so
+  // the current week sits at the top of the list.
+  const allWeeksWithPrs = useMemo(() => {
+    const byLabel = new Map();
+    for (const pr of prs) {
+      if (!pr.mergedAt) continue;
+      const lbl = weekLabel(new Date(pr.mergedAt));
+      if (!byLabel.has(lbl)) byLabel.set(lbl, []);
+      byLabel.get(lbl).push(pr);
+    }
+    const out = [];
+    for (const [lbl, weekPrs] of byLabel) {
+      out.push({
+        weekLabel: lbl,
+        prs: weekPrs,
+        stats: summarisePrs(weekPrs, verdictsByPr),
+      });
+    }
+    // Wnn labels compare lexicographically within a year, so a plain
+    // descending sort puts the most recent week first.
+    out.sort((a, b) => b.weekLabel.localeCompare(a.weekLabel));
+    return out;
+  }, [prs, verdictsByPr]);
 
   // Empty / setup states come first — short-circuit before the grid.
   if (!hasGithub) {
@@ -255,6 +282,8 @@ export function CodeRubricWidget({ spec, goal, variant = "light", className, onR
           onGradeThisWeek={onGradeThisWeek}
           onGradeAll={gradeAll}
           totalPrs={prs.length}
+          allWeeksWithPrs={allWeeksWithPrs}
+          onGradeWeek={(weekPrs) => grade(weekPrs)}
         />
         <ListDisclosure
           variant={variant}
@@ -357,12 +386,16 @@ function ThisWeekRow({ variant, weekLabel, stats, prCount }) {
 }
 
 /**
- * Two-button action row: "Grade this week" is the primary action
- * (user mostly works in week-sized chunks); "Grade YTD" is the
- * escape hatch for catching up the full year. Disabling logic:
+ * Three-control action row:
+ *   - "Grade week (N)"  — primary, targets the current ISO week
+ *   - week-picker chevron — opens a list of all past weeks with PRs;
+ *                           click any row to grade just that week
+ *   - "YTD (M)"         — escape hatch to grade everything ungraded
  *
- *   - both disabled while a grade pass is running (progress.running)
+ * Disabling logic:
+ *   - all controls disabled while a grade pass is running (progress.running)
  *   - "this week" disabled when no ungraded PRs merged in current week
+ *   - per-week rows in the picker disabled when that week is fully graded
  *   - "YTD"  disabled when nothing is ungraded anywhere
  *
  * When everything's graded both collapse to "All graded".
@@ -377,10 +410,16 @@ function GradeActionRow({
   onGradeThisWeek,
   onGradeAll,
   totalPrs,
+  allWeeksWithPrs,
+  onGradeWeek,
 }) {
   const running = progress.running;
   const thisWeekDisabled = running || !hasUngradedThisWeek;
   const ytdDisabled = running || !hasUngraded;
+  // Past-week picker is meaningful when there are weeks WITH PRs other
+  // than the current one. If there's only the current week, the
+  // "Grade week" button already covers it — hide the chevron.
+  const hasPastWeeks = (allWeeksWithPrs?.length || 0) > 1;
 
   let thisWeekLabel;
   if (running) thisWeekLabel = `Grading ${progress.done}/${progress.total}…`;
@@ -406,21 +445,41 @@ function GradeActionRow({
         {totalPrs} PR{totalPrs === 1 ? "" : "s"} YTD
       </div>
       <div className="flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={onGradeThisWeek}
-          disabled={thisWeekDisabled}
-          className="rounded-[var(--radius-sub)] px-3 py-1 uppercase font-bold transition-opacity disabled:opacity-40"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            letterSpacing: "0.5px",
-            background: variant === "light" ? "#ffffff" : "var(--accent)",
-            color: variant === "light" ? "var(--accent)" : "var(--accent-on)",
-          }}
-        >
-          {thisWeekLabel}
-        </button>
+        {/* Primary button + adjacent chevron form a "split button":
+            click the wide part → grade this week; click the chevron
+            → pick a different past week. The chevron is its own
+            Popover.Trigger so the wide button keeps its straight
+            onClick handler. */}
+        <div className="flex items-stretch">
+          <button
+            type="button"
+            onClick={onGradeThisWeek}
+            disabled={thisWeekDisabled}
+            className={
+              hasPastWeeks
+                ? "rounded-l-[var(--radius-sub)] px-3 py-1 uppercase font-bold transition-opacity disabled:opacity-40"
+                : "rounded-[var(--radius-sub)] px-3 py-1 uppercase font-bold transition-opacity disabled:opacity-40"
+            }
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10,
+              letterSpacing: "0.5px",
+              background: variant === "light" ? "#ffffff" : "var(--accent)",
+              color:
+                variant === "light" ? "var(--accent)" : "var(--accent-on)",
+            }}
+          >
+            {thisWeekLabel}
+          </button>
+          {hasPastWeeks ? (
+            <WeekPickerDropdown
+              variant={variant}
+              running={running}
+              weeks={allWeeksWithPrs}
+              onPick={onGradeWeek}
+            />
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={onGradeAll}
@@ -447,6 +506,98 @@ function GradeActionRow({
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * Past-week picker. Lists every week YTD that has at least one merged
+ * PR, sorted newest-first. Each row shows pass/total + ungraded count;
+ * fully-graded weeks are visible but disabled so the user can still
+ * see them without accidentally re-grading. Picking a week fires
+ * `onPick(weekPrs)` immediately — there's no two-step "confirm" UX.
+ */
+function WeekPickerDropdown({ variant, running, weeks, onPick }) {
+  const triggerBg = variant === "light" ? "#ffffff" : "var(--accent)";
+  const triggerFg = variant === "light" ? "var(--accent)" : "var(--accent-on)";
+  return (
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          disabled={running}
+          aria-label="Pick a past week to grade"
+          className="rounded-r-[var(--radius-sub)] border-l px-1.5 py-1 transition-opacity disabled:opacity-40"
+          style={{
+            background: triggerBg,
+            color: triggerFg,
+            borderLeftColor:
+              variant === "light" ? "rgba(0,0,0,0.10)" : "rgba(0,0,0,0.18)",
+          }}
+        >
+          <ChevronDown size={12} />
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          align="end"
+          sideOffset={6}
+          className="z-50 w-[260px] rounded-md border shadow-lg"
+          style={{
+            background: "var(--card)",
+            borderColor: "var(--border)",
+            maxHeight: 320,
+            overflowY: "auto",
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
+          }}
+        >
+          <div
+            className="border-b px-2 py-1.5 uppercase tracking-[0.4px]"
+            style={{
+              borderColor: "var(--border)",
+              fontSize: 9.5,
+              color: "var(--muted-fg)",
+            }}
+          >
+            Grade a specific week
+          </div>
+          <ul className="flex flex-col">
+            {weeks.map((w) => {
+              const fullyGraded = w.stats.ungraded === 0;
+              const disabled = fullyGraded;
+              return (
+                <li key={w.weekLabel}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!disabled) onPick(w.prs);
+                    }}
+                    disabled={disabled}
+                    className="flex w-full items-baseline justify-between gap-2 px-2 py-1.5 text-left transition-opacity disabled:opacity-50 hover:bg-accent-dim/30"
+                  >
+                    <span
+                      className="font-semibold"
+                      style={{ color: "var(--fg)" }}
+                    >
+                      {w.weekLabel}
+                    </span>
+                    <span style={{ color: "var(--muted-fg)" }}>
+                      {fullyGraded
+                        ? `${w.stats.pass}/${w.stats.graded} · all graded`
+                        : w.stats.graded === 0
+                          ? `${w.prs.length} PR${
+                              w.prs.length === 1 ? "" : "s"
+                            } · ${w.stats.ungraded} to grade`
+                          : `${w.stats.pass}/${w.stats.graded} pass · ${w.stats.ungraded} to grade`}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 

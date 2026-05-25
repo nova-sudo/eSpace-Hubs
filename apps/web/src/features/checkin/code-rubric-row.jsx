@@ -34,7 +34,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { Sparkles, ChevronDown } from "lucide-react";
+import { Sparkles, ChevronDown, Check } from "lucide-react";
 import { useGradedPrs } from "@/features/grading";
 import { cn } from "@/lib/cn";
 
@@ -191,9 +191,7 @@ export function CodeRubricGridRow({ goal, spec, weeks }) {
   // "Next ungraded week" — the earliest week that has PRs AND at least
   // one ungraded verdict. Pressing the button grades JUST that week;
   // the user reviews the verdicts that drop in, then presses again
-  // for the next. This replaces the old "Grade all weeks" CTA, which
-  // fired the entire row at once and made the user wait for ~12 weeks
-  // of grading to settle before they could even check the first.
+  // for the next.
   const nextUngradedWeek = useMemo(() => {
     for (const wk of weeks) {
       const weekPrs = prsByWeek.get(wk.weekLabel) || [];
@@ -209,6 +207,50 @@ export function CodeRubricGridRow({ goal, spec, weeks }) {
   }, [grade, nextUngradedWeek]);
 
   const disabledNext = !hasGithub || rubric.length === 0 || !nextUngradedWeek || progress.running;
+
+  // Multi-select state. Toggling a week's checkbox adds/removes it
+  // from this Set. When the Set has ≥1 entries, the trailing column
+  // flips from "Next · Wnn" to "Grade selected (N)". Pressing it
+  // flattens the selected weeks' PRs into one grade() call. Selection
+  // clears after the grade completes.
+  const [selectedWeeks, setSelectedWeeks] = useState(() => new Set());
+  const toggleSelect = useCallback((weekLabel) => {
+    setSelectedWeeks((prev) => {
+      const next = new Set(prev);
+      if (next.has(weekLabel)) next.delete(weekLabel);
+      else next.add(weekLabel);
+      return next;
+    });
+  }, []);
+  const selectedCount = selectedWeeks.size;
+  const selectedStats = useMemo(() => {
+    let ungraded = 0;
+    for (const lbl of selectedWeeks) {
+      const weekPrs = prsByWeek.get(lbl) || [];
+      ungraded += summariseVerdicts(weekPrs, verdictsByPr).ungraded;
+    }
+    return { ungraded };
+  }, [selectedWeeks, prsByWeek, verdictsByPr]);
+
+  const gradeSelected = useCallback(() => {
+    if (selectedCount === 0) return;
+    const flat = [];
+    for (const lbl of selectedWeeks) {
+      const weekPrs = prsByWeek.get(lbl) || [];
+      flat.push(...weekPrs);
+    }
+    grade(flat);
+    // Clear selection after kicking off — the user sees grading
+    // progress on the trailing button, and any week with new
+    // verdicts updates its checkbox availability automatically.
+    setSelectedWeeks(new Set());
+  }, [grade, selectedCount, selectedWeeks, prsByWeek]);
+
+  const disabledSelected =
+    !hasGithub ||
+    rubric.length === 0 ||
+    selectedStats.ungraded === 0 ||
+    progress.running;
 
   return (
     <>
@@ -241,38 +283,67 @@ export function CodeRubricGridRow({ goal, spec, weeks }) {
           grade={grade}
           isListLoading={isListLoading}
           progress={progress}
+          selected={selectedWeeks.has(wk.weekLabel)}
+          onToggleSelect={() => toggleSelect(wk.weekLabel)}
         />
       ))}
 
-      {/* Trailing "Next" column — jump to the earliest ungraded week.
-          Click → grade JUST that week's PRs. After verdicts settle,
-          click again to advance. The label changes to reflect which
-          week is up next so the user knows what they're committing to. */}
+      {/* Trailing column — context-sensitive CTA.
+          - With ≥1 weeks checked: "Grade selected (N)" — flattens
+            the selection's PRs into one grade() call.
+          - With nothing checked: "Next · Wnn" jumper that targets the
+            earliest ungraded week.
+          - When all weeks are graded: "All graded" disabled state. */}
       <div className="flex items-center justify-end border-b border-border px-2">
-        <button
-          type="button"
-          onClick={gradeNextWeek}
-          disabled={disabledNext}
-          title={
-            rubric.length === 0
-              ? "Define rubric in the dashboard widget first"
-              : !nextUngradedWeek
-              ? "All weeks graded"
-              : `Grade ${nextUngradedWeek.week.weekLabel} (${nextUngradedWeek.ungraded} ungraded)`
-          }
-          className={cn(
-            "flex items-center gap-1 rounded-md border border-border bg-bg px-1.5 py-0.5 text-[10px] uppercase tracking-[0.4px] text-muted-fg hover:bg-accent-dim/60 hover:text-fg",
-            disabledNext && "opacity-40",
-          )}
-          style={CELL_FONT}
-        >
-          <Sparkles size={10} />
-          {progress.running
-            ? `${progress.done}/${progress.total}`
-            : nextUngradedWeek
-            ? `Next · ${nextUngradedWeek.week.weekLabel}`
-            : "All graded"}
-        </button>
+        {selectedCount > 0 ? (
+          <button
+            type="button"
+            onClick={gradeSelected}
+            disabled={disabledSelected}
+            title={
+              rubric.length === 0
+                ? "Define rubric in the dashboard widget first"
+                : selectedStats.ungraded === 0
+                ? "Selected weeks are already graded"
+                : `Grade ${selectedStats.ungraded} ungraded across ${selectedCount} week${selectedCount === 1 ? "" : "s"}`
+            }
+            className={cn(
+              "flex items-center gap-1 rounded-md border border-accent bg-accent/10 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.4px] text-accent hover:bg-accent/20",
+              disabledSelected && "opacity-40",
+            )}
+            style={CELL_FONT}
+          >
+            <Sparkles size={10} />
+            {progress.running
+              ? `${progress.done}/${progress.total}`
+              : `Grade ${selectedCount} sel.`}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={gradeNextWeek}
+            disabled={disabledNext}
+            title={
+              rubric.length === 0
+                ? "Define rubric in the dashboard widget first"
+                : !nextUngradedWeek
+                ? "All weeks graded"
+                : `Grade ${nextUngradedWeek.week.weekLabel} (${nextUngradedWeek.ungraded} ungraded)`
+            }
+            className={cn(
+              "flex items-center gap-1 rounded-md border border-border bg-bg px-1.5 py-0.5 text-[10px] uppercase tracking-[0.4px] text-muted-fg hover:bg-accent-dim/60 hover:text-fg",
+              disabledNext && "opacity-40",
+            )}
+            style={CELL_FONT}
+          >
+            <Sparkles size={10} />
+            {progress.running
+              ? `${progress.done}/${progress.total}`
+              : nextUngradedWeek
+              ? `Next · ${nextUngradedWeek.week.weekLabel}`
+              : "All graded"}
+          </button>
+        )}
       </div>
     </>
   );
@@ -289,6 +360,8 @@ function CodeRubricCell({
   grade,
   isListLoading,
   progress,
+  selected,
+  onToggleSelect,
 }) {
   const stats = useMemo(
     () => summariseVerdicts(weekPrs, verdictsByPr),
@@ -301,6 +374,11 @@ function CodeRubricCell({
     weekPrs.length === 0 ||
     stats.ungraded === 0 ||
     progress.running;
+
+  // Selection is disabled when the cell has no PRs OR every PR is
+  // already graded — picking such a week wouldn't fire anything.
+  const canSelect =
+    hasGithub && rubricReady && weekPrs.length > 0 && stats.ungraded > 0;
 
   // Preview chip — what the cell shows when collapsed.
   const preview =
@@ -323,9 +401,36 @@ function CodeRubricCell({
 
   return (
     <div
-      className="flex items-center justify-center border-b border-r border-border bg-bg/40 px-2 py-1.5"
+      className={cn(
+        "relative flex items-center justify-center border-b border-r border-border px-2 py-1.5",
+        selected ? "bg-accent/10" : "bg-bg/40",
+      )}
       style={{ minHeight: 52 }}
     >
+      {/* Multi-select checkbox — top-left corner of the cell. Doesn't
+          interfere with the popover trigger since it's positioned
+          absolutely and its own click handler stops propagation. */}
+      {canSelect ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect?.();
+          }}
+          aria-label={
+            selected ? `Deselect ${week.weekLabel}` : `Select ${week.weekLabel}`
+          }
+          aria-pressed={selected}
+          className={cn(
+            "absolute left-1 top-1 flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border transition-colors",
+            selected
+              ? "border-accent bg-accent text-accent-on"
+              : "border-border bg-bg text-transparent hover:border-accent/50",
+          )}
+        >
+          <Check size={9} strokeWidth={3} />
+        </button>
+      ) : null}
       <Popover.Root>
         <Popover.Trigger asChild>
           <button
