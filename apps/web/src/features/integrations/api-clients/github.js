@@ -47,6 +47,44 @@ async function resolveGithubUsername() {
   return _usernameRecoveryPromise;
 }
 
+/**
+ * Page through GitHub's search/issues endpoint until we've collected
+ * every result for the query, or we hit GitHub's hard 1000-result
+ * ceiling per search (it'll start 422-ing past that anyway).
+ *
+ * Why this exists: the rubric widget needs the user's FULL year of
+ * PRs to give an honest "Wnn · N/M graded" breakdown across past
+ * weeks. The previous single-page call dropped the older pages
+ * silently, which made the per-week dropdown look like only the
+ * last 3 weeks had any merges — even for authors with 150+ merged
+ * PRs/year.
+ *
+ * Pages are fetched serially. Search is rate-limited at 30 req/min
+ * per user; ten serial requests still finish in under a second,
+ * and parallel fetches would risk tripping the rate limit if the
+ * caller is one of several tiles loading at once.
+ */
+const SEARCH_PER_PAGE = 100;
+const SEARCH_MAX_RESULTS = 1000; // GitHub hard cap per search
+async function searchIssuesPaginated(rawQuery) {
+  const q = encodeURIComponent(rawQuery);
+  const out = [];
+  for (let page = 1; out.length < SEARCH_MAX_RESULTS; page++) {
+    const res = await proxyFetch(
+      "github",
+      `search/issues?q=${q}&per_page=${SEARCH_PER_PAGE}&page=${page}`,
+    );
+    const items = Array.isArray(res?.items) ? res.items : [];
+    if (items.length === 0) break;
+    out.push(...items);
+    if (items.length < SEARCH_PER_PAGE) break;
+    // Stop walking if we just hit the 1000-result ceiling; the next
+    // page would 422.
+    if (page * SEARCH_PER_PAGE >= SEARCH_MAX_RESULTS) break;
+  }
+  return out;
+}
+
 export const githubApi = {
   me: () => proxyFetch("github", "user"),
 
@@ -171,19 +209,15 @@ export const githubApi = {
    * unmerged PRs are also useful: they show "tried something, abandoned"
    * markers on the heatmap.
    *
-   * Single-page (per_page=100, no pagination) — sufficient for the YTD
-   * cadence of all current users. If anyone exceeds 100 PRs/year we'll
-   * paginate; the search-issues endpoint supports it without the 422 cap
-   * that bites the events feed.
+   * Paginated up to GitHub's 1000-result ceiling — heavy authors with
+   * >100 PRs/year (Crealogix scale) need this to see their full
+   * year's activity on the heatmap. Uses the shared helper that
+   * also backs `myPrsSince`.
    */
   myAuthoredPrsSince: async (isoDate) => {
     const day = (isoDate || "").slice(0, 10);
     const q = `is:pr author:@me created:>=${day}`;
-    const res = await proxyFetch(
-      "github",
-      `search/issues?q=${encodeURIComponent(q)}&per_page=100`,
-    );
-    return Array.isArray(res?.items) ? res.items : [];
+    return searchIssuesPaginated(q);
   },
 
   /**
@@ -191,27 +225,24 @@ export const githubApi = {
    * (but NOT drafts). Used by the CODE_RUBRIC widget to collect the full
    * "year-to-date" set for grading.
    *
-   * We run two small searches rather than `is:pr author:@me created:>=...`
-   * with no state filter, so each call returns clean results that we don't
-   * have to re-filter on the client for draft-state (search-issues doesn't
-   * expose the `draft` flag reliably).
+   * We run two searches (is:open, is:merged) rather than one no-state
+   * query so each call returns clean results we don't have to re-filter
+   * on the client for draft-state (search-issues doesn't expose the
+   * `draft` flag reliably). Each search is paginated to GitHub's
+   * `MAX_SEARCH_RESULTS` ceiling so heavy authors with >100 PRs/year
+   * (i.e. anyone who actually wants the rubric widget) get the full
+   * picture — without pagination we'd silently truncate the older
+   * pages and the per-week dropdown would only ever show the most-
+   * recent ~3 weeks of merges.
    */
   myPrsSince: async (isoDate) => {
     const day = (isoDate || "").slice(0, 10);
     const q = (extra) =>
       `is:pr author:@me -is:draft created:>=${day} ${extra}`;
-    const [open, merged] = await Promise.all([
-      proxyFetch(
-        "github",
-        `search/issues?q=${encodeURIComponent(q("is:open"))}&per_page=100`,
-      ),
-      proxyFetch(
-        "github",
-        `search/issues?q=${encodeURIComponent(q("is:merged"))}&per_page=100`,
-      ),
+    const [openItems, mergedItems] = await Promise.all([
+      searchIssuesPaginated(q("is:open")),
+      searchIssuesPaginated(q("is:merged")),
     ]);
-    const openItems = Array.isArray(open?.items) ? open.items : [];
-    const mergedItems = Array.isArray(merged?.items) ? merged.items : [];
     // De-dup by id just in case (same PR shouldn't appear in both, but
     // GitHub indexing drift occasionally does that for freshly-merged PRs).
     const seen = new Set();
