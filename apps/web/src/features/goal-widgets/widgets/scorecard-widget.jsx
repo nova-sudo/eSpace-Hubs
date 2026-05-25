@@ -496,8 +496,14 @@ function useRubricForSlot(component, parentGoal, index) {
       : seedCriteria
     : [];
   const firstReviewOnly = isRubric && component?.firstReviewOnly === true;
-  const scopeKey =
-    isRubric && parentGoal?.id ? `sc${index}:${parentGoal.id}` : null;
+  // No scopeKey: the rubric hash is `rubricHash(criteria, firstReviewOnly?)`.
+  // Two slots with identical criteria share the same cache entry,
+  // which is correct — the grader is deterministic, so the verdict
+  // is the same. Previously we used a per-slot scopeKey but that
+  // diverged from the modal's hash (the modal renders the standalone
+  // widget which has no scopeKey), so verdicts written from the row
+  // were invisible to the modal and vice-versa. Aligning on
+  // no-scopeKey lets row and modal share one cache.
   return useGradedPrs(
     isRubric && parentGoal?.id
       ? { goalId: parentGoal.id, context: { questions: [] } }
@@ -506,7 +512,6 @@ function useRubricForSlot(component, parentGoal, index) {
       enabled: isRubric && criteria.length > 0,
       criteriaOverride: criteria,
       firstReviewOnly,
-      scopeKey,
     },
   );
 }

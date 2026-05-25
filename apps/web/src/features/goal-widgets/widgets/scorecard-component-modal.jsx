@@ -217,15 +217,6 @@ function buildSyntheticSpec(parentSpec, component, index) {
   const title =
     component?.label?.trim() || prettyWidget(widget) || "Component";
 
-  // MUST match `useRubricForSlot` in scorecard-widget.jsx — both
-  // paths feed the same rubricHash so verdicts written by the modal's
-  // "Grade now" land under the same key the SCORECARD row reads.
-  // Format: `sc${index}:${parentGoalId}`.
-  const scopeKey =
-    widget === "CODE_RUBRIC" && parentSpec?.goalId
-      ? `sc${index}:${parentSpec.goalId}`
-      : null;
-
   return {
     schemaVersion: 1,
     goalId: subGoalId,
@@ -258,10 +249,9 @@ function buildSyntheticSpec(parentSpec, component, index) {
     untrackable: null,
     scorecard: null,
     firstReviewOnly: component?.firstReviewOnly === true,
-    // scopeKey is consumed by CodeRubricWidget when the modal renders
-    // it. Outside the SCORECARD context this field is null and the
-    // widget behaves identically to the standalone case.
-    scopeKey,
+    // No scopeKey — useRubricForSlot also runs without one, so both
+    // row and modal compute the same rubricHash and share verdicts.
+    // See the rationale in scorecard-widget.jsx#useRubricForSlot.
     classifiedAt: parentSpec?.classifiedAt || Date.now(),
   };
 }
