@@ -165,15 +165,15 @@ export function RecurringMilestoneWidget({
             </li>
           ) : null}
           {items.map((it) => (
-            <li key={it.id} className="group flex items-center gap-2">
+            <li key={it.id} className="group flex min-w-0 items-center gap-2">
               <input
                 type="checkbox"
                 checked={!!it.done}
                 onChange={() => toggle(it.id)}
-                className="h-3.5 w-3.5"
+                className="h-3.5 w-3.5 shrink-0"
               />
               <span
-                className="flex-1 truncate"
+                className="min-w-0 flex-1 truncate"
                 style={{
                   textDecoration: it.done ? "line-through" : "none",
                   color: it.done
@@ -263,10 +263,10 @@ function Headline({ pct, streak, cadence, periodLabel, variant }) {
     lineHeight: 1.4,
   };
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-baseline gap-2">
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <div
-          className="font-semibold leading-none"
+          className="shrink-0 font-semibold leading-none"
           style={{
             fontFamily: "var(--font-display)",
             fontSize: 36,
@@ -275,11 +275,11 @@ function Headline({ pct, streak, cadence, periodLabel, variant }) {
         >
           {pct}%
         </div>
-        <div style={monoStyle}>
+        <div className="min-w-0 truncate" style={monoStyle} title={periodLabel}>
           {periodLabel}
         </div>
       </div>
-      <div style={monoStyle}>
+      <div className="min-w-0 truncate" style={monoStyle}>
         {streak === 0
           ? `0 ${cadence === "quarterly" ? "quarters" : "periods"} complete in a row`
           : `${streak} ${cadenceNoun(cadence, streak)} complete in a row`}

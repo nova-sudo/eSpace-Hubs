@@ -3,9 +3,9 @@
 import { useEffect } from "react";
 import { GoalWidget } from "../goal-widget";
 import {
-  readContextFor,
-  saveContextFor,
-} from "@/features/goal-context";
+  buildSubSpec,
+  seedRubricContextIfNeeded,
+} from "./scorecard-subspec";
 
 /**
  * Modal that opens when a SCORECARD ComponentRow is clicked.
@@ -64,24 +64,13 @@ export function ScorecardComponentModal({
       : null;
 
   // Seed criteria for CODE_RUBRIC if context is empty for this sub-id.
-  // Re-seeds when the modal re-opens for a DIFFERENT component (key on
-  // index + parent goal id). When the user edits criteria via the
-  // rubric widget's own ContextCollector, the saveContextFor() call
-  // there updates the store — we don't overwrite it on subsequent
-  // opens because the `if (existing length > 0)` check short-circuits.
+  // Same helper the check-in surfaces use, so the modal and the
+  // check-in always seed under identical rules.
   useEffect(() => {
     if (!open) return;
     if (!subGoalId) return;
-    if (component?.widget !== "CODE_RUBRIC") return;
-    const existing = readContextFor(subGoalId);
-    const hasCriteria =
-      Array.isArray(existing["quality-standards"]) &&
-      existing["quality-standards"].length > 0;
-    if (hasCriteria) return;
-    const seed = component.manual?.items || [];
-    if (seed.length === 0) return;
-    saveContextFor(subGoalId, { "quality-standards": seed });
-  }, [open, subGoalId, component?.widget, component?.manual?.items]);
+    seedRubricContextIfNeeded(subGoalId, component);
+  }, [open, subGoalId, component]);
 
   // ESC closes — bind globally for the duration the modal is open.
   useEffect(() => {
@@ -95,7 +84,7 @@ export function ScorecardComponentModal({
 
   if (!open || !component) return null;
 
-  const syntheticSpec = buildSyntheticSpec(parentSpec, component, index);
+  const syntheticSpec = buildSubSpec(parentSpec, component, index);
   const syntheticGoal = {
     ...(parentGoal || {}),
     id: subGoalId,
@@ -199,70 +188,6 @@ function ModalHeader({ label, parentTitle, onClose }) {
       </button>
     </div>
   );
-}
-
-/**
- * Translate a scorecard component into a full ValidatedSpec shape so
- * the registered widget Component can render it like a standalone
- * spec. Keep this in lockstep with `packages/shared/src/goal-specs`
- * — anything the widget's body reads off the spec object needs a
- * (sensible) default here.
- */
-function buildSyntheticSpec(parentSpec, component, index) {
-  const subGoalId =
-    parentSpec?.goalId != null
-      ? `${parentSpec.goalId}::sc${index}`
-      : `scorecard-component-${index}`;
-  const widget = component?.widget || "MERGED_COUNT";
-  const title =
-    component?.label?.trim() || prettyWidget(widget) || "Component";
-
-  return {
-    schemaVersion: 1,
-    goalId: subGoalId,
-    title,
-    reasoning: "",
-    kind: component?.kind || "auto",
-    widget,
-    source: component?.source || null,
-    manual: component?.manual || null,
-    // CODE_RUBRIC needs context.questions[*].id === "quality-standards"
-    // for `resolveRubric(spec, answers)` to find the criteria. We
-    // attach the question here so the existing standalone widget
-    // logic just works — the criteria live in the goal-context store
-    // (seeded above) and the widget pulls them via useGoalContext.
-    context:
-      widget === "CODE_RUBRIC"
-        ? {
-            required: true,
-            questions: [
-              {
-                id: "quality-standards",
-                prompt: "What are your code quality standards?",
-                kind: "list",
-                placeholder: "e.g. test coverage, naming, docs",
-              },
-            ],
-          }
-        : null,
-    delegated: null,
-    untrackable: null,
-    scorecard: null,
-    firstReviewOnly: component?.firstReviewOnly === true,
-    // No scopeKey — useRubricForSlot also runs without one, so both
-    // row and modal compute the same rubricHash and share verdicts.
-    // See the rationale in scorecard-widget.jsx#useRubricForSlot.
-    classifiedAt: parentSpec?.classifiedAt || Date.now(),
-  };
-}
-
-function prettyWidget(widget) {
-  if (typeof widget !== "string") return "";
-  return widget
-    .toLowerCase()
-    .split("_")
-    .map((w) => w[0]?.toUpperCase() + w.slice(1))
-    .join(" ");
 }
 
 function truncate(s, max) {
