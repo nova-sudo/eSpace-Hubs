@@ -58,6 +58,12 @@ export const integrationsValidator: Document = {
       lastUsedAt: { bsonType: ["date", "null"] },
       lastErrorAt: { bsonType: ["date", "null"] },
       lastError: { bsonType: ["string", "null"], maxLength: 2_000 },
+      // Cleartext identity metadata — non-secret. Not in `required`:
+      // rows written before these fields shipped legitimately lack them.
+      username: { bsonType: ["string", "null"], maxLength: 200 },
+      displayName: { bsonType: ["string", "null"], maxLength: 200 },
+      avatarUrl: { bsonType: ["string", "null"], maxLength: 2_000 },
+      team: { bsonType: ["string", "null"], maxLength: 200 },
     },
   },
 };

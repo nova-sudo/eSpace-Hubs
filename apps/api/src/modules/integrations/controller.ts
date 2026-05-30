@@ -65,7 +65,28 @@ const upsertSchema = z.object({
   endpointUrl: z.string().url().max(1_000).nullable().optional(),
   scopes: z.array(z.string().max(200)).max(50).default([]),
   expiresAt: z.string().datetime({ offset: true }).nullable().optional(),
+  // Cleartext identity metadata — non-secret. Connect flows send these
+  // alongside the token in a follow-up save (after the provider's
+  // /user lookup). Optional so the first token-only save still passes.
+  username: z.string().max(200).nullable().optional(),
+  displayName: z.string().max(200).nullable().optional(),
+  avatarUrl: z.string().max(2_000).nullable().optional(),
+  team: z.string().max(200).nullable().optional(),
 });
+
+// Token-free profile update (PATCH). Identity metadata only — never
+// touches token bytes, so it can't be used to swap a credential. Used
+// by the github username self-heal path and any future "rename my
+// connection" UI. `.strict()` rejects stray token fields outright.
+const profileSchema = z
+  .object({
+    label: z.string().max(200).optional(),
+    username: z.string().max(200).nullable().optional(),
+    displayName: z.string().max(200).nullable().optional(),
+    avatarUrl: z.string().max(2_000).nullable().optional(),
+    team: z.string().max(200).nullable().optional(),
+  })
+  .strict();
 
 const providerIdParam = (req: Request): string => {
   const { providerId } = req.params;
@@ -96,6 +117,11 @@ interface PublicIntegration {
   hasAccessToken: boolean;
   hasApiToken: boolean;
   hasRefreshToken: boolean;
+  // Cleartext identity — safe to echo back (non-secret).
+  username: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+  team: string | null;
 }
 
 function toPublic(i: Integration): PublicIntegration {
@@ -114,6 +140,10 @@ function toPublic(i: Integration): PublicIntegration {
     hasAccessToken: !!i.encryptedToken,
     hasApiToken: !!i.encryptedApiToken,
     hasRefreshToken: !!i.refreshToken,
+    username: i.username ?? null,
+    displayName: i.displayName ?? null,
+    avatarUrl: i.avatarUrl ?? null,
+    team: i.team ?? null,
   };
 }
 
@@ -280,6 +310,30 @@ export async function upsertIntegrationHandler(
     const now = new Date();
     const expiresAt = payload.expiresAt ? new Date(payload.expiresAt) : null;
 
+    // Credential fields use REPLACE semantics (a connect submits the
+    // full token set). Identity fields MERGE — they arrive in a
+    // separate follow-up save after the provider's /user lookup, so a
+    // token-only save must not null them out. Only set identity keys
+    // the caller actually provided.
+    const set: Partial<Integration> = {
+      label: payload.label || payload.providerId,
+      encryptedToken,
+      encryptedApiToken,
+      refreshToken,
+      email: payload.email ?? null,
+      endpointUrl: payload.endpointUrl ?? null,
+      scopes: payload.scopes,
+      connectedAt: now,
+      expiresAt,
+      // Reset error state on a fresh connect.
+      lastErrorAt: null,
+      lastError: null,
+    };
+    if (payload.username !== undefined) set.username = payload.username;
+    if (payload.displayName !== undefined) set.displayName = payload.displayName;
+    if (payload.avatarUrl !== undefined) set.avatarUrl = payload.avatarUrl;
+    if (payload.team !== undefined) set.team = payload.team;
+
     const col = await getIntegrationsCollection();
     const result = await col.findOneAndUpdate(
       {
@@ -288,20 +342,7 @@ export async function upsertIntegrationHandler(
         providerId: payload.providerId,
       },
       {
-        $set: {
-          label: payload.label || payload.providerId,
-          encryptedToken,
-          encryptedApiToken,
-          refreshToken,
-          email: payload.email ?? null,
-          endpointUrl: payload.endpointUrl ?? null,
-          scopes: payload.scopes,
-          connectedAt: now,
-          expiresAt,
-          // Reset error state on a fresh connect.
-          lastErrorAt: null,
-          lastError: null,
-        },
+        $set: set,
         $setOnInsert: {
           orgId: session.orgId,
           userId: session.userId,
@@ -425,6 +466,65 @@ export async function disconnectIntegrationHandler(
       });
     }
     res.json({ ok: true, deleted: result.deletedCount });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── PATCH /api/v1/integrations/:providerId ──────────────────────────
+
+/**
+ * Update non-secret identity metadata on an EXISTING connection
+ * (username / displayName / avatarUrl / team / label). Never creates a
+ * row and never touches token bytes — `profileSchema.strict()` rejects
+ * any credential field, so this can't be abused to swap a token via a
+ * token-free request.
+ *
+ * Primary caller: the frontend's github username self-heal, which
+ * back-fills `username` for rows connected before identity was
+ * persisted server-side. 404 when the provider isn't connected.
+ *
+ * No audit entry — this is cosmetic profile metadata, not a
+ * security-relevant state change like connect/disconnect.
+ */
+export async function patchIntegrationProfileHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const providerId = providerIdParam(req);
+    const patch = profileSchema.parse(req.body);
+
+    const set: Partial<Integration> = {};
+    if (patch.label !== undefined) set.label = patch.label || providerId;
+    if (patch.username !== undefined) set.username = patch.username;
+    if (patch.displayName !== undefined) set.displayName = patch.displayName;
+    if (patch.avatarUrl !== undefined) set.avatarUrl = patch.avatarUrl;
+    if (patch.team !== undefined) set.team = patch.team;
+
+    if (Object.keys(set).length === 0) {
+      throw new HttpError(
+        400,
+        "validation_error",
+        "No profile fields to update.",
+      );
+    }
+
+    const col = await getIntegrationsCollection();
+    const result = await col.findOneAndUpdate(
+      { orgId: session.orgId, userId: session.userId, providerId },
+      { $set: set },
+      { returnDocument: "after" }, // no upsert — profile attaches to a live connection only
+    );
+    if (!result) {
+      throw new HttpError(404, "not_found", `Not connected to ${providerId}.`);
+    }
+    res.json(toPublic(result));
   } catch (err) {
     next(err);
   }

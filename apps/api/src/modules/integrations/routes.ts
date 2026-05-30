@@ -4,6 +4,7 @@
  *   GET     /                            authed — list public shape (no tokens)
  *   POST    /                            authed — upsert (encrypts tokens)
  *   GET     /:providerId                  authed — single resource
+ *   PATCH   /:providerId                  authed — update identity metadata (no tokens)
  *   DELETE  /:providerId                  authed — disconnect
  *
  *   ANY     /proxy/github/*                authed — proxy to api.github.com
@@ -25,6 +26,7 @@ import {
   disconnectIntegrationHandler,
   getIntegrationHandler,
   listIntegrationsHandler,
+  patchIntegrationProfileHandler,
   upsertIntegrationHandler,
 } from "./controller.js";
 import {
@@ -51,6 +53,11 @@ for (const method of ["get", "post"] as const) {
 
 // Per-provider CRUD — order matters, must come after /proxy/*.
 integrationsRouter.get("/:providerId", requireAuth(), getIntegrationHandler);
+integrationsRouter.patch(
+  "/:providerId",
+  requireAuth(),
+  patchIntegrationProfileHandler,
+);
 integrationsRouter.delete(
   "/:providerId",
   requireAuth(),
