@@ -7,6 +7,7 @@ export {
   disconnectProvider,
   disconnectAll,
   isConnected,
+  getIntegrationsState,
 } from "./integrations-store";
 export { useIntegrations } from "./use-integrations";
 export * from "./api-clients";

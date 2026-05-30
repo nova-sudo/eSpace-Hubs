@@ -156,6 +156,14 @@ const importSchema = z.object({
           label: z.string().max(200).optional(),
           connectedAt: z.number().int().positive().optional(),
           expiresAt: z.number().int().positive().optional(),
+          // Cleartext identity metadata from the legacy localStorage
+          // shape — carried through so a one-shot import reconstructs the
+          // header chip + username-dependent api-clients without a proxy
+          // round-trip on the new device.
+          username: z.string().max(200).optional(),
+          displayName: z.string().max(200).optional(),
+          avatarUrl: z.string().max(2_000).optional(),
+          team: z.string().max(200).optional(),
         })
         .passthrough(),
     )
@@ -500,6 +508,26 @@ export async function importHandler(
         const expiresAt =
           typeof raw.expiresAt === "number" ? new Date(raw.expiresAt) : null;
 
+        const set: Partial<Integration> = {
+          label: raw.label ?? providerId,
+          encryptedToken,
+          encryptedApiToken,
+          refreshToken,
+          email: raw.email ?? null,
+          endpointUrl: raw.endpointUrl ?? null,
+          scopes: raw.scopes ?? [],
+          connectedAt,
+          expiresAt,
+          lastErrorAt: null,
+          lastError: null,
+        };
+        // Carry identity metadata when the legacy payload had it. Set-if-
+        // present so we never overwrite a richer existing row with nulls.
+        if (typeof raw.username === "string") set.username = raw.username;
+        if (typeof raw.displayName === "string") set.displayName = raw.displayName;
+        if (typeof raw.avatarUrl === "string") set.avatarUrl = raw.avatarUrl;
+        if (typeof raw.team === "string") set.team = raw.team;
+
         ops.push({
           updateOne: {
             filter: {
@@ -508,19 +536,7 @@ export async function importHandler(
               providerId,
             },
             update: {
-              $set: {
-                label: raw.label ?? providerId,
-                encryptedToken,
-                encryptedApiToken,
-                refreshToken,
-                email: raw.email ?? null,
-                endpointUrl: raw.endpointUrl ?? null,
-                scopes: raw.scopes ?? [],
-                connectedAt,
-                expiresAt,
-                lastErrorAt: null,
-                lastError: null,
-              },
+              $set: set,
               $setOnInsert: {
                 orgId: session.orgId,
                 userId: session.userId,

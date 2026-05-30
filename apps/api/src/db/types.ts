@@ -657,6 +657,24 @@ export interface Integration {
   lastErrorAt: Date | null;
   /** Last error message — short, for the "Reconnect" banner. */
   lastError: string | null;
+
+  // ─ Cleartext identity metadata. NOT secrets — the connected user's
+  //   handle / display name / avatar / team on the provider. Surfaced
+  //   in the header chip and used by api-clients that need the username
+  //   (gitlab reviewRequests, github events). Persisted so a fresh
+  //   device / cleared-localStorage reconstructs identity from the
+  //   server instead of re-deriving it via a proxy round-trip.
+  //
+  //   All optional/nullable for backward-compat with rows created
+  //   before these fields shipped — readers (toPublic) default to null.
+  /** Provider username / handle (e.g. GitHub login, GitLab username). */
+  username?: string | null;
+  /** Human-readable display name from the provider profile. */
+  displayName?: string | null;
+  /** Avatar image URL from the provider profile. */
+  avatarUrl?: string | null;
+  /** Team / squad label, when the user supplies one. */
+  team?: string | null;
 }
 
 // ─── companion devices + pairings (Phase 3c) ─────────────────────────
