@@ -1,37 +1,42 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import {
-  EVIDENCE_CHANGE_EVENT,
+  fetchEvidence,
+  getEvidenceServerSnapshot,
+  getEvidenceSnapshot,
+  getEvidenceState,
   readStarred,
-  toggleStar as storeToggle,
+  subscribeEvidence,
+  toggleStar,
 } from "./evidence-store";
+import { useSession } from "@/features/auth";
 import {
   useCombinedMergedSince,
   useJiraTickets,
 } from "@/features/integrations";
 import { isoDaysAgo } from "@/lib/date";
 
-function subscribe(callback) {
-  if (typeof window === "undefined") return () => {};
-  const handler = () => callback();
-  window.addEventListener(EVIDENCE_CHANGE_EVENT, handler);
-  window.addEventListener("storage", handler);
-  return () => {
-    window.removeEventListener(EVIDENCE_CHANGE_EVENT, handler);
-    window.removeEventListener("storage", handler);
-  };
-}
-function getSnapshot() {
-  return JSON.stringify(readStarred());
-}
-function getServerSnapshot() {
-  return "[]";
-}
-
+/**
+ * Subscribe to the in-memory evidence store + trigger a one-shot
+ * hydration on first mount per session. Same pattern as
+ * useSnapshots / useGradedPrs — idempotent fetch, in-flight promise
+ * is shared across concurrent consumers.
+ */
 export function useStarredEvidence() {
-  const raw = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  return JSON.parse(raw);
+  useSyncExternalStore(
+    subscribeEvidence,
+    getEvidenceSnapshot,
+    getEvidenceServerSnapshot,
+  );
+  const { user, loading: sessionLoading } = useSession();
+  useEffect(() => {
+    if (sessionLoading || !user) return;
+    const s = getEvidenceState();
+    if (s.fetched || s.loading) return;
+    void fetchEvidence();
+  }, [user, sessionLoading]);
+  return readStarred();
 }
 
 /**
@@ -71,7 +76,7 @@ export function useEvidenceCandidates() {
 }
 
 export function toggleEvidence(item) {
-  storeToggle(item);
+  toggleStar(item);
 }
 
 function shortDate(iso) {

@@ -15,6 +15,7 @@ import { goalContextValidator } from "./goal-context.schema.js";
 import { goalInputsValidator } from "./goal-inputs.schema.js";
 import { snapshotsValidator } from "./snapshots.schema.js";
 import { gradingVerdictsValidator } from "./grading-verdicts.schema.js";
+import { evidenceValidator } from "./evidence.schema.js";
 import { integrationsValidator } from "./integrations.schema.js";
 import { hubConfigsValidator } from "./hub-configs.schema.js";
 import { companionDevicesValidator } from "./companion-devices.schema.js";
@@ -38,6 +39,7 @@ export const COLLECTION_DEFS: readonly CollectionDef[] = [
   { name: "goal_inputs", validator: goalInputsValidator },
   { name: "snapshots", validator: snapshotsValidator },
   { name: "grading_verdicts", validator: gradingVerdictsValidator },
+  { name: "evidence", validator: evidenceValidator },
   { name: "integrations", validator: integrationsValidator },
   { name: "hub_configs", validator: hubConfigsValidator },
   { name: "companion_devices", validator: companionDevicesValidator },
