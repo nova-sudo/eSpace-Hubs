@@ -30,8 +30,12 @@
 
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { saveSnapshot } from "./snapshots-store";
-import { readSnapshots } from "./snapshots-store";
+import {
+  getSnapshotsState,
+  readSnapshots,
+  saveSnapshot,
+} from "./snapshots-store";
+import { useSnapshots } from "./use-snapshots";
 import { captureGoalReadings } from "./capture-readings";
 import { useGoals } from "@/features/goals";
 import { useGoalSpecs } from "@/features/goal-specs";
@@ -113,6 +117,16 @@ function priorWeekReadings(snapshots, currentWeekLabel) {
  * value; side effects only (writes a snapshot when one is missing).
  */
 export function useAutoSnapshot() {
+  // Mount useSnapshots so this hook participates in the
+  // hydration lifecycle — its effect kicks off the GET on
+  // session establishment, and the hydration-state check
+  // inside our own effect below waits for `fetched: true`
+  // before deciding whether to capture. Without this, a
+  // fresh-session auto-capture would race the hydration and
+  // fire a wasted POST (the server's manual-wins dedupes it,
+  // but it's noise). The `snapshots` array is used as an
+  // effect dep so this hook re-evaluates once hydration lands.
+  const { snapshots: snapshotsTick } = useSnapshots();
   const { goals } = useGoals();
   const { specs } = useGoalSpecs();
   const { data: mrs } = useCombinedMergedSince(isoDaysAgo(120));
@@ -135,6 +149,14 @@ export function useAutoSnapshot() {
     // appear later when data lands, but the "initial empty" snapshot
     // would shadow it (already-exists check).
     if (!mrs || !events) return;
+
+    // Wait for hydration of the snapshot store before deciding. The
+    // useSnapshots() call above triggers the GET on session
+    // establishment; we sit out until it lands. Without this gate the
+    // first render after sign-in would see an empty `existing` and
+    // fire a duplicate auto-capture which the server dedupes via
+    // manual-wins — correct outcome, wasted POST.
+    if (!getSnapshotsState().fetched) return;
 
     const week = resolveCompletedWorkWeek();
     const existing = readSnapshots();
@@ -184,5 +206,5 @@ export function useAutoSnapshot() {
     // Friendly confirmation — keeps the system feeling alive without
     // being noisy. Only fires on the actual capture.
     toast.success(`Captured weekly snapshot — ${week.weekLabel}`);
-  }, [goals, specs, mrs, events, jira]);
+  }, [goals, specs, mrs, events, jira, snapshotsTick]);
 }

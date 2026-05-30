@@ -3,7 +3,6 @@ import { Inter_Tight, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { SessionProvider } from "@/features/auth";
 import { CompanionApiOriginProvider } from "@/features/companion";
-import { SnapshotsSync } from "@/features/snapshots";
 import { ContextSync } from "@/features/goal-context";
 import { InputsSync } from "@/features/goal-inputs";
 import { SpecsSync } from "@/features/goal-specs";
@@ -60,10 +59,9 @@ export default function RootLayout({ children }) {
           {/* The remaining *Sync components are scheduled to be removed
               feature-by-feature alongside goals (the localStorage-cache
               architecture they implement is being replaced by direct
-              API fetches inside each feature's hook). Goals and grading
-              already use the API-direct pattern — their hooks self-
-              hydrate on session establishment. */}
-          <SnapshotsSync />
+              API fetches inside each feature's hook). Goals, grading,
+              and snapshots already use the API-direct pattern — their
+              hooks self-hydrate on session establishment. */}
           <ContextSync />
           <InputsSync />
           <SpecsSync />
