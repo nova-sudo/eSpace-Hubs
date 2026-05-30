@@ -564,6 +564,43 @@ export interface GradingVerdict {
   provider: string | null;
 }
 
+// ─── evidence (user-starred review artifacts) ───────────────────────
+
+/**
+ * One row per artifact the user explicitly starred for their review
+ * export. Per-user scoped; an artifact (PR / ticket) starred by user A
+ * is invisible to user B even within the same org. Typical scale: 5–20
+ * items per user per review cycle.
+ *
+ * `id` is the artifact's stable identifier — usually the upstream
+ * provider's primary key prefixed with the kind:
+ *   "mr-12345"     (GitHub PR / GitLab MR)
+ *   "ticket-PROJ-42" (Jira ticket)
+ *   "review-…"     (review comment cluster)
+ * The unique (orgId, userId, id) index dedupes re-stars.
+ */
+
+export const ALL_EVIDENCE_KINDS = ["merged-pr", "ticket", "review"] as const;
+export type EvidenceKind = (typeof ALL_EVIDENCE_KINDS)[number];
+
+export interface EvidenceItem {
+  _id: ObjectId;
+  orgId: ObjectId;
+  userId: ObjectId;
+  /** Stable artifact id — see header doc for format. */
+  id: string;
+  kind: EvidenceKind;
+  /** Display ref shown in the UI ("!456", "PROJ-42"). */
+  ref: string;
+  /** Human-readable title from the upstream artifact. */
+  title: string;
+  /** Display date string (already pre-formatted by the frontend). */
+  date: string;
+  /** Optional user-written impact note. Empty string when unused. */
+  impact: string;
+  starredAt: Date;
+}
+
 // ─── integrations (per-user provider tokens) ────────────────────────
 
 /**

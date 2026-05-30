@@ -21,6 +21,7 @@ import type {
   AuthToken,
   CompanionDevice,
   CompanionPairing,
+  EvidenceItem,
   GoalContextDoc,
   GoalInputEntry,
   GoalSpecRecord,
@@ -100,6 +101,13 @@ export async function getGradingVerdictsCollection(): Promise<
 > {
   const db = await getDb();
   return db.collection<GradingVerdict>("grading_verdicts");
+}
+
+export async function getEvidenceCollection(): Promise<
+  Collection<EvidenceItem>
+> {
+  const db = await getDb();
+  return db.collection<EvidenceItem>("evidence");
 }
 
 export async function getIntegrationsCollection(): Promise<
@@ -357,6 +365,24 @@ async function ensureIndexes(): Promise<void> {
       key: { gradedAt: 1 },
       expireAfterSeconds: 15_552_000,
       name: "grading_verdicts_ttl",
+    },
+  ]);
+
+  const evidence = await getEvidenceCollection();
+  await evidence.createIndexes([
+    {
+      // One row per (orgId, userId, id). Re-starring the same artifact
+      // upserts the existing row (refreshing title / impact / date)
+      // rather than creating a duplicate.
+      key: { orgId: 1, userId: 1, id: 1 },
+      unique: true,
+      name: "evidence_org_user_id_uniq",
+    },
+    {
+      // "Show me what I starred recently" — the evidence page loads
+      // newest-first by starredAt.
+      key: { orgId: 1, userId: 1, starredAt: -1 },
+      name: "evidence_org_user_starred",
     },
   ]);
 
