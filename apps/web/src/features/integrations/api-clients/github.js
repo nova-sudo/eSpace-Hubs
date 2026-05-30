@@ -103,14 +103,21 @@ export const githubApi = {
   /**
    * PRs authored by the current user and merged at/after isoDate.
    * Uses GitHub issue-search, which returns `pull_request.merged_at` on each hit.
+   *
+   * Paginated to GitHub's 1000-result search ceiling. Heavy authors
+   * (Crealogix scale) merge well over 100 PRs across the backfill window
+   * (a year), and this list is what drives the snapshot "merged" count +
+   * the weekly buckets in `synthesiseWeek`. The previous single 100-item
+   * page got fully consumed by the two most recent weeks, so every older
+   * week synthesised as 0 merged even though the PRs existed — the exact
+   * failure `myPrsSince` already paginates around. Returns the raw search
+   * items array; `normalizeGithubMergedSearch` accepts an array or a
+   * `{ items }` envelope.
    */
   myMergedSince: (isoDate) => {
     const day = (isoDate || "").slice(0, 10);
     const q = `is:pr author:@me is:merged merged:>=${day}`;
-    return proxyFetch(
-      "github",
-      `search/issues?q=${encodeURIComponent(q)}&per_page=100`,
-    );
+    return searchIssuesPaginated(q);
   },
 
   /**
