@@ -3,9 +3,6 @@ import { Inter_Tight, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { SessionProvider } from "@/features/auth";
 import { CompanionApiOriginProvider } from "@/features/companion";
-import { ContextSync } from "@/features/goal-context";
-import { InputsSync } from "@/features/goal-inputs";
-import { SpecsSync } from "@/features/goal-specs";
 import { MigrateOnce } from "@/features/migrate";
 import { HubsFetcher } from "@/features/hubs";
 
@@ -47,24 +44,19 @@ export default function RootLayout({ children }) {
           {/* MigrateOnce runs the first-session localStorage→API upload
               for devices that carry pre-M7 legacy data. It's silent
               on devices with no legacy data and idempotent on the
-              server side. Sits alongside the per-store <*Sync /> pulls,
-              which only replace local state when the server has
-              content — so the pull/migrate race is safe. */}
+              server side. Reads the raw legacy localStorage keys
+              directly, so it's independent of the now API-direct
+              feature stores. */}
           <MigrateOnce />
           {/* M10.1: fetches /api/v1/hubs/me once per authenticated
               session into the hubs store. The hub layout
               (app/[hub]/layout.jsx) and the root redirect read from
               that store synchronously. */}
           <HubsFetcher />
-          {/* The remaining *Sync components are scheduled to be removed
-              feature-by-feature alongside goals (the localStorage-cache
-              architecture they implement is being replaced by direct
-              API fetches inside each feature's hook). Goals, grading,
-              and snapshots already use the API-direct pattern — their
-              hooks self-hydrate on session establishment. */}
-          <ContextSync />
-          <InputsSync />
-          <SpecsSync />
+          {/* All feature stores are now API-direct: goals, grading,
+              snapshots, evidence, goal-specs, goal-context, and
+              goal-inputs each self-hydrate inside their consuming hooks
+              on session establishment — no standalone <*Sync /> mounts. */}
           {children}
         </SessionProvider>
         <Toaster
