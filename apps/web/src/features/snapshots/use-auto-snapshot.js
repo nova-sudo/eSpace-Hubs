@@ -38,7 +38,7 @@ import {
 import { useSnapshots } from "./use-snapshots";
 import { captureGoalReadings } from "./capture-readings";
 import { useGoals } from "@/features/goals";
-import { useGoalSpecs } from "@/features/goal-specs";
+import { useGoalSpecs, getSpecsState } from "@/features/goal-specs";
 import {
   avgReviewerComments,
   countMrComments,
@@ -49,7 +49,11 @@ import {
   useCombinedMergedSince,
   useJiraTickets,
 } from "@/features/integrations";
-import { readInputs } from "@/features/goal-inputs";
+import {
+  readInputs,
+  useAllGoalInputs,
+  getInputsState,
+} from "@/features/goal-inputs";
 import { isoDaysAgo, weekLabel, DAY_MS } from "@/lib/date";
 
 const HOUR = 60 * 60 * 1000;
@@ -129,6 +133,10 @@ export function useAutoSnapshot() {
   const { snapshots: snapshotsTick } = useSnapshots();
   const { goals } = useGoals();
   const { specs } = useGoalSpecs();
+  // Subscribe to the inputs store so this hook re-evaluates once that
+  // store hydrates — the capture reads readInputs() and would otherwise
+  // snapshot empty manual-input readings on a fresh session.
+  const inputsTick = useAllGoalInputs();
   const { data: mrs } = useCombinedMergedSince(isoDaysAgo(120));
   const { data: events } = useCombinedEventsSince(isoDaysAgo(90));
   const { data: jira } = useJiraTickets();
@@ -157,6 +165,13 @@ export function useAutoSnapshot() {
     // fire a duplicate auto-capture which the server dedupes via
     // manual-wins — correct outcome, wasted POST.
     if (!getSnapshotsState().fetched) return;
+
+    // Likewise wait for the specs + inputs stores (now API-direct) to
+    // hydrate. captureGoalReadings reads `specs` and readInputs(); if
+    // either is still empty we'd snapshot all-zero goal readings and the
+    // run-once guard would never let the correct capture replace it.
+    if (!getSpecsState().fetched) return;
+    if (!getInputsState().fetched) return;
 
     const week = resolveCompletedWorkWeek();
     const existing = readSnapshots();
@@ -206,5 +221,5 @@ export function useAutoSnapshot() {
     // Friendly confirmation — keeps the system feeling alive without
     // being noisy. Only fires on the actual capture.
     toast.success(`Captured weekly snapshot — ${week.weekLabel}`);
-  }, [goals, specs, mrs, events, jira, snapshotsTick]);
+  }, [goals, specs, mrs, events, jira, snapshotsTick, inputsTick]);
 }

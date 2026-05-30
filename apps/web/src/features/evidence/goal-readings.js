@@ -37,9 +37,10 @@ import {
   cadenceWindowLabel,
   computeCompliance,
   readInputs,
+  useAllGoalInputs,
 } from "@/features/goal-inputs";
 import { goalCompliance, useSnapshots } from "@/features/snapshots";
-import { readContextFor } from "@/features/goal-context";
+import { readContextFor, useAllGoalContext } from "@/features/goal-context";
 import { isoDaysAgo } from "@/lib/date";
 import { rubricHash, readVerdict } from "@/features/grading";
 
@@ -68,6 +69,13 @@ export function useGoalReadings(days = 90) {
   const { data: events } = useCombinedEventsSince(isoDaysAgo(days));
   const { data: jira } = useJiraTickets();
   const { snapshots } = useSnapshots();
+  // Subscribe to the API-direct inputs + context stores. The memo below
+  // reads readInputs() and readContextFor() synchronously, so it must
+  // recompute when either store hydrates or changes — these ticks are
+  // the dep that drives that. Mounting them also triggers their one-shot
+  // hydration on session establishment.
+  const inputsTick = useAllGoalInputs();
+  const contextTick = useAllGoalContext();
 
   return useMemo(() => {
     const out = [];
@@ -93,7 +101,8 @@ export function useGoalReadings(days = 90) {
       }
     }
     return out;
-  }, [goals, specs, merged, events, jira, snapshots, days]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goals, specs, merged, events, jira, snapshots, days, inputsTick, contextTick]);
 }
 
 function pushReading(out, goal, level, ctx) {

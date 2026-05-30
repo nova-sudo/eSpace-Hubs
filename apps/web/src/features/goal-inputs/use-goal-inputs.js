@@ -1,31 +1,39 @@
 "use client";
 
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import {
-  INPUTS_CHANGE_EVENT,
   appendEntry,
-  readInputs,
-  removeEntry,
   clearGoalEntries,
+  fetchInputs,
+  getInputsServerSnapshot,
+  getInputsSnapshot,
+  getInputsState,
+  readGoalEntries,
+  removeEntry,
+  subscribeInputs,
 } from "./inputs-store";
+import { useSession } from "@/features/auth";
 
-function subscribe(callback) {
-  if (typeof window === "undefined") return () => {};
-  const handler = () => callback();
-  window.addEventListener(INPUTS_CHANGE_EVENT, handler);
-  window.addEventListener("storage", handler);
-  return () => {
-    window.removeEventListener(INPUTS_CHANGE_EVENT, handler);
-    window.removeEventListener("storage", handler);
-  };
-}
-
-function getSnapshot() {
-  return JSON.stringify(readInputs());
-}
-
-function getServerSnapshot() {
-  return JSON.stringify({});
+/**
+ * Shared hydration primitive — subscribe to the API-direct store's
+ * monotonic tick and kick off a one-shot GET on session establishment.
+ * Returns the tick so callers can use it as a memo dep. Idempotent:
+ * concurrent consumers share the in-flight promise inside fetchInputs().
+ */
+function useInputsStore() {
+  const tick = useSyncExternalStore(
+    subscribeInputs,
+    getInputsSnapshot,
+    getInputsServerSnapshot,
+  );
+  const { user, loading: sessionLoading } = useSession();
+  useEffect(() => {
+    if (sessionLoading || !user) return;
+    const s = getInputsState();
+    if (s.fetched || s.loading) return;
+    void fetchInputs();
+  }, [user, sessionLoading]);
+  return tick;
 }
 
 /**
@@ -43,22 +51,18 @@ function getServerSnapshot() {
  *   - clear()                   : wipe every entry for this goal
  */
 export function useGoalInputs(goalId) {
-  const raw = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const tick = useInputsStore();
 
-  const entries = useMemo(() => {
-    if (!goalId) return [];
-    const state = JSON.parse(raw);
-    const realList = state[goalId];
-    if (Array.isArray(realList) && realList.length > 0) return realList;
-    return [];
-  }, [raw, goalId]);
+  const entries = useMemo(
+    () => (goalId ? readGoalEntries(goalId) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [goalId, tick],
+  );
 
   const append = useCallback(
     (value, note, ts) =>
       appendEntry(
-        ts != null
-          ? { goalId, value, note, ts }
-          : { goalId, value, note },
+        ts != null ? { goalId, value, note, ts } : { goalId, value, note },
       ),
     [goalId],
   );
@@ -72,4 +76,16 @@ export function useGoalInputs(goalId) {
     remove,
     clear,
   };
+}
+
+/**
+ * Hydration-only hook for whole-map readers (snapshots auto-capture /
+ * backfill, evidence goal-readings). Returns the store tick so a
+ * subscribing component re-renders when the inputs store hydrates or
+ * changes; the consumer reads the actual entries via readInputs() inside
+ * its own memo, keyed on this tick. Mounting it also guarantees the
+ * one-shot fetch fires even when no per-goal useGoalInputs() is mounted.
+ */
+export function useAllGoalInputs() {
+  return useInputsStore();
 }

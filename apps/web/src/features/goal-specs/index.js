@@ -11,7 +11,9 @@
  *     keep importing from `@/features/goal-specs` without churn
  *   - store CRUD for the AI classifier and admin flows
  *   - hook for React consumers
- *   - <SpecsSync /> lifecycle component
+ *
+ * Hydration is driven by the consuming hook (useGoalSpecs) on session
+ * establishment — there's no longer a standalone <SpecsSync /> mount.
  *
  * Internal-only modules (change events, raw readers) stay in their files
  * and are not re-exported. Adding something here should be a deliberate
@@ -41,6 +43,7 @@ export {
 
 export {
   clearSpecs,
+  getSpecsState,
   markAnalyzedAt,
   readSpecs,
   readValidSpecs,
@@ -52,4 +55,3 @@ export {
 } from "./specs-store";
 
 export { useGoalSpecs } from "./use-goal-specs";
-export { SpecsSync } from "./specs-sync-mount";

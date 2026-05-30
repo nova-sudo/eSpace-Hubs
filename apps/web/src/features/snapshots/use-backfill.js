@@ -48,7 +48,7 @@ import {
   useCombinedMergedSince,
   useJiraTickets,
 } from "@/features/integrations";
-import { readInputs } from "@/features/goal-inputs";
+import { readInputs, useAllGoalInputs } from "@/features/goal-inputs";
 import { isoDaysAgo, weekLabel } from "@/lib/date";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -71,7 +71,15 @@ export function useBackfill() {
   const { data: mrs } = useCombinedMergedSince(isoDaysAgo(365));
   const { data: events } = useCombinedEventsSince(isoDaysAgo(EVENTS_HORIZON_DAYS));
   const { data: jira } = useJiraTickets();
-  const allInputs = useMemo(() => readInputs(), []);
+  // Track the inputs store's tick so allInputs re-reads when that
+  // (now API-direct) store hydrates after mount — a bare [] dep would
+  // freeze allInputs to the pre-hydration empty map.
+  const inputsTick = useAllGoalInputs();
+  const allInputs = useMemo(
+    () => readInputs(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inputsTick],
+  );
 
   const [isRunning, setIsRunning] = useState(false);
   const [progress, setProgress] = useState(null);
