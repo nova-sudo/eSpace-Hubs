@@ -24,6 +24,7 @@
  */
 
 import { validateSpec } from "@espace-devhub/shared/goal-specs";
+import { fetchWithRateLimitRetry } from "../../../lib/rate-limit.js";
 import { AnalysisEvents, type AnalysisEvent } from "./events.js";
 import { SPEC_RESPONSE_SCHEMA } from "./spec-schema.js";
 
@@ -692,20 +693,33 @@ async function* classifyOneGoal(
     response_format: responseFormat,
   });
 
+  // Bounded retry on model-tier rate limits: a 429 mid-classification
+  // shouldn't fail the goal outright. We wait the upstream-indicated
+  // delay and retry within the streaming function's budget; goals that
+  // still fail after that can be re-run individually from the Review
+  // pane (reclassifyOneGoal).
   const requestWithFormat = async (
     responseFormat: unknown,
   ): Promise<Awaited<ReturnType<typeof fetch>>> =>
-    fetch(opts.url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${opts.apiKey}`,
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-        ...opts.extraHeaders,
+    fetchWithRateLimitRetry(
+      () =>
+        fetch(opts.url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${opts.apiKey}`,
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+            ...opts.extraHeaders,
+          },
+          body: JSON.stringify(buildBody(responseFormat)),
+          signal: opts.signal,
+        }),
+      {
+        maxAttempts: 4,
+        maxTotalWaitMs: 20_000,
+        ...(opts.signal ? { signal: opts.signal } : {}),
       },
-      body: JSON.stringify(buildBody(responseFormat)),
-      signal: opts.signal,
-    });
+    );
 
   let res: Awaited<ReturnType<typeof fetch>>;
   try {

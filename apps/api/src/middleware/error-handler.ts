@@ -20,16 +20,25 @@ export class HttpError extends Error {
   readonly status: number;
   readonly code: string;
   readonly details: unknown;
+  /**
+   * When set, the client is told to wait this long before retrying. The
+   * error handler emits it as both a `Retry-After` header (seconds) and
+   * an `error.retryAfterMs` envelope field so rate-limited batch flows
+   * (grading, classification) can back off and resume in the background.
+   */
+  readonly retryAfterMs: number | undefined;
   constructor(
     status: number,
     code: string,
     message: string,
     details?: unknown,
+    retryAfterMs?: number,
   ) {
     super(message);
     this.status = status;
     this.code = code;
     this.details = details;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -39,6 +48,7 @@ interface ErrorResponse {
     message: string;
     requestId: string | undefined;
     details?: unknown;
+    retryAfterMs?: number;
   };
 }
 
@@ -64,12 +74,14 @@ export function errorHandler(
   let code = "internal_error";
   let message = "An unexpected error occurred.";
   let details: unknown;
+  let retryAfterMs: number | undefined;
 
   if (err instanceof HttpError) {
     status = err.status;
     code = err.code;
     message = err.message;
     details = err.details;
+    retryAfterMs = err.retryAfterMs;
   } else if (err instanceof ZodError) {
     status = 400;
     code = "validation_error";
@@ -87,8 +99,15 @@ export function errorHandler(
       message,
       requestId: req.id,
       ...(details !== undefined ? { details } : {}),
+      ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
     },
   };
+
+  if (retryAfterMs !== undefined && !res.headersSent) {
+    // HTTP Retry-After is whole seconds; round up so we never advise a
+    // shorter wait than the upstream asked for.
+    res.setHeader("Retry-After", String(Math.max(1, Math.ceil(retryAfterMs / 1000))));
+  }
 
   if (status >= 500) {
     logger.error({ err, reqId: req.id, path: req.path }, "[err] " + code);

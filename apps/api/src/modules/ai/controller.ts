@@ -13,6 +13,11 @@
 
 import type { NextFunction, Request, Response } from "express";
 import { logger } from "../../lib/logger.js";
+import {
+  fetchWithRateLimitRetry,
+  isRateLimited,
+  retryAfterMsFromHeaders,
+} from "../../lib/rate-limit.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import { selectProvider } from "./provider.js";
 import { chatSchema, gradePrSchema } from "./schemas.js";
@@ -120,18 +125,28 @@ async function callProvider(
   // NOTE: deliberately untyped. Annotating `upstream: Response` would
   // resolve to Express's Response (imported above), not the global
   // fetch Response. Inference picks up the right shape from `fetch()`.
+  //
+  // Bounded retry on rate limits: model-tier 429s tend to clear in a
+  // few seconds, so we wait the upstream-indicated `Retry-After` and
+  // retry within the function budget. If it's still limited after that,
+  // we surface the wait time to the caller (see below) so the browser
+  // can resume in the background rather than failing the batch.
   let upstream;
   try {
-    upstream = await fetch(provider.url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${provider.apiKey}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        ...provider.extraHeaders,
-      },
-      body: JSON.stringify(body),
-    });
+    upstream = await fetchWithRateLimitRetry(
+      () =>
+        fetch(provider.url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${provider.apiKey}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            ...provider.extraHeaders,
+          },
+          body: JSON.stringify(body),
+        }),
+      { maxAttempts: 3, maxTotalWaitMs: 20_000 },
+    );
   } catch (err) {
     throw new HttpError(
       502,
@@ -145,11 +160,18 @@ async function callProvider(
   const raw = await upstream.text();
   if (!upstream.ok) {
     // Surface the upstream status verbatim — useful for ops debugging
-    // model-tier rate limits or quota errors.
+    // model-tier rate limits or quota errors. On a persistent rate
+    // limit, attach the retry delay so the client can back off and
+    // resume the batch in the background.
+    const rateLimited = isRateLimited(upstream.status, upstream.headers);
     throw new HttpError(
       upstream.status,
-      "ai_provider_error",
+      rateLimited ? "ai_provider_rate_limited" : "ai_provider_error",
       `${provider.label} ${upstream.status}: ${raw.slice(0, 500)}`,
+      undefined,
+      rateLimited
+        ? (retryAfterMsFromHeaders(upstream.headers) ?? 30_000)
+        : undefined,
     );
   }
   let data: unknown;

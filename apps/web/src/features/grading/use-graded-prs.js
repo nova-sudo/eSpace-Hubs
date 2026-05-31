@@ -39,6 +39,7 @@ import {
 } from "./verdicts-store";
 import { normalizeRubric, rubricHash } from "./rubric-hash";
 import { firstReviewComments } from "./first-review-comments";
+import { fetchWithRateLimitRetry, isRateLimitStatus } from "@/lib/rate-limit";
 
 /** Concurrency cap for grading calls — honour Mistral rate limits. */
 const GRADE_CONCURRENCY = 3;
@@ -164,7 +165,9 @@ export function useGradedPrs(spec, options = {}) {
   const [listError, setListError] = useState(null);
   const [isListLoading, setIsListLoading] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, running: false });
-  const cancelRef = useRef({ aborted: false });
+  // `controller` lets us abort an in-flight rate-limit wait when the hook
+  // unmounts or the rubric changes, instead of hanging on a backoff sleep.
+  const cancelRef = useRef({ aborted: false, controller: null });
 
   // Step 1 — load the PR list ONCE per (connected, year) combo.
   // GitHub's search API is aggressively rate-limited (30 req/min/user), and
@@ -242,7 +245,7 @@ export function useGradedPrs(spec, options = {}) {
     const pending = subset.filter((pr) => !readVerdict(pr.id, hash));
     if (pending.length === 0) return;
 
-    cancelRef.current = { aborted: false };
+    cancelRef.current = { aborted: false, controller: new AbortController() };
     const token = cancelRef.current;
 
     setProgress({ done: 0, total: pending.length, running: true });
@@ -276,41 +279,57 @@ export function useGradedPrs(spec, options = {}) {
             const commentsForGrading = firstReviewOnly
               ? firstReviewComments(details.comments, pr.author)
               : details.comments;
-            const res = await fetch("/api/v1/ai/grade-pr", {
-              method: "POST",
-              credentials: "include",
-              headers: {
-                "Content-Type": "application/json",
-                "x-ai-provider": aiProvider,
-              },
-              body: JSON.stringify({
-                pr: {
-                  id: pr.id,
-                  title: details.title || pr.title,
-                  body: details.body,
-                  comments: commentsForGrading,
+            // Rate-limited grade calls wait the upstream-indicated delay
+            // and retry transparently (see fetchWithRateLimitRetry). The
+            // signal lets a cancel/unmount abort the backoff wait.
+            const res = await fetchWithRateLimitRetry(
+              "/api/v1/ai/grade-pr",
+              {
+                method: "POST",
+                credentials: "include",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-ai-provider": aiProvider,
                 },
-                rubric,
-                provider: aiProvider,
-              }),
-            });
+                body: JSON.stringify({
+                  pr: {
+                    id: pr.id,
+                    title: details.title || pr.title,
+                    body: details.body,
+                    comments: commentsForGrading,
+                  },
+                  rubric,
+                  provider: aiProvider,
+                }),
+              },
+              { provider: "ai", signal: token.controller?.signal },
+            );
             if (token.aborted) return;
             const body = await res.json().catch(() => ({}));
-            if (!res.ok) {
-              // Persist the failure as a verdict so we don't retry until
-              // the rubric changes. Violations carry the error message so
-              // the UI can surface it.
+            if (res.ok && body?.verdict) {
+              saveVerdict(pr.id, hash, body.verdict);
+            } else if (isRateLimitStatus(res.status, res.headers)) {
+              // Still rate-limited after the retry budget. Leave this PR
+              // UNGRADED so a later run picks it up — do NOT poison the
+              // cache with an errored verdict the user can't clear
+              // without changing the rubric.
+            } else if (!res.ok) {
+              // Genuine failure (4xx/5xx that isn't a rate limit).
+              // Persist it so we don't re-attempt until the rubric
+              // changes; violations carry the message for the UI.
               saveVerdict(pr.id, hash, {
                 pass: false,
                 reasoning: `Grading failed: ${body?.error?.message || body?.error || res.status}`,
                 violations: [],
                 errored: true,
               });
-            } else if (body?.verdict) {
-              saveVerdict(pr.id, hash, body.verdict);
             }
           } catch (err) {
-            if (token.aborted) return;
+            if (token.aborted || err?.name === "AbortError") return;
+            // A persistent upstream rate limit surfaced from pullDetails
+            // (via the proxy) is transient infrastructure, not a
+            // gradeable failure — leave the PR ungraded for a later run.
+            if (err?.rateLimited) return;
             saveVerdict(pr.id, hash, {
               pass: false,
               reasoning: `Grading error: ${err?.message || err}`,
@@ -343,6 +362,9 @@ export function useGradedPrs(spec, options = {}) {
   useEffect(() => {
     return () => {
       cancelRef.current.aborted = true;
+      // Abort any in-flight rate-limit backoff so we don't sit on a
+      // timer after the owner is gone / the rubric changed.
+      cancelRef.current.controller?.abort();
     };
   }, [hash]);
 
