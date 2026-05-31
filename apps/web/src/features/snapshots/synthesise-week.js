@@ -77,6 +77,7 @@ export function synthesiseWeek({
   tickets,
   allInputs,
   capturedBy = "auto",
+  note,
 }) {
   const startMs = range.start.getTime();
   const endMs = range.end.getTime();
@@ -113,6 +114,13 @@ export function synthesiseWeek({
   const prior = existing
     .filter((s) => s.week && s.week < range.weekLabel)
     .sort((a, b) => b.week.localeCompare(a.week))[0] || null;
+  // synthesise is the ONLY writer of the headline metrics + goalReadings,
+  // so recomputing them is always safe. The `note`, however, is hand-typed
+  // by the user and must survive a re-capture (backfill refresh or a
+  // check-in re-save). Preserve the stored note unless the caller passes
+  // an explicit one.
+  const currentWeekSnap =
+    existing.find((s) => s.week === range.weekLabel) || null;
 
   const goalReadings = captureGoalReadings({
     weekStart: range.start,
@@ -135,7 +143,7 @@ export function synthesiseWeek({
     turnaround: median == null ? 0 : Math.round(median * 24),
     linkage,
     rounds: Math.round(rounds * 10) / 10,
-    note: "",
+    note: note ?? currentWeekSnap?.note ?? "",
     goalReadings,
     partial,
     gaps,

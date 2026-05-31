@@ -1,27 +1,36 @@
 "use client";
 
 /**
- * Backfill — synthesise weekly snapshots for the past N completed
- * Sun → Thu work-weeks that don't have a snapshot yet, using whatever
- * integration data is already loaded.
+ * Backfill — (re)synthesise weekly snapshots for EVERY completed
+ * Sun → Thu work-week of the current year, using whatever integration
+ * data is already loaded.
  *
- * Two onboarding paths this addresses:
+ * Two paths this addresses:
  *
  *   - **Case 1 (mid-year join):** user installs in April. `useAutoSnapshot`
  *     would only capture the most recent completed week going forward,
  *     so weeks 1-15 of the year stay empty in the snapshot store.
- *     Without backfill, compliance reads "1 of 1 closed week" forever.
+ *     Backfill creates the missing ones.
  *
- *   - **Case 2 (full-year onboard):** user is on the app from week 1.
- *     `useAutoSnapshot` captures organically each week. Backfill is a
- *     no-op because every week already has a snapshot.
+ *   - **Case 2 (stale data refresh):** a week was captured while a
+ *     provider was unreachable, or before an integration fix landed
+ *     (e.g. the un-paginated merged-PR fetch that made every older week
+ *     read 0 merged). Those weeks already HAVE a snapshot, so a "fill
+ *     only the missing weeks" backfill would skip them forever. We
+ *     instead recompute every completed week and overwrite the stored
+ *     numbers in place.
  *
  * What this implementation does
  * ─────────────────────────────
  * Walks every completed Sun → Thu week between Jan 1 of the current
- * year and "now". For each missing week, it slices the loaded merged-PR
- * + event data to that week's window and synthesises a snapshot using
- * `captureGoalReadings`.
+ * year and "now". For EACH week, it slices the loaded merged-PR + event
+ * data to that week's window and synthesises a fresh snapshot using
+ * `captureGoalReadings`. Each write preserves the week's existing
+ * `capturedBy` so it lands through matching server precedence
+ * (auto-over-auto / manual-over-manual) — an `auto` write can't clobber
+ * a `manual` week, which is exactly why a plain "fill missing" backfill
+ * left stale manual zeros stuck. The hand-typed `note` is preserved by
+ * `synthesiseWeek`; only machine-derived fields are recomputed.
  *
  * Limitations (acknowledged honestly):
  *   - The events feed only goes back ~90 days regardless of how far we
@@ -59,10 +68,11 @@ const EVENTS_HORIZON_DAYS = 90;
 
 /**
  * @returns {{
- *   run:        () => Promise<void>,
+ *   run:        () => Promise<void>,  // recompute ALL completed weeks
  *   isRunning:  boolean,
  *   progress:   { done: number, total: number } | null,
- *   missingWeeks: number,   // count of completed weeks missing a snapshot
+ *   missingWeeks: number,   // completed weeks with NO snapshot yet
+ *   totalWeeks:   number,   // completed weeks since Jan 1 (refresh target)
  * }}
  */
 export function useBackfill() {
@@ -85,8 +95,8 @@ export function useBackfill() {
   const [progress, setProgress] = useState(null);
   const cancelledRef = useRef(false);
 
-  // Identify completed Sun → Thu weeks since Jan 1 that don't have a
-  // snapshot yet. Used by the banner to show "X weeks need backfill".
+  // Completed Sun → Thu weeks since Jan 1 with NO snapshot yet. Drives
+  // the onboarding banner ("X weeks need backfill").
   const missingWeeks = useMemo(() => {
     if (typeof window === "undefined") return 0;
     const ranges = enumerateCompletedWeeks();
@@ -94,31 +104,43 @@ export function useBackfill() {
     return ranges.filter((r) => !existing.has(r.weekLabel)).length;
   }, [isRunning]); // re-evaluate after a run
 
+  // Total completed weeks since Jan 1 — the refresh target count. A run
+  // recomputes all of these, not just the missing ones.
+  const totalWeeks = useMemo(() => {
+    if (typeof window === "undefined") return 0;
+    return enumerateCompletedWeeks().length;
+  }, [isRunning]);
+
   const run = useCallback(async () => {
     if (isRunning) return;
     if (typeof window === "undefined") return;
     cancelledRef.current = false;
     setIsRunning(true);
 
+    // Recompute EVERY completed week — not just the ones missing a
+    // snapshot. Preserve each week's existing `capturedBy` so the write
+    // lands through matching server precedence (a fresh week defaults to
+    // "auto"). synthesiseWeek preserves any hand-typed note.
     const ranges = enumerateCompletedWeeks();
-    const existing = new Set(readSnapshots().map((s) => s.week));
-    const missing = ranges.filter((r) => !existing.has(r.weekLabel));
+    const existing = new Map(readSnapshots().map((s) => [s.week, s]));
 
-    setProgress({ done: 0, total: missing.length });
+    setProgress({ done: 0, total: ranges.length });
 
-    for (let i = 0; i < missing.length; i++) {
+    for (let i = 0; i < ranges.length; i++) {
       if (cancelledRef.current) break;
+      const range = ranges[i];
+      const prior = existing.get(range.weekLabel);
       synthesiseWeek({
-        range: missing[i],
+        range,
         goals,
         specs,
         mrs: mrs || [],
         events: events || [],
         tickets: Array.isArray(jira?.issues) ? jira.issues : [],
         allInputs,
-        capturedBy: "auto",
+        capturedBy: prior?.capturedBy ?? "auto",
       });
-      setProgress({ done: i + 1, total: missing.length });
+      setProgress({ done: i + 1, total: ranges.length });
       // Yield to the browser so the banner re-renders.
       // eslint-disable-next-line no-await-in-loop
       await new Promise((r) => setTimeout(r, 0));
@@ -126,9 +148,9 @@ export function useBackfill() {
 
     setIsRunning(false);
     setProgress(null);
-    if (missing.length > 0 && !cancelledRef.current) {
+    if (ranges.length > 0 && !cancelledRef.current) {
       toast.success(
-        `Backfilled ${missing.length} week${missing.length === 1 ? "" : "s"} of history`,
+        `Refreshed ${ranges.length} week${ranges.length === 1 ? "" : "s"} of history`,
       );
     }
   }, [goals, specs, mrs, events, jira, allInputs, isRunning]);
