@@ -17,7 +17,22 @@
  * from localStorage and ship it as `x-devhub-token` to a Next.js
  * proxy route. That pattern defeated the M6 encryption-at-rest
  * design and is now retired.
+ *
+ * @see {@link "@/lib/rate-limit"} for the retry/backoff primitives.
+ *
+ * Rate limits: GitHub's search API (30 req/min) and self-hosted
+ * GitLab/Jira are easy to trip during a backfill or a grade-all sweep.
+ * Every call routes through `fetchWithRateLimitRetry`, which honours the
+ * upstream `Retry-After` / `X-RateLimit-Reset` (passed through by the
+ * proxy) and waits + retries transparently — so a 429 pauses the call
+ * instead of failing it. A persistent limit (budget exhausted) throws an
+ * Error tagged `rateLimited: true` so batch callers can defer the item.
  */
+import {
+  fetchWithRateLimitRetry,
+  isRateLimitStatus,
+} from "@/lib/rate-limit";
+
 export async function proxyFetch(providerId, path, init = {}) {
   if (!providerId) throw new Error("proxyFetch: providerId is required");
   const cleanPath = String(path || "").replace(/^\//, "");
@@ -33,12 +48,16 @@ export async function proxyFetch(providerId, path, init = {}) {
     headers.set("Accept", "application/json");
   }
 
-  const res = await fetch(url, {
-    method,
-    credentials: "include",
-    headers,
-    ...(init.body !== undefined ? { body: init.body } : {}),
-  });
+  const res = await fetchWithRateLimitRetry(
+    url,
+    {
+      method,
+      credentials: "include",
+      headers,
+      ...(init.body !== undefined ? { body: init.body } : {}),
+    },
+    { provider: providerId, signal: init.signal },
+  );
 
   if (!res.ok) {
     let detail = "";
@@ -50,9 +69,17 @@ export async function proxyFetch(providerId, path, init = {}) {
     } catch {
       /* ignore parse errors — empty detail is fine */
     }
-    throw new Error(
+    const error = new Error(
       `${providerId} ${res.status}${detail ? `: ${detail}` : ""}`,
     );
+    error.status = res.status;
+    // Tag a still-limited response so batch callers (PR grading) can
+    // leave the item for a later run instead of caching a permanent
+    // failure.
+    if (isRateLimitStatus(res.status, res.headers)) {
+      error.rateLimited = true;
+    }
+    throw error;
   }
   return res.json();
 }

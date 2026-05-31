@@ -23,23 +23,46 @@ import type {
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { HttpError } from "../../middleware/error-handler.js";
 
-// Polymorphic value: number / string / boolean / list of strings /
-// flat object map. Caps each shape so a runaway widget can't blow
-// out a single document.
+// Polymorphic value. Each manual widget stores its own shape:
+//   Counter / Scale → number, Free-text → string, Counter-bool → boolean,
+//   Milestone → { periodKey, items: [{ id, label, done }] },
+//   Before/After → { baseline, current }.
+// The backend stays widget-agnostic — the widget interprets per-spec and
+// the Mongo $jsonSchema validator already accepts object/array values —
+// so we accept any JSON-serialisable value rather than enumerating each
+// widget's shape (the prior flat-primitive union rejected Milestone's
+// `items` array-of-objects with an `invalid_union` error). String length
+// and collection breadth are capped so a runaway payload can't blow out a
+// single document.
+type JsonInput =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonInput[]
+  | { [key: string]: JsonInput };
+
+// Recursive JSON node — `null` is allowed at nested positions (e.g. an
+// optional field inside a Milestone item) but NOT as a bare top-level
+// value (the Mongo validator rejects a null `value`; absence is the
+// document not existing).
+const jsonNode: z.ZodType<JsonInput> = z.lazy(() =>
+  z.union([
+    z.string().max(8_000),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonNode).max(500),
+    z.record(z.string().min(1).max(200), jsonNode),
+  ]),
+);
+
 const inputValue = z.union([
-  z.number(),
   z.string().max(8_000),
+  z.number(),
   z.boolean(),
-  z.array(z.string().max(2_000)).max(200),
-  z.record(
-    z.string().min(1).max(200),
-    z.union([
-      z.string().max(2_000),
-      z.number(),
-      z.boolean(),
-      z.null(),
-    ]),
-  ),
+  z.array(jsonNode).max(500),
+  z.record(z.string().min(1).max(200), jsonNode),
 ]);
 
 const appendInputSchema = z.object({
