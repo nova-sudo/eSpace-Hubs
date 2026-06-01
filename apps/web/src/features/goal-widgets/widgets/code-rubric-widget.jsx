@@ -181,8 +181,9 @@ export function CodeRubricWidget({ spec, goal, variant = "light", className, onR
           <EmptyNote variant={variant}>
             {isRateLimit ? (
               <>
-                GitHub rate limit hit — 30 search requests/minute per user.
-                Wait ~60 seconds and press <strong>Retry</strong>.
+                Provider rate limit hit — the grader pauses and retries
+                automatically; wait a moment and press <strong>Retry</strong>{" "}
+                if it stalls.
                 <br />
                 <span
                   style={{
