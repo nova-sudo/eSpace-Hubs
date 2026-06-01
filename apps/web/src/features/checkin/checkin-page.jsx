@@ -136,7 +136,7 @@ export function CheckinPage() {
   return (
     <div className="flex flex-col gap-4 px-6 py-5">
       {/* Sticky header */}
-      <div className="sticky top-[64px] z-10 -mx-6 flex items-center justify-between gap-3 border-b border-border bg-bg/85 px-6 py-3 backdrop-blur-md">
+      <div className="sticky top-[64px] z-10 -mx-6 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-bg/85 px-6 py-3 backdrop-blur-md">
         <div className="flex items-center gap-3">
           <div>
             <h1 className="text-[15px] font-semibold text-fg">Weekly check-in</h1>
@@ -148,7 +148,7 @@ export function CheckinPage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <WeekNavigator
             activeLabel={activeLabel}
             rangeStart={range.start}
