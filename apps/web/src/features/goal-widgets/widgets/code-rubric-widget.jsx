@@ -128,7 +128,7 @@ export function CodeRubricWidget({ spec, goal, variant = "light", className, onR
         className={className}
       >
         <EmptyNote variant={variant}>
-          Connect GitHub to grade pull requests against your rubric.
+          Connect GitHub or GitLab to grade pull requests against your rubric.
         </EmptyNote>
       </WidgetShell>
     );
@@ -762,7 +762,7 @@ function PrRow({ pr, verdict, expanded, onToggle, variant }) {
                 color: variant === "light" ? "rgba(255,255,255,0.85)" : "var(--accent)",
               }}
             >
-              open on github ↗
+              open ↗
             </a>
           ) : null}
         </div>

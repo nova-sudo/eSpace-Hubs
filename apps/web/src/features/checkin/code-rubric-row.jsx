@@ -68,7 +68,7 @@ export function CodeRubricEditor({ spec, weekStart, weekEnd }) {
   const disabled = !hasGithub || rubric.length === 0 || weekPrs.length === 0 || progress.running;
 
   if (!hasGithub) {
-    return <Stub message="Connect GitHub to grade PRs." />;
+    return <Stub message="Connect GitHub or GitLab to grade PRs." />;
   }
   if (rubric.length === 0) {
     return <Stub message="Define rubric criteria via the dashboard widget first." />;

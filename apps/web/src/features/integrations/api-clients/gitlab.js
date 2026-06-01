@@ -60,6 +60,19 @@ export const gitlabApi = {
         `merge_requests?scope=created_by_me&state=merged&updated_after=${encodeURIComponent(isoDate)}&per_page=${GL_PER_PAGE}&page=${page}&order_by=created_at&sort=desc`,
     ),
 
+  /**
+   * MRs I authored since a given ISO date, ALL states. Drives CODE_RUBRIC
+   * grading (parity with `githubApi.myPrsSince`). Drafts and
+   * closed-unmerged MRs are filtered by the grading-list normalizer, so
+   * this stays a single paginated query rather than two state-scoped
+   * ones. Paginated like myMergedSince.
+   */
+  myMrsSince: (isoDate) =>
+    gitlabPaginate(
+      (page) =>
+        `merge_requests?scope=created_by_me&created_after=${encodeURIComponent(isoDate)}&per_page=${GL_PER_PAGE}&page=${page}&order_by=created_at&sort=desc`,
+    ),
+
   /** Current user's activity events since a date (yyyy-mm-dd). */
   myEventsSince: (isoDate) =>
     proxyFetch(
