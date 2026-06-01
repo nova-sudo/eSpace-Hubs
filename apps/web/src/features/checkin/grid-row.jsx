@@ -76,6 +76,29 @@ export function GridRow({ goal, spec, weeks, mrsByWeek, eventsByWeek, ticketsCou
     return <CodeRubricGridRow goal={goal} spec={spec} weeks={weeks} />;
   }
 
+  // RECURRING_MILESTONE shares ONE entry across every week of its
+  // cadence period (the cell keys writes by periodKey), so editing any
+  // week changes them all. Render one cell SPANNING the weeks of each
+  // period instead of N identical-looking independent cells — item 2.4.
+  // Weekly/daily cadences group one week per period → no visual change.
+  if (spec.widget === SPEC_KINDS.RECURRING_MILESTONE) {
+    const cadence = spec.manual?.cadence || "quarterly";
+    const groups = groupWeeksByPeriod(weeks, cadence);
+    return (
+      <>
+        <RowLabel goal={goal} spec={spec} />
+        {groups.map((g) => (
+          <RecurringPeriodCell
+            key={`${g.periodKey}:${g.firstWeek.weekLabel}`}
+            goal={goal}
+            spec={spec}
+            group={g}
+          />
+        ))}
+      </>
+    );
+  }
+
   const isManual = MANUAL_GRID_WIDGETS.has(spec.widget);
 
   return (
@@ -397,4 +420,92 @@ function readCellValue(entries, start, end, widget) {
     return inWindow.length;
   }
   return null;
+}
+
+/* ─────── recurring-milestone period spanning (item 2.4) ─────── */
+
+/**
+ * One cell spanning every week of a single cadence period for a
+ * RECURRING_MILESTONE. The accent-dim wash + "1 entry · N wks" hint make
+ * it visually obvious that this is ONE shared value — editing it updates
+ * every week it covers (the underlying cell keys writes by periodKey).
+ */
+function RecurringPeriodCell({ goal, spec, group }) {
+  return (
+    <div
+      style={{ gridColumn: `span ${group.span}`, minHeight: 52 }}
+      className="relative flex items-center justify-center gap-2 border-b border-r border-border bg-accent-dim/30 px-2 py-1.5"
+    >
+      <RecurringMilestoneCell
+        goal={goal}
+        spec={spec}
+        weekLabel={group.firstWeek.weekLabel}
+      />
+      {group.span > 1 ? (
+        <span
+          className="text-[9px] uppercase tracking-[0.4px] text-muted-fg/70"
+          style={{ fontFamily: "var(--font-mono)" }}
+          title="One shared entry for the whole period — editing it updates every week it spans"
+        >
+          1 entry · {group.span} wks
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Group consecutive weeks that fall in the same cadence period. Weekly /
+ * daily cadences yield one week per group (span 1 — no visual change);
+ * monthly / quarterly collapse their weeks into a single spanning cell.
+ * The period key mirrors `grid-cells`' `periodKeyFor` so the spanning
+ * cell's representative week resolves to the same shared entry.
+ */
+function groupWeeksByPeriod(weeks, cadence) {
+  const groups = [];
+  let cur = null;
+  for (const wk of weeks) {
+    const key = periodKeyForWeek(wk.weekLabel, cadence);
+    if (cur && cur.periodKey === key) {
+      cur.span += 1;
+    } else {
+      cur = { periodKey: key, firstWeek: wk, span: 1 };
+      groups.push(cur);
+    }
+  }
+  return groups;
+}
+
+function periodKeyForWeek(weekLabel, cadence) {
+  const ts = midWeekTs(weekLabel);
+  if (ts == null) return weekLabel;
+  const d = new Date(ts);
+  const y = d.getUTCFullYear();
+  switch (cadence) {
+    case "daily":
+      return `${y}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+    case "weekly":
+      return `${y}-W${pad2(sunWeekOfTs(ts))}`;
+    case "biweekly":
+      return `${y}-B${pad2(Math.floor((sunWeekOfTs(ts) - 1) / 2))}`;
+    case "monthly":
+      return `${y}-${pad2(d.getUTCMonth() + 1)}`;
+    case "quarterly":
+      return `${y}-Q${Math.floor(d.getUTCMonth() / 3) + 1}`;
+    default:
+      return "all";
+  }
+}
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function sunWeekOfTs(ts) {
+  const d = new Date(ts);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const days = Math.floor(
+    (d.getTime() - yearStart.getTime()) / (24 * 60 * 60 * 1000),
+  );
+  return Math.floor(days / 7) + 1;
 }
