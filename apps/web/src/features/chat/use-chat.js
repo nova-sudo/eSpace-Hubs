@@ -10,6 +10,7 @@
  */
 
 import { useSyncExternalStore } from "react";
+import { getAiProvider } from "@/features/analyst/use-ai-provider";
 
 const STORAGE_KEY = "espace-devhub:chat";
 const CHANGE_EVENT = "chat:change";
@@ -125,13 +126,10 @@ export async function sendChatMessage(_userMessage) {
     throw new Error("Nothing to send — write a message first.");
   }
 
-  // Read the user's provider preference (mistral | glm) from localStorage
-  // and ship it via BOTH the header and the body — server-side
-  // `selectProvider()` checks header first, body second, env third.
-  const provider =
-    typeof localStorage !== "undefined"
-      ? localStorage.getItem("espace-devhub:ai-provider") || "mistral"
-      : "mistral";
+  // Read the user's provider preference and ship it via BOTH the header
+  // and the body — server-side `selectProvider()` checks header first,
+  // body second, env third. Sourced from the synced prefs store (C7).
+  const provider = getAiProvider();
 
   const res = await fetch("/api/v1/ai/chat", {
     method: "POST",

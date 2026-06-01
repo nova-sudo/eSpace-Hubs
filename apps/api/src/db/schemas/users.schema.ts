@@ -104,6 +104,17 @@ export const usersValidator: Document = {
         bsonType: ["string", "null"],
         enum: [...ALL_ENGAGEMENTS, null],
       },
+      // C7: synced user preferences. Optional/nullable so pre-C7 rows
+      // validate; additionalProperties:false on the nested object so a
+      // new pref key is a deliberate schema change, not an accident.
+      prefs: {
+        bsonType: ["object", "null"],
+        additionalProperties: false,
+        properties: {
+          aiProvider: { bsonType: "string", maxLength: 32 },
+          lastReviewDate: { bsonType: "string", maxLength: 40 },
+        },
+      },
       // Companion-app registration (Phase 3). When set, the Vercel
       // catch-all proxies /api/v1/* requests for this user to the
       // companion's tunnel hostname instead of running the bundled

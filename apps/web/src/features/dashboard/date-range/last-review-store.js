@@ -1,33 +1,32 @@
 /**
  * "When was your last formal performance review?"
  *
- * One ISO date in localStorage. Backs the `lastreview` date-range preset and
- * the Settings page's "Last review date" input.
+ * Backs the `lastreview` date-range preset and the Settings page's
+ * "Last review date" input. Account-synced via the prefs store (C7) —
+ * was localStorage; now it rides on `user.prefs.lastReviewDate` so the
+ * date follows the user across devices.
  *
- * Empty value → preset falls back to a 90-day rolling window so the chip
- * never produces a confusing empty dashboard for new users.
+ * This module is a thin, back-compat facade over the prefs store: the
+ * public API (readLastReviewDate / writeLastReviewDate /
+ * LAST_REVIEW_CHANGE_EVENT) is unchanged, so presets.js and the account
+ * tab keep working without edits.
+ *
+ * Empty value → the preset falls back to a 90-day rolling window so the
+ * chip never produces a confusing empty dashboard for new users.
  */
 
-const STORAGE_KEY = "espace-devhub:last-review-date";
-const CHANGE_EVENT = "last-review-date:change";
+import {
+  getPrefs,
+  setLastReviewDatePref,
+  LAST_REVIEW_CHANGE_EVENT as PREFS_LAST_REVIEW_CHANGE_EVENT,
+} from "@/features/prefs/prefs-store";
 
-export const LAST_REVIEW_CHANGE_EVENT = CHANGE_EVENT;
+export const LAST_REVIEW_CHANGE_EVENT = PREFS_LAST_REVIEW_CHANGE_EVENT;
 
 export function readLastReviewDate() {
-  if (typeof window === "undefined") return "";
-  try {
-    return localStorage.getItem(STORAGE_KEY) || "";
-  } catch {
-    return "";
-  }
+  return getPrefs().lastReviewDate || "";
 }
 
 export function writeLastReviewDate(iso) {
-  if (typeof window === "undefined") return;
-  if (!iso) {
-    localStorage.removeItem(STORAGE_KEY);
-  } else {
-    localStorage.setItem(STORAGE_KEY, iso);
-  }
-  window.dispatchEvent(new Event(CHANGE_EVENT));
+  void setLastReviewDatePref(iso);
 }
