@@ -42,6 +42,21 @@ import {
   seedRubricContextIfNeeded,
 } from "@/features/goal-widgets/widgets/scorecard-subspec";
 
+/**
+ * Widgets whose editor is a chip list / multi-field form that needs the
+ * full row width. They render STACKED (editor on its own line below the
+ * title) instead of squeezed into the right-hand inline slot — the
+ * `flex-shrink-0` slot can't bound a `w-full` flex-wrap child, so the
+ * chips spill across the row and collide with the title (the overflow
+ * the recurring-milestone row was showing).
+ */
+const STACKED_EDITORS = new Set([
+  SPEC_KINDS.MILESTONE,
+  SPEC_KINDS.RECURRING_MILESTONE,
+  SPEC_KINDS.INCIDENT_LOG,
+  SPEC_KINDS.FREE_TEXT,
+]);
+
 export function GoalRow({
   goal,
   spec,
@@ -112,36 +127,54 @@ export function GoalRow({
     [events, weekStart, weekEnd],
   );
 
+  const titleBlock = (
+    <div className="flex min-w-0 flex-1 flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <span
+          className="shrink-0 rounded-[3px] border border-border px-1 py-px text-[9px] uppercase tracking-[0.6px] text-muted-fg"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          {kindLabel(widget)}
+        </span>
+        <div className="truncate text-[13px] font-medium text-fg">
+          {goal?.title || spec.title || "Untitled"}
+        </div>
+      </div>
+      <SubLine spec={spec} />
+    </div>
+  );
+
+  const editor = (
+    <EditorFor
+      widget={widget}
+      goal={goal}
+      spec={spec}
+      weekStart={weekStart}
+      weekEnd={weekEnd}
+      activeLabel={activeLabel}
+      weekMrs={weekMrs}
+      weekEvents={weekEvents}
+      tickets={tickets}
+    />
+  );
+
+  // Chip-list / multi-field editors get their own full-width line below
+  // the title so their flex-wrap content actually wraps instead of
+  // overflowing the row. Compact editors (counter/scale/auto) stay
+  // inline on the right.
+  if (STACKED_EDITORS.has(widget)) {
+    return (
+      <div className="flex flex-col gap-2 rounded-md border border-border bg-bg/40 px-3 py-2.5">
+        {titleBlock}
+        <div className="min-w-0">{editor}</div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-start justify-between gap-4 rounded-md border border-border bg-bg/40 px-3 py-2.5">
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex items-center gap-2">
-          <span
-            className="rounded-[3px] border border-border px-1 py-px text-[9px] uppercase tracking-[0.6px] text-muted-fg"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            {kindLabel(widget)}
-          </span>
-          <div className="truncate text-[13px] font-medium text-fg">
-            {goal?.title || spec.title || "Untitled"}
-          </div>
-        </div>
-        <SubLine spec={spec} />
-      </div>
-
-      <div className="flex-shrink-0">
-        <EditorFor
-          widget={widget}
-          goal={goal}
-          spec={spec}
-          weekStart={weekStart}
-          weekEnd={weekEnd}
-          activeLabel={activeLabel}
-          weekMrs={weekMrs}
-          weekEvents={weekEvents}
-          tickets={tickets}
-        />
-      </div>
+      {titleBlock}
+      <div className="min-w-0 shrink-0">{editor}</div>
     </div>
   );
 }
