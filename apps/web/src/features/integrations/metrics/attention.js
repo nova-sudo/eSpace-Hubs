@@ -1,10 +1,16 @@
 import { DAY_MS } from "@/lib/date";
 
 /**
- * Derive "needs your attention" items from open MRs + Jira tickets.
+ * Derive "needs your attention" items from open PRs/MRs + Jira tickets.
  *
- * - **Stale PR**: open MR where the last update was > 3 days ago.
+ * - **Stale PR/MR**: open item whose last update was > 3 days ago.
  * - **Old ticket**: In-Progress/Blocked Jira ticket with no status change in > 7 days.
+ *
+ * Provider-agnostic: each open item may be a GitLab MR or a GitHub PR.
+ * The two carry different field names (`web_url`/`html_url`,
+ * `iid`/`number`, `user_notes_count`/`comments`), so we read both with a
+ * fallback; `item.source` ("gitlab"|"github") picks the `!`/`#` ref
+ * notation (attention-band tags each item with its source).
  *
  * Returns an array of compact `{ id, kind, severity, ref, title, detail, href }`
  * records, capped at `limit`.
@@ -14,18 +20,26 @@ export function deriveAttention({ openMRs = [], tickets = [], jiraBaseUrl, limit
   const items = [];
 
   for (const mr of openMRs) {
-    const updated = new Date(mr.updated_at).getTime();
+    const updatedAt = mr.updated_at ?? mr.updatedAt;
+    const updated = updatedAt ? new Date(updatedAt).getTime() : NaN;
     const ageDays = (now - updated) / DAY_MS;
+    if (!Number.isFinite(ageDays)) continue; // no/invalid timestamp → skip
     if (ageDays >= 3) {
+      const number = mr.iid ?? mr.number;
+      const comments = mr.user_notes_count ?? mr.comments ?? 0;
+      const url = mr.web_url ?? mr.html_url;
+      const refPrefix = mr.source === "github" ? "#" : "!";
       items.push({
-        id: `mr-${mr.id}`,
+        // Source-prefixed so a GitLab MR id and a GitHub PR id can't
+        // collide on the React key.
+        id: `${mr.source || "mr"}-${mr.id}`,
         kind: "stale-pr",
         severity: ageDays >= 6 ? "high" : "med",
-        ref: `!${mr.iid}`,
+        ref: `${refPrefix}${number}`,
         title: mr.title,
-        detail: `${Math.round(ageDays)}d since last update${mr.user_notes_count ? ` · ${mr.user_notes_count} comments` : ""}`,
+        detail: `${Math.round(ageDays)}d since last update${comments ? ` · ${comments} comments` : ""}`,
         action: "Respond",
-        href: mr.web_url,
+        href: url,
       });
     }
   }

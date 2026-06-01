@@ -4,16 +4,25 @@ import { MonoLabel } from "@/components/ui";
 import {
   deriveAttention,
   useGitlabOpenMRs,
+  useGithubOpenPulls,
   useJiraTickets,
 } from "@/features/integrations";
 import { useMyEngagementConfig } from "@/features/auth";
 
 export function AttentionBand() {
-  const { data: openMRs } = useGitlabOpenMRs();
+  const { data: glOpen } = useGitlabOpenMRs();
+  const { data: ghOpen } = useGithubOpenPulls();
   const { data: tickets } = useJiraTickets();
   const { config: engagementCfg } = useMyEngagementConfig();
+  // Union both providers' open items so a GitHub-only user gets stale-PR
+  // nudges too (mirror of the GitLab MR path). Tag each with its source
+  // so deriveAttention picks the right field names + ref notation.
+  const openItems = [
+    ...(glOpen || []).map((m) => ({ ...m, source: "gitlab" })),
+    ...(ghOpen?.items || []).map((p) => ({ ...p, source: "github" })),
+  ];
   const items = deriveAttention({
-    openMRs: openMRs || [],
+    openMRs: openItems,
     tickets: tickets?.issues || [],
     // Per-user Jira base — eSpace devs get eSpace's Jira host,
     // Crealogix devs get Crealogix's. Env fallback for early mount.
