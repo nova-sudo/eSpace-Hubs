@@ -7,3 +7,8 @@ export {
   normalizeGithubMergedSearch,
   normalizeGithubEvents,
 } from "./github-normalize";
+export {
+  normalizeGitlabMrDetails,
+  normalizeGitlabMerged,
+  parseGitlabLocator,
+} from "./gitlab-normalize";

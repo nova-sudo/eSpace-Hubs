@@ -1,5 +1,6 @@
 import { proxyFetch } from "./proxy-fetch";
 import { readIntegrations } from "../integrations-store";
+import { normalizeGitlabMrDetails } from "./gitlab-normalize";
 
 /**
  * Page through a GitLab list endpoint until a short page comes back
@@ -65,4 +66,29 @@ export const gitlabApi = {
       "gitlab",
       `events?after=${encodeURIComponent(isoDate.slice(0, 10))}&per_page=100`,
     ),
+
+  /**
+   * MR description + all notes (conversation + inline diff) in one shot,
+   * normalized to the SAME shape as `githubApi.pullDetails` so the
+   * review-timing + CODE_RUBRIC-grading layers consume both providers
+   * identically. `projectId` is the numeric `project_id` and `iid` the
+   * per-project MR number — both present natively on the merged-MR list
+   * records (see `parseGitlabLocator`).
+   *
+   * Notes are fetched ascending so they arrive chronologically (the
+   * timing math sorts anyway). Single page of 100 mirrors GitHub's
+   * pullDetails; system notes (approvals / "added N commits") are
+   * dropped in the normalizer.
+   */
+  mrDetails: async (projectId, iid) => {
+    const base = `projects/${encodeURIComponent(projectId)}/merge_requests/${encodeURIComponent(iid)}`;
+    const [mr, notes] = await Promise.all([
+      proxyFetch("gitlab", base),
+      proxyFetch(
+        "gitlab",
+        `${base}/notes?per_page=100&sort=asc&order_by=created_at`,
+      ),
+    ]);
+    return normalizeGitlabMrDetails(mr, notes);
+  },
 };
