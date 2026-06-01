@@ -25,7 +25,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { useIntegrations, githubApi } from "@/features/integrations";
+import { useIntegrations, githubApi, gitlabApi } from "@/features/integrations";
 import { useGoalContext } from "@/features/goal-context";
 import { useSession } from "@/features/auth";
 import {
@@ -104,6 +104,10 @@ export function useGradedPrs(spec, options = {}) {
   // every render → new fetch → state update → re-render → repeat). Boolean
   // comparison via React's default equality is the correct stable signal.
   const githubConnected = isConnected("github");
+  const gitlabConnected = isConnected("gitlab");
+  // A connected code host (GitHub OR GitLab) is enough to grade — both
+  // feed the same provider-neutral list + details + AI-grade pipeline.
+  const anyConnected = githubConnected || gitlabConnected;
   // Phase F: hook options. The `enabled` gate runs OUTSIDE the hook
   // body's React calls — every useState/useEffect below still runs
   // unconditionally so hook rules are satisfied, but expensive work
@@ -183,7 +187,7 @@ export function useGradedPrs(spec, options = {}) {
   useEffect(() => {
     // Phase F: respect the `enabled` gate. Disabled hooks still run
     // the effect (React rules) but don't fetch.
-    if (!githubConnected || !enabled) {
+    if (!anyConnected || !enabled) {
       setPrs([]);
       setListError(null);
       setIsListLoading(false);
@@ -192,18 +196,32 @@ export function useGradedPrs(spec, options = {}) {
     let cancelled = false;
     setIsListLoading(true);
     setListError(null);
-    githubApi
-      .myPrsSince(startOfYearIso())
-      .then((items) => {
+    const since = startOfYearIso();
+    // Fetch each connected provider's authored PR/MR list in parallel and
+    // union them, tagged with `source` so the grader routes each item to
+    // the right details fetch. allSettled so one provider's failure (e.g.
+    // an exhausted rate limit) still renders the other's items; the first
+    // rejection surfaces as listError for the retry affordance.
+    Promise.allSettled([
+      githubConnected
+        ? githubApi
+            .myPrsSince(since)
+            .then((items) => items.map(normalizeSearchItem).filter(Boolean))
+        : Promise.resolve([]),
+      gitlabConnected
+        ? gitlabApi
+            .myMrsSince(since)
+            .then((items) => items.map(normalizeGitlabItem).filter(Boolean))
+        : Promise.resolve([]),
+    ])
+      .then((results) => {
         if (cancelled) return;
-        setPrs(items.map(normalizeSearchItem).filter(Boolean));
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setListError(err);
-        // On error: do NOT retry. The consumer shows the error + a retry
-        // button. Leaving `prs` as-is lets any prior successful load keep
-        // rendering while the retry is pending.
+        const merged = results
+          .filter((r) => r.status === "fulfilled")
+          .flatMap((r) => r.value);
+        setPrs(merged);
+        const firstErr = results.find((r) => r.status === "rejected")?.reason;
+        setListError(firstErr || null);
       })
       .finally(() => {
         if (cancelled) return;
@@ -212,7 +230,7 @@ export function useGradedPrs(spec, options = {}) {
     return () => {
       cancelled = true;
     };
-  }, [githubConnected, refreshTick, enabled]);
+  }, [githubConnected, gitlabConnected, refreshTick, enabled]);
 
   const refreshList = useCallback(() => {
     setRefreshTick((n) => n + 1);
@@ -261,11 +279,10 @@ export function useGradedPrs(spec, options = {}) {
           if (i >= pending.length) return;
           const pr = pending[i];
           try {
-            const details = await githubApi.pullDetails(
-              pr.owner,
-              pr.repo,
-              pr.number,
-            );
+            const details =
+              pr.source === "gitlab"
+                ? await gitlabApi.mrDetails(pr.projectId, pr.iid)
+                : await githubApi.pullDetails(pr.owner, pr.repo, pr.number);
             if (token.aborted) return;
             const aiProvider = getAiProvider();
             // Phase F: when firstReviewOnly is set, clip comments
@@ -399,7 +416,13 @@ export function useGradedPrs(spec, options = {}) {
     grade,
     gradeAll,
     refreshList,
-    hasGithub: githubConnected,
+    // `hasGithub` historically gated the rubric UI on a connected code
+    // host; it now means GitHub OR GitLab (grading supports both). The
+    // name is kept to avoid a prop-threaded rename across code-rubric-row
+    // — a rename + "Connect GitHub or GitLab" copy sweep is the Phase 4
+    // follow-up.
+    hasGithub: anyConnected,
+    hasGitlab: gitlabConnected,
     hash,
     firstReviewOnly,
   };
@@ -425,5 +448,33 @@ function normalizeSearchItem(item) {
     state: item?.pull_request?.merged_at ? "merged" : item?.state || "open",
     createdAt: item.created_at,
     mergedAt: item?.pull_request?.merged_at || null,
+    source: "github",
+  };
+}
+
+/**
+ * Normalize a GitLab authored-MR into the same grading-list shape, tagged
+ * `source:"gitlab"` and carrying `{projectId, iid}` so the grader routes
+ * it to `gitlabApi.mrDetails`. Mirrors GitHub's `is:open OR is:merged
+ * -is:draft` by dropping drafts/WIP and closed-unmerged MRs. Returns null
+ * for un-locatable records.
+ */
+function normalizeGitlabItem(mr) {
+  if (!mr || mr.iid == null || mr.project_id == null) return null;
+  if (mr.draft || mr.work_in_progress) return null;
+  if (mr.state === "closed" && !mr.merged_at) return null;
+  return {
+    // `gl-` prefix keeps verdict-cache keys from colliding with GitHub's
+    // numeric search ids.
+    id: `gl-${mr.id ?? `${mr.project_id}-${mr.iid}`}`,
+    number: mr.iid,
+    title: mr.title || "",
+    projectId: mr.project_id,
+    iid: mr.iid,
+    htmlUrl: mr.web_url,
+    state: mr.merged_at ? "merged" : mr.state === "opened" ? "open" : mr.state || "open",
+    createdAt: mr.created_at,
+    mergedAt: mr.merged_at || null,
+    source: "gitlab",
   };
 }
