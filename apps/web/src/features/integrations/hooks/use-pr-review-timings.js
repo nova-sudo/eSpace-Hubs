@@ -3,24 +3,29 @@
 import useSWR from "swr";
 import { useCombinedMergedSince } from "./use-combined";
 import { githubApi } from "../api-clients/github";
+import { gitlabApi } from "../api-clients/gitlab";
+import { parseGitlabLocator } from "../api-clients/gitlab-normalize";
 import { computePrReviewTiming } from "../metrics/review-timing";
 
 /**
- * For every merged PR in the window, fetch its conversation + review-line
+ * For every merged PR/MR in the window, fetch its conversation + review
  * comments and compute review-timing stats (TTFR, ATTNR, idle).
  *
- * GitHub-only today — GitLab MRs are surfaced in the list but skipped for
- * details (their REST shape is different and needs a separate adapter).
- * The tile/page label "GitHub PRs" reflects this; GitLab support can plug
- * in later by extending `parseGithubLocator` and the fetch branch.
+ * Provider-agnostic: each item in the combined merged list is routed to
+ * its own provider's details fetch — `githubApi.pullDetails` for GitHub
+ * PRs, `gitlabApi.mrDetails` for GitLab MRs — both of which return the
+ * SAME normalized `{ createdAt, author, comments:[{user,createdAt,…}] }`
+ * shape, so `computePrReviewTiming` consumes them identically. A GitLab-
+ * only user now gets the same review-timing section a GitHub user does.
  *
  * Network discipline:
- *   - One SWR cache entry keyed by the sorted PR ids in the window. Same
- *     window across tiles → one fetch.
- *   - Bounded concurrency (`CONCURRENCY`) so we don't hammer GitHub's
- *     5000-req/hr secondary limit when the user has 30+ merged PRs.
- *   - Per-PR errors are isolated: a failing PR yields `null` and the rest
- *     still come back. The aggregate metric just ignores nulls.
+ *   - One SWR cache entry keyed by the sorted item ids in the window.
+ *     Same window across tiles → one fetch.
+ *   - Bounded concurrency (`CONCURRENCY`) so a 30+ MR/PR window doesn't
+ *     hammer a provider's secondary rate limit (and proxyFetch's
+ *     rate-limit wait/resume backs that up).
+ *   - Per-item errors are isolated: a failing item yields a null timing
+ *     and the rest still come back; the aggregate ignores nulls.
  */
 
 const CONCURRENCY = 4;
@@ -29,10 +34,10 @@ export function usePrReviewTimings(since) {
   const { data: prs, isLoading: listLoading, error: listError } =
     useCombinedMergedSince(since);
 
-  // Stable key — sorted PR ids — so SWR re-fetches only when the window or
-  // the PR set actually changes, not on every render.
-  const ghPrs = (prs || []).filter((p) => p.source === "github");
-  const idsKey = ghPrs
+  const list = prs || [];
+  // Stable key — sorted ids across BOTH providers — so SWR re-fetches
+  // only when the window or the item set actually changes.
+  const idsKey = list
     .map((p) => p.id)
     .filter(Boolean)
     .sort()
@@ -42,11 +47,35 @@ export function usePrReviewTimings(since) {
   const swr = useSWR(
     swrKey,
     async () => {
-      const tasks = ghPrs
+      // Build a per-item task carrying a provider-specific details
+      // fetcher. Items we can't locate (no parseable locator) are
+      // dropped rather than failing the batch.
+      const tasks = list
         .map((pr) => {
+          if (pr?.source === "gitlab") {
+            const loc = parseGitlabLocator(pr);
+            if (!loc) return null;
+            return {
+              pr,
+              source: "gitlab",
+              owner: null,
+              repo: null,
+              number: pr.number ?? loc.iid,
+              fetchDetails: () => gitlabApi.mrDetails(loc.projectId, loc.iid),
+            };
+          }
+          // Default to GitHub (source "github" or legacy untagged).
           const loc = parseGithubLocator(pr);
           if (!loc) return null;
-          return { pr, loc };
+          return {
+            pr,
+            source: "github",
+            owner: loc.owner,
+            repo: loc.repo,
+            number: pr.number ?? loc.number,
+            fetchDetails: () =>
+              githubApi.pullDetails(loc.owner, loc.repo, loc.number),
+          };
         })
         .filter(Boolean);
 
@@ -58,32 +87,28 @@ export function usePrReviewTimings(since) {
           while (true) {
             const i = cursor++;
             if (i >= tasks.length) return;
-            const { pr, loc } = tasks[i];
+            const t = tasks[i];
             try {
-              const details = await githubApi.pullDetails(
-                loc.owner,
-                loc.repo,
-                loc.number,
-              );
+              const details = await t.fetchDetails();
               const timing = computePrReviewTiming(
                 {
-                  createdAt: details.createdAt || pr.created_at,
+                  createdAt: details.createdAt || t.pr.created_at,
                   author: details.author,
                 },
                 details.comments || [],
               );
               out.push({
                 pr: {
-                  id: pr.id,
-                  number: pr.number || loc.number,
-                  title: pr.title || details.title || "",
-                  htmlUrl: pr.web_url || details.htmlUrl || null,
-                  owner: loc.owner,
-                  repo: loc.repo,
-                  createdAt: details.createdAt || pr.created_at,
-                  mergedAt: details.mergedAt || pr.merged_at,
+                  id: t.pr.id,
+                  number: t.number,
+                  title: t.pr.title || details.title || "",
+                  htmlUrl: t.pr.web_url || details.htmlUrl || null,
+                  owner: t.owner,
+                  repo: t.repo,
+                  createdAt: details.createdAt || t.pr.created_at,
+                  mergedAt: details.mergedAt || t.pr.merged_at,
                   author: details.author,
-                  source: "github",
+                  source: t.source,
                 },
                 details,
                 timing,
@@ -91,16 +116,16 @@ export function usePrReviewTimings(since) {
             } catch {
               out.push({
                 pr: {
-                  id: pr.id,
-                  number: pr.number || loc.number,
-                  title: pr.title || "",
-                  htmlUrl: pr.web_url || null,
-                  owner: loc.owner,
-                  repo: loc.repo,
-                  createdAt: pr.created_at,
-                  mergedAt: pr.merged_at,
+                  id: t.pr.id,
+                  number: t.number,
+                  title: t.pr.title || "",
+                  htmlUrl: t.pr.web_url || null,
+                  owner: t.owner,
+                  repo: t.repo,
+                  createdAt: t.pr.created_at,
+                  mergedAt: t.pr.merged_at,
                   author: null,
-                  source: "github",
+                  source: t.source,
                 },
                 details: null,
                 timing: null,
@@ -121,7 +146,7 @@ export function usePrReviewTimings(since) {
     {
       revalidateOnFocus: false,
       shouldRetryOnError: false,
-      // PR comments don't move once a PR is merged — cache for 5 min.
+      // PR/MR comments don't move once merged — cache for 5 min.
       dedupingInterval: 5 * 60_000,
     },
   );
@@ -134,11 +159,11 @@ export function usePrReviewTimings(since) {
 }
 
 /**
- * Parse `{owner, repo, number}` out of the merged-PR record.
+ * Parse `{owner, repo, number}` out of a GitHub merged-PR record.
  *
  * GitHub web_url shape: `https://github.com/{owner}/{repo}/pull/{n}`
- * (issue search returns this directly as `html_url`; the normalizer
- * passes it through as `web_url`.)
+ * (issue search returns this as `html_url`; the normalizer passes it
+ * through as `web_url`). Returns null for non-GitHub URLs.
  */
 export function parseGithubLocator(pr) {
   const url = pr?.web_url || "";

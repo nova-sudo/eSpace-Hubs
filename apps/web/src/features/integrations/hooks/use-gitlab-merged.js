@@ -1,6 +1,6 @@
 "use client";
 
-import { gitlabApi } from "../api-clients";
+import { gitlabApi, normalizeGitlabMerged } from "../api-clients";
 import { useIntegrations } from "../use-integrations";
 import { useSwrIf } from "./use-swr-if";
 import { isoDaysAgo } from "@/lib/date";
@@ -19,7 +19,7 @@ export function useGitlabMergedSince(since) {
         ? isoDaysAgo(since)
         : since;
   return useSwrIf(isConnected("gitlab"), `gitlab:merged:${iso}`, () =>
-    gitlabApi.myMergedSince(iso),
+    gitlabApi.myMergedSince(iso).then(normalizeGitlabMerged),
   );
 }
 
