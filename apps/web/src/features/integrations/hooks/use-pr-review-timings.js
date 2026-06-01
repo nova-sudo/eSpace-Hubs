@@ -30,6 +30,51 @@ import { computePrReviewTiming } from "../metrics/review-timing";
 
 const CONCURRENCY = 4;
 
+// Once-a-day persistent cache. The per-PR/MR detail fetches are the
+// expensive part (one round-trip per item); merged items never change,
+// so we cache the computed timings keyed by (day, item-set) and only
+// refetch when the calendar day rolls over or the item set changes.
+const CACHE_KEY = "espace-devhub:review-timing-cache";
+// Cap the persisted payload so a heavy author's full comment set can't
+// blow the ~5MB localStorage budget — over the cap we just skip
+// persisting (SWR's in-memory cache still serves the session; the next
+// day refetches).
+const MAX_CACHE_BYTES = 2_000_000;
+
+function todayStamp() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function readTimingCache(day, idsKey) {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw);
+    if (
+      parsed?.day === day &&
+      parsed?.idsKey === idsKey &&
+      Array.isArray(parsed.data)
+    ) {
+      return parsed.data;
+    }
+  } catch {
+    /* corrupt / unavailable — treat as a miss */
+  }
+  return undefined;
+}
+
+function writeTimingCache(day, idsKey, data) {
+  if (typeof window === "undefined") return;
+  try {
+    const payload = JSON.stringify({ day, idsKey, data });
+    if (payload.length > MAX_CACHE_BYTES) return;
+    localStorage.setItem(CACHE_KEY, payload);
+  } catch {
+    /* quota / disabled — fine, the section just refetches next load */
+  }
+}
+
 export function usePrReviewTimings(since) {
   const { data: prs, isLoading: listLoading, error: listError } =
     useCombinedMergedSince(since);
@@ -42,7 +87,13 @@ export function usePrReviewTimings(since) {
     .filter(Boolean)
     .sort()
     .join(",");
-  const swrKey = idsKey ? `pr-review-timings:${idsKey}` : null;
+  // Day-stamped key + a localStorage fallback give the section a cache
+  // that revalidates at most ONCE per day: same day + same item set →
+  // served from cache (even across reloads); a new day (or a changed
+  // item set) busts the key and refetches once.
+  const day = todayStamp();
+  const swrKey = idsKey ? `pr-review-timings:${day}:${idsKey}` : null;
+  const cached = swrKey ? readTimingCache(day, idsKey) : undefined;
 
   const swr = useSWR(
     swrKey,
@@ -141,13 +192,19 @@ export function usePrReviewTimings(since) {
         const bm = b.pr.mergedAt ? Date.parse(b.pr.mergedAt) : 0;
         return bm - am;
       });
+      writeTimingCache(day, idsKey, out);
       return out;
     },
     {
       revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      // Don't refetch while we have data (in-memory or the day-stamped
+      // localStorage fallback) — the day-stamped key is what forces the
+      // once-daily refresh.
+      revalidateIfStale: false,
       shouldRetryOnError: false,
-      // PR/MR comments don't move once merged — cache for 5 min.
-      dedupingInterval: 5 * 60_000,
+      dedupingInterval: 24 * 60 * 60_000,
+      ...(cached ? { fallbackData: cached } : {}),
     },
   );
 

@@ -26,6 +26,7 @@ export { useAutoSnapshot } from "./use-auto-snapshot";
 export { captureGoalReadings } from "./capture-readings";
 export { goalCompliance } from "./compliance";
 export { useSnapshotCompliance } from "./use-snapshot-compliance";
+export { useComplianceSummary } from "./use-compliance-summary";
 export { useBackfill } from "./use-backfill";
 export { synthesiseWeek } from "./synthesise-week";
 export { BackfillBanner } from "./backfill-banner";

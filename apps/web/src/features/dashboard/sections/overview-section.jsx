@@ -4,7 +4,7 @@ import { Section } from "../scroll-shell";
 import { Hero } from "../hero";
 import { DateRangeToolbar } from "../date-range";
 import {
-  IntegrationsTile,
+  GoalComplianceTile,
   MergedTile,
   RoundsTile,
   LinkageTile,
@@ -18,7 +18,7 @@ import {
  *   hero (grid, 2-col: headline + 280x180 signal)
  *   date range toolbar
  *   glance grid: 12-col, 150px auto-rows, 2 rows total
- *     [Integrations 3×2] [Merged 4×2] [Rounds 2×2] [Linkage 3×2]
+ *     [Goal compliance 3×2] [Merged 4×2] [Rounds 2×2] [Linkage 3×2]
  *
  * No `.sec-head` per mock — Hero is the top of the page.
  */
@@ -52,7 +52,7 @@ export function OverviewSection() {
         className="grid min-h-0 flex-1 grid-cols-12 gap-3.5"
         style={{ gridAutoRows: "minmax(0, 1fr)" }}
       >
-        <IntegrationsTile />
+        <GoalComplianceTile />
         <MergedTile />
         <RoundsTile />
         <LinkageTile />
