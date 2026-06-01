@@ -37,29 +37,37 @@ import {
 } from "./grid-cells";
 import { CodeRubricGridRow } from "./code-rubric-row";
 
-/**
- * Manual widgets whose (goal, week) cell is "filled" only once the user
- * logs an input for that week. Auto widgets read from integration data
- * and are never flagged unfilled. Exported so the grid page can compute
- * which week columns still have gaps for the "jump to next gap" control.
- */
-export const MANUAL_GRID_WIDGETS = new Set([
-  SPEC_KINDS.COUNTER,
-  SPEC_KINDS.SCALE,
-  SPEC_KINDS.MILESTONE,
-  SPEC_KINDS.FREE_TEXT,
-  SPEC_KINDS.DATE_LOG,
-  SPEC_KINDS.BEFORE_AFTER,
-  SPEC_KINDS.INCIDENT_LOG,
-  SPEC_KINDS.RECURRING_MILESTONE,
-]);
-
 /** True when at least one goal-input entry falls inside the week window. */
 export function hasEntryInWindow(entries, start, end) {
   if (!Array.isArray(entries)) return false;
   const s = start.getTime();
   const e = end.getTime();
   return entries.some((x) => x && x.ts >= s && x.ts < e);
+}
+
+/**
+ * Whether a (goal, week) cell should be flagged "not filled yet".
+ *
+ * ONLY per-week entry widgets carry a real weekly gap:
+ *   - COUNTER / SCALE → unfilled when there's no entry IN this week.
+ *
+ * Every other widget has a legitimate empty / zero / cumulative state
+ * and is NEVER flagged:
+ *   - INCIDENT_LOG, DATE_LOG → 0 = "nothing happened", a valid answer.
+ *   - MILESTONE, BEFORE_AFTER → cumulative current-state; a checklist at
+ *     0/3 or 2/3 is a deliberate state, not a gap, and the value carries
+ *     forward across weeks (so an in-week entry isn't expected).
+ *   - RECURRING_MILESTONE → period-shared (rendered as a spanned cell).
+ *   - AUTO widgets → value comes from integration data.
+ *
+ * Exported so the grid page's "jump to next gap" uses the same rule as
+ * the per-cell dot.
+ */
+export function isCellUnfilled(widget, entries, start, end) {
+  if (widget !== SPEC_KINDS.COUNTER && widget !== SPEC_KINDS.SCALE) {
+    return false;
+  }
+  return !hasEntryInWindow(entries, start, end);
 }
 
 export function GridRow({ goal, spec, weeks, mrsByWeek, eventsByWeek, ticketsCount }) {
@@ -99,8 +107,6 @@ export function GridRow({ goal, spec, weeks, mrsByWeek, eventsByWeek, ticketsCou
     );
   }
 
-  const isManual = MANUAL_GRID_WIDGETS.has(spec.widget);
-
   return (
     <>
       <RowLabel goal={goal} spec={spec} />
@@ -113,7 +119,7 @@ export function GridRow({ goal, spec, weeks, mrsByWeek, eventsByWeek, ticketsCou
           mrsThisWeek={mrsByWeek.get(wk.weekLabel) || []}
           eventsThisWeek={eventsByWeek.get(wk.weekLabel) || []}
           ticketsCount={ticketsCount}
-          empty={isManual && !hasEntryInWindow(entries, wk.start, wk.end)}
+          empty={isCellUnfilled(spec.widget, entries, wk.start, wk.end)}
         />
       ))}
     </>
