@@ -33,12 +33,7 @@ import { synthesiseWeek } from "@/features/snapshots";
 import { isoDaysAgo } from "@/lib/date";
 import { SPEC_KINDS } from "@/features/goal-specs";
 import { useCheckinGridRange } from "./use-checkin-grid-range";
-import {
-  GridRow,
-  RowCopyButton,
-  MANUAL_GRID_WIDGETS,
-  hasEntryInWindow,
-} from "./grid-row";
+import { GridRow, RowCopyButton, isCellUnfilled } from "./grid-row";
 import {
   buildSubGoal,
   buildSubSpec,
@@ -105,30 +100,27 @@ export function CheckinGridPage() {
   }, [weeks, goals, specs, mrs, events, tickets, hasSpecs]);
 
   // ── "Jump to next gap" (item 2.2) ──────────────────────────────────
-  // The manual goals whose per-week cells can be unfilled. Auto goals
-  // read from integration data and are never a "gap".
-  const manualGoalIds = useMemo(() => {
-    const ids = [];
+  // (goalId, widget) for every non-L1 goal — `isCellUnfilled` decides
+  // per widget whether an empty week is actually a gap (only COUNTER /
+  // SCALE), matching the per-cell dot exactly.
+  const checkinGoals = useMemo(() => {
+    const out = [];
     for (const group of groupedItems) {
       for (const item of group.items) {
         if (item.goal.kind === "L1") continue;
-        if (MANUAL_GRID_WIDGETS.has(item.spec.widget)) ids.push(item.goal.id);
+        out.push({ id: item.goal.id, widget: item.spec.widget });
       }
     }
-    return ids;
+    return out;
   }, [groupedItems]);
 
   const scrollRef = useRef(null);
   const onJumpToGap = useCallback(() => {
-    if (manualGoalIds.length === 0) {
-      toast.info("No manual goals to fill in this range.");
-      return;
-    }
     const inputs = readInputs();
     for (let i = 0; i < weeks.length; i++) {
       const wk = weeks[i];
-      const gap = manualGoalIds.some(
-        (id) => !hasEntryInWindow(inputs[id] || [], wk.start, wk.end),
+      const gap = checkinGoals.some((g) =>
+        isCellUnfilled(g.widget, inputs[g.id] || [], wk.start, wk.end),
       );
       if (gap) {
         const el = scrollRef.current;
@@ -142,7 +134,7 @@ export function CheckinGridPage() {
       }
     }
     toast.success("No unfilled weeks in this range 🎉");
-  }, [weeks, manualGoalIds]);
+  }, [weeks, checkinGoals]);
 
   if (!hasGoals) {
     return <EmptyState title="No goals to track yet" body="Add goals first." />;
