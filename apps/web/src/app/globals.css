@@ -68,6 +68,21 @@
   box-sizing: border-box;
 }
 
+/* Native form controls + focus rings follow the cobalt accent rather
+   than the browser/OS default blue. Without this, checkboxes, number-
+   input spinners, selects and the focus ring on text fields (most
+   visible in the form-heavy check-in editors) render in a stock blue
+   that clashes with --accent. */
+:root {
+  accent-color: var(--accent);
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
 html,
 body {
   background: var(--bg);

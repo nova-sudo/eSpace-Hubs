@@ -114,7 +114,7 @@ export function CheckinGridPage() {
   const gridTemplateColumns = `${LABEL_COL}px repeat(${weeks.length}, ${CELL_COL}px) ${ACTION_COL}px`;
 
   return (
-    <div className="flex flex-col gap-3 px-6 py-4">
+    <div className="flex min-w-0 flex-col gap-3 px-6 py-4">
       <Toolbar
         fromLabel={fromLabel}
         toLabel={toLabel}
