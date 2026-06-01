@@ -221,6 +221,20 @@ export interface User {
   department?: string | null;
 
   /**
+   * C7: synced user preferences — small, additive, self-service
+   * (the user edits these about themselves via PATCH /auth/me).
+   * Readers apply defaults so pre-C7 rows (missing/null) keep working.
+   *   aiProvider     — chat/classify/grade model provider id
+   *                    ("mistral" | "glm" | "openrouter")
+   *   lastReviewDate — ISO date of the user's last formal review,
+   *                    driving the "Since review" date-range preset.
+   *                    "" / absent = unset.
+   * Device-local prefs (last-seen marker, active hub pick) deliberately
+   * stay in the browser — they're per-device by design.
+   */
+  prefs?: { aiProvider?: string; lastReviewDate?: string } | null;
+
+  /**
    * Companion-app registration. When set, the Vercel catch-all
    * (apps/web/src/pages/api/v1/[...path].ts) PROXIES every /api/v1/*
    * call for this user to `hostname` instead of running the bundled

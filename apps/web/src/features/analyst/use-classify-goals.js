@@ -18,6 +18,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getAiProvider } from "./use-ai-provider";
 import { useGoals } from "@/features/goals";
 import { markAnalyzedAt, saveSpec } from "@/features/goal-specs";
 import { ANALYSIS } from "./ai/analysis-events";
@@ -345,10 +346,7 @@ export function useClassifyGoals() {
       const ctrl = new AbortController();
       abortRef.current = ctrl;
       try {
-        const provider =
-          typeof localStorage !== "undefined"
-            ? localStorage.getItem("espace-devhub:ai-provider") || "mistral"
-            : "mistral";
+        const provider = getAiProvider();
         const res = await fetch("/api/v1/ai/classify-goals", {
           method: "POST",
           credentials: "include",

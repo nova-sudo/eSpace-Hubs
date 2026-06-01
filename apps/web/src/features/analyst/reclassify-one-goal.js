@@ -27,6 +27,7 @@
  */
 
 import { ANALYSIS } from "./ai/analysis-events";
+import { getAiProvider } from "./use-ai-provider";
 
 /**
  * Read a ReadableStream of NDJSON line-by-line. Identical to the
@@ -89,10 +90,7 @@ export async function reclassifyOneGoal({ goal, contextAnswers, signal }) {
   if (!goal?.id) {
     throw new Error("reclassifyOneGoal: goal.id is required");
   }
-  const provider =
-    typeof localStorage !== "undefined"
-      ? localStorage.getItem("espace-devhub:ai-provider") || "mistral"
-      : "mistral";
+  const provider = getAiProvider();
 
   // Build the request body. The API trims + filters empty Q/A pairs
   // server-side so we don't repeat that here; we just pass through.

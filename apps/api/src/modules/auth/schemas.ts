@@ -112,10 +112,29 @@ export type PasswordResetInput = z.infer<typeof passwordResetSchema>;
  * Every field is optional. Empty body parses fine but the
  * controller treats it as a no-op (no audit row, no DB write).
  */
+/**
+ * C7: synced user preferences. PARTIAL by design — the client sends
+ * only the key it's changing (e.g. `{ aiProvider }`), and the
+ * controller merges it over the stored prefs. `lastReviewDate` accepts
+ * "" to clear it.
+ */
+const aiProviderId = z.enum(["mistral", "glm", "openrouter"]);
+export const prefsSchema = z
+  .object({
+    aiProvider: aiProviderId.optional(),
+    // ISO date (yyyy-mm-dd or full ISO) or "" to unset. Kept loose —
+    // the date-range preset tolerates an unparseable value by falling
+    // back to a 90-day window.
+    lastReviewDate: z.string().max(40).optional(),
+  })
+  .strict();
+export type PrefsInput = z.infer<typeof prefsSchema>;
+
 export const profileUpdateSchema = z.object({
   displayName: displayName.optional(),
   employeeId: z.string().min(1).max(64).nullable().optional(),
   department: z.string().min(1).max(200).nullable().optional(),
+  prefs: prefsSchema.optional(),
 });
 export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>;
 
@@ -180,6 +199,15 @@ export interface PublicUser {
    * unset on legacy rows.
    */
   engagement: string;
+  /**
+   * C7: synced user preferences. Always present in the response
+   * (normalised), with null for unset fields. The frontend prefs store
+   * hydrates from this.
+   */
+  prefs: {
+    aiProvider: string | null;
+    lastReviewDate: string | null;
+  };
 }
 
 // ─── companion-tunnel registration (Phase 3) ─────────────────────────

@@ -109,6 +109,12 @@ export function toPublicUser(u: User): PublicUser {
     department: u.department ?? null,
     primaryHub: u.primaryHub ?? null,
     engagement: u.engagement ?? "espace",
+    // C7: normalise prefs to an always-present object with null for
+    // unset fields, so the frontend store reads a stable shape.
+    prefs: {
+      aiProvider: u.prefs?.aiProvider ?? null,
+      lastReviewDate: u.prefs?.lastReviewDate ?? null,
+    },
   };
 }
 
@@ -397,6 +403,18 @@ export async function updateMeHandler(
       set.department = payload.department;
       before.department = user.department ?? null;
       after.department = payload.department;
+    }
+    // C7: prefs are PARTIAL — merge the sent keys over the stored prefs
+    // so a `{ aiProvider }` patch doesn't wipe `lastReviewDate`. Only
+    // write when the merged result actually differs.
+    if (payload.prefs !== undefined) {
+      const current = user.prefs ?? {};
+      const merged = { ...current, ...payload.prefs };
+      if (JSON.stringify(merged) !== JSON.stringify(current)) {
+        set.prefs = merged;
+        before.prefs = current;
+        after.prefs = merged;
+      }
     }
 
     if (Object.keys(set).length === 0) {

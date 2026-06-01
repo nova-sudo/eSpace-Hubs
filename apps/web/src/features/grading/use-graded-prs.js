@@ -40,6 +40,7 @@ import {
 import { normalizeRubric, rubricHash } from "./rubric-hash";
 import { firstReviewComments } from "./first-review-comments";
 import { fetchWithRateLimitRetry, isRateLimitStatus } from "@/lib/rate-limit";
+import { getAiProvider } from "@/features/analyst/use-ai-provider";
 
 /** Concurrency cap for grading calls — honour Mistral rate limits. */
 const GRADE_CONCURRENCY = 3;
@@ -266,10 +267,7 @@ export function useGradedPrs(spec, options = {}) {
               pr.number,
             );
             if (token.aborted) return;
-            const aiProvider =
-              typeof localStorage !== "undefined"
-                ? localStorage.getItem("espace-devhub:ai-provider") || "mistral"
-                : "mistral";
+            const aiProvider = getAiProvider();
             // Phase F: when firstReviewOnly is set, clip comments
             // to the first-review cluster BEFORE sending. The grader
             // sees only the PR body + the first reviewer comment
