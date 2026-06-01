@@ -1,4 +1,5 @@
 export { IntegrationsTile } from "./integrations-tile";
+export { GoalComplianceTile } from "./goal-compliance-tile";
 export { MergedTile } from "./merged-tile";
 export { RoundsTile } from "./rounds-tile";
 export { LinkageTile } from "./linkage-tile";

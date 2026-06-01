@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoMark } from "./logo-mark";
 import { AnalystActivator } from "@/features/analyst";
-import { useIntegrations } from "@/features/integrations";
 import { UserChip } from "@/features/auth";
 import { CompanionIndicator } from "@/features/companion";
 import { useActiveHub, HubSwitcher } from "@/features/hubs";
@@ -71,8 +70,6 @@ const VERSION = "v0.3.1";
 
 export function Header() {
   const pathname = usePathname();
-  const { connectedProviders } = useIntegrations();
-  const isLive = connectedProviders.length > 0;
   const hub = useActiveHub();
 
   // Build the hub-prefixed link for each nav slot. Without an active
@@ -137,21 +134,6 @@ export function Header() {
         </nav>
       </div>
       <div className="flex items-center gap-3.5">
-        <div
-          className="flex items-center gap-1.5 text-[11px] text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          <span
-            className="block h-1.5 w-1.5 rounded-full"
-            style={{
-              background: isLive ? "var(--accent-2)" : "var(--dim-fg)",
-              boxShadow: isLive ? "0 0 0 3px rgba(0,196,138,0.2)" : "none",
-            }}
-          />
-          {isLive
-            ? `LIVE · ${connectedProviders.length} integration${connectedProviders.length === 1 ? "" : "s"}`
-            : "NOT CONNECTED"}
-        </div>
         {/* Inverse-themed activator — opens the accent-ground analyst page. */}
         <AnalystActivator />
         {/* Companion-routing indicator — self-hides when the user has
