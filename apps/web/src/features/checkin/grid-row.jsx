@@ -37,7 +37,37 @@ import {
 } from "./grid-cells";
 import { CodeRubricGridRow } from "./code-rubric-row";
 
+/**
+ * Manual widgets whose (goal, week) cell is "filled" only once the user
+ * logs an input for that week. Auto widgets read from integration data
+ * and are never flagged unfilled. Exported so the grid page can compute
+ * which week columns still have gaps for the "jump to next gap" control.
+ */
+export const MANUAL_GRID_WIDGETS = new Set([
+  SPEC_KINDS.COUNTER,
+  SPEC_KINDS.SCALE,
+  SPEC_KINDS.MILESTONE,
+  SPEC_KINDS.FREE_TEXT,
+  SPEC_KINDS.DATE_LOG,
+  SPEC_KINDS.BEFORE_AFTER,
+  SPEC_KINDS.INCIDENT_LOG,
+  SPEC_KINDS.RECURRING_MILESTONE,
+]);
+
+/** True when at least one goal-input entry falls inside the week window. */
+export function hasEntryInWindow(entries, start, end) {
+  if (!Array.isArray(entries)) return false;
+  const s = start.getTime();
+  const e = end.getTime();
+  return entries.some((x) => x && x.ts >= s && x.ts < e);
+}
+
 export function GridRow({ goal, spec, weeks, mrsByWeek, eventsByWeek, ticketsCount }) {
+  // Row-level goal-inputs read powers the "unfilled" indicator on manual
+  // cells. Called unconditionally (before the CODE_RUBRIC early return)
+  // to satisfy the rules of hooks; unused for auto / rubric rows.
+  const { entries } = useGoalInputs(goal?.id);
+
   // CODE_RUBRIC needs row-level state: one useGradedPrs hook call per
   // row (a fetch per cell would hammer the GitHub search API). Delegate
   // the whole row to the dedicated component which owns its label, its
@@ -45,6 +75,8 @@ export function GridRow({ goal, spec, weeks, mrsByWeek, eventsByWeek, ticketsCou
   if (spec.widget === SPEC_KINDS.CODE_RUBRIC) {
     return <CodeRubricGridRow goal={goal} spec={spec} weeks={weeks} />;
   }
+
+  const isManual = MANUAL_GRID_WIDGETS.has(spec.widget);
 
   return (
     <>
@@ -58,6 +90,7 @@ export function GridRow({ goal, spec, weeks, mrsByWeek, eventsByWeek, ticketsCou
           mrsThisWeek={mrsByWeek.get(wk.weekLabel) || []}
           eventsThisWeek={eventsByWeek.get(wk.weekLabel) || []}
           ticketsCount={ticketsCount}
+          empty={isManual && !hasEntryInWindow(entries, wk.start, wk.end)}
         />
       ))}
     </>
@@ -95,12 +128,26 @@ function GridCell({
   mrsThisWeek,
   eventsThisWeek,
   ticketsCount,
+  empty,
 }) {
   return (
     <div
-      className="flex items-center justify-center border-b border-r border-border bg-bg/40 px-2 py-1.5"
-      style={{ minHeight: 52 }}
+      className="relative flex items-center justify-center border-b border-r border-border bg-bg/40 px-2 py-1.5"
+      style={{
+        minHeight: 52,
+        // Faint amber wash + a corner dot mark a manual cell with no
+        // input for this week yet (item 2.2). Inline so it renders
+        // regardless of whether an `amber` Tailwind token is defined.
+        ...(empty ? { background: "rgba(245, 158, 11, 0.06)" } : {}),
+      }}
     >
+      {empty ? (
+        <span
+          className="pointer-events-none absolute right-1 top-1 h-1.5 w-1.5 rounded-full"
+          style={{ background: "#f59e0b" }}
+          title="Not filled for this week yet"
+        />
+      ) : null}
       <CellFor
         widget={spec.widget}
         goal={goal}

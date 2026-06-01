@@ -17,9 +17,9 @@
  * header (top). Scrolls in both directions when content overflows.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Save, ChevronLeft, ChevronRight } from "lucide-react";
+import { Save, ChevronLeft, ChevronRight, Crosshair } from "lucide-react";
 import { useGoals } from "@/features/goals";
 import { useGoalSpecs } from "@/features/goal-specs";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
@@ -33,7 +33,12 @@ import { synthesiseWeek } from "@/features/snapshots";
 import { isoDaysAgo } from "@/lib/date";
 import { SPEC_KINDS } from "@/features/goal-specs";
 import { useCheckinGridRange } from "./use-checkin-grid-range";
-import { GridRow, RowCopyButton } from "./grid-row";
+import {
+  GridRow,
+  RowCopyButton,
+  MANUAL_GRID_WIDGETS,
+  hasEntryInWindow,
+} from "./grid-row";
 import {
   buildSubGoal,
   buildSubSpec,
@@ -99,6 +104,46 @@ export function CheckinGridPage() {
     }
   }, [weeks, goals, specs, mrs, events, tickets, hasSpecs]);
 
+  // ── "Jump to next gap" (item 2.2) ──────────────────────────────────
+  // The manual goals whose per-week cells can be unfilled. Auto goals
+  // read from integration data and are never a "gap".
+  const manualGoalIds = useMemo(() => {
+    const ids = [];
+    for (const group of groupedItems) {
+      for (const item of group.items) {
+        if (item.goal.kind === "L1") continue;
+        if (MANUAL_GRID_WIDGETS.has(item.spec.widget)) ids.push(item.goal.id);
+      }
+    }
+    return ids;
+  }, [groupedItems]);
+
+  const scrollRef = useRef(null);
+  const onJumpToGap = useCallback(() => {
+    if (manualGoalIds.length === 0) {
+      toast.info("No manual goals to fill in this range.");
+      return;
+    }
+    const inputs = readInputs();
+    for (let i = 0; i < weeks.length; i++) {
+      const wk = weeks[i];
+      const gap = manualGoalIds.some(
+        (id) => !hasEntryInWindow(inputs[id] || [], wk.start, wk.end),
+      );
+      if (gap) {
+        const el = scrollRef.current;
+        if (el) {
+          el.scrollTo({
+            left: Math.max(0, LABEL_COL + i * CELL_COL - 48),
+            behavior: "smooth",
+          });
+        }
+        return;
+      }
+    }
+    toast.success("No unfilled weeks in this range 🎉");
+  }, [weeks, manualGoalIds]);
+
   if (!hasGoals) {
     return <EmptyState title="No goals to track yet" body="Add goals first." />;
   }
@@ -122,10 +167,14 @@ export function CheckinGridPage() {
         onPresetLastN={presetLastN}
         onShift={(dir) => shiftRange(weeks, dir, setRange)}
         onSaveAll={onSaveAll}
+        onJumpToGap={onJumpToGap}
         saving={saving}
       />
 
-      <div className="overflow-x-auto rounded-md border border-border">
+      <div
+        ref={scrollRef}
+        className="overflow-x-auto rounded-md border border-border"
+      >
         <div className="grid" style={{ gridTemplateColumns }}>
           {/* corner */}
           <div
@@ -333,6 +382,7 @@ function Toolbar({
   onPresetLastN,
   onShift,
   onSaveAll,
+  onJumpToGap,
   saving,
 }) {
   return (
@@ -358,6 +408,16 @@ function Toolbar({
         <Preset onClick={() => onPresetLastN(4)}>4w</Preset>
         <Preset onClick={() => onPresetLastN(8)}>8w</Preset>
         <Preset onClick={() => onPresetLastN(12)}>12w</Preset>
+        <button
+          type="button"
+          onClick={onJumpToGap}
+          title="Scroll to the next week with unfilled manual fields"
+          className="ml-1 flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] uppercase tracking-[0.5px] text-muted-fg hover:bg-accent-dim/60 hover:text-fg"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          <Crosshair size={12} />
+          Next gap
+        </button>
         <button
           type="button"
           onClick={onSaveAll}
