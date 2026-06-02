@@ -380,6 +380,31 @@ function buildSystemPrompt(): string {
     "    ticket\" is closer to LINKAGE than CODE_RUBRIC. Use the answers",
     "    as the strongest signal.",
     "",
+    "═══ ACHIEVEMENT TIERS (required) ═════════════════════════════════",
+    "",
+    "Every goal MUST include a `tiers` object with FOUR short, MEASURABLE",
+    "criteria — one per achievement level — so an AI grader can later",
+    "score where the developer stands:",
+    "  {",
+    '    "notAchieved":  <falls short of the bar>,',
+    '    "achieved":     <the baseline target is met>,',
+    '    "overAchieved": <clearly beyond the target>,',
+    '    "roleModel":    <exemplary; drives the team / fully automated>',
+    "  }",
+    "Rules:",
+    "  - Tie each tier to the widget's metric where one exists, in the",
+    "    SAME unit as the source/manual target. e.g. MERGED_COUNT with",
+    '    target >=8 → notAchieved "<8 merged", achieved ">=8 merged",',
+    '    overAchieved ">=12 merged", roleModel ">=16 merged, zero reverts".',
+    "  - If the goal's rubric/description already spells out the tiers (Not",
+    "    Achieved / Achieved / Over / Role Model), NORMALISE them into this",
+    "    shape and keep the user's thresholds verbatim.",
+    "  - Compound/qualitative goals (SLA %, RTO/RPO, DR drills): phrase",
+    "    each tier as a checkable condition — the grader reads the user's",
+    "    logged data + metrics against it.",
+    "  - Keep each <=160 chars. Use null for a tier you truly can't state;",
+    "    null the whole object only when the goal has no meaningful levels.",
+    "",
     "═══ OUTPUT SCHEMA ════════════════════════════════════════════════",
     "",
     "Return ONE JSON object. No prose, no markdown, no code fences. Shape:",
@@ -392,7 +417,8 @@ function buildSystemPrompt(): string {
     '    "context":     {...} | null,',
     '    "delegated":   {...} | null,',
     '    "untrackable": {...} | null,',
-    '    "scorecard":   {...} | null',
+    '    "scorecard":   {...} | null,',
+    '    "tiers":       { "notAchieved", "achieved", "overAchieved", "roleModel" }',
     "  }",
     "",
     "`scorecard` shape (REQUIRED when widget is SCORECARD):",
@@ -850,6 +876,10 @@ async function* classifyOneGoal(
     // scorecard payload still fails validation because the candidate
     // object drops the block before validateSpec sees it.
     scorecard: obj.scorecard ?? null,
+    // Phase G: the four AI-gradeable achievement tiers (see prompt +
+    // shared validator). Distilled by the classifier from the goal's
+    // rubric; the goal-tier grader (Phase 2) scores the dev against them.
+    tiers: obj.tiers ?? null,
     // Phase F: top-level firstReviewOnly for standalone CODE_RUBRIC.
     // Component-level firstReviewOnly lives inside scorecard.components
     // and is threaded by the shared validator.

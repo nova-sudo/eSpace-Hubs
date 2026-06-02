@@ -173,6 +173,20 @@ export interface SpecUntrackable {
 }
 
 /**
+ * Phase G: the four achievement-level criteria an AI grader scores the
+ * goal against. The classifier distils these from the goal's freeform
+ * `rubric`, aligned to the widget's metric where one exists. Each is a
+ * short, ideally measurable criterion; any can be null when a tier
+ * wasn't expressible.
+ */
+export interface SpecTiers {
+  notAchieved: string | null;
+  achieved: string | null;
+  overAchieved: string | null;
+  roleModel: string | null;
+}
+
+/**
  * One sub-spec inside a SCORECARD spec.
  *
  * Carries the same `widget`+`kind`+`source`+`manual` shape as a
@@ -213,5 +227,10 @@ export interface ValidatedSpec {
   untrackable: SpecUntrackable | null;
   /** Phase E: only set when widget === "SCORECARD". */
   scorecard: SpecScorecard | null;
+  /**
+   * Phase G: AI-gradeable achievement tiers distilled from the goal's
+   * rubric. null when the goal has no gradeable tiers.
+   */
+  tiers: SpecTiers | null;
   classifiedAt: number;
 }
