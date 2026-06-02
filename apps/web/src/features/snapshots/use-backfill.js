@@ -49,6 +49,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { readSnapshots } from "./snapshots-store";
+import { useSnapshots } from "./use-snapshots";
 import { synthesiseWeek } from "./synthesise-week";
 import { useGoals } from "@/features/goals";
 import { useGoalSpecs } from "@/features/goal-specs";
@@ -95,14 +96,22 @@ export function useBackfill() {
   const [progress, setProgress] = useState(null);
   const cancelledRef = useRef(false);
 
+  // Subscribe to the snapshots store (reactive) AND trigger its one-shot
+  // hydration. Without this, `missingWeeks` was computed once at mount
+  // — before the async snapshot fetch resolved — and never recomputed,
+  // so the banner perpetually read "N weeks missing" (every completed
+  // week, since the store was still empty) even after snapshots loaded.
+  const { snapshots } = useSnapshots();
+
   // Completed Sun → Thu weeks since Jan 1 with NO snapshot yet. Drives
-  // the onboarding banner ("X weeks need backfill").
+  // the onboarding banner ("X weeks need backfill"). Recomputes whenever
+  // the snapshots array changes (hydration / save / backfill run).
   const missingWeeks = useMemo(() => {
     if (typeof window === "undefined") return 0;
     const ranges = enumerateCompletedWeeks();
-    const existing = new Set(readSnapshots().map((s) => s.week));
+    const existing = new Set((snapshots || []).map((s) => s.week));
     return ranges.filter((r) => !existing.has(r.weekLabel)).length;
-  }, [isRunning]); // re-evaluate after a run
+  }, [snapshots, isRunning]);
 
   // Total completed weeks since Jan 1 — the refresh target count. A run
   // recomputes all of these, not just the missing ones.
