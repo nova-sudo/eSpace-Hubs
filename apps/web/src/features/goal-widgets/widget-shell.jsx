@@ -22,6 +22,7 @@
 
 import { useState } from "react";
 import { useWidgetControls } from "./widget-controls-context";
+import { GoalTierLadder } from "@/features/goal-tiers";
 
 const VARIANT_STYLES = {
   light: {
@@ -110,6 +111,11 @@ export function WidgetShell({
       ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+
+      {/* Achievement-tier ladder (AI-graded). Renders only once the goal
+          has been re-analyzed with the four `tiers` — shows the dev where
+          they stand against not-achieved / achieved / over / role-model. */}
+      {spec?.tiers ? <GoalTierLadder spec={spec} variant={variant} /> : null}
 
       {(spec?.reasoning || onRetry || footer || onMarkDelegated || onEditContext) ? (
         <div

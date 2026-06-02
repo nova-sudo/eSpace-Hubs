@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { BentoTile, Pill } from "@/components/ui";
 import { useGoals } from "@/features/goals";
+import { useGoalSpecs } from "@/features/goal-specs";
+import { GoalTierBadge } from "@/features/goal-tiers";
 import { useHubLink } from "@/features/hubs";
 
 /**
@@ -14,6 +16,7 @@ import { useHubLink } from "@/features/hubs";
  */
 export function GoalsTile() {
   const { goals, total, weights } = useGoals();
+  const { getSpec } = useGoalSpecs();
   const link = useHubLink();
 
   if (total.l1s === 0) {
@@ -61,14 +64,14 @@ export function GoalsTile() {
     >
       <div className="grid h-full auto-cols-fr grid-flow-col gap-3 overflow-x-auto overflow-y-hidden pr-1">
         {goals.l1s.map((l1, i) => (
-          <L1Column key={l1.id} l1={l1} index={i} />
+          <L1Column key={l1.id} l1={l1} index={i} getSpec={getSpec} />
         ))}
       </div>
     </BentoTile>
   );
 }
 
-function L1Column({ l1, index }) {
+function L1Column({ l1, index, getSpec }) {
   // L2 weightage sum — shown on the L1 column so the user sees at a glance
   // whether their L2 weights roll up correctly (should typically sum to
   // 100% within an L1, mirroring Zoho's KRA weightage semantics).
@@ -119,7 +122,7 @@ function L1Column({ l1, index }) {
           </div>
           <ul className="flex-1 space-y-1 overflow-y-auto pr-0.5">
             {l1.l2s.slice(0, 6).map((l2) => (
-              <L2Row key={l2.id} l2={l2} />
+              <L2Row key={l2.id} l2={l2} getSpec={getSpec} />
             ))}
             {l1.l2s.length > 6 ? (
               <li
@@ -151,7 +154,8 @@ const PRIORITY_TONE = {
   low: "muted",
 };
 
-function L2Row({ l2 }) {
+function L2Row({ l2, getSpec }) {
+  const spec = getSpec?.(l2.id);
   return (
     <li
       className="grid grid-cols-[1fr_auto] items-start gap-2 rounded-[var(--radius-sub)] border border-border bg-card px-2 py-1.5"
@@ -164,6 +168,9 @@ function L2Row({ l2 }) {
         <L2MetaLine l2={l2} />
       </div>
       <div className="flex shrink-0 items-center gap-1">
+        {/* AI achievement tier — only renders once the goal's been
+            re-analyzed with the four tiers (else nothing). */}
+        <GoalTierBadge goalId={l2.id} spec={spec} />
         {Number(l2.weightage) > 0 ? (
           <Pill tone="muted">{l2.weightage}%</Pill>
         ) : null}

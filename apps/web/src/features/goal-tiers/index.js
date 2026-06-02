@@ -6,3 +6,4 @@ export {
   TIER_FIELD,
 } from "./use-goal-tier";
 export { readGoalTier, resetGoalTiers } from "./goal-tier-store";
+export { GoalTierBadge, GoalTierLadder } from "./goal-tier-ui";
