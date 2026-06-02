@@ -12,13 +12,20 @@
 
 import { Router } from "express";
 import { requireAuth } from "../../middleware/require-auth.js";
-import { chatHandler, gradePrHandler } from "./controller.js";
+import {
+  chatHandler,
+  gradePrHandler,
+  gradeGoalTierHandler,
+} from "./controller.js";
 import { classifyGoalsHandler } from "./classify-controller.js";
 
 export const aiRouter: Router = Router();
 
 aiRouter.post("/chat", requireAuth(), chatHandler);
 aiRouter.post("/grade-pr", requireAuth(), gradePrHandler);
+// Score which achievement tier a developer is at for one goal, given the
+// goal's classifier-distilled tier criteria + its current metric data.
+aiRouter.post("/grade-goal-tier", requireAuth(), gradeGoalTierHandler);
 // /classify-goals — NDJSON stream (one AnalysisEvent per line).
 // Auth runs as middleware; once headers flush, the handler owns the
 // response and never throws into express's error handler.
