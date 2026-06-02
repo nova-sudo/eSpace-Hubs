@@ -1,0 +1,149 @@
+"use client";
+
+/**
+ * AI goal-tier verdict cache (Phase 2).
+ *
+ * Caches the result of `POST /api/v1/ai/grade-goal-tier` per goal,
+ * keyed by a `key` the hook computes from (day + hash of tiers + current
+ * data). We re-grade at most once per day per goal — or sooner when the
+ * tiers or the goal's live data change. localStorage-backed so it
+ * survives reloads; reset on auth transition.
+ *
+ * NOT server-persisted: a tier verdict is a cheap derived read of the
+ * goal's tiers + current metrics, so a per-device daily cache is enough
+ * (mirrors the review-timing cache, not the grading-verdicts
+ * collection). The AI call is the expensive part — caching avoids
+ * re-spending tokens on every page view.
+ */
+
+import { fetchWithRateLimitRetry } from "@/lib/rate-limit";
+
+const STORAGE_KEY = "espace-devhub:goal-tiers";
+const CHANGE_EVENT = "goal-tiers:change";
+
+/** { [goalId]: { tier, reasoning, confidence, key } } */
+let state = {};
+let tick = 0;
+let loaded = false;
+const inflight = new Set();
+
+function load() {
+  if (loaded || typeof window === "undefined") return;
+  loaded = true;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed && typeof parsed === "object") state = parsed;
+  } catch {
+    /* ignore corrupt cache */
+  }
+}
+
+function persist() {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    /* quota / disabled — fine, recomputes next load */
+  }
+}
+
+function notify() {
+  tick += 1;
+  if (typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(new Event(CHANGE_EVENT));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function subscribeGoalTiers(cb) {
+  if (typeof window === "undefined") return () => {};
+  const handler = () => cb();
+  window.addEventListener(CHANGE_EVENT, handler);
+  return () => window.removeEventListener(CHANGE_EVENT, handler);
+}
+export function getGoalTiersSnapshot() {
+  return tick;
+}
+export function getGoalTiersServerSnapshot() {
+  return 0;
+}
+
+/** Current cached verdict for a goal (any key), or null. */
+export function readGoalTier(goalId) {
+  load();
+  return (goalId && state[goalId]) || null;
+}
+
+/**
+ * Grade a goal's tier unless we already have a fresh verdict for `key`.
+ * Idempotent: skips when the stored verdict matches `key` or a grade is
+ * already in flight for the goal. `force` re-grades regardless. On a
+ * rate-limit / error the prior verdict is left intact (no failure cached).
+ */
+export async function gradeGoalTier({
+  goalId,
+  goalTitle,
+  tiers,
+  currentData,
+  key,
+  aiProvider,
+  force = false,
+}) {
+  load();
+  if (!goalId || !tiers || !key) return;
+  if (!force) {
+    const existing = state[goalId];
+    if (existing && existing.key === key) return;
+    if (inflight.has(goalId)) return;
+  }
+  inflight.add(goalId);
+  try {
+    const res = await fetchWithRateLimitRetry(
+      "/api/v1/ai/grade-goal-tier",
+      {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "x-ai-provider": aiProvider || "mistral",
+        },
+        body: JSON.stringify({
+          goalTitle: goalTitle || "",
+          tiers,
+          currentData: currentData || "",
+          provider: aiProvider || undefined,
+        }),
+      },
+      { provider: "ai" },
+    );
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body?.verdict?.tier) {
+      state = { ...state, [goalId]: { ...body.verdict, key } };
+      persist();
+      notify();
+    }
+  } catch {
+    /* network / abort — keep any prior verdict */
+  } finally {
+    inflight.delete(goalId);
+  }
+}
+
+export function resetGoalTiers() {
+  state = {};
+  loaded = true;
+  notify();
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("auth:user-storage-cleared", resetGoalTiers);
+}

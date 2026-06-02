@@ -49,3 +49,26 @@ export const gradePrSchema = z.object({
   provider,
 });
 export type GradePrInput = z.infer<typeof gradePrSchema>;
+
+// ─── goal achievement-tier grading ───────────────────────────────────
+
+const tierCriterion = z.string().max(600).nullable().optional();
+
+/**
+ * Score which achievement tier a developer is at for one goal. The four
+ * tier criteria come from the goal spec (classifier-distilled); the
+ * `currentData` is a compact, caller-assembled summary of the goal's
+ * live metrics / readings the model compares against the criteria.
+ */
+export const gradeGoalTierSchema = z.object({
+  goalTitle: z.string().max(500).default(""),
+  tiers: z.object({
+    notAchieved: tierCriterion,
+    achieved: tierCriterion,
+    overAchieved: tierCriterion,
+    roleModel: tierCriterion,
+  }),
+  currentData: z.string().max(8_000).default(""),
+  provider,
+});
+export type GradeGoalTierInput = z.infer<typeof gradeGoalTierSchema>;

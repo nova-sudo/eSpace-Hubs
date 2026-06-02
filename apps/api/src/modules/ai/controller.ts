@@ -20,7 +20,7 @@ import {
 } from "../../lib/rate-limit.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import { selectProvider } from "./provider.js";
-import { chatSchema, gradePrSchema } from "./schemas.js";
+import { chatSchema, gradePrSchema, gradeGoalTierSchema } from "./schemas.js";
 
 const COMMENT_CHAR_LIMIT = 12_000;
 const PR_BODY_CHAR_LIMIT = 4_000;
@@ -306,6 +306,136 @@ export async function gradePrHandler(
       provider: provider.id,
       usage: data.usage,
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── POST /api/v1/ai/grade-goal-tier ─────────────────────────────────
+
+const GOAL_TIER_SYSTEM_PROMPT = [
+  "You assess which ACHIEVEMENT TIER a developer is at for ONE performance",
+  "goal, based on the goal's tier criteria and the developer's current data.",
+  "",
+  "INPUT:",
+  "  - The goal title",
+  "  - Four tier criteria: notAchieved / achieved / overAchieved / roleModel",
+  "  - The developer's CURRENT DATA for the goal (metrics, counts, readings)",
+  "",
+  "TASK: pick the single HIGHEST tier whose criteria the current data meets.",
+  "  - Tiers are cumulative: roleModel implies overAchieved implies achieved.",
+  "  - Evaluate bottom-up. If the data doesn't clearly meet 'achieved', the",
+  "    tier is 'not_achieved'.",
+  "  - Only credit a tier whose criterion you can actually verify from the",
+  "    data. If a criterion is qualitative and the data can't confirm it, do",
+  "    NOT credit that tier — say so in the reasoning and lower confidence.",
+  "",
+  "OUTPUT: ONE JSON object, no prose, no markdown:",
+  "  {",
+  '    "tier":       "not_achieved" | "achieved" | "over_achieved" | "role_model",',
+  '    "reasoning":  <one sentence — which criteria the data met or missed>,',
+  '    "confidence": "high" | "medium" | "low"',
+  "  }",
+  "  Use 'low' confidence when the data is sparse or the criteria aren't",
+  "  directly measurable from what's provided.",
+].join("\n");
+
+function buildTierUserPrompt(
+  goalTitle: string,
+  tiers: {
+    notAchieved?: string | null;
+    achieved?: string | null;
+    overAchieved?: string | null;
+    roleModel?: string | null;
+  },
+  currentData: string,
+): string {
+  const line = (label: string, v?: string | null) =>
+    `  ${label}: ${v && v.trim() ? v.trim() : "(not defined)"}`;
+  return [
+    `Goal: ${goalTitle || "(untitled)"}`,
+    "",
+    "Achievement tiers:",
+    line("Not achieved", tiers.notAchieved),
+    line("Achieved", tiers.achieved),
+    line("Over achieved", tiers.overAchieved),
+    line("Role model", tiers.roleModel),
+    "",
+    "Developer's current data:",
+    currentData && currentData.trim() ? currentData.trim() : "(no data available yet)",
+    "",
+    "Which tier is the developer at? Respond with a single JSON object.",
+  ].join("\n");
+}
+
+const VALID_TIERS = [
+  "not_achieved",
+  "achieved",
+  "over_achieved",
+  "role_model",
+];
+const VALID_CONFIDENCE = ["high", "medium", "low"];
+
+export async function gradeGoalTierHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const payload = gradeGoalTierSchema.parse(req.body);
+    const provider = selectProvider({
+      request: req,
+      bodyProvider: payload.provider ?? null,
+    });
+
+    const userPrompt = buildTierUserPrompt(
+      payload.goalTitle,
+      payload.tiers,
+      payload.currentData,
+    );
+
+    const upstream = await callProvider(provider, {
+      model: provider.model,
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: GOAL_TIER_SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+    });
+
+    const data = upstream.data as CompletionResponse;
+    const content = data.choices?.[0]?.message?.content ?? "";
+    let parsed: { tier?: unknown; reasoning?: unknown; confidence?: unknown };
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      throw new HttpError(
+        502,
+        "ai_provider_bad_response",
+        `${provider.label} returned non-JSON content: ${content.slice(0, 200)}`,
+      );
+    }
+
+    const verdict = {
+      tier:
+        typeof parsed?.tier === "string" && VALID_TIERS.includes(parsed.tier)
+          ? parsed.tier
+          : "not_achieved",
+      reasoning:
+        typeof parsed?.reasoning === "string" ? parsed.reasoning.trim() : "",
+      confidence:
+        typeof parsed?.confidence === "string" &&
+        VALID_CONFIDENCE.includes(parsed.confidence)
+          ? parsed.confidence
+          : "low",
+    };
+
+    res.json({ verdict, model: data.model, provider: provider.id });
   } catch (err) {
     next(err);
   }
