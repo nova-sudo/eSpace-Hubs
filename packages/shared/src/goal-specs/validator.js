@@ -188,6 +188,38 @@ function validateUntrackable(untrackable, errors) {
   return { reason: untrackable.reason.trim() };
 }
 
+/**
+ * Validate a `tiers` block — the four achievement levels an AI grader
+ * scores the goal against:
+ *   { notAchieved, achieved, overAchieved, roleModel }
+ *
+ * Each is a short, ideally MEASURABLE criterion the classifier distils
+ * from the goal's freeform `rubric` and aligns to the widget's metric.
+ * All four are optional strings; blanks normalise to null. The whole
+ * block collapses to null when nothing usable was produced (older specs,
+ * or genuinely un-gradeable goals) so consumers branch on `tiers == null`
+ * rather than four nulls. Permissive — never pushes into `errors`.
+ */
+function validateTiers(tiers) {
+  if (!isObject(tiers)) return null;
+  const pick = (v) => (isNonEmptyString(v) ? v.trim() : null);
+  const out = {
+    notAchieved: pick(tiers.notAchieved),
+    achieved: pick(tiers.achieved),
+    overAchieved: pick(tiers.overAchieved),
+    roleModel: pick(tiers.roleModel),
+  };
+  if (
+    out.notAchieved == null &&
+    out.achieved == null &&
+    out.overAchieved == null &&
+    out.roleModel == null
+  ) {
+    return null;
+  }
+  return out;
+}
+
 function validateDelegated(delegated, errors) {
   if (delegated == null) return null;
   if (!isObject(delegated)) {
@@ -501,6 +533,7 @@ export function validateSpec(obj) {
 
   const context = validateContext(obj.context, errors);
   const delegated = validateDelegated(obj.delegated, errors);
+  const tiers = validateTiers(obj.tiers);
 
   if (errors.length > 0) return { ok: false, errors };
 
@@ -517,6 +550,7 @@ export function validateSpec(obj) {
     delegated,
     untrackable,
     scorecard,
+    tiers,
     // Phase F: top-level firstReviewOnly applies to standalone
     // CODE_RUBRIC specs. Optional boolean, false-by-default — kept
     // as undefined when not set so older specs serialise identically.
@@ -551,6 +585,7 @@ export function buildSpec({
   delegated = null,
   untrackable = null,
   scorecard = null,
+  tiers = null,
   classifiedAt = Date.now(),
 }) {
   return validateSpec({
@@ -566,6 +601,7 @@ export function buildSpec({
     delegated,
     untrackable,
     scorecard,
+    tiers,
     classifiedAt,
   });
 }

@@ -48,6 +48,7 @@ export const SPEC_RESPONSE_SCHEMA = {
       "untrackable",
       "scorecard",
       "firstReviewOnly",
+      "tiers",
     ],
     properties: {
       kind: {
@@ -356,6 +357,28 @@ export const SPEC_RESPONSE_SCHEMA = {
           "weighted-averaged into the tile's headline. Each component " +
           "is itself a (widget, kind, source, manual) tuple — its " +
           "validation runs server-side via the shared validator.",
+      },
+      tiers: {
+        type: ["object", "null"],
+        additionalProperties: false,
+        required: ["notAchieved", "achieved", "overAchieved", "roleModel"],
+        properties: {
+          notAchieved: { type: ["string", "null"] },
+          achieved: { type: ["string", "null"] },
+          overAchieved: { type: ["string", "null"] },
+          roleModel: { type: ["string", "null"] },
+        },
+        description:
+          "The four achievement levels an AI grader later scores this " +
+          "goal against. Distil them from the goal's rubric/description, " +
+          "and make each MEASURABLE against the chosen widget's metric " +
+          "where one exists (e.g. for MERGED_COUNT target >=8: " +
+          "notAchieved '<8 merged', achieved '>=8 merged', overAchieved " +
+          "'>=12 merged', roleModel '>=16 merged with zero reverts'). " +
+          "If the rubric already states tiers, normalise them into this " +
+          "shape and keep the user's thresholds. Keep each <=160 chars. " +
+          "Use null for a tier you genuinely can't express; null the " +
+          "whole object only for goals with no meaningful levels.",
       },
     },
   },
