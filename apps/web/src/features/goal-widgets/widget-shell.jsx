@@ -21,6 +21,7 @@
  */
 
 import { useState } from "react";
+import { toast } from "sonner";
 import { useWidgetControls } from "./widget-controls-context";
 import { GoalTierLadder } from "@/features/goal-tiers";
 
@@ -59,10 +60,34 @@ export function WidgetShell({
 }) {
   const theme = VARIANT_STYLES[variant] || VARIANT_STYLES.light;
   const [showReason, setShowReason] = useState(false);
+  const [reanalyzing, setReanalyzing] = useState(false);
   // Optional user-controls injected by <GoalWidget>. Null handlers skip
   // rendering — widgets rendered outside the resolver (e.g. tests) still
   // work unchanged.
-  const { onMarkDelegated, onEditContext } = useWidgetControls();
+  const { onMarkDelegated, onEditContext, onReanalyze } = useWidgetControls();
+
+  // The footer "re-analyze" chip. Prefer the direct reclassify+save path
+  // (onReanalyze, injected by GoalWidget) so a single click re-runs the
+  // classifier and applies the new spec immediately — with a busy state
+  // and a success/failure toast. Falls back to onRetry (e.g. the analyst
+  // overlay) when no direct handler is wired.
+  async function handleReanalyze() {
+    if (reanalyzing) return;
+    if (!onReanalyze) {
+      onRetry?.();
+      return;
+    }
+    setReanalyzing(true);
+    try {
+      await onReanalyze();
+      toast.success("Re-analyzed — spec & tiers updated.");
+    } catch (err) {
+      toast.error(`Re-analyze failed: ${err?.message || err}`);
+    } finally {
+      setReanalyzing(false);
+    }
+  }
+  const canReanalyze = !!(onReanalyze || onRetry);
 
   return (
     <div
@@ -117,7 +142,7 @@ export function WidgetShell({
           they stand against not-achieved / achieved / over / role-model. */}
       {spec?.tiers ? <GoalTierLadder spec={spec} variant={variant} /> : null}
 
-      {(spec?.reasoning || onRetry || footer || onMarkDelegated || onEditContext) ? (
+      {(spec?.reasoning || onRetry || onReanalyze || footer || onMarkDelegated || onEditContext) ? (
         <div
           className="mt-3 flex items-center justify-between gap-2 border-t pt-2"
           style={{ borderColor: theme.divider }}
@@ -140,9 +165,9 @@ export function WidgetShell({
             ) : null}
             {footer}
           </div>
-          {onRetry ? (
-            <FooterChip theme={theme} onClick={onRetry}>
-              re-analyze
+          {canReanalyze ? (
+            <FooterChip theme={theme} onClick={handleReanalyze}>
+              {reanalyzing ? "re-analyzing…" : "re-analyze"}
             </FooterChip>
           ) : null}
         </div>

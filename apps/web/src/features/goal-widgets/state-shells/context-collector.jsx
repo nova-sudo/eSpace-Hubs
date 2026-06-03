@@ -68,16 +68,18 @@ export function ContextCollector({
     setReclassifyError(null);
     setBusy(true);
     try {
-      // Always commit the draft first so the spec switch doesn't
-      // strand the user's typed answers if they immediately edit
-      // again. The parent receives the SAME serialised Q/A pairs the
-      // server prompt will see, so the back-end + front-end stay
-      // in sync about what the model was actually asked.
-      const normalized = commit();
+      // Build the Q/A pairs from the DRAFT without persisting yet.
+      // Persisting (setAnswers) flips useIsContextComplete → true, which
+      // makes GoalWidget unmount this collector mid-await; deferring the
+      // commit until AFTER the classifier resolves keeps us mounted so the
+      // busy state + error banner stay reliable.
+      const normalized = normalizeAnswers(questions, draft);
       const pairs = buildAnswerPairs(questions, normalized);
       await onReclassify(pairs);
-      // Parent saved the new spec; widget body now renders whatever
-      // the classifier chose this time.
+      // Success: persist the answers, then hand off — the parent saved the
+      // new spec, so the widget body now renders whatever the classifier
+      // chose this time.
+      setAnswers(normalized);
       onSaved?.();
     } catch (err) {
       setReclassifyError(err?.message || String(err));
@@ -99,14 +101,18 @@ export function ContextCollector({
         className="flex h-full flex-col gap-3"
         onSubmit={(e) => {
           e.preventDefault();
-          commit();
-          // After persisting, hand control back to the parent. For
-          // GoalWidget this clears its `forceEditContext` override and
-          // the actual rubric / counter / scale widget takes the slot
-          // back. Without this the view stays pinned to the collector
-          // even after a successful save — which looks like "Save
-          // did nothing" to the user.
-          onSaved?.();
+          // When a reclassify path is wired (dashboard GoalWidget), saving
+          // your answers ALSO re-runs the classifier so the freshly-defined
+          // truths actually re-scope the spec/tiers — that's what "save"
+          // means here, and it's the whole point of answering. Without a
+          // reclassify path (e.g. the Review pane), just persist and hand
+          // control back so the real widget takes the slot.
+          if (onReclassify) {
+            void handleReclassify();
+          } else {
+            commit();
+            onSaved?.();
+          }
         }}
       >
         <div
@@ -160,38 +166,18 @@ export function ContextCollector({
               opacity: busy ? 0.55 : 1,
               cursor: busy ? "not-allowed" : "pointer",
             }}
+            title={
+              onReclassify
+                ? "Save your answers and re-run the AI classifier so it re-scopes this goal to your definitions (it may even pick a different widget)."
+                : undefined
+            }
           >
-            Save answers
+            {onReclassify
+              ? busy
+                ? "Saving & re-analyzing…"
+                : "Save & re-analyze"
+              : "Save answers"}
           </button>
-          {/* Re-analyze is an OPT-IN escalation — only rendered when the
-              parent (GoalWidget on the dashboard) supplies onReclassify.
-              The Review pane and other contexts that show this collector
-              without a reclassify path simply don't pass the prop, so
-              the button never appears. */}
-          {onReclassify ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={handleReclassify}
-              className="rounded-[var(--radius-sub)] px-3 py-1.5 font-bold uppercase transition-opacity"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10.5,
-                letterSpacing: "0.5px",
-                background: "transparent",
-                color: variant === "light" ? "#ffffff" : "var(--fg)",
-                border:
-                  variant === "light"
-                    ? "1px solid rgba(255,255,255,0.55)"
-                    : "1px solid var(--border)",
-                opacity: busy ? 0.55 : 1,
-                cursor: busy ? "not-allowed" : "pointer",
-              }}
-              title="Re-run the AI classifier with your answers so it can pick a different widget if the answers point elsewhere."
-            >
-              {busy ? "Re-analyzing…" : "Re-analyze with these answers"}
-            </button>
-          ) : null}
         </div>
       </form>
     </WidgetShell>
