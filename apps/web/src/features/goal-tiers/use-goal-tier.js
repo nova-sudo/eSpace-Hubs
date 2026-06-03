@@ -14,6 +14,8 @@
 
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useSnapshots } from "@/features/snapshots";
+import { useGoalInputs } from "@/features/goal-inputs";
+import { SPEC_KINDS } from "@/features/goal-specs";
 import { getAiProvider } from "@/features/analyst/use-ai-provider";
 import {
   gradeGoalTier,
@@ -60,6 +62,80 @@ function readingToText(reading) {
   return bits.join("; ");
 }
 
+/**
+ * Build the "current data" the grader sees. For MANUAL-family widgets we
+ * read the LIVE goal-inputs the widget itself renders (the latest entry),
+ * so a 100%-complete milestone reads as 100% — not "(no data)" as it did
+ * when we only passed the snapshot reading (which is empty for
+ * recurring-milestone / incident / scorecard widgets). AUTO widgets fall
+ * back to the snapshot reading (captureGoalReadings populates those).
+ */
+function buildCurrentData(spec, entries, reading) {
+  const widget = spec?.widget;
+  const list = Array.isArray(entries) ? entries : [];
+  const latest = list.length ? list[list.length - 1] : null;
+
+  switch (widget) {
+    case SPEC_KINDS.MILESTONE:
+    case SPEC_KINDS.RECURRING_MILESTONE: {
+      const items = Array.isArray(latest?.value?.items) ? latest.value.items : [];
+      if (items.length === 0) return readingToText(reading);
+      const done = items.filter((it) => it && it.done).length;
+      const total = items.length;
+      const pct = Math.round((done / total) * 100);
+      const open = items
+        .filter((it) => it && !it.done)
+        .map((it) => it.label)
+        .filter(Boolean);
+      const periodNote =
+        widget === SPEC_KINDS.RECURRING_MILESTONE
+          ? " in the latest tracked period"
+          : "";
+      return [
+        `${done}/${total} checklist items complete${periodNote} (${pct}%)`,
+        open.length
+          ? `incomplete: ${open.slice(0, 8).join("; ")}`
+          : "all items complete",
+      ].join("; ");
+    }
+    case SPEC_KINDS.COUNTER: {
+      const sum = list.reduce((s, e) => s + (Number(e?.value) || 0), 0);
+      return `current total: ${sum}`;
+    }
+    case SPEC_KINDS.SCALE: {
+      const v =
+        latest && Number.isFinite(Number(latest.value))
+          ? Number(latest.value)
+          : null;
+      return v == null ? readingToText(reading) : `latest rating: ${v} of 5`;
+    }
+    case SPEC_KINDS.DATE_LOG:
+      return `${list.length} entries logged`;
+    case SPEC_KINDS.INCIDENT_LOG: {
+      const incidents = list.filter(
+        (e) => e?.value && typeof e.value === "object",
+      );
+      const downtime = incidents.reduce(
+        (s, e) => s + (Number(e.value?.downtime) || 0),
+        0,
+      );
+      return `${incidents.length} incidents logged${downtime ? `; total downtime ${downtime} min` : ""}`;
+    }
+    case SPEC_KINDS.BEFORE_AFTER: {
+      const b = Number(latest?.value?.baseline);
+      const c = Number(latest?.value?.current);
+      if (!Number.isFinite(b) && !Number.isFinite(c)) return readingToText(reading);
+      return `baseline ${Number.isFinite(b) ? b : "?"} → current ${Number.isFinite(c) ? c : "?"}`;
+    }
+    case SPEC_KINDS.FREE_TEXT:
+      return `${list.length} reflection note(s) logged`;
+    default:
+      // AUTO widgets (merged/turnaround/linkage/…), CODE_RUBRIC, SCORECARD:
+      // the snapshot reading is the right current-data source.
+      return readingToText(reading);
+  }
+}
+
 export function useGoalTier(goalId, spec) {
   // Re-render when a verdict lands in the store.
   useSyncExternalStore(
@@ -68,11 +144,17 @@ export function useGoalTier(goalId, spec) {
     getGoalTiersServerSnapshot,
   );
   const { snapshots } = useSnapshots();
+  const { entries } = useGoalInputs(goalId);
   const tiers = spec?.tiers || null;
 
+  // Grade against the goal's LIVE state — the same goal-inputs the widget
+  // renders — falling back to the snapshot reading for auto widgets. This
+  // is what fixes "100% complete but graded Not-achieved / no data": the
+  // grader used to see only the snapshot reading, which is empty for
+  // recurring-milestone / incident / scorecard widgets.
   const currentData = useMemo(
-    () => readingToText(latestReadingFor(snapshots, goalId)),
-    [snapshots, goalId],
+    () => buildCurrentData(spec, entries, latestReadingFor(snapshots, goalId)),
+    [spec, entries, snapshots, goalId],
   );
 
   // Cache key: a new day OR changed tiers/data busts it and re-grades.
