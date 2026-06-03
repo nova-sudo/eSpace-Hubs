@@ -30,7 +30,7 @@ import { resolveWidget } from "./registry";
 import { DelegatedCard } from "./state-shells/delegated-card";
 import { UntrackableCard } from "./state-shells/untrackable-card";
 import { ContextCollector } from "./state-shells/context-collector";
-import { useIsContextComplete } from "@/features/goal-context";
+import { useIsContextComplete, readContextFor } from "@/features/goal-context";
 import { saveSpec } from "@/features/goal-specs";
 // Import directly (not via @/features/analyst) to keep the dep edge
 // goal-widgets → analyst one-way at the module level. analyst-page.jsx
@@ -152,6 +152,12 @@ export function GoalWidget({ spec, goal, variant = "light", className, onRetry }
     onEditContext: spec.context?.questions?.length
       ? () => setForceEditContext(true)
       : null,
+    // Direct, reliable re-analyze for ANY classified widget — re-runs the
+    // classifier with the goal's full description + saved context answers
+    // and writes the new spec immediately (no Review-pane buffer, no
+    // context.required gate). Returns the promise so WidgetShell can show
+    // a busy state + toast the result.
+    onReanalyze: () => runReclassify(spec, goal),
   };
 
   return (
@@ -224,11 +230,76 @@ async function runReclassify(spec, goal, contextAnswers) {
     goal: {
       id: spec.goalId,
       title: goal?.title || spec.title || "(untitled)",
-      description: goal?.rubric || goal?.description || "",
+      // Ship the SAME rich description bulk analysis builds (Category /
+      // Priority / Weightage / Window + Context + Rubric), not a bare
+      // rubric — otherwise the model loses the signal it needs to
+      // re-scope team-worded tiers down to the individual.
+      description: buildReclassifyDescription(goal),
       parentL1Title: goal?.parentL1Title,
       kind: goal?.kind || "L2",
     },
-    contextAnswers,
+    // Prefer freshly-edited pairs (from the ContextCollector); otherwise
+    // read the goal's saved context answers so a per-widget re-analyze
+    // still feeds the user's definitions to the classifier.
+    contextAnswers: contextAnswers ?? savedContextPairs(spec),
   });
   saveSpec(result);
+}
+
+/**
+ * Build the rich, multi-section description the classifier expects —
+ * mirrors the analyst's buildL2Description so a single-goal re-analyze
+ * gets identical context to a full run. Inlined (not imported from the
+ * analyst feature) to keep the goal-widgets → analyst dep edge one-way.
+ */
+function buildReclassifyDescription(goal) {
+  if (!goal) return "";
+  const window =
+    goal.startDate || goal.dueDate
+      ? `${goal.startDate || "?"} → ${goal.dueDate || "?"}`
+      : "";
+  const metaPairs = [
+    ["Category", goal.category],
+    ["Priority", goal.priority],
+    ["Weightage", goal.weightage ? `${goal.weightage}%` : ""],
+    ["Window", window],
+  ]
+    .map(([k, v]) => [k, typeof v === "string" ? v.trim() : v])
+    .filter(([, v]) => v);
+  const sections = [];
+  if (metaPairs.length) sections.push(metaPairs.map(([k, v]) => `${k}: ${v}`).join("\n"));
+  const ctx = typeof goal.description === "string" ? goal.description.trim() : "";
+  if (ctx) sections.push(`Context:\n${ctx}`);
+  const rubric = typeof goal.rubric === "string" ? goal.rubric.trim() : "";
+  if (rubric) sections.push(`Rubric:\n${rubric}`);
+  return sections.join("\n\n") || rubric || ctx || "";
+}
+
+/**
+ * Serialise the goal's SAVED context answers into the {prompt, answer}
+ * pairs the classifier prompt renders. Used when re-analyzing without the
+ * ContextCollector open (the per-widget "re-analyze" chip) so the user's
+ * previously-defined truths still reach the model. Returns [] when the
+ * spec has no context questions.
+ */
+function savedContextPairs(spec) {
+  const questions = spec?.context?.questions || [];
+  if (!questions.length) return [];
+  const answers = readContextFor(spec.goalId) || {};
+  const out = [];
+  for (const q of questions) {
+    const raw = answers[q.id];
+    let answer = "";
+    if (q.kind === "list") {
+      answer = Array.isArray(raw)
+        ? raw.map((s) => String(s).trim()).filter(Boolean).join("\n")
+        : "";
+    } else if (q.kind === "number") {
+      answer = typeof raw === "number" && !Number.isNaN(raw) ? String(raw) : "";
+    } else {
+      answer = typeof raw === "string" ? raw.trim() : "";
+    }
+    if (answer) out.push({ prompt: q.prompt, answer });
+  }
+  return out;
 }

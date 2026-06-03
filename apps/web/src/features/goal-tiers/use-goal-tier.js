@@ -14,7 +14,7 @@
 
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useSnapshots } from "@/features/snapshots";
-import { useGoalInputs } from "@/features/goal-inputs";
+import { useGoalInputs, getInputsState } from "@/features/goal-inputs";
 import { SPEC_KINDS } from "@/features/goal-specs";
 import { getAiProvider } from "@/features/analyst/use-ai-provider";
 import {
@@ -145,6 +145,9 @@ export function useGoalTier(goalId, spec) {
   );
   const { snapshots } = useSnapshots();
   const { entries } = useGoalInputs(goalId);
+  // useGoalInputs subscribes to the inputs store tick, so this re-reads on
+  // hydration — used below to defer grading until the live data is loaded.
+  const inputsHydrated = getInputsState().fetched;
   const tiers = spec?.tiers || null;
 
   // Grade against the goal's LIVE state — the same goal-inputs the widget
@@ -168,6 +171,11 @@ export function useGoalTier(goalId, spec) {
 
   useEffect(() => {
     if (!goalId || !tiers || !key) return;
+    // Defer grading until goal-inputs have hydrated. Otherwise the first
+    // render (entries=[]) grades against empty data and caches a throwaway
+    // "no data" verdict. `inputsHydrated` is a dep, so when it flips true
+    // the grade fires — even for auto widgets whose `key` didn't change.
+    if (!inputsHydrated) return;
     void gradeGoalTier({
       goalId,
       goalTitle: spec?.title,
@@ -177,7 +185,7 @@ export function useGoalTier(goalId, spec) {
       aiProvider: getAiProvider(),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [goalId, key]);
+  }, [goalId, key, inputsHydrated]);
 
   const stored = readGoalTier(goalId);
   const verdict = stored && stored.key === key ? stored : null;
