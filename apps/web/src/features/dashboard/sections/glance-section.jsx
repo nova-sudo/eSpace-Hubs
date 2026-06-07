@@ -25,7 +25,7 @@ export function GlanceSection() {
       subtitle="Nudges · tickets · open PRs"
       railLabel="glance"
     >
-      {!integrationsReady ? (
+      {!ready ? (
         <Loading
           loader="helix"
           size="2xl"
