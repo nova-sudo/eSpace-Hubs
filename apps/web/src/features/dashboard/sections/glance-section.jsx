@@ -4,7 +4,7 @@ import { Section } from "../scroll-shell";
 import { AttentionBand } from "../attention-band";
 import { TicketsTile, PRsTile } from "../tiles";
 import { Loading } from "@/components/ui";
-import { usePerfSources } from "../use-section-ready";
+import { useGlanceReady } from "../use-section-ready";
 
 /**
  * SECTION 03 — At a glance & on your plate
@@ -16,7 +16,7 @@ import { usePerfSources } from "../use-section-ready";
  *     [Tickets (kanban) 7×3] [Open PRs + commits 5×3]
  */
 export function GlanceSection() {
-  const { integrationsReady } = usePerfSources();
+  const ready = useGlanceReady();
   return (
     <Section
       id="sec-glance"

@@ -8,7 +8,7 @@ import {
   TurnaroundTile,
 } from "../tiles";
 import { Loading } from "@/components/ui";
-import { usePerfSources } from "../use-section-ready";
+import { useTrendReady } from "../use-section-ready";
 
 /**
  * SECTION 04 — Trends & breakdowns
@@ -31,8 +31,7 @@ import { usePerfSources } from "../use-section-ready";
  * "drill-in" view — the only place a wide x-axis really helps.
  */
 export function TrendSection() {
-  const { integrationsReady, snapshotsReady } = usePerfSources();
-  const ready = integrationsReady && snapshotsReady;
+  const ready = useTrendReady();
   return (
     <Section
       id="sec-trend"

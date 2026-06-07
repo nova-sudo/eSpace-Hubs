@@ -3,7 +3,7 @@
 import { Section } from "../scroll-shell";
 import { ReviewTimingTile } from "../tiles";
 import { Loading } from "@/components/ui";
-import { usePerfSources } from "../use-section-ready";
+import { useReviewTimingReady } from "../use-section-ready";
 
 /**
  * SECTION 02 — Review timing
@@ -26,7 +26,7 @@ import { usePerfSources } from "../use-section-ready";
  * scroll-snap makes it feel like a focused analytical view.
  */
 export function ReviewTimingSection() {
-  const { integrationsReady } = usePerfSources();
+  const ready = useReviewTimingReady();
   return (
     <Section
       id="sec-review-timing"
@@ -35,7 +35,7 @@ export function ReviewTimingSection() {
       subtitle="TTFR · ATTNR · idle"
       railLabel="reviews"
     >
-      {!integrationsReady ? (
+      {!ready ? (
         <Loading
           loader="helix"
           size="2xl"
