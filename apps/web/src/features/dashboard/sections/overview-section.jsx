@@ -11,7 +11,7 @@ import {
   SinceLastVisitTile,
 } from "../tiles";
 import { Loading } from "@/components/ui";
-import { usePerfSources } from "../use-section-ready";
+import { useOverviewReady } from "../use-section-ready";
 
 /**
  * SECTION 01 — Overview
@@ -28,8 +28,7 @@ export function OverviewSection() {
   // Reveal the whole section at once — one helix over the section until the
   // goal-compliance data AND the integration metrics behind the four cards
   // have all settled, so no card flashes its own loading → empty → data.
-  const { integrationsReady, goalsReady } = usePerfSources();
-  const ready = integrationsReady && goalsReady;
+  const ready = useOverviewReady();
 
   return (
     <Section

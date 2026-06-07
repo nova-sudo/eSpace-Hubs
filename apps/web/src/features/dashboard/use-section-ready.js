@@ -1,44 +1,61 @@
 "use client";
 
 /**
- * Readiness of the data sources behind the performance-page sections.
+ * Per-section readiness for the performance page. Each section shows one
+ * big loader until EVERY card it contains has its data, then reveals at
+ * once — so no card flashes its own loading → empty → data.
  *
- * Each section shows ONE big loader until every card it contains has its
- * data, then reveals all at once (instead of each card flashing its own
- * loading → empty → data). This hook computes the shared "is that source
- * loaded yet?" flags; each section ANDs the ones it actually uses.
- *
- *   integrationsReady — combined merged PRs + events for the active date
- *                       range have settled (false only during the FIRST
- *                       fetch; a disconnected provider is `true` instantly
- *                       because its SWR key is null → never stuck).
- *   snapshotsReady    — the snapshot stream has hydrated.
- *   goalsReady        — goals + specs + inputs have hydrated (the goal
- *                       compliance tile).
- *
- * The combined hooks are called with the SAME `since` the tiles use, so
- * SWR's dedupe means this shares their in-flight fetch — no extra request.
+ * Each hook gates on the EXACT data hooks that section's tiles call (same
+ * args → SWR dedupe shares the tiles' in-flight fetch; no extra request).
+ * Gating on the wrong hook is what made a section reveal early — e.g. the
+ * review-timing tile does per-PR fetching AFTER the merged list, so it
+ * must gate on `usePrReviewTimings`, not raw merged. A disconnected
+ * provider reports ready instantly (its SWR key is null), so a user with
+ * no integrations never sits on a stuck loader.
  */
 
 import {
   useCombinedMergedSince,
   useCombinedEventsSince,
+  usePrReviewTimings,
+  useJiraTickets,
+  useGitlabOpenMRs,
+  useGitlabReviewRequests,
+  useGithubOpenPulls,
+  useGithubReviewRequests,
 } from "@/features/integrations";
-import { useSnapshots, useComplianceSummary } from "@/features/snapshots";
+import { useComplianceSummary } from "@/features/snapshots";
 import { useDateRange } from "./date-range";
 
-export function usePerfSources() {
+/** Overview — goal compliance + merged-PR metrics (merged / rounds / linkage). */
+export function useOverviewReady() {
   const { range } = useDateRange();
-  const since = range?.fetchSince;
-
-  const merged = useCombinedMergedSince(since);
-  const events = useCombinedEventsSince(since);
-  const { fetched: snapshotsReady } = useSnapshots();
   const { ready: goalsReady } = useComplianceSummary();
+  const { isLoading: merged } = useCombinedMergedSince(range?.fetchSince);
+  return goalsReady && !merged;
+}
 
-  return {
-    integrationsReady: !merged.isLoading && !events.isLoading,
-    snapshotsReady,
-    goalsReady,
-  };
+/** Review timing — the dedicated per-PR review-timing fetch. */
+export function useReviewTimingReady() {
+  const { range } = useDateRange();
+  const { isLoading } = usePrReviewTimings(range?.fetchSince);
+  return !isLoading;
+}
+
+/** Glance — Jira tickets + open PRs/MRs + review requests. */
+export function useGlanceReady() {
+  const { isLoading: tickets } = useJiraTickets();
+  const { isLoading: glOpen } = useGitlabOpenMRs();
+  const { isLoading: ghOpen } = useGithubOpenPulls();
+  const { isLoading: glReq } = useGitlabReviewRequests();
+  const { isLoading: ghReq } = useGithubReviewRequests();
+  return !tickets && !glOpen && !ghOpen && !glReq && !ghReq;
+}
+
+/** Trends — merged-PR + event metrics (heatmap/activity/reviews=events, turnaround=merged). */
+export function useTrendReady() {
+  const { range } = useDateRange();
+  const { isLoading: merged } = useCombinedMergedSince(range?.fetchSince);
+  const { isLoading: events } = useCombinedEventsSince(range?.fetchSince);
+  return !merged && !events;
 }
