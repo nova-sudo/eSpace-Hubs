@@ -34,11 +34,11 @@ export function GoalComplianceTile() {
       {!hasData ? (
         <div className="flex h-full flex-col items-center justify-center gap-1 text-center">
           <div className="text-[13px] font-semibold text-fg">
-            No closed windows yet
+            Nothing to track yet
           </div>
           <div className="max-w-[200px] text-[11px] leading-[1.45] text-muted-fg">
-            Weekly snapshots build your goal-compliance read — check back
-            after the first capture.
+            Classify a goal and log progress against it — on-pace goals show
+            up here right away.
           </div>
         </div>
       ) : (
