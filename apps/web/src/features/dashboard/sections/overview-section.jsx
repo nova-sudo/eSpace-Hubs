@@ -10,6 +10,8 @@ import {
   LinkageTile,
   SinceLastVisitTile,
 } from "../tiles";
+import { Loading } from "@/components/ui";
+import { usePerfSources } from "../use-section-ready";
 
 /**
  * SECTION 01 — Overview
@@ -23,6 +25,12 @@ import {
  * No `.sec-head` per mock — Hero is the top of the page.
  */
 export function OverviewSection() {
+  // Reveal the whole section at once — one helix over the section until the
+  // goal-compliance data AND the integration metrics behind the four cards
+  // have all settled, so no card flashes its own loading → empty → data.
+  const { integrationsReady, goalsReady } = usePerfSources();
+  const ready = integrationsReady && goalsReady;
+
   return (
     <Section
       id="sec-overview"
@@ -31,6 +39,10 @@ export function OverviewSection() {
       railLabel="overview"
       showHead={false}
     >
+      {!ready ? (
+        <Loading loader="helix" size="2xl" color="var(--accent)" label="Loading overview…" />
+      ) : (
+      <>
       <Hero />
       {/* "Since last visit" — quietly omits when the user has nothing new
           to see (first visit / same-session reload). It's a 1-line strip
@@ -57,6 +69,8 @@ export function OverviewSection() {
         <RoundsTile />
         <LinkageTile />
       </div>
+      </>
+      )}
     </Section>
   );
 }

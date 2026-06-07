@@ -48,6 +48,7 @@ const SIZES = {
   md: { fontSize: 22, cellSize: 3, gap: 1.5, dot: 6 },
   lg: { fontSize: 32, cellSize: 4, gap: 2, dot: 8 },
   xl: { fontSize: 46, cellSize: 6, gap: 2.5, dot: 10 },
+  "2xl": { fontSize: 66, cellSize: 9, gap: 3, dot: 14 },
 };
 
 /** Pure-CSS fallback: three pulsing dots in currentColor. */
