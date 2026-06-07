@@ -7,6 +7,8 @@ import {
   ReviewsTile,
   TurnaroundTile,
 } from "../tiles";
+import { Loading } from "@/components/ui";
+import { usePerfSources } from "../use-section-ready";
 
 /**
  * SECTION 04 — Trends & breakdowns
@@ -29,6 +31,8 @@ import {
  * "drill-in" view — the only place a wide x-axis really helps.
  */
 export function TrendSection() {
+  const { integrationsReady, snapshotsReady } = usePerfSources();
+  const ready = integrationsReady && snapshotsReady;
   return (
     <Section
       id="sec-trend"
@@ -37,15 +41,24 @@ export function TrendSection() {
       subtitle="Signal over time"
       railLabel="trend"
     >
-      <div
-        className="grid min-h-0 flex-1 grid-cols-12 gap-3.5"
-        style={{ gridAutoRows: "minmax(0, 1fr)" }}
-      >
-        <HeatmapTile />
-        <TurnaroundTile />
-        <ReviewsTile />
-        <ActivityTile />
-      </div>
+      {!ready ? (
+        <Loading
+          loader="helix"
+          size="2xl"
+          color="var(--accent)"
+          label="Loading trends…"
+        />
+      ) : (
+        <div
+          className="grid min-h-0 flex-1 grid-cols-12 gap-3.5"
+          style={{ gridAutoRows: "minmax(0, 1fr)" }}
+        >
+          <HeatmapTile />
+          <TurnaroundTile />
+          <ReviewsTile />
+          <ActivityTile />
+        </div>
+      )}
     </Section>
   );
 }
