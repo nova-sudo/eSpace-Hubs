@@ -75,6 +75,8 @@ export function useGoalInputs(goalId) {
     append,
     remove,
     clear,
+    // Hydration flag for empty-state gating (`!fetched → loader`).
+    fetched: getInputsState().fetched,
   };
 }
 

@@ -25,29 +25,46 @@
  */
 
 import { cn } from "@/lib/cn";
+import { Loader } from "./loader";
+
+// Loading glyph per silhouette — a tile's loading affordance matches the
+// shape of the content it's standing in for. All are dot-loaders so the
+// "data is coming" beat reads consistently across the whole grid.
+const LOADING_LOADER = {
+  stat: "pulse",
+  list: "diagonal-swipe",
+  chart: "scanline-grid",
+  kanban: "checkerboard",
+};
 
 export function TileState({
   kind = "loading",
   message,
   sub,
-  // `silhouette` lets a tile match the new placeholder shape to its actual
-  // content. Defaults to "stat" — one big number + 1 line of meta, which
-  // covers most overview tiles.
+  // `silhouette` lets a tile match the placeholder to its actual content.
+  // Defaults to "stat" — one big number + 1 line of meta, which covers
+  // most overview tiles.
   silhouette = "stat",
+  // Optional explicit dot-loader id, overriding the silhouette default.
+  loader,
   className,
 }) {
   if (kind === "loading") {
     return (
       <div
         className={cn(
-          "flex h-full min-h-0 w-full flex-1 flex-col gap-2.5 motion-safe:animate-pulse",
+          "flex h-full min-h-0 w-full flex-1 items-center justify-center text-muted-fg",
           className,
         )}
         role="status"
         aria-live="polite"
         aria-label={message || "Loading"}
       >
-        <Skeleton silhouette={silhouette} />
+        <Loader
+          loader={loader || LOADING_LOADER[silhouette] || "pulse-soft"}
+          size={silhouette === "chart" || silhouette === "kanban" ? "lg" : "md"}
+          label={message || "Loading"}
+        />
       </div>
     );
   }
@@ -94,72 +111,5 @@ export function TileState({
         </div>
       ) : null}
     </div>
-  );
-}
-
-function Skeleton({ silhouette }) {
-  // Each silhouette is a small JSX recipe — easy to extend (add "table",
-  // "kanban", etc. as they're needed). Heights and gaps mirror the tile
-  // chrome's `padding: 18` so the placeholder stays inside the bordered box.
-  switch (silhouette) {
-    case "list":
-      return (
-        <>
-          <Bar w="55%" h={10} />
-          <Bar w="92%" h={8} />
-          <Bar w="86%" h={8} />
-          <Bar w="72%" h={8} />
-          <Bar w="60%" h={8} />
-        </>
-      );
-    case "chart":
-      return (
-        <>
-          <Bar w="40%" h={10} />
-          <Bar w="100%" h={56} />
-          <Bar w="60%" h={8} />
-        </>
-      );
-    case "kanban":
-      return (
-        <div className="grid h-full min-h-0 grid-cols-3 gap-2.5">
-          <Column />
-          <Column />
-          <Column />
-        </div>
-      );
-    case "stat":
-    default:
-      return (
-        <>
-          <Bar w="40%" h={10} />
-          <Bar w="55%" h={28} />
-          <Bar w="70%" h={8} />
-        </>
-      );
-  }
-}
-
-function Column() {
-  return (
-    <div className="flex h-full min-h-0 flex-col gap-1.5">
-      <Bar w="60%" h={9} />
-      <Bar w="100%" h={18} />
-      <Bar w="100%" h={18} />
-      <Bar w="100%" h={18} />
-    </div>
-  );
-}
-
-function Bar({ w, h }) {
-  return (
-    <div
-      style={{
-        width: w,
-        height: h,
-        background: "var(--border)",
-        borderRadius: 4,
-      }}
-    />
   );
 }

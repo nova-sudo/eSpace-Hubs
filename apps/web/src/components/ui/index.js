@@ -19,3 +19,4 @@ export { LineSpark } from "./line-spark";
 export { StarGlyph } from "./star-glyph";
 export { Stat } from "./stat";
 export { TileState } from "./tile-state";
+export { Loader, Loading } from "./loader";

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BentoTile, Pill } from "@/components/ui";
+import { BentoTile, Pill, TileState } from "@/components/ui";
 import { useGoals } from "@/features/goals";
 import { useGoalSpecs } from "@/features/goal-specs";
 import { GoalTierBadge } from "@/features/goal-tiers";
@@ -15,9 +15,25 @@ import { useHubLink } from "@/features/hubs";
  * tab where the tree editor lives.
  */
 export function GoalsTile() {
-  const { goals, total, weights } = useGoals();
+  const { goals, total, weights, fetched } = useGoals();
   const { getSpec } = useGoalSpecs();
   const link = useHubLink();
+
+  // Still hydrating → show a loader, never the "Map your goals" empty
+  // state (that flashed on every first paint before the fetch settled).
+  if (!fetched) {
+    return (
+      <BentoTile
+        col="span 12"
+        row="span 4"
+        label="Performance goals"
+        title="Your performance goals"
+        titleSize={18}
+      >
+        <TileState kind="loading" silhouette="kanban" message="Loading goals…" />
+      </BentoTile>
+    );
+  }
 
   if (total.l1s === 0) {
     return (

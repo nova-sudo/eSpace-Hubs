@@ -29,6 +29,7 @@ import { useGoalSpecs, SPEC_KINDS } from "@/features/goal-specs";
 import {
   useAllGoalInputs,
   readInputs,
+  getInputsState,
   computeCompliance,
 } from "@/features/goal-inputs";
 
@@ -124,11 +125,14 @@ function liveStanding(spec, entries, snapshots, goalId) {
 
 export function useComplianceSummary() {
   const { snapshots } = useSnapshots();
-  const { goals } = useGoals();
-  const { specs } = useGoalSpecs();
+  const { goals, fetched: goalsFetched } = useGoals();
+  const { specs, fetched: specsFetched } = useGoalSpecs();
   // Subscribe to the inputs store tick so the summary recomputes when the
   // user logs/ticks anything (and so the one-shot hydration fires).
   const inputsTick = useAllGoalInputs();
+  // `ready` gates the tile's empty state: until goals + specs + inputs have
+  // all hydrated, "0 tracked" would be a hydration artefact, not the truth.
+  const ready = goalsFetched && specsFetched && getInputsState().fetched;
 
   return useMemo(() => {
     const byGoal = readInputs() || {};
@@ -150,8 +154,9 @@ export function useComplianceSummary() {
     return {
       met,
       assessable,
+      ready,
       pct: assessable > 0 ? Math.round((met / assessable) * 100) : null,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshots, goals, specs, inputsTick]);
+  }, [snapshots, goals, specs, inputsTick, ready]);
 }
