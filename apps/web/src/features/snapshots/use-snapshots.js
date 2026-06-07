@@ -54,7 +54,10 @@ export function useSnapshots() {
     void fetchSnapshots();
   }, [user, sessionLoading]);
 
-  return { snapshots: readSnapshots() };
+  // `fetched` flips true once the first load settles (even with zero
+  // snapshots), so consumers can gate empty-state vs loader.
+  const s = getSnapshotsState();
+  return { snapshots: readSnapshots(), fetched: s.fetched, loading: s.loading };
 }
 
 /**

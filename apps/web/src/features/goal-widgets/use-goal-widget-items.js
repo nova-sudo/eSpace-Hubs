@@ -29,8 +29,8 @@ function flattenGoals(tree) {
 }
 
 export function useGoalWidgetItems() {
-  const { goals } = useGoals();
-  const { specs, lastAnalyzedAt } = useGoalSpecs();
+  const { goals, fetched: goalsFetched } = useGoals();
+  const { specs, lastAnalyzedAt, fetched: specsFetched } = useGoalSpecs();
 
   const items = useMemo(() => {
     const flat = flattenGoals(goals);
@@ -113,5 +113,8 @@ export function useGoalWidgetItems() {
     hasGoals,
     hasSpecs: items.length > 0,
     lastAnalyzedAt,
+    // True once goals + specs have both hydrated — gate empty/CTA states on
+    // this so "Add goals" / "Analyze" never flash before the first load.
+    ready: goalsFetched && specsFetched,
   };
 }

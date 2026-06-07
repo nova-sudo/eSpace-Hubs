@@ -52,6 +52,11 @@ export function useGoalSpecs() {
   const isClassified = useCallback((goalId) => parsed.has(goalId), [parsed]);
   const getSpec = useCallback((goalId) => parsed.get(goalId), [parsed]);
 
+  // Hydration flags for empty-state gating (`!fetched → loader`). Read
+  // fresh each render; the useSyncExternalStore subscription re-runs the
+  // component when the store settles.
+  const specsState = getSpecsState();
+
   return {
     specs: parsed,
     rawSpecs: rawSpecs || {},
@@ -59,5 +64,7 @@ export function useGoalSpecs() {
     count: parsed.size,
     isClassified,
     getSpec,
+    fetched: specsState.fetched,
+    loading: specsState.loading,
   };
 }

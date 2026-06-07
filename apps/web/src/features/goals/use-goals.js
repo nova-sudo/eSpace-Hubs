@@ -78,6 +78,10 @@ export function useGoals() {
     total: { l1s: totalL1, l2s: totalL2 },
     weights: { total: weightSum, remaining: Math.max(0, 100 - weightSum) },
     loading: stateSnapshot.loading,
+    // `fetched` flips true once the first load settles (even on an empty
+    // server). Consumers gate their empty state on this so it never
+    // flashes before hydration: `!fetched → loader`.
+    fetched: stateSnapshot.fetched,
     error: stateSnapshot.error,
   };
 }

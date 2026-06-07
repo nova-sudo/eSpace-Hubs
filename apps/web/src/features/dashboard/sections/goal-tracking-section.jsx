@@ -9,6 +9,7 @@ import {
 } from "@/features/goal-widgets";
 import { useAnalyst, ANALYST_MODES } from "@/features/analyst";
 import { removeSpec } from "@/features/goal-specs";
+import { Loading } from "@/components/ui";
 
 /**
  * GOALS TAB · SECTION 02 — Goal tracking (AI-classified).
@@ -30,8 +31,14 @@ import { removeSpec } from "@/features/goal-specs";
  */
 export function GoalTrackingSection() {
   const { requestOpen } = useAnalyst();
-  const { groupedItems, hasGoals, hasSpecs, lastAnalyzedAt, unclassifiedGoals } =
-    useGoalWidgetItems();
+  const {
+    groupedItems,
+    hasGoals,
+    hasSpecs,
+    lastAnalyzedAt,
+    unclassifiedGoals,
+    ready,
+  } = useGoalWidgetItems();
 
   // Annotate each item with an `onRetry` so the per-widget error path can
   // re-classify just that goal — wipes the spec and reopens the analyst.
@@ -65,7 +72,9 @@ export function GoalTrackingSection() {
         requestOpen={requestOpen}
       />
 
-      {!hasGoals ? (
+      {!ready ? (
+        <Loading loader="dna-helix" size="lg" label="Loading goals…" />
+      ) : !hasGoals ? (
         <EmptyState
           title="Add goals to start tracking"
           body="You haven't added any L1 or L2 goals yet. Paste them into Settings and the analyst will turn each into a live widget here."

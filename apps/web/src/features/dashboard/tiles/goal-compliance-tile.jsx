@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BentoTile } from "@/components/ui";
+import { BentoTile, TileState } from "@/components/ui";
 import { useComplianceSummary } from "@/features/snapshots";
 import { useHubLink } from "@/features/hubs";
 
@@ -12,7 +12,7 @@ import { useHubLink } from "@/features/hubs";
  * + Settings).
  */
 export function GoalComplianceTile() {
-  const { met, assessable, pct } = useComplianceSummary();
+  const { met, assessable, pct, ready } = useComplianceSummary();
   const link = useHubLink();
   const hasData = assessable > 0;
 
@@ -20,7 +20,7 @@ export function GoalComplianceTile() {
     <BentoTile
       col="span 3"
       row="span 2"
-      label={`Goal compliance${hasData ? ` · ${assessable} tracked` : ""}`}
+      label={`Goal compliance${ready && hasData ? ` · ${assessable} tracked` : ""}`}
       right={
         <Link
           href={link("/goals")}
@@ -31,7 +31,9 @@ export function GoalComplianceTile() {
         </Link>
       }
     >
-      {!hasData ? (
+      {!ready ? (
+        <TileState kind="loading" silhouette="stat" message="Loading compliance…" />
+      ) : !hasData ? (
         <div className="flex h-full flex-col items-center justify-center gap-1 text-center">
           <div className="text-[13px] font-semibold text-fg">
             Nothing to track yet
