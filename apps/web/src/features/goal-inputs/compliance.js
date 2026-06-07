@@ -106,18 +106,24 @@ export function computeCompliance(entries, target, cadence) {
 
   let contribution = 0;
   let metWindows = 0;
-  for (const sum of buckets) {
+  // Whether the MOST RECENT window (the current, still-open cadence
+  // period) hit its target — the "are you on pace right now?" signal the
+  // live compliance summary reads, distinct from the lifetime average.
+  let latestWindowMet = false;
+  for (let i = 0; i < buckets.length; i += 1) {
+    const sum = buckets[i];
     let weight;
+    let hit = false;
     if (op === ">=") {
       // Cap at 1.0 — over-logging this window doesn't carry to the next.
       weight = t > 0 ? Math.min(sum, t) / t : 0;
-      if (sum >= t) metWindows += 1;
+      hit = sum >= t;
     } else if (op === "<=") {
       // At-or-below = full credit. Over-target = penalty proportional to
       // overshoot, but bounded so going wildly over doesn't go negative.
       if (sum <= t) {
         weight = 1;
-        metWindows += 1;
+        hit = true;
       } else {
         weight = t / sum; // (0, 1) since sum > t > 0 in this branch
       }
@@ -125,13 +131,14 @@ export function computeCompliance(entries, target, cadence) {
       // Within ±10% counts as hitting. Closer = better but binary
       // beyond that (don't try to be clever).
       const within = Math.abs(sum - t) / Math.max(1, Math.abs(t));
-      const hit = within <= 0.1;
+      hit = within <= 0.1;
       weight = hit ? 1 : 0;
-      if (hit) metWindows += 1;
     } else {
       weight = 0;
     }
+    if (hit) metWindows += 1;
     contribution += weight;
+    if (i === buckets.length - 1) latestWindowMet = hit;
   }
 
   const ratio = contribution / windowCount;
@@ -141,6 +148,7 @@ export function computeCompliance(entries, target, cadence) {
     pct,
     metWindows,
     totalWindows: windowCount,
+    latestWindowMet,
     targetOp: op,
     targetValue: t,
     cadence,
