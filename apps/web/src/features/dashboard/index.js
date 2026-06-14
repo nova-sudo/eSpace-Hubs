@@ -16,4 +16,7 @@ export {
   DEFAULT_PRESET,
   resolveRange,
   splitByRange,
+  readLastReviewDate,
+  writeLastReviewDate,
+  LAST_REVIEW_CHANGE_EVENT,
 } from "./date-range";
