@@ -18,7 +18,7 @@ const CODE_HOSTS = MERGED_DEPENDENCY.providers;
 
 export function MergedTile() {
   const { range } = useDateRange();
-  const { isConnected } = useIntegrations();
+  const { isConnected, integrationsLoading } = useIntegrations();
   const link = useHubLink();
   const { data, isLoading, error } = useCombinedMergedSince(range.fetchSince);
   const mrs = data || [];
@@ -72,7 +72,9 @@ export function MergedTile() {
         />
       </div>
       <div className="relative z-[1] flex h-full flex-col justify-between">
-        {!hasCodeHost ? (
+        {isLoading || integrationsLoading ? (
+          <div className="text-[rgba(255,255,255,0.7)]" style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>Loading…</div>
+        ) : !hasCodeHost ? (
           <ProviderStateCallout
             kind="disconnected"
             providers={CODE_HOSTS}

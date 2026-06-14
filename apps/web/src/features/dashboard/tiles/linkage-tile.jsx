@@ -35,7 +35,7 @@ const TARGET_PCT = 80;
 
 export function LinkageTile() {
   const { range } = useDateRange();
-  const { isConnected } = useIntegrations();
+  const { isConnected, integrationsLoading } = useIntegrations();
   const link = useHubLink();
   const { data, isLoading, error } = useCombinedMergedSince(range.fetchSince);
   const { current, previous } = splitByRange(
@@ -56,7 +56,9 @@ export function LinkageTile() {
       usedInEvidence
       label={`Jira linkage · ${range.label.toLowerCase()}`}
     >
-      {!hasCodeHost ? (
+      {isLoading || integrationsLoading ? (
+        <TileState kind="loading" silhouette="stat" />
+      ) : !hasCodeHost ? (
         <ProviderStateCallout
           kind="disconnected"
           providers={CODE_HOSTS}
@@ -64,8 +66,6 @@ export function LinkageTile() {
           actionHref={link("/settings")}
           actionLabel="Connect source"
         />
-      ) : isLoading ? (
-        <TileState kind="loading" silhouette="stat" />
       ) : error ? (
         <TileState kind="error" message="Couldn't load linkage." />
       ) : !cur ? (

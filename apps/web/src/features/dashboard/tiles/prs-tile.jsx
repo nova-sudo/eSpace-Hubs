@@ -16,7 +16,7 @@ import { fmtRelative } from "@/lib/fmt";
 const OPEN_PRS_DEPENDENCY = getDashboardProviderDependency("openPrs");
 
 export function PRsTile() {
-  const { isConnected } = useIntegrations();
+  const { isConnected, integrationsLoading } = useIntegrations();
   const link = useHubLink();
   const anyConnected = isConnected("gitlab") || isConnected("github");
 
@@ -42,7 +42,9 @@ export function PRsTile() {
       title="Open PRs"
       titleSize={18}
     >
-      {!anyConnected ? (
+      {integrationsLoading ? (
+        <div className="text-[12px] text-muted-fg">Loading…</div>
+      ) : !anyConnected ? (
         <ProviderStateCallout
           kind="disconnected"
           providers={OPEN_PRS_DEPENDENCY.providers}

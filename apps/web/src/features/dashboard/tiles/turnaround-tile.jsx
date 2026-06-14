@@ -46,7 +46,7 @@ const CODE_HOSTS = TURNAROUND_DEPENDENCY.providers;
  */
 export function TurnaroundTile() {
   const { range } = useDateRange();
-  const { isConnected } = useIntegrations();
+  const { isConnected, integrationsLoading } = useIntegrations();
   const link = useHubLink();
   const { data, isLoading, error } = useCombinedMergedSince(range.fetchSince);
   const { current, previous } = splitByRange(
@@ -65,6 +65,13 @@ export function TurnaroundTile() {
   const maxHours = stats.bySlowest[0]?.hours || 1;
   const hasCodeHost = CODE_HOSTS.some((id) => isConnected(id));
 
+  if (isLoading || integrationsLoading) {
+    return (
+      <BentoTile col="span 3" row="span 1" usedInEvidence label="Turnaround · open → merge">
+        <TileState kind="loading" silhouette="stat" />
+      </BentoTile>
+    );
+  }
   if (!hasCodeHost) {
     return (
       <BentoTile col="span 3" row="span 1" usedInEvidence label="Turnaround · open → merge">
@@ -75,13 +82,6 @@ export function TurnaroundTile() {
           actionHref={link("/settings")}
           actionLabel="Connect source"
         />
-      </BentoTile>
-    );
-  }
-  if (isLoading) {
-    return (
-      <BentoTile col="span 3" row="span 1" usedInEvidence label="Turnaround · open → merge">
-        <TileState kind="loading" silhouette="stat" />
       </BentoTile>
     );
   }

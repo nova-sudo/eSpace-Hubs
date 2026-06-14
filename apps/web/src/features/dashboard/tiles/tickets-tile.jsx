@@ -29,7 +29,7 @@ function groupByCategory(issues = []) {
 }
 
 export function TicketsTile() {
-  const { isConnected } = useIntegrations();
+  const { isConnected, integrationsLoading } = useIntegrations();
   const { data, isLoading, error } = useJiraTickets();
   const link = useHubLink();
   // Per-user Jira base URL — comes from the engagement-config
@@ -59,19 +59,19 @@ export function TicketsTile() {
         </a>
       }
     >
-      {!isConnected("jira") ? (
+      {isLoading || integrationsLoading ? (
+        <ProviderStateCallout
+          kind="loading"
+          providers={TICKETS_DEPENDENCY.providers}
+          message="Checking Jira for your current assigned tickets."
+        />
+      ) : !isConnected("jira") ? (
         <ProviderStateCallout
           kind="disconnected"
           providers={TICKETS_DEPENDENCY.providers}
           message="Jira is needed to show assigned, queued, and shipped tickets."
           actionHref={link("/settings")}
           actionLabel="Connect Jira"
-        />
-      ) : isLoading ? (
-        <ProviderStateCallout
-          kind="loading"
-          providers={TICKETS_DEPENDENCY.providers}
-          message="Checking Jira for your current assigned tickets."
         />
       ) : error ? (
         <ProviderStateCallout

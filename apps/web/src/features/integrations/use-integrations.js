@@ -88,10 +88,16 @@ export function useIntegrations() {
     };
   }, [integrations]);
 
+  // Expose the store's own fetch lifecycle so callers can distinguish
+  // "not yet fetched" from "genuinely disconnected". tick changes
+  // whenever the store emits, so this read is always current.
+  const { loading: integrationsLoading } = getIntegrationsState();
+
   return {
     integrations,
     connectedProviders,
     me,
     isConnected: (id) => Boolean(integrations[id]?.connected),
+    integrationsLoading,
   };
 }

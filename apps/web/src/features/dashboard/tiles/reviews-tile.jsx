@@ -27,7 +27,7 @@ const CODE_HOSTS = REVIEWS_DEPENDENCY.providers;
  */
 export function ReviewsTile() {
   const { range } = useDateRange();
-  const { isConnected } = useIntegrations();
+  const { isConnected, integrationsLoading } = useIntegrations();
   const link = useHubLink();
   const { data, isLoading, error } = useCombinedEventsSince(range.fetchSince);
   const { current } = splitByRange(data || [], range, (e) => e.created_at);
@@ -57,7 +57,9 @@ export function ReviewsTile() {
         </span>
       }
     >
-      {!hasCodeHost ? (
+      {isLoading || integrationsLoading ? (
+        <div className="text-[12px] text-muted-fg">Loading…</div>
+      ) : !hasCodeHost ? (
         <ProviderStateCallout
           kind="disconnected"
           providers={CODE_HOSTS}
@@ -65,8 +67,6 @@ export function ReviewsTile() {
           actionHref={link("/settings")}
           actionLabel="Connect source"
         />
-      ) : isLoading ? (
-        <div className="text-[12px] text-muted-fg">Loading…</div>
       ) : error ? (
         <ProviderStateCallout
           kind="error"
