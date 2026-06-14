@@ -157,6 +157,73 @@ export function computeCompliance(entries, target, cadence) {
 }
 
 /**
+ * Cadence-window FILL-PRESENCE stats — "is the user keeping this goal
+ * fed?", independent of whether the logged values hit the target.
+ *
+ * computeCompliance answers "are you hitting the number?"; fillStats
+ * answers "are you logging at all, and recently?". The Goal Intelligence
+ * Hub needs the latter to surface stale/unfilled goals — a goal can be
+ * perfectly on-target historically yet have gone dark for three weeks.
+ *
+ * Windows are measured BACKWARD from now (window 0 = the current, still-
+ * open cadence period; window 1 = the period before it; …). We count how
+ * many of the last `recentN` windows contain at least one entry.
+ *
+ * Non-bucketing cadences (milestone / continuous / per-incident) have no
+ * meaningful "this week" — callers should branch on cadence before
+ * trusting `filledCurrentWindow`. We still return `hasData` + `lastEntryTs`
+ * for those, and default the window size to weekly so the recent-fill
+ * ratio stays a sane rough signal rather than throwing.
+ *
+ * @param {Array<{ ts: number }>} entries  ts-ascending (store order).
+ * @param {string} cadence                 manual cadence id.
+ * @param {number} recentN                 how many trailing windows to scan.
+ * @returns {{
+ *   hasData: boolean,
+ *   filledCurrentWindow: boolean,
+ *   filledRecent: number,      // distinct recent windows with >=1 entry
+ *   recentWindows: number,     // === recentN (echoed for the UI label)
+ *   lastEntryTs: number | null,
+ *   cadenceDays: number,       // window size actually used
+ * }}
+ */
+export function fillStats(entries, cadence, recentN = 4) {
+  const cadenceDays = CADENCE_DAYS[cadence] ?? 7; // weekly fallback
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return {
+      hasData: false,
+      filledCurrentWindow: false,
+      filledRecent: 0,
+      recentWindows: recentN,
+      lastEntryTs: null,
+      cadenceDays,
+    };
+  }
+  const cadMs = cadenceDays * DAY_MS;
+  const now = Date.now();
+  const lastEntryTs = entries[entries.length - 1].ts;
+
+  const filledWindows = new Set();
+  let filledCurrentWindow = false;
+  for (const e of entries) {
+    const age = now - e.ts;
+    if (age < 0) continue; // future-dated entry — ignore for "recent fill"
+    const widx = Math.floor(age / cadMs); // 0 = current window
+    if (widx < recentN) filledWindows.add(widx);
+    if (widx === 0) filledCurrentWindow = true;
+  }
+
+  return {
+    hasData: true,
+    filledCurrentWindow,
+    filledRecent: filledWindows.size,
+    recentWindows: recentN,
+    lastEntryTs,
+    cadenceDays,
+  };
+}
+
+/**
  * Cadence-window label for the UI sub-line — pluralised correctly so
  * the compliance row reads naturally.
  */

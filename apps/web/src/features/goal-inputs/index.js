@@ -11,4 +11,4 @@ export {
   replaceGoalEntries,
 } from "./inputs-store";
 export { useGoalInputs, useAllGoalInputs } from "./use-goal-inputs";
-export { computeCompliance, cadenceWindowLabel } from "./compliance";
+export { computeCompliance, fillStats, cadenceWindowLabel } from "./compliance";

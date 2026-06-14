@@ -53,7 +53,7 @@ const DEFAULT_LABELS = {
 };
 
 const HUB_SLOT_LABEL_OVERRIDES = {
-  dev: { dashboard: "Performance" },
+  dev: { dashboard: "Intelligence" },
   admin: { dashboard: "Overview" },
   qa: { dashboard: "Overview" },
   manager: { dashboard: "Team" },
@@ -107,14 +107,13 @@ export function Header() {
             if (hub && !hub.pages[item.slot]) return null;
             const label = labelFor(item.slot, hub?.id);
             const href = `${hubPrefix}${item.subpath}` || "/";
-            // Dashboard slot is the home tab — highlight on its
-            // drill-downs too (reviews/snapshots for Dev).
+            // Dashboard slot is the home tab. It highlights only on the
+            // home route itself now — the old reviews/snapshots drill-downs
+            // are no longer part of the Intelligence home (Sprint-1 revamp).
             const dashboardHome = `${hubPrefix}` || "/";
             const active =
               item.slot === "dashboard"
-                ? pathname === dashboardHome ||
-                  pathname?.startsWith(`${hubPrefix}/reviews`) ||
-                  pathname?.startsWith(`${hubPrefix}/snapshots`)
+                ? pathname === dashboardHome
                 : pathname?.startsWith(href);
             return (
               <Link

@@ -17,7 +17,7 @@
  *   - one place to grep when adding a hub
  */
 
-import { DashboardPage } from "@/features/dashboard";
+import { IntelligencePage } from "@/features/intelligence";
 import { QaDashboard, QaPlaceholder } from "@/hubs/qa";
 import {
   AdminAudit,
@@ -31,7 +31,10 @@ import {
  * Add a new entry when scaffolding a new hub's dashboard.
  */
 const DASHBOARDS = {
-  dev: DashboardPage,
+  // Dev's home is the Goal Intelligence Hub (replaced the perf bento in
+  // the Sprint-1 revamp). The old DashboardPage slice still exists and is
+  // scheduled for retirement in Sprint 4.
+  dev: IntelligencePage,
   qa: QaDashboard,
   admin: AdminDashboard,
   manager: () => <QaPlaceholder slot="dashboard" />, // placeholder; real UI later
