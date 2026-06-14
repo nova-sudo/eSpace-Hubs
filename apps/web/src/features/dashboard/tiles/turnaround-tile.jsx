@@ -3,10 +3,17 @@
 import Link from "next/link";
 import { BentoTile, Delta, TileState } from "@/components/ui";
 import {
+  getDashboardProviderDependency,
   fmtDurationHours,
+  ProviderStateCallout,
   useCombinedMergedSince,
+  useIntegrations,
 } from "@/features/integrations";
+import { useHubLink } from "@/features/hubs";
 import { useDateRange, splitByRange } from "../date-range";
+
+const TURNAROUND_DEPENDENCY = getDashboardProviderDependency("reviewTiming");
+const CODE_HOSTS = TURNAROUND_DEPENDENCY.providers;
 
 /**
  * Turnaround tile — time from PR open → merge.
@@ -39,6 +46,8 @@ import { useDateRange, splitByRange } from "../date-range";
  */
 export function TurnaroundTile() {
   const { range } = useDateRange();
+  const { isConnected } = useIntegrations();
+  const link = useHubLink();
   const { data, isLoading, error } = useCombinedMergedSince(range.fetchSince);
   const { current, previous } = splitByRange(
     data || [],
@@ -48,24 +57,37 @@ export function TurnaroundTile() {
 
   const stats = computeStats(current);
   const prevStats = computeStats(previous);
-  // Median delta in DAYS (computeStats already converts hours → days).
   const medianDelta =
     stats.median != null && prevStats.median != null
       ? stats.median - prevStats.median
       : null;
   const slowest = stats.bySlowest.slice(0, 5);
   const maxHours = stats.bySlowest[0]?.hours || 1;
+  const hasCodeHost = CODE_HOSTS.some((id) => isConnected(id));
 
+  if (!hasCodeHost) {
+    return (
+      <BentoTile col="span 3" row="span 1" usedInEvidence label="Turnaround · open → merge">
+        <ProviderStateCallout
+          kind="disconnected"
+          providers={CODE_HOSTS}
+          message="Connect GitLab or GitHub to see turnaround time for your merged PRs."
+          actionHref={link("/settings")}
+          actionLabel="Connect source"
+        />
+      </BentoTile>
+    );
+  }
   if (isLoading) {
     return (
-      <BentoTile col="span 3" row="span 1" label="Turnaround · open → merge">
+      <BentoTile col="span 3" row="span 1" usedInEvidence label="Turnaround · open → merge">
         <TileState kind="loading" silhouette="stat" />
       </BentoTile>
     );
   }
   if (error) {
     return (
-      <BentoTile col="span 3" row="span 1" label="Turnaround · open → merge">
+      <BentoTile col="span 3" row="span 1" usedInEvidence label="Turnaround · open → merge">
         <TileState kind="error" message="Couldn't load turnaround." />
       </BentoTile>
     );

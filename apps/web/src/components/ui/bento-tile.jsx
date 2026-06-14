@@ -14,12 +14,31 @@ export function BentoTile({
   title,
   titleSize = 14,
   right,
+  usedInEvidence = false,
   variant = "default",
   padding = 18,
   className,
   children,
 }) {
   const isAccent = variant === "accent";
+  const evidenceBadge = usedInEvidence ? (
+    <span
+      style={{
+        fontFamily: "var(--font-mono)",
+        fontSize: 9,
+        textTransform: "uppercase",
+        letterSpacing: "0.4px",
+        padding: "2px 5px",
+        borderRadius: "var(--radius-sub)",
+        border: `1px solid ${isAccent ? "rgba(255,255,255,0.3)" : "var(--border)"}`,
+        color: isAccent ? "rgba(255,255,255,0.65)" : "var(--muted-fg)",
+        whiteSpace: "nowrap",
+      }}
+    >
+      evidence
+    </span>
+  ) : null;
+
   return (
     <div
       className={cn(
@@ -35,12 +54,15 @@ export function BentoTile({
       )}
       style={{ gridColumn: col, gridRow: row, padding }}
     >
-      {label || right ? (
+      {label || right || evidenceBadge ? (
         <div className="mb-2 flex items-center justify-between gap-2">
           <MonoLabel className={isAccent ? "text-[rgba(255,255,255,0.75)]" : ""}>
             {label}
           </MonoLabel>
-          {right ? <div>{right}</div> : null}
+          <div className="flex items-center gap-1.5">
+            {evidenceBadge}
+            {right ? <div>{right}</div> : null}
+          </div>
         </div>
       ) : null}
       {title ? (

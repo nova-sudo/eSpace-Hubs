@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>eSpace Dev Hub — Documentation</title>
+  <style>
+    :root {
+      --bg: #f8f8f7;
+      --fg: #0b0b0c;
+      --muted: #6f6f6f;
+      --dim: #9a9a9a;
+      --accent: #3826ff;
+      --accent-dim: rgba(56, 38, 255, 0.08);
+      --card: #ffffff;
+      --border: #e5e5e5;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter,
+        system-ui, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+        monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font-family: var(--font-sans); line-height: 1.55;
+      font-size: 14.5px; -webkit-font-smoothing: antialiased;
+    }
+    main { max-width: 900px; margin: 0 auto; padding: 72px 32px 96px; }
+    .crumb {
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: 0.5px; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 12px;
+    }
+    h1 {
+      font-size: 48px; font-weight: 600; letter-spacing: -1.5px;
+      margin: 0 0 16px; line-height: 1;
+    }
+    h1 em { color: var(--accent); font-style: italic; }
+    .lede {
+      max-width: 600px; color: var(--muted); font-size: 16px;
+      margin: 0 0 56px; line-height: 1.55;
+    }
+    .doc-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    }
+    .doc-card {
+      display: block; text-decoration: none; color: inherit;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 28px 28px 24px;
+      transition: border-color 0.15s, transform 0.15s;
+    }
+    .doc-card:hover {
+      border-color: var(--accent); transform: translateY(-2px);
+    }
+    .doc-card .num {
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: 0.5px; text-transform: uppercase;
+      color: var(--accent); margin-bottom: 12px;
+    }
+    .doc-card h2 {
+      font-size: 22px; font-weight: 600; letter-spacing: -0.5px;
+      margin: 0 0 8px; line-height: 1.15;
+    }
+    .doc-card p {
+      color: var(--muted); font-size: 13.5px; line-height: 1.55;
+      margin: 0 0 16px;
+    }
+    .doc-card .arrow {
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: 0.5px; text-transform: uppercase;
+      color: var(--accent); font-weight: 700;
+    }
+    footer {
+      margin-top: 64px; padding-top: 24px;
+      border-top: 1px solid var(--border);
+      color: var(--dim); font-family: var(--font-mono);
+      font-size: 11px; letter-spacing: 0.4px;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <div class="crumb">eSpace Dev Hub · documentation index</div>
+  <h1>The <em>docs</em>.</h1>
+  <p class="lede">
+    Four self-contained HTML files. Each is standalone — open it in a
+    browser, no build step needed. Generated <strong>2026-05-12</strong>.
+  </p>
+
+  <div class="doc-grid">
+    <a class="doc-card" href="file-structure.html">
+      <div class="num">01 / Structure</div>
+      <h2>File structure</h2>
+      <p>
+        Tree view of the monorepo. Every leaf annotated with what it
+        owns. Useful as the map for newcomers — points at the workspace,
+        the module, and the file responsible for any given concern.
+      </p>
+      <span class="arrow">Open →</span>
+    </a>
+    <a class="doc-card" href="architecture.html">
+      <div class="num">02 / System</div>
+      <h2>Architecture</h2>
+      <p>
+        Inline SVG system diagram, tier-by-tier descriptions, the five
+        critical data flows (login, integration proxy, snapshots,
+        admin edits, hub resolution), crosscutting concerns, and what's
+        deliberately not built yet.
+      </p>
+      <span class="arrow">Open →</span>
+    </a>
+    <a class="doc-card" href="deployment.html">
+      <div class="num">03 / Operations</div>
+      <h2>Deployment</h2>
+      <p>
+        Local setup, every env var explained, the recommended
+        production shape (Vercel + Render + Atlas + Resend), pre-flight
+        checklist, migration framework, CI/CD plan, backup &amp; recovery.
+      </p>
+      <span class="arrow">Open →</span>
+    </a>
+    <a class="doc-card" href="feature-log.html">
+      <div class="num">04 / History</div>
+      <h2>Feature log</h2>
+      <p>
+        Every commit grouped by arc. M0 through M10, M-OB, M-CAP, the
+        May 11 hotfix burst, the May 12 auth follow-ups. Plus the
+        still-deferred items ordered by priority.
+      </p>
+      <span class="arrow">Open →</span>
+    </a>
+  </div>
+
+  <footer>
+    Generated 2026-05-12 · 57 commits · 12 arcs · 4 docs
+  </footer>
+</main>
+</body>
+</html>

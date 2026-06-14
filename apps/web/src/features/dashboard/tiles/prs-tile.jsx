@@ -2,16 +2,22 @@
 
 import { BentoTile, MonoLabel, Pill } from "@/components/ui";
 import {
+  getDashboardProviderDependency,
+  ProviderStateCallout,
   useGitlabOpenMRs,
   useGitlabReviewRequests,
   useGithubOpenPulls,
   useGithubReviewRequests,
   useIntegrations,
 } from "@/features/integrations";
+import { useHubLink } from "@/features/hubs";
 import { fmtRelative } from "@/lib/fmt";
+
+const OPEN_PRS_DEPENDENCY = getDashboardProviderDependency("openPrs");
 
 export function PRsTile() {
   const { isConnected } = useIntegrations();
+  const link = useHubLink();
   const anyConnected = isConnected("gitlab") || isConnected("github");
 
   const { data: glMine } = useGitlabOpenMRs();
@@ -37,9 +43,13 @@ export function PRsTile() {
       titleSize={18}
     >
       {!anyConnected ? (
-        <div className="flex h-full items-center justify-center text-[13px] text-muted-fg">
-          Connect GitLab or GitHub.
-        </div>
+        <ProviderStateCallout
+          kind="disconnected"
+          providers={OPEN_PRS_DEPENDENCY.providers}
+          message="Connect GitLab or GitHub to track your open pull requests and review queue."
+          actionHref={link("/settings")}
+          actionLabel="Connect source"
+        />
       ) : (
         <div className="grid min-h-0 flex-1 grid-rows-2 gap-2.5">
           <PRBlock heading="Yours" items={mine} kind="mine" />

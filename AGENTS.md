@@ -195,7 +195,7 @@ Imports allowed (see Feature categories above for the full matrix):
 - ✅ `features/x` → `components/ui`, `components/shell`, `lib/*`
 - ✅ `features/x` → its own subfolders
 - ✅ product surface → shared domain or platform utility (barrel import only)
-- ✅ shared domain → other shared domain (barrel import only)
+- ✅ shared domain → other shared domain (barrel only)
 - ❌ Any deep cross-feature import not in the `allowedDeepImports` list in
   `src/features/architecture-boundaries.test.js`
 
@@ -279,7 +279,7 @@ needs `@react-pdf/renderer` |
 
 ## Open questions
 
-See `.design-reference/README.md` — the Claude Design handoff covers these
+See `.design-reference/README.md` — the Codex Design handoff covers these
 in detail. Notable ones still open:
 
 1. Accent swap — prototype uses `#3826ff` Electric; if the team wants the

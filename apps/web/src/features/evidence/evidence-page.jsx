@@ -22,6 +22,7 @@ import { ConfigPanel } from "./config-panel";
 import { DocumentPreview } from "./document-preview";
 import { EvidencePicker } from "./evidence-picker";
 import { ParagraphCard } from "./paragraph-card";
+import { ReviewPrepChecklist } from "./review-prep-checklist";
 import { useGoalReadings } from "./goal-readings";
 import { toggleEvidence, useEvidenceCandidates, useStarredEvidence } from "./use-evidence";
 import { downloadMarkdown, rangeToLabel, renderMarkdown } from "./markdown-export";
@@ -124,6 +125,9 @@ export function EvidencePage() {
 
   return (
     <main className="relative z-[2] px-10 pb-14 pt-9">
+      <div className="mb-6 no-print">
+        <ReviewPrepChecklist />
+      </div>
       <PageHeader
         crumb={`Evidence · ${days}-day performance bundle`}
         title="Make the case."

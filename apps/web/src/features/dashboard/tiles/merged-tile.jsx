@@ -1,15 +1,25 @@
 "use client";
 
-import { BentoTile, Delta, DitherField, LineSpark } from "@/components/ui";
+import { BentoTile, DitherField, LineSpark } from "@/components/ui";
 import {
   compareCount,
+  getDashboardProviderDependency,
   mergedTrend,
+  providerLabel,
+  ProviderStateCallout,
   useCombinedMergedSince,
+  useIntegrations,
 } from "@/features/integrations";
+import { useHubLink } from "@/features/hubs";
 import { useDateRange, splitByRange } from "../date-range";
+
+const MERGED_DEPENDENCY = getDashboardProviderDependency("merged");
+const CODE_HOSTS = MERGED_DEPENDENCY.providers;
 
 export function MergedTile() {
   const { range } = useDateRange();
+  const { isConnected } = useIntegrations();
+  const link = useHubLink();
   const { data, isLoading, error } = useCombinedMergedSince(range.fetchSince);
   const mrs = data || [];
   const { current, previous } = splitByRange(mrs, range, (m) => m.merged_at);
@@ -20,19 +30,28 @@ export function MergedTile() {
   const trendSum = trend.reduce((a, b) => a + b, 0);
   const nonZeroWeeks = trend.filter((v) => v > 0).length;
   const showSparkline = trend.length >= 2 && trendSum > 0 && nonZeroWeeks >= 2;
+  const connectedCodeHosts = CODE_HOSTS.filter((providerId) =>
+    isConnected(providerId),
+  );
+  const hasCodeHost = connectedCodeHosts.length > 0;
+  const sourceLabel =
+    connectedCodeHosts.length === 1
+      ? `${providerLabel(connectedCodeHosts[0])} only`
+      : "vs. previous";
 
   return (
     <BentoTile
       col="span 4"
       row="span 2"
       variant="accent"
+      usedInEvidence
       label={`Merged · ${range.label.toLowerCase()}`}
       right={
         <span
           className="text-[rgba(255,255,255,0.8)]"
           style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
         >
-          vs. previous
+          {hasCodeHost ? sourceLabel : "connect source"}
         </span>
       }
     >
@@ -53,6 +72,26 @@ export function MergedTile() {
         />
       </div>
       <div className="relative z-[1] flex h-full flex-col justify-between">
+        {!hasCodeHost ? (
+          <ProviderStateCallout
+            kind="disconnected"
+            providers={CODE_HOSTS}
+            variant="accent"
+            message="Connect GitLab or GitHub to calculate merged PRs for this period."
+            actionHref={link("/settings")}
+            actionLabel="Connect source"
+          />
+        ) : error ? (
+          <ProviderStateCallout
+            kind="error"
+            providers={CODE_HOSTS}
+            variant="accent"
+            message={error.message || "Your code host did not return merged PR data."}
+            actionHref={link("/settings")}
+            actionLabel="Review source"
+          />
+        ) : (
+          <>
         <div className="mt-1 flex items-baseline gap-3.5">
           <div
             className="font-semibold"
@@ -116,6 +155,8 @@ export function MergedTile() {
             </div>
           )}
         </div>
+          </>
+        )}
       </div>
     </BentoTile>
   );

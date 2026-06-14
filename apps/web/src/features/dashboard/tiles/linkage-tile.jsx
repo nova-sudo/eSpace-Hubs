@@ -3,10 +3,17 @@
 import { BentoTile, Delta, TileState } from "@/components/ui";
 import {
   compareNumber,
+  getDashboardProviderDependency,
   linkagePct,
+  ProviderStateCallout,
   useCombinedMergedSince,
+  useIntegrations,
 } from "@/features/integrations";
+import { useHubLink } from "@/features/hubs";
 import { useDateRange, splitByRange } from "../date-range";
+
+const LINKAGE_DEPENDENCY = getDashboardProviderDependency("linkage");
+const CODE_HOSTS = LINKAGE_DEPENDENCY.providers;
 
 /**
  * Jira ↔ MR linkage — "what % of merged MRs reference a Jira ticket key".
@@ -28,6 +35,8 @@ const TARGET_PCT = 80;
 
 export function LinkageTile() {
   const { range } = useDateRange();
+  const { isConnected } = useIntegrations();
+  const link = useHubLink();
   const { data, isLoading, error } = useCombinedMergedSince(range.fetchSince);
   const { current, previous } = splitByRange(
     data || [],
@@ -37,16 +46,25 @@ export function LinkageTile() {
   const cur = linkagePct(current);
   const prv = linkagePct(previous);
   const cmp = compareNumber(cur?.pct, prv?.pct);
-
   const curPct = cur?.pct ?? 0;
+  const hasCodeHost = CODE_HOSTS.some((id) => isConnected(id));
 
   return (
     <BentoTile
       col="span 3"
       row="span 2"
+      usedInEvidence
       label={`Jira linkage · ${range.label.toLowerCase()}`}
     >
-      {isLoading ? (
+      {!hasCodeHost ? (
+        <ProviderStateCallout
+          kind="disconnected"
+          providers={CODE_HOSTS}
+          message="Connect GitLab or GitHub to calculate Jira linkage across merged PRs."
+          actionHref={link("/settings")}
+          actionLabel="Connect source"
+        />
+      ) : isLoading ? (
         <TileState kind="loading" silhouette="stat" />
       ) : error ? (
         <TileState kind="error" message="Couldn't load linkage." />
@@ -54,7 +72,7 @@ export function LinkageTile() {
         <TileState
           kind="empty"
           message="No merged MRs in this window."
-          sub="Connect GitHub or GitLab in Settings to populate."
+          sub="Widen the date range to include merged PRs."
         />
       ) : (
       <div className="mt-auto flex flex-col gap-2">

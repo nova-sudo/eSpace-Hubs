@@ -3,6 +3,7 @@
 import { toast } from "sonner";
 import { Button, Card, MonoLabel, Section } from "@/components/ui";
 import {
+  DASHBOARD_PROVIDER_DEPENDENCIES,
   disconnectProvider,
   PROVIDERS,
   useIntegrations,
@@ -19,17 +20,23 @@ import {
   JiraTokenForm,
 } from "../token-forms";
 
+/** Pre-computed: provider id → tile labels that depend on it. */
+const TILES_BY_PROVIDER = (() => {
+  const out = {};
+  for (const dep of Object.values(DASHBOARD_PROVIDER_DEPENDENCIES)) {
+    for (const pid of dep.providers) {
+      (out[pid] ??= []).push(dep.label);
+    }
+  }
+  return out;
+})();
+
 /** Map provider id → OAuth start function. Single point of dispatch. */
 const OAUTH_STARTERS = {
   github: startGitHubOAuth,
 };
 
 export function IntegrationsTab() {
-  // Per-hub provider filter (M10.4). Each hub's registry declares
-  // its `allowedIntegrations`; this tab shows only those. Connections
-  // made on another hub aren't deleted — they're hidden here. The
-  // dashed hint at the bottom of the list explains the filtering so
-  // the absence isn't surprising.
   const allowed = useAllowedProviders();
   const hub = useActiveHub();
   const totalCatalog = Object.keys(PROVIDERS).length;
@@ -37,6 +44,10 @@ export function IntegrationsTab() {
 
   return (
     <>
+      <Section num="00 /" title="Integration health">
+        <IntegrationHealthSummary providers={allowed} />
+      </Section>
+
       <Section num="01 /" title="Connected providers">
         <div className="flex flex-col gap-3">
           {allowed.map((p) => (
@@ -79,6 +90,90 @@ export function IntegrationsTab() {
         </Card>
       </Section>
     </>
+  );
+}
+
+function IntegrationHealthSummary({ providers }) {
+  const { isConnected } = useIntegrations();
+  return (
+    <Card className="overflow-hidden p-0">
+      <table className="w-full text-left" style={{ borderCollapse: "collapse" }}>
+        <thead>
+          <tr
+            className="border-b border-border bg-card-alt"
+            style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
+          >
+            <th className="px-4 py-2.5 font-semibold uppercase tracking-[0.4px] text-muted-fg">
+              Provider
+            </th>
+            <th className="px-4 py-2.5 font-semibold uppercase tracking-[0.4px] text-muted-fg">
+              Status
+            </th>
+            <th className="px-4 py-2.5 font-semibold uppercase tracking-[0.4px] text-muted-fg">
+              Dashboard tiles
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {providers.map((p, i) => {
+            const connected = isConnected(p.id);
+            const tiles = TILES_BY_PROVIDER[p.id] ?? [];
+            return (
+              <tr
+                key={p.id}
+                className={i < providers.length - 1 ? "border-b border-border" : ""}
+              >
+                <td
+                  className="px-4 py-3 font-semibold"
+                  style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}
+                >
+                  {p.label}
+                </td>
+                <td className="px-4 py-3">
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-bold uppercase tracking-[0.4px]"
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 10,
+                      background: connected ? "var(--accent-dim)" : "rgba(0,0,0,0.04)",
+                      color: connected ? "var(--good)" : "var(--muted-fg)",
+                    }}
+                  >
+                    <span
+                      className="inline-block h-1.5 w-1.5 rounded-full"
+                      style={{ background: connected ? "var(--good)" : "var(--muted-fg)" }}
+                    />
+                    {connected ? "Connected" : "Not connected"}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  {tiles.length === 0 ? (
+                    <span
+                      className="text-dim-fg"
+                      style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
+                    >
+                      —
+                    </span>
+                  ) : (
+                    <div className="flex flex-wrap gap-1">
+                      {tiles.map((t) => (
+                        <span
+                          key={t}
+                          className="rounded-[3px] border border-border bg-card-alt px-1.5 py-0.5 text-muted-fg"
+                          style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </Card>
   );
 }
 
@@ -132,6 +227,25 @@ function ProviderCard({ provider }) {
           <div className="mt-1.5 text-[11.5px] text-dim-fg">
             {provider.description} · scopes: {provider.scopes}
           </div>
+          {(TILES_BY_PROVIDER[provider.id] ?? []).length > 0 ? (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span
+                className="text-dim-fg"
+                style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
+              >
+                Affects:
+              </span>
+              {(TILES_BY_PROVIDER[provider.id] ?? []).map((t) => (
+                <span
+                  key={t}
+                  className="rounded-[3px] border border-border bg-card-alt px-1.5 py-0.5 text-muted-fg"
+                  style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          ) : null}
           {!connected ? (
             <div className="mt-4">
               {provider.authMode === "token" ? (

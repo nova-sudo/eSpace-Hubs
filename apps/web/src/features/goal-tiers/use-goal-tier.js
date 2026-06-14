@@ -16,7 +16,7 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useSnapshots } from "@/features/snapshots";
 import { useGoalInputs, getInputsState } from "@/features/goal-inputs";
 import { SPEC_KINDS } from "@/features/goal-specs";
-import { getAiProvider } from "@/features/analyst/use-ai-provider";
+import { getAiProvider } from "@/features/analyst";
 import {
   gradeGoalTier,
   getGoalTiersServerSnapshot,

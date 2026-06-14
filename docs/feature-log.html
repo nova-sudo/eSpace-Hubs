@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>eSpace Dev Hub — Feature Log</title>
+  <style>
+    :root {
+      --bg: #f8f8f7;
+      --fg: #0b0b0c;
+      --muted: #6f6f6f;
+      --dim: #9a9a9a;
+      --accent: #3826ff;
+      --accent-dim: rgba(56, 38, 255, 0.08);
+      --card: #ffffff;
+      --border: #e5e5e5;
+      --border-strong: #d4d4d4;
+      --good: #16a34a;
+      --bad: #b91c1c;
+      --warn: #c47b00;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter,
+        system-ui, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+        "Liberation Mono", monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font-family: var(--font-sans); line-height: 1.55;
+      font-size: 14.5px; -webkit-font-smoothing: antialiased;
+    }
+    main { max-width: 1100px; margin: 0 auto; padding: 48px 32px 80px; }
+    header { margin-bottom: 48px; }
+    .crumb {
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: 0.5px; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 8px;
+    }
+    h1 {
+      font-size: 36px; font-weight: 600; letter-spacing: -1px;
+      margin: 0 0 12px; line-height: 1.05;
+    }
+    h1 em { color: var(--accent); font-style: italic; }
+    .lede { max-width: 760px; color: var(--muted); font-size: 15px; margin: 0; }
+    nav.docs {
+      display: flex; gap: 4px; margin: 24px 0 0;
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: 0.4px; text-transform: uppercase;
+    }
+    nav.docs a {
+      color: var(--muted); text-decoration: none;
+      padding: 6px 10px; border: 1px solid var(--border); border-radius: 3px;
+    }
+    nav.docs a.active {
+      background: var(--accent-dim); color: var(--accent); border-color: var(--accent);
+    }
+    nav.docs a:hover { color: var(--fg); }
+
+    .stat-row {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+      margin-bottom: 40px;
+    }
+    .stat {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 6px; padding: 16px;
+    }
+    .stat .label {
+      font-family: var(--font-mono); font-size: 10px;
+      letter-spacing: 0.5px; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 6px;
+    }
+    .stat .value {
+      font-size: 26px; font-weight: 600; letter-spacing: -0.4px;
+      font-family: var(--font-mono);
+    }
+
+    .arc {
+      margin: 48px 0; background: var(--card);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 24px 28px 12px;
+    }
+    .arc-head {
+      display: flex; align-items: baseline; gap: 12px;
+      margin-bottom: 8px;
+    }
+    .arc-id {
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: 0.5px; text-transform: uppercase;
+      color: var(--accent);
+      padding: 2px 8px; border: 1px solid var(--accent);
+      border-radius: 2px; font-weight: 700;
+    }
+    .arc-title {
+      font-size: 22px; font-weight: 600; letter-spacing: -0.5px;
+      margin: 0;
+    }
+    .arc-window {
+      font-family: var(--font-mono); font-size: 11px;
+      color: var(--muted); margin-left: auto;
+    }
+    .arc-summary {
+      color: var(--fg); font-size: 14px; margin: 0 0 14px;
+    }
+    .arc-summary code, .entry code {
+      font-family: var(--font-mono); font-size: 12.5px;
+      background: var(--accent-dim); color: var(--accent);
+      padding: 1px 6px; border-radius: 3px;
+    }
+    .entries { display: flex; flex-direction: column; gap: 0; }
+    .entry {
+      display: grid; grid-template-columns: 70px 110px 1fr;
+      gap: 16px; padding: 14px 0;
+      border-top: 1px dashed var(--border);
+      align-items: baseline;
+    }
+    .entry:first-child { border-top: 0; }
+    .entry .when {
+      font-family: var(--font-mono); font-size: 10.5px;
+      color: var(--dim); letter-spacing: 0.3px;
+    }
+    .entry .ref {
+      font-family: var(--font-mono); font-size: 10.5px;
+      color: var(--accent); font-weight: 600;
+    }
+    .entry .what { font-size: 13.5px; line-height: 1.55; }
+    .entry .tag {
+      display: inline-block; font-family: var(--font-mono);
+      font-size: 9.5px; letter-spacing: 0.4px; text-transform: uppercase;
+      padding: 2px 6px; border-radius: 2px; margin-left: 8px;
+      font-weight: 600; vertical-align: middle;
+    }
+    .t-feat { background: var(--accent-dim); color: var(--accent); }
+    .t-hotfix { background: rgba(196, 123, 0, 0.12); color: var(--warn); }
+    .t-sec { background: rgba(185, 28, 28, 0.12); color: var(--bad); }
+    .t-infra { background: rgba(120, 70, 200, 0.12); color: #6f3fb8; }
+    .t-ux { background: rgba(22, 163, 74, 0.12); color: var(--good); }
+
+    .deferred {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 6px; padding: 18px 22px; margin: 24px 0;
+    }
+    .deferred h3 {
+      margin: 0 0 12px; font-size: 13px;
+      font-family: var(--font-mono); letter-spacing: 0.5px;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .deferred ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
+    .deferred li { padding: 4px 0; line-height: 1.55; }
+    .deferred li b { color: var(--fg); font-weight: 600; }
+
+    footer {
+      margin-top: 64px; padding-top: 24px;
+      border-top: 1px solid var(--border);
+      color: var(--dim); font-family: var(--font-mono);
+      font-size: 11px; letter-spacing: 0.4px;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="crumb">eSpace Dev Hub · documentation</div>
+    <h1>Feature <em>log</em>.</h1>
+    <p class="lede">
+      Chronological history of what shipped. Grouped by arc — the
+      milestones (M1–M10) followed the original build plan; the M-CAP /
+      M-OB arcs were the multi-role + onboarding overlays; the hotfix
+      batch + auth follow-ups are the May 11–12 stability and
+      auth-completeness push.
+    </p>
+    <nav class="docs">
+      <a href="file-structure.html">File structure</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="deployment.html">Deployment</a>
+      <a href="feature-log.html" class="active">Feature log</a>
+    </nav>
+  </header>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="label">Commits</div>
+      <div class="value">57</div>
+    </div>
+    <div class="stat">
+      <div class="label">Arcs</div>
+      <div class="value">12</div>
+    </div>
+    <div class="stat">
+      <div class="label">Active days</div>
+      <div class="value">~22</div>
+    </div>
+    <div class="stat">
+      <div class="label">Window</div>
+      <div class="value">Apr 21 → May 12 2026</div>
+    </div>
+  </div>
+
+  <!-- ===================================================== M0 -->
+  <div class="arc">
+    <div class="arc-head">
+      <span class="arc-id">M0</span>
+      <h2 class="arc-title">Initial scaffold</h2>
+      <span class="arc-window">Apr 21, 2026</span>
+    </div>
+    <p class="arc-summary">
+      Day-zero working tree. Pre-monorepo: a single Next.js app with
+      localStorage-only state and CORS-proxy routes for Jira / GitLab /
+      GitHub.
+    </p>
+    <div class="entries">
+      <div class="entry"><span class="when">Apr 21</span><span class="ref">83a770a</span><span class="what">Initial scaffold: eSpace Dev Hub <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 10</span><span class="ref">0a28f27</span><span class="what">Catch up working tree to current state <span class="tag t-infra">chore</span></span></div>
+    </div>
+  </div>
+
+  <!-- ===================================================== M1 -->
+  <div class="arc">
+    <div class="arc-head">
+      <span class="arc-id">M1</span>
+      <h2 class="arc-title">Monorepo workspaces</h2>
+      <span class="arc-window">May 10</span>
+    </div>
+    <p class="arc-summary">
+      Split the codebase into three workspaces: <code>apps/web</code>,
+      <code>apps/api</code>, <code>packages/shared</code>. npm workspaces
+      orchestrate dev / build / typecheck across all three.
+    </p>
+    <div class="entries">
+      <div class="entry"><span class="when">May 10</span><span class="ref">f33c4c5</span><span class="what">Convert root to npm workspaces <span class="tag t-infra">infra</span></span></div>
+    </div>
+  </div>
+
+  <!-- ===================================================== M2 -->
+  <div class="arc">
+    <div class="arc-head">
+      <span class="arc-id">M2</span>
+      <h2 class="arc-title">API service + auth foundation</h2>
+      <span class="arc-window">May 10</span>
+    </div>
+    <p class="arc-summary">
+      Stand up the Express + TypeScript API service. Mongo bootstrap with
+      $jsonSchema validators + indexes. Password auth via argon2id,
+      cookie-signed sessions, TOTP enrolment + two-step login.
+    </p>
+    <div class="entries">
+      <div class="entry"><span class="when">May 10</span><span class="ref">d4a7c9a</span><span class="what">M2.1: Express + TS API skeleton — Mongo, pino, health probes <span class="tag t-infra">infra</span></span></div>
+      <div class="entry"><span class="when">May 10</span><span class="ref">67a379a</span><span class="what">M2.2: <code>orgs / users / sessions / audit_log</code> collections + validators + indexes <span class="tag t-infra">infra</span></span></div>
+      <div class="entry"><span class="when">May 10</span><span class="ref">912da88</span><span class="what">M2.3a: auth core — argon2id, sessions, <code>/login</code>, <code>/logout</code>, <code>/me</code> <span class="tag t-sec">security</span></span></div>
+      <div class="entry"><span class="when">May 10</span><span class="ref">a8fa7d1</span><span class="what">M2.3b: admin-bootstrap CLI + invite + password reset endpoints <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 10</span><span class="ref">1d1675a</span><span class="what">M2.3c: TOTP enrolment / verification / two-step login integration <span class="tag t-sec">security</span></span></div>
+      <div class="entry"><span class="when">May 10</span><span class="ref">4f7b7c3</span><span class="what">M2 live-verification fixes <span class="tag t-hotfix">hotfix</span></span></div>
+    </div>
+  </div>
+
+  <!-- ===================================================== M3 -->
+  <div class="arc">
+    <div class="arc-head">
+      <span class="arc-id">M3</span>
+      <h2 class="arc-title">AI proxy on the API</h2>
+      <span class="arc-window">May 10</span>
+    </div>
+    <p class="arc-summary">
+      Move the chat / grade-pr / classify-goals AI integration off the
+      Next.js side and onto the API service. Classification streams as
+      NDJSON so the UI can render results incrementally.
+    </p>
+    <div class="entries">
+      <div class="entry"><span class="when">May 10</span><span class="ref">e220397</span><span class="what">M3.1: chat + grade-pr AI proxies on the API <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 10</span><span class="ref">2211205</span><span class="what">M3.2: <code>/classify-goals</code> streams NDJSON for live UI updates <span class="tag t-feat">feat</span></span></div>
+    </div>
+  </div>
+
+  <!-- ===================================================== M4 -->
+  <div class="arc">
+    <div class="arc-head">
+      <span class="arc-id">M4</span>
+      <h2 class="arc-title">Goals subsystem on the API</h2>
+      <span class="arc-window">May 10</span>
+    </div>
+    <p class="arc-summary">
+      Persist the goal tree + per-goal AI classifier outputs + per-goal
+      user answers + manual time-series inputs. Four collections, one
+      module each.
+    </p>
+    <div class="entries">
+      <div class="entry"><span class="when">May 10</span><span class="ref">f82fec0</span><span class="what">M4.1: <code>goals / goal_specs / goal_context / goal_inputs</code> collections <span class="tag t-infra">infra</span></span></div>
+      <div class="entry"><span class="when">May 10</span><span class="ref">c0f2f66</span><span class="what">M4.2: endpoints + migration for all four <span class="tag t-feat">feat</span></span></div>
+    </div>
+  </div>
+
+  <!-- ===================================================== M5 -->
+  <div class="arc">
+    <div class="arc-head">
+      <span class="arc-id">M5</span>
+      <h2 class="arc-title">Snapshots + grading-verdict cache</h2>
+      <span class="arc-window">May 10</span>
+    </div>
+    <p class="arc-summary">
+      Weekly frozen metrics + per-goal readings (<code>snapshots</code>)
+      and the AI-graded PR rubric cache (<code>grading_verdicts</code>,
+      TTL-evicted). Manual-wins-over-auto rule enforced at the controller.
+    </p>
+    <div class="entries">
+      <div class="entry"><span class="when">May 10</span><span class="ref">712a810</span><span class="what">M5.1: <code>snapshots + grading_verdicts</code> collections <span class="tag t-infra">infra</span></span></div>
+      <div class="entry"><span class="when">May 10</span><span class="ref">75788c4</span><span class="what">M5.2: endpoints + extended migration <span class="tag t-feat">feat</span></span></div>
+    </div>
+  </div>
+
+  <!-- ===================================================== M6 -->
+  <div class="arc">
+    <div class="arc-head">
+      <span class="arc-id">M6</span>
+      <h2 class="arc-title">Encrypted integrations + server-side proxy</h2>
+      <span class="arc-window">May 10</span>
+    </div>
+    <p class="arc-summary">
+      The defining architecture change: integration tokens are envelope-
+      encrypted at rest (AES-256-GCM, versioned <code>v1.*</code>) and
+      decrypted in-process by a new server-side proxy that streams the
+      upstream response back. The browser no longer holds tokens for
+      outbound calls.
+    </p>
+    <div class="entries">
+      <div class="entry"><span class="when">May 10</span><span class="ref">c29a503</span><span class="what">M6.1: <code>integrations</code> collection with encrypted token columns <span class="tag t-sec">security</span></span></div>
+      <div class="entry"><span class="when">May 10</span><span class="ref">3653bf8</span><span class="what">M6.2: integrations CRUD endpoints + encrypt-on-migrate <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 10</span><span class="ref">5c542a4</span><span class="what">M6.3: integration proxy on the API — decrypts in-process, streams upstream <span class="tag t-sec">security</span></span></div>
+    </div>
+  </div>
+
+  <!-- ===================================================== M7 -->
+  <div class="arc">
+    <div class="arc-head">
+      <span class="arc-id">M7</span>
+      <h2 class="arc-title">Frontend auth + mirror-mode stores</h2>
+      <span class="arc-window">May 10–11</span>
+    </div>
+    <p class="arc-summary">
+      Wire the frontend to the API. <code>useSession</code> + AuthGuard +
+      <code>/login</code> page. Each domain store (grading, snapshots,
+      goal-context, goal-inputs, goal-specs, goals tree, integrations)
+      adopts <strong>mirror mode</strong>: local writes immediately push
+      to the API. Pull-on-session for the ones that need it. M7.9 retires
+      the legacy Next.js proxy routes once the API proxy is fully live.
+    </p>
+    <div class="entries">
+      <div class="entry"><span class="when">May 10</span><span class="ref">8f3a7f4</span><span class="what">M7.1: frontend auth foundation — api-client, <code>useSession</code>, <code>/login</code> <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 10</span><span class="ref">217bbc7</span><span class="what">M7.2: grading-store mirror — fire-and-forget POSTs <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 10</span><span class="ref">2a1c78f</span><span class="what">M7.3: snapshots-store mirror <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 10</span><span class="ref">a9ed540</span><span class="what">M7.4: goal-context mirror <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 10</span><span class="ref">b1afbb0</span><span class="what">M7.5: goal-inputs mirror <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 10</span><span class="ref">9199898</span><span class="what">M7.6: goal-specs mirror <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">68f548d</span><span class="what">M7.7: goals tree mirror <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">5120ed5</span><span class="what">M7.8: integrations push-only mirror (no pull — tokens stay server-side) <span class="tag t-sec">security</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">285f6d8</span><span class="what">M7.9a: one-shot localStorage → API migration trigger <code>&lt;MigrateOnce&gt;</code> <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">40f13be</span><span class="what">M7.9b: logout button + session-aware <code>&lt;UserChip&gt;</code> <span class="tag t-ux">ux</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">4729fea</span><span class="what">M7.9c: retire legacy Next.js proxy routes <span class="tag t-infra">infra</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">8b0d2e3</span><span class="what">M7.9d: hoist goal-spec types + validator into <code>packages/shared</code> <span class="tag t-infra">infra</span></span></div>
+    </div>
+  </div>
+
+  <!-- ===================================================== M8 -->
+  <div class="arc">
+    <div class="arc-head">
+      <span class="arc-id">M8</span>
+      <h2 class="arc-title">Real email + rate limiting</h2>
+      <span class="arc-window">May 11</span>
+    </div>
+    <p class="arc-summary">
+      Resend transport for invite + password-reset emails (log-only fallback
+      when <code>RESEND_API_KEY</code> is unset). Per-IP rate limits on
+      every public auth endpoint to handle credential-stuffing sweeps.
+    </p>
+    <div class="entries">
+      <div class="entry"><span class="when">May 11</span><span class="ref">c7dfa74</span><span class="what">M8.1+2: Resend transport + real invite / password-reset emails <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">39a4886</span><span class="what">M8.3: per-IP rate limiting on public auth endpoints <span class="tag t-sec">security</span></span></div>
+    </div>
+  </div>
+
+  <!-- ===================================================== M10 -->
+  <div class="arc">
+    <div class="arc-head">
+      <span class="arc-id">M10</span>
+      <h2 class="arc-title">Hub system (multi-hub workspace)</h2>
+      <span class="arc-window">May 11</span>
+    </div>
+    <p class="arc-summary">
+      Reshape the app from a single dashboard into a multi-hub
+      workspace. The shared registry declares hubs (dev / qa / admin /
+      manager) with theme + integrations + pages + capability gates.
+      Routes move under <code>/[hub]/*</code>. Settings + tile filtering
+      become hub-scoped. Per-org overrides land via the
+      <code>hub_configs</code> collection.
+    </p>
+    <div class="entries">
+      <div class="entry"><span class="when">May 11</span><span class="ref">64215db</span><span class="what">M10.1: hub orchestrator primitives — registry + per-user hub access <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">7bfc78b</span><span class="what">M10.2: <code>/[hub]/...</code> route group + Dev Hub migration <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">08fdb8e</span><span class="what">M10.3: QA Hub scaffold — placeholder shell + slot guards <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">844633f</span><span class="what">M10.4: Settings + dashboard tiles filter integrations per active hub <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">054ec8b</span><span class="what">M10.5: <code>hub_configs</code> collection + admin overrides on <code>/hubs/me</code> <span class="tag t-feat">feat</span></span></div>
+    </div>
+  </div>
+
+  <!-- ===================================================== M-OB -->
+  <div class="arc">
+    <div class="arc-head">
+      <span class="arc-id">M-OB</span>
+      <h2 class="arc-title">Onboarding</h2>
+      <span class="arc-window">May 11</span>
+    </div>
+    <p class="arc-summary">
+      Three-field form (employee id, department, primary hub) that
+      every new user fills on first authenticated load. Maps department
+      → hub via the registry's <code>departments</code> map. AuthGuard
+      traps un-onboarded users at <code>/onboarding</code>.
+    </p>
+    <div class="entries">
+      <div class="entry"><span class="when">May 11</span><span class="ref">fcfbe28</span><span class="what">M-OB: onboarding flow — 3-field form routes new users to their hub <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">476bff5</span><span class="what">accept-invite UI page so invites are actually redeemable <span class="tag t-feat">feat</span></span></div>
+    </div>
+  </div>
+
+  <!-- ===================================================== M-CAP -->
+  <div class="arc">
+    <div class="arc-head">
+      <span class="arc-id">M-CAP</span>
+      <h2 class="arc-title">Capability model</h2>
+      <span class="arc-window">May 11–12</span>
+    </div>
+    <p class="arc-summary">
+      Replace the single <code>users.role</code> column with a multi-role
+      <code>users.roles[]</code>. Roles map to capabilities via
+      <code>ROLE_CAPABILITIES</code>. Hubs declare which capabilities they
+      <code>requires</code>; the orchestrator returns the intersection.
+      Bootstraps the admin hub with hub-config + users + audit slots. PR 4
+      closes the arc with the real admin Users + Audit UIs.
+    </p>
+    <div class="entries">
+      <div class="entry"><span class="when">May 11</span><span class="ref">d84d9ee</span><span class="what">M-CAP backend: multi-role + capabilities orchestrator + admin/manager hubs <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">f80ace6</span><span class="what">M-CAP PR 2: admin hub UI scaffold + <code>&lt;RequireCapability&gt;</code> <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">bfecc57</span><span class="what">M-CAP PR 3: post-login hub picker + header switcher <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 12</span><span class="ref">9f3d403 · PR #53</span><span class="what">M-CAP PR 4 API: <code>GET /admin/users</code>, <code>PATCH /admin/users/:id</code>, <code>GET /admin/audit</code> <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 12</span><span class="ref">2a58ab3 · PR #54</span><span class="what">M-CAP PR 4 UI: admin Users (inline editor) + Audit (filter + paginate) <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 12</span><span class="ref">d40c8a2 · PR #56</span><span class="what">M-CAP follow-up: invite-user dialog + admin TOTP reset <span class="tag t-feat">feat</span></span></div>
+    </div>
+  </div>
+
+  <!-- ===================================================== HOTFIXES -->
+  <div class="arc">
+    <div class="arc-head">
+      <span class="arc-id">FIX</span>
+      <h2 class="arc-title">Live integration debugging (the May 11 push)</h2>
+      <span class="arc-window">May 11</span>
+    </div>
+    <p class="arc-summary">
+      Eight hotfixes between the M-CAP arc landing and the auth follow-ups.
+      Triggered by the operator's first live integration test against
+      GitHub + Jira. Everything from a wrong header-passthrough that broke
+      JSON parsing in the browser, to a timezone bucketing bug that made
+      Cairo users see 0 events on the Activity tile.
+    </p>
+    <div class="entries">
+      <div class="entry"><span class="when">May 11</span><span class="ref">fee61b7</span><span class="what">Admin role stays admin-only at create + per-user migrate marker <span class="tag t-hotfix">hotfix</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">ccff9aa · PR #45</span><span class="what">Stop forwarding upstream <code>content-encoding</code> — undici decompresses gzip transparently, browser was double-decoding <span class="tag t-hotfix">hotfix</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">439b2b5 · PR #46</span><span class="what">Break snapshot pull → mirror feedback loop — new <code>applyPulledSnapshot()</code> no-mirror variant <span class="tag t-hotfix">hotfix</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">49c1e97 · PR #47</span><span class="what">GitHub username self-heal in <code>myEventsSince</code> + Settings backfill controls <span class="tag t-hotfix">hotfix</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">ae298bb · PR #48</span><span class="what">Bucket events by local-time date, not UTC — Cairo users were seeing 0 events <span class="tag t-hotfix">hotfix</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">a4bc1e1 · PR #49</span><span class="what">Paginate GitHub events feed across 3 pages with cutoff short-circuit <span class="tag t-hotfix">hotfix</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">6008266 · PR #50</span><span class="what">Synthesise activity events from <code>author:@me</code> PR list — recovers older months when the events feed has rolled past them <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 11</span><span class="ref">df3f75c · PR #51</span><span class="what">Drop premature short-circuit in events pagination — GitHub returns 99 on a page that still has <code>Link: rel="next"</code> <span class="tag t-hotfix">hotfix</span></span></div>
+    </div>
+  </div>
+
+  <!-- ===================================================== AUTH FOLLOW-UPS -->
+  <div class="arc">
+    <div class="arc-head">
+      <span class="arc-id">AUTH</span>
+      <h2 class="arc-title">Auth follow-ups (the May 12 push)</h2>
+      <span class="arc-window">May 12</span>
+    </div>
+    <p class="arc-summary">
+      Close the gaps in the auth flow that the M-CAP arc had deferred:
+      a real password-reset UI (the email was already linking to a 404),
+      a TOTP enrolment gate that traps fresh users until they enrol,
+      server-side enforcement of that gate, and a self-service profile
+      editor.
+    </p>
+    <div class="entries">
+      <div class="entry"><span class="when">May 12</span><span class="ref">4bfc5bd · PR #52</span><span class="what">Password-reset pages: <code>/forgot-password</code> + <code>/password-reset?token=…</code> + Forgot-password link on login <span class="tag t-feat">feat</span></span></div>
+      <div class="entry"><span class="when">May 12</span><span class="ref">23ff893 · PR #55</span><span class="what">TOTP enrolment gate: <code>/totp-setup</code> page (QR + base32 secret) + AuthGuard route <span class="tag t-sec">security</span></span></div>
+      <div class="entry"><span class="when">May 12</span><span class="ref">5e6bb57 · PR #57</span><span class="what">Server-side TOTP enrolment enforcement — new <code>requireTotpEnrolled</code> middleware option + session migration <span class="tag t-sec">security</span></span></div>
+      <div class="entry"><span class="when">May 12</span><span class="ref">826803a · PR #58</span><span class="what">Self-service profile editor — Settings → Account tab + <code>PATCH /auth/me</code> <span class="tag t-feat">feat</span></span></div>
+    </div>
+  </div>
+
+  <!-- ===================================================== DEFERRED -->
+  <div class="deferred">
+    <h3>Still on the board — by priority</h3>
+    <ul>
+      <li><b>Backup codes for TOTP</b> — single-use recovery codes for the lost-phone case. Today, lost phone → admin reset (manual). Smallest, highest urgency.</li>
+      <li><b>QA Jira widgets</b> — the only buildable slice of the QA Hub today (Jira is the only QA data source we have wired). Defect leakage, defect cycle time, regression labels. ~1 day.</li>
+      <li><b><code>managerId</code> on the admin user editor</b> — adds <code>managerId</code> to the PATCH schema and surfaces a dropdown in the row editor. Unblocks future Manager Hub work even though the hub itself doesn't exist yet.</li>
+      <li><b>Manager Hub design conversation</b> — needs cross-user data-access policy (does a manager see raw metrics or anonymized aggregates?) before any code lands.</li>
+      <li><b>TestRail / Zephyr connector</b> — blocked on QA team picking which tool they use + an API token.</li>
+      <li><b>Email change flow</b> — currently refused by the profile editor; needs a confirmation-email round-trip + every-session invalidation. Parked.</li>
+      <li><b>Hard-delete user</b> — soft-delete via <code>status: disabled</code> covers the operational need; hard-delete would orphan audit-log refs. Intentionally not built.</li>
+      <li><b>Zoho HR sync</b> — populates <code>users.{managerId, zohoEmployeeId, level, hireDate}</code>. Out-of-band integration task; not started.</li>
+      <li><b>Redis-backed rate limits</b> — in-process limiters are fine on a single instance; cross-instance HA needs Redis. Container is in <code>docker-compose.yml</code>; no code consumes it yet.</li>
+      <li><b>Production observability stack</b> — pino is structured-JSON-ready; need to wire a log shipper + dashboards + Sentry on the frontend.</li>
+    </ul>
+  </div>
+
+  <footer>
+    Generated 2026-05-12 · eSpace Dev Hub docs · 57 commits across 12 arcs
+  </footer>
+</main>
+</body>
+</html>

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { BentoTile } from "@/components/ui";
+import { ProviderStateCallout } from "@/features/integrations";
 import { useSnapshots } from "@/features/snapshots";
 import { useHubLink } from "@/features/hubs";
 import { fullDate } from "@/lib/date";
@@ -34,9 +35,12 @@ export function SnapshotsTile() {
       }
     >
       {!latest ? (
-        <div className="flex flex-1 items-center text-[12px] text-muted-fg">
-          No snapshots yet — capture one weekly to build review history.
-        </div>
+        <ProviderStateCallout
+          kind="empty"
+          message="No snapshots yet — capture one weekly to build your review history."
+          actionHref={link("/snapshots")}
+          actionLabel="Capture now"
+        />
       ) : (
         <div className="flex flex-1 flex-col justify-center gap-1">
           <div className="text-[13px] font-semibold leading-tight">
@@ -52,6 +56,17 @@ export function SnapshotsTile() {
               {latest.linkage ?? 0}%
             </span>
           </div>
+          {latest.partial ? (
+            <div
+              className="mt-0.5 text-[10px] text-[#b45309]"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              ⚠ Partial data
+              {latest.gaps?.length > 0
+                ? ` — ${latest.gaps.join(", ")} unavailable`
+                : ""}
+            </div>
+          ) : null}
         </div>
       )}
     </BentoTile>

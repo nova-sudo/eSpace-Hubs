@@ -16,7 +16,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button, MonoLabel } from "@/components/ui";
 import { generateReviewParagraph } from "./auto-paragraph";
-import { useAiProvider } from "@/features/analyst/use-ai-provider";
+import { useAiProvider } from "@/features/analyst";
 
 export function ParagraphCard({ metrics, rangeLabel, level, starred }) {
   const baseParagraph = useMemo(

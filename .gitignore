@@ -30,3 +30,6 @@ Thumbs.db
 **/.turbo
 .tsbuildinfo
 **/*.tsbuildinfo
+
+# Next.js generates this on every dev/build/typecheck run — do not commit
+apps/web/next-env.d.ts

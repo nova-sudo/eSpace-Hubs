@@ -35,6 +35,10 @@
   --radius-tile: 4px;
   --radius-sub: 3px;
   --radius-pill: 999px;
+
+  /* Shell layout — shared by scroll-snap dashboard and any surface that
+     needs to size itself relative to the sticky header. Change here only. */
+  --header-height: 57px;
 }
 
 /* Map design tokens → Tailwind v4 theme so Tailwind utilities (bg-card, text-accent) work. */

@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>eSpace Dev Hub — File Structure</title>
+  <style>
+    :root {
+      --bg: #f8f8f7;
+      --fg: #0b0b0c;
+      --muted: #6f6f6f;
+      --dim: #9a9a9a;
+      --accent: #3826ff;
+      --accent-dim: rgba(56, 38, 255, 0.08);
+      --card: #ffffff;
+      --border: #e5e5e5;
+      --border-strong: #d4d4d4;
+      --good: #16a34a;
+      --bad: #b91c1c;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter,
+        system-ui, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+        "Liberation Mono", monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-sans);
+      line-height: 1.55;
+      font-size: 14.5px;
+      -webkit-font-smoothing: antialiased;
+    }
+    main { max-width: 1100px; margin: 0 auto; padding: 48px 32px 80px; }
+    header { margin-bottom: 48px; }
+    .crumb {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    h1 {
+      font-size: 36px;
+      font-weight: 600;
+      letter-spacing: -1px;
+      margin: 0 0 12px;
+      line-height: 1.05;
+    }
+    h1 em {
+      color: var(--accent);
+      font-style: italic;
+    }
+    .lede {
+      max-width: 700px;
+      color: var(--muted);
+      font-size: 15px;
+      margin: 0;
+    }
+    nav.docs {
+      display: flex;
+      gap: 4px;
+      margin: 24px 0 0;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+    }
+    nav.docs a {
+      color: var(--muted);
+      text-decoration: none;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+    }
+    nav.docs a.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+    nav.docs a:hover { color: var(--fg); }
+    section { margin-bottom: 40px; }
+    section > h2 {
+      font-size: 13px;
+      font-family: var(--font-mono);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 0 0 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    section > h2 .n { color: var(--accent); margin-right: 8px; }
+    .tree {
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      line-height: 1.7;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px 20px;
+      overflow-x: auto;
+    }
+    .tree details { margin: 0; }
+    .tree summary {
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+    }
+    .tree summary::-webkit-details-marker { display: none; }
+    .tree summary::before {
+      content: "▸ ";
+      display: inline-block;
+      width: 14px;
+      color: var(--muted);
+      transition: transform 0.15s;
+    }
+    .tree details[open] > summary::before {
+      content: "▾ ";
+    }
+    .tree .leaf::before {
+      content: "· ";
+      display: inline-block;
+      width: 14px;
+      color: var(--dim);
+    }
+    .tree .node {
+      color: var(--fg);
+      font-weight: 600;
+    }
+    .tree .leaf .file {
+      color: var(--fg);
+    }
+    .tree .note {
+      color: var(--muted);
+      font-weight: 400;
+      margin-left: 8px;
+      font-size: 11.5px;
+    }
+    .tree .indent { padding-left: 20px; }
+    .tree .leaf { display: flex; flex-wrap: wrap; align-items: baseline; }
+    .tag {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 2px;
+      margin-left: 8px;
+      font-weight: 600;
+    }
+    .tag.api { background: rgba(22, 163, 74, 0.12); color: var(--good); }
+    .tag.web { background: var(--accent-dim); color: var(--accent); }
+    .tag.shared { background: rgba(120, 70, 200, 0.12); color: #6f3fb8; }
+    .tag.config { background: #f0f0ef; color: var(--muted); }
+    .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .stat {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+    }
+    .stat .label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .stat .value {
+      font-size: 26px;
+      font-weight: 600;
+      letter-spacing: -0.4px;
+      font-family: var(--font-mono);
+    }
+    p { color: var(--fg); }
+    p.muted { color: var(--muted); }
+    code {
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      background: var(--accent-dim);
+      color: var(--accent);
+      padding: 1px 6px;
+      border-radius: 3px;
+    }
+    footer {
+      margin-top: 64px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      color: var(--dim);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.4px;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="crumb">eSpace Dev Hub · documentation</div>
+    <h1>File <em>structure</em>.</h1>
+    <p class="lede">
+      Monorepo layout. Three packages under <code>apps/</code> and
+      <code>packages/</code>, plus a thin scripts dir at the root. Every
+      leaf below is annotated with what it owns.
+    </p>
+    <nav class="docs">
+      <a href="file-structure.html" class="active">File structure</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="deployment.html">Deployment</a>
+      <a href="feature-log.html">Feature log</a>
+    </nav>
+  </header>
+
+  <section>
+    <h2><span class="n">00 /</span> At a glance</h2>
+    <div class="stat-row">
+      <div class="stat">
+        <div class="label">Workspaces</div>
+        <div class="value">3</div>
+      </div>
+      <div class="stat">
+        <div class="label">API modules</div>
+        <div class="value">15</div>
+      </div>
+      <div class="stat">
+        <div class="label">Web features</div>
+        <div class="value">19</div>
+      </div>
+      <div class="stat">
+        <div class="label">Mongo collections</div>
+        <div class="value">13</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">01 /</span> Repo root</h2>
+    <div class="tree">
+      <details open>
+        <summary class="node">espace-devhub/</summary>
+        <div class="indent">
+          <div class="leaf"><span class="file">package.json</span><span class="tag config">root</span><span class="note">npm workspaces orchestrator; root scripts (dev:api, dev:web, build:*, typecheck)</span></div>
+          <div class="leaf"><span class="file">package-lock.json</span><span class="note">deterministic lockfile across all workspaces</span></div>
+          <div class="leaf"><span class="file">README.md</span><span class="note">project intro + getting-started</span></div>
+          <div class="leaf"><span class="file">CLAUDE.md</span><span class="note">agent contract — house rules + style guide for AI assistance</span></div>
+          <div class="leaf"><span class="file">docker-compose.yml</span><span class="tag config">dev</span><span class="note">local Mongo (:27017) + Redis (:6379) containers</span></div>
+          <details>
+            <summary class="node">apps/</summary>
+            <div class="indent">
+              <div class="leaf"><span class="file">api/</span><span class="tag api">workspace</span><span class="note">@espace-devhub/api — Express + TypeScript backend</span></div>
+              <div class="leaf"><span class="file">web/</span><span class="tag web">workspace</span><span class="note">@espace-devhub/web — Next.js 16 frontend</span></div>
+            </div>
+          </details>
+          <details>
+            <summary class="node">packages/</summary>
+            <div class="indent">
+              <div class="leaf"><span class="file">shared/</span><span class="tag shared">workspace</span><span class="note">@espace-devhub/shared — capabilities, hub registry, goal-spec types</span></div>
+              <div class="leaf"><span class="file">api-contracts/</span><span class="tag shared">workspace</span><span class="note">future home for shared API types (currently lean)</span></div>
+            </div>
+          </details>
+          <details>
+            <summary class="node">scripts/</summary>
+            <div class="indent">
+              <div class="leaf"><span class="file">seed-jira.sh / .ps1</span><span class="note">populate a test Jira project (cross-platform)</span></div>
+              <div class="leaf"><span class="file">seed-jira-new.ps1</span><span class="note">newer Atlassian Cloud variant (post /search/jql)</span></div>
+            </div>
+          </details>
+          <div class="leaf"><span class="file">docs/</span><span class="note">this folder — generated documentation</span></div>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">02 /</span> apps/api — backend service</h2>
+    <p class="muted">
+      Express + TypeScript. Reads <code>tsx watch</code> in dev, compiled in
+      production via <code>tsc</code>. All business logic lives under
+      <code>src/modules/</code> with one folder per feature (controller +
+      routes + schemas).
+    </p>
+    <div class="tree">
+      <details open>
+        <summary class="node">apps/api/</summary>
+        <div class="indent">
+          <div class="leaf"><span class="file">package.json</span><span class="note">workspace deps + scripts (dev/build/start/typecheck)</span></div>
+          <div class="leaf"><span class="file">tsconfig.json</span><span class="note">strict TS, NodeNext modules, target esnext</span></div>
+          <div class="leaf"><span class="file">.env.example / .env.local</span><span class="tag config">env</span><span class="note">PORT, MONGO_URI, SESSION_SECRET, INTEGRATION_TOKEN_KEY, RESEND_*</span></div>
+          <details open>
+            <summary class="node">src/</summary>
+            <div class="indent">
+              <div class="leaf"><span class="file">server.ts</span><span class="note">entrypoint — boots HTTP listener + DB connection</span></div>
+              <div class="leaf"><span class="file">app.ts</span><span class="note">Express app factory — middleware order + router mounts</span></div>
+              <details>
+                <summary class="node">config/</summary>
+                <div class="indent">
+                  <div class="leaf"><span class="file">env.ts</span><span class="note">Zod-validated env loader; rejects boot on bad config</span></div>
+                </div>
+              </details>
+              <details>
+                <summary class="node">db/</summary>
+                <div class="indent">
+                  <div class="leaf"><span class="file">client.ts</span><span class="note">MongoClient singleton + lifecycle</span></div>
+                  <div class="leaf"><span class="file">collections.ts</span><span class="note">typed collection accessors + validator/index bootstrap + migration runner</span></div>
+                  <div class="leaf"><span class="file">types.ts</span><span class="note">every collection's TypeScript interface (single source of truth)</span></div>
+                  <div class="leaf"><span class="file">seed.ts</span><span class="note">idempotent dev-data seeder (org, sample users)</span></div>
+                  <details>
+                    <summary class="node">schemas/</summary>
+                    <div class="indent">
+                      <div class="leaf"><span class="file">orgs / users / sessions / audit-log / auth-tokens.schema.ts</span><span class="note">Mongo $jsonSchema validators — auth-side</span></div>
+                      <div class="leaf"><span class="file">goals / goal-specs / goal-context / goal-inputs.schema.ts</span><span class="note">goal tree + classifier outputs + manual entries</span></div>
+                      <div class="leaf"><span class="file">snapshots / grading-verdicts.schema.ts</span><span class="note">weekly frozen metrics + AI-graded PR cache</span></div>
+                      <div class="leaf"><span class="file">integrations / hub-configs.schema.ts</span><span class="note">encrypted-token rows + per-(org, hub) overrides</span></div>
+                      <div class="leaf"><span class="file">index.ts</span><span class="note">barrel; collections.ts imports from here</span></div>
+                    </div>
+                  </details>
+                  <details>
+                    <summary class="node">migrations/</summary>
+                    <div class="indent">
+                      <div class="leaf"><span class="file">m-cap-roles.ts</span><span class="note">populate users.roles[] from legacy role field — idempotent</span></div>
+                      <div class="leaf"><span class="file">totp-enrolled-sessions.ts</span><span class="note">backfill session.totpEnrolled for sessions minted before the field existed</span></div>
+                    </div>
+                  </details>
+                </div>
+              </details>
+              <details>
+                <summary class="node">lib/</summary>
+                <div class="indent">
+                  <div class="leaf"><span class="file">argon2.ts</span><span class="note">password hash + verify (argon2id, OWASP defaults)</span></div>
+                  <div class="leaf"><span class="file">totp.ts</span><span class="note">RFC-6238 secret gen + verify + otpauth:// URI builder</span></div>
+                  <div class="leaf"><span class="file">crypto-secret.ts</span><span class="note">AES-256-GCM envelope encryption for integration tokens (versioned v1.*)</span></div>
+                  <div class="leaf"><span class="file">tokens.ts</span><span class="note">one-time auth tokens — invite, password-reset; SHA-256 hash at rest</span></div>
+                  <div class="leaf"><span class="file">audit.ts</span><span class="note">single writeAudit() entry point — best-effort, never throws</span></div>
+                  <div class="leaf"><span class="file">email.ts</span><span class="note">Resend transport with log-only fallback when RESEND_API_KEY is unset</span></div>
+                  <div class="leaf"><span class="file">email-templates.ts</span><span class="note">invite + password-reset bodies (text + HTML)</span></div>
+                  <div class="leaf"><span class="file">logger.ts</span><span class="note">pino — structured JSON logs + req-id correlation</span></div>
+                  <div class="leaf"><span class="file">user-roles.ts</span><span class="note">M-CAP read helpers (effectiveRoles, effectiveCapabilities)</span></div>
+                </div>
+              </details>
+              <details>
+                <summary class="node">middleware/</summary>
+                <div class="indent">
+                  <div class="leaf"><span class="file">session.ts</span><span class="note">resolves signed cookie → attaches req.session; throttled touch</span></div>
+                  <div class="leaf"><span class="file">require-auth.ts</span><span class="note">gate — requireTotp + requireTotpEnrolled options</span></div>
+                  <div class="leaf"><span class="file">require-role.ts</span><span class="note">role-allowlist gate (used by admin routes)</span></div>
+                  <div class="leaf"><span class="file">rate-limit.ts</span><span class="note">per-IP limiters for login / TOTP / reset / accept-invite</span></div>
+                  <div class="leaf"><span class="file">error-handler.ts</span><span class="note">HttpError class + final tail handler emitting structured JSON</span></div>
+                  <div class="leaf"><span class="file">request-id.ts</span><span class="note">attaches a 16-char id per request for log correlation</span></div>
+                </div>
+              </details>
+              <details open>
+                <summary class="node">modules/ (one folder per route group)</summary>
+                <div class="indent">
+                  <div class="leaf"><span class="file">health/</span><span class="note">/healthz — Mongo ping + liveness probe</span></div>
+                  <div class="leaf"><span class="file">auth/</span><span class="note">/login, /logout, /me (GET+PATCH), /accept-invite, /password/*, /totp/*, /invite</span></div>
+                  <div class="leaf"><span class="file">admin/</span><span class="note">/admin/users, /admin/users/:id (PATCH), /admin/users/:id/totp/reset, /admin/audit</span></div>
+                  <div class="leaf"><span class="file">ai/</span><span class="note">/ai/chat, /ai/grade-pr, /ai/classify-goals (Mistral proxy + NDJSON stream)</span></div>
+                  <div class="leaf"><span class="file">goals/ + goal-specs/ + goal-context/ + goal-inputs/</span><span class="note">goal-tree CRUD + AI classifier output + per-goal answers + manual time-series</span></div>
+                  <div class="leaf"><span class="file">snapshots/</span><span class="note">weekly-frozen-metric rows + manual override semantics</span></div>
+                  <div class="leaf"><span class="file">grading-verdicts/</span><span class="note">PR-rubric verdict cache (TTL-evicted)</span></div>
+                  <div class="leaf"><span class="file">integrations/</span><span class="note">connect/disconnect + the encrypted-at-rest provider proxy</span></div>
+                  <div class="leaf"><span class="file">hubs/ + hub-configs/</span><span class="note">/hubs/me + admin overrides on top of the shared registry</span></div>
+                  <div class="leaf"><span class="file">onboarding/</span><span class="note">M-OB form submit — sets department + assigns hubs</span></div>
+                  <div class="leaf"><span class="file">migrate/</span><span class="note">one-shot localStorage → API import per device-user</span></div>
+                </div>
+              </details>
+            </div>
+          </details>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">03 /</span> apps/web — Next.js frontend</h2>
+    <p class="muted">
+      Next.js 16 with App Router + Turbopack. Three top-level concerns:
+      <code>app/</code> (routes), <code>features/</code> (domain logic),
+      <code>hubs/</code> (per-hub component registries).
+    </p>
+    <div class="tree">
+      <details open>
+        <summary class="node">apps/web/</summary>
+        <div class="indent">
+          <div class="leaf"><span class="file">package.json + next.config.* + tailwind.config.*</span></div>
+          <div class="leaf"><span class="file">.env.example / .env.local</span><span class="tag config">env</span><span class="note">NEXT_PUBLIC_APP_URL, NEXT_PUBLIC_AUTH_REQUIRED, NEXT_PUBLIC_JIRA_URL, NEXT_PUBLIC_GITLAB_URL, NEXT_PUBLIC_GITHUB_CLIENT_ID + GITHUB_CLIENT_SECRET</span></div>
+          <details open>
+            <summary class="node">src/app/ (App Router routes)</summary>
+            <div class="indent">
+              <div class="leaf"><span class="file">layout.jsx + page.jsx</span><span class="note">root shell (SessionProvider, Sonner toaster) + HubRedirect dispatcher</span></div>
+              <div class="leaf"><span class="file">login/</span><span class="note">two-step email+password / TOTP form</span></div>
+              <div class="leaf"><span class="file">accept-invite/</span><span class="note">invite-token redemption</span></div>
+              <div class="leaf"><span class="file">forgot-password/ + password-reset/</span><span class="note">request reset link + redeem reset token</span></div>
+              <div class="leaf"><span class="file">totp-setup/</span><span class="note">QR + base32 secret + 6-digit verify (mandatory pre-app)</span></div>
+              <div class="leaf"><span class="file">onboarding/</span><span class="note">M-OB 3-field form mapping department → hub</span></div>
+              <div class="leaf"><span class="file">oauth/github/</span><span class="note">PKCE callback — exchanges code, mirrors token to API</span></div>
+              <div class="leaf"><span class="file">api/oauth/github/exchange/</span><span class="note">server-side OAuth code-for-token exchange (avoids exposing client secret)</span></div>
+              <div class="leaf"><span class="file">[hub]/</span><span class="note">hub-scoped routes — dashboard, goals, evidence, snapshots, reviews, settings, hub-config, users, audit</span></div>
+            </div>
+          </details>
+          <details>
+            <summary class="node">src/features/ (domain modules)</summary>
+            <div class="indent">
+              <div class="leaf"><span class="file">auth/</span><span class="note">SessionProvider, AuthGuard, LoginForm, AcceptInviteForm, PasswordReset(Form|RequestForm), TotpSetupForm, UserChip, RequireCapability</span></div>
+              <div class="leaf"><span class="file">integrations/</span><span class="note">api-clients/{github,gitlab,jira}.js, proxy-fetch, hooks/use-* per provider + useCombined*, metrics/* per dashboard tile</span></div>
+              <div class="leaf"><span class="file">dashboard/</span><span class="note">DashboardPage, hero, date-range presets, tiles/* (activity, heatmap, merged, reviews, turnaround, linkage, rounds, …)</span></div>
+              <div class="leaf"><span class="file">goals/ + goal-specs/ + goal-context/ + goal-inputs/</span><span class="note">goal tree CRUD + AI specs + question answers + time-series inputs</span></div>
+              <div class="leaf"><span class="file">snapshots/</span><span class="note">store + pull-on-session sync + auto-snapshotter + backfill banner & engine + compliance reader</span></div>
+              <div class="leaf"><span class="file">grading/</span><span class="note">PR rubric grading client + verdict cache mirror</span></div>
+              <div class="leaf"><span class="file">hubs/</span><span class="note">HubsFetcher, HubProvider, HubRedirect, HubPicker, HubSwitcher, hub-context, hubs-store, useAllowedProviders, useHubSlotGuard</span></div>
+              <div class="leaf"><span class="file">settings/</span><span class="note">SettingsPage + tabs (Onboarding, Integrations, Account, Snapshots & privacy, Danger zone) + token-forms</span></div>
+              <div class="leaf"><span class="file">analyst/ + chat/ + command-palette/</span><span class="note">AI overlay, classic chat, ⌘K + g+x keyboard shortcuts</span></div>
+              <div class="leaf"><span class="file">evidence/ + pr-reviews/ + goal-widgets/</span><span class="note">evidence builder, review timing analysis, goal-widget catalog</span></div>
+              <div class="leaf"><span class="file">onboarding/</span><span class="note">3-field form + department-to-hub resolver</span></div>
+              <div class="leaf"><span class="file">migrate/</span><span class="note">one-shot localStorage→API trigger (MigrateOnce)</span></div>
+              <div class="leaf"><span class="file">demo-mode/</span><span class="note">deterministic synthetic dataset + banner</span></div>
+            </div>
+          </details>
+          <details>
+            <summary class="node">src/hubs/ (per-hub registries)</summary>
+            <div class="indent">
+              <div class="leaf"><span class="file">dashboard-registry.jsx</span><span class="note">hub id → dashboard component dispatch + admin-slot dispatch (users/audit/hub-config)</span></div>
+              <div class="leaf"><span class="file">admin/</span><span class="note">AdminDashboard, AdminUsers (+InviteDialog), AdminAudit, AdminHubConfig, AdminPlaceholder</span></div>
+              <div class="leaf"><span class="file">qa/</span><span class="note">QaPlaceholder (real widgets pending — see Architecture doc)</span></div>
+              <div class="leaf"><span class="file">dev/</span><span class="note">empty — Dev hub uses the default DashboardPage feature</span></div>
+            </div>
+          </details>
+          <details>
+            <summary class="node">src/components/</summary>
+            <div class="indent">
+              <div class="leaf"><span class="file">ui/</span><span class="note">Button, Card, Field, Input, MonoLabel, PageHeader, BentoTile, ContributionHeatmap, DitherField, Grain, Section, …</span></div>
+              <div class="leaf"><span class="file">shell/</span><span class="note">AppShell, Header, Footer, SubTabsTag</span></div>
+            </div>
+          </details>
+          <details>
+            <summary class="node">src/lib/</summary>
+            <div class="indent">
+              <div class="leaf"><span class="file">api-client.js</span><span class="note">apiGet / apiPost / apiPut / apiPatch / apiDelete — { ok, data | error } envelope</span></div>
+              <div class="leaf"><span class="file">cn.js + utils.js + fmt.js</span><span class="note">tailwind class merger + helpers</span></div>
+              <div class="leaf"><span class="file">date.js</span><span class="note">isoDaysAgo, weekLabel, DAY_MS</span></div>
+              <div class="leaf"><span class="file">oauth-pkce.js</span><span class="note">PKCE state + verifier helpers for GitHub OAuth</span></div>
+              <div class="leaf"><span class="file">regex.js</span><span class="note">jira-key / pr-locator parsers</span></div>
+            </div>
+          </details>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">04 /</span> packages/shared</h2>
+    <p class="muted">
+      Cross-workspace primitives. Imported by both <code>web</code> and
+      <code>api</code> via the <code>@espace-devhub/shared</code>
+      specifier. JavaScript + ambient <code>.d.ts</code> declarations.
+    </p>
+    <div class="tree">
+      <details open>
+        <summary class="node">packages/shared/src/</summary>
+        <div class="indent">
+          <div class="leaf"><span class="file">index.js</span><span class="note">barrel re-exporting all subpaths</span></div>
+          <details>
+            <summary class="node">capabilities/</summary>
+            <div class="indent">
+              <div class="leaf"><span class="file">capabilities.{js,d.ts}</span><span class="note">CAPABILITIES const + Capability union + ROLE_CAPABILITIES map + resolveCapabilities()</span></div>
+            </div>
+          </details>
+          <details>
+            <summary class="node">hubs/</summary>
+            <div class="indent">
+              <div class="leaf"><span class="file">registry.{js,d.ts}</span><span class="note">HUBS map (dev/qa/admin/manager) + HUB_ORDER + DEFAULT_HUB_ID + findHubById + resolveHubsForCapabilities + getHubIdForDepartment</span></div>
+              <div class="leaf"><span class="file">index.{js,d.ts}</span><span class="note">barrel</span></div>
+            </div>
+          </details>
+          <details>
+            <summary class="node">goal-specs/</summary>
+            <div class="indent">
+              <div class="leaf"><span class="file">types + validators</span><span class="note">ValidatedSpec shape + Zod-equivalent runtime checks; consumed by /goal-specs route + frontend specs-store</span></div>
+            </div>
+          </details>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">05 /</span> Routes by HTTP shape (API)</h2>
+    <p class="muted">Quick reference for the API surface. Every route below is JSON-in/JSON-out.</p>
+    <div class="tree">
+      <details open>
+        <summary class="node">/api/v1/auth</summary>
+        <div class="indent">
+          <div class="leaf"><span class="file">POST /login · POST /logout · POST /accept-invite</span><span class="tag config">public</span></div>
+          <div class="leaf"><span class="file">POST /password/reset-request · POST /password/reset</span><span class="tag config">public</span></div>
+          <div class="leaf"><span class="file">POST /totp/verify</span><span class="tag config">partial session</span></div>
+          <div class="leaf"><span class="file">GET /me · PATCH /me</span><span class="tag config">authed</span></div>
+          <div class="leaf"><span class="file">POST /totp/enrol · /verify-enrolment · /disable</span><span class="tag config">authed</span></div>
+          <div class="leaf"><span class="file">POST /invite</span><span class="tag config">admin</span></div>
+        </div>
+      </details>
+      <details>
+        <summary class="node">/api/v1/admin</summary>
+        <div class="indent">
+          <div class="leaf"><span class="file">GET /users · PATCH /users/:id · POST /users/:id/totp/reset</span><span class="tag config">admin</span></div>
+          <div class="leaf"><span class="file">GET /audit</span><span class="tag config">admin</span></div>
+        </div>
+      </details>
+      <details>
+        <summary class="node">/api/v1/hubs · /hub-configs · /onboarding</summary>
+        <div class="indent">
+          <div class="leaf"><span class="file">GET /hubs/me</span><span class="tag config">authed</span></div>
+          <div class="leaf"><span class="file">GET /hub-configs · GET/PUT/DELETE /hub-configs/:hubId</span><span class="tag config">admin</span></div>
+          <div class="leaf"><span class="file">POST /onboarding</span><span class="tag config">authed</span></div>
+        </div>
+      </details>
+      <details>
+        <summary class="node">/api/v1/integrations</summary>
+        <div class="indent">
+          <div class="leaf"><span class="file">GET / · POST / · GET /:providerId · DELETE /:providerId</span><span class="tag config">authed</span></div>
+          <div class="leaf"><span class="file">GET/POST /proxy/{github,gitlab,jira}/*</span><span class="tag config">authed · encrypted-at-rest passthrough</span></div>
+        </div>
+      </details>
+      <details>
+        <summary class="node">/api/v1/goals · /goal-specs · /goal-context · /goal-inputs</summary>
+        <div class="indent">
+          <div class="leaf"><span class="file">GET / · PUT / (goals tree); per-goal CRUD on the rest</span><span class="tag config">authed</span></div>
+        </div>
+      </details>
+      <details>
+        <summary class="node">/api/v1/snapshots · /grading-verdicts · /migrate · /ai · healthz</summary>
+        <div class="indent">
+          <div class="leaf"><span class="file">snapshots: list / save / patch-note</span><span class="tag config">authed</span></div>
+          <div class="leaf"><span class="file">grading-verdicts: list / upsert (TTL-cached)</span><span class="tag config">authed</span></div>
+          <div class="leaf"><span class="file">migrate/import: one-shot localStorage payload</span><span class="tag config">authed</span></div>
+          <div class="leaf"><span class="file">ai/chat · ai/grade-pr · ai/classify-goals (NDJSON stream)</span><span class="tag config">authed</span></div>
+          <div class="leaf"><span class="file">GET /healthz</span><span class="tag config">public</span></div>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <footer>
+    Generated 2026-05-12 · eSpace Dev Hub docs
+  </footer>
+</main>
+</body>
+</html>

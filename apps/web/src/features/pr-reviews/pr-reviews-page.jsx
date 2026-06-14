@@ -31,13 +31,13 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Button, MonoLabel, PageHeader } from "@/components/ui";
 import { toast } from "sonner";
-import { useAiProvider } from "@/features/analyst/use-ai-provider";
+import { useAiProvider } from "@/features/analyst";
 import { cn } from "@/lib/cn";
 import {
   fmtMs,
   usePrReviewTimings,
 } from "@/features/integrations";
-import { useDateRange, DateRangeToolbar, splitByRange } from "@/features/dashboard/date-range";
+import { useDateRange, DateRangeToolbar, splitByRange } from "@/features/dashboard";
 import { useHubLink } from "@/features/hubs";
 import { fullDate } from "@/lib/date";
 

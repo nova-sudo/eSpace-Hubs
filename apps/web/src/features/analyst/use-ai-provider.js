@@ -25,7 +25,7 @@ import {
   getPrefsServerSnapshot,
   setAiProviderPref,
   subscribePrefs,
-} from "@/features/prefs/prefs-store";
+} from "@/features/prefs";
 
 const DEFAULT_PROVIDER = "mistral";
 

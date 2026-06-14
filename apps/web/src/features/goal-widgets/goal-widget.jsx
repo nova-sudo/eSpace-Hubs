@@ -39,7 +39,7 @@ import { saveSpec } from "@/features/goal-specs";
 // but can hand back `undefined` to whichever side initialised first.
 // reclassify-one-goal.js itself only depends on `./ai/analysis-events`,
 // which is below both features in our dep graph.
-import { reclassifyOneGoal } from "@/features/analyst/reclassify-one-goal";
+import { reclassifyOneGoal } from "@/features/analyst";
 
 export function GoalWidget({ spec, goal, variant = "light", className, onRetry }) {
   // User override — force the collector to re-open even after answers exist.

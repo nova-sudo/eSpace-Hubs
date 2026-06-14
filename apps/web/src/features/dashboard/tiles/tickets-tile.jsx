@@ -1,8 +1,14 @@
 "use client";
 
 import { BentoTile, Pill } from "@/components/ui";
-import { useJiraTickets, useIntegrations } from "@/features/integrations";
+import {
+  getDashboardProviderDependency,
+  ProviderStateCallout,
+  useJiraTickets,
+  useIntegrations,
+} from "@/features/integrations";
 import { useMyEngagementConfig } from "@/features/auth";
+import { useHubLink } from "@/features/hubs";
 import { fullDate } from "@/lib/date";
 
 const COLUMNS = [
@@ -10,6 +16,8 @@ const COLUMNS = [
   { key: "new", label: "Queued", tone: "default" },
   { key: "done", label: "Shipped", tone: "ok" },
 ];
+
+const TICKETS_DEPENDENCY = getDashboardProviderDependency("tickets");
 
 function groupByCategory(issues = []) {
   const out = { indeterminate: [], new: [], done: [] };
@@ -22,7 +30,8 @@ function groupByCategory(issues = []) {
 
 export function TicketsTile() {
   const { isConnected } = useIntegrations();
-  const { data, isLoading } = useJiraTickets();
+  const { data, isLoading, error } = useJiraTickets();
+  const link = useHubLink();
   // Per-user Jira base URL — comes from the engagement-config
   // endpoint. Env fallback covers early-mount / logged-out states.
   const { config: engagementCfg } = useMyEngagementConfig();
@@ -51,13 +60,27 @@ export function TicketsTile() {
       }
     >
       {!isConnected("jira") ? (
-        <div className="flex h-full items-center justify-center text-[13px] text-muted-fg">
-          Connect Jira to see your tickets.
-        </div>
+        <ProviderStateCallout
+          kind="disconnected"
+          providers={TICKETS_DEPENDENCY.providers}
+          message="Jira is needed to show assigned, queued, and shipped tickets."
+          actionHref={link("/settings")}
+          actionLabel="Connect Jira"
+        />
       ) : isLoading ? (
-        <div className="flex h-full items-center justify-center text-[13px] text-muted-fg">
-          Loading…
-        </div>
+        <ProviderStateCallout
+          kind="loading"
+          providers={TICKETS_DEPENDENCY.providers}
+          message="Checking Jira for your current assigned tickets."
+        />
+      ) : error ? (
+        <ProviderStateCallout
+          kind="error"
+          providers={TICKETS_DEPENDENCY.providers}
+          message={error.message || "Jira did not return ticket data for this view."}
+          actionHref={link("/settings")}
+          actionLabel="Review Jira"
+        />
       ) : (
         <div className="mt-1.5 grid h-full grid-cols-3 gap-2.5 overflow-hidden">
           {COLUMNS.map((col) => {

@@ -10,7 +10,7 @@
  */
 
 import { useSyncExternalStore } from "react";
-import { getAiProvider } from "@/features/analyst/use-ai-provider";
+import { getAiProvider } from "@/features/analyst";
 
 const STORAGE_KEY = "espace-devhub:chat";
 const CHANGE_EVENT = "chat:change";

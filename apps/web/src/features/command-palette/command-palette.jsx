@@ -39,7 +39,7 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { useAiProvider, AI_PROVIDERS } from "@/features/analyst/use-ai-provider";
+import { useAiProvider, AI_PROVIDERS } from "@/features/analyst";
 import { useSnapshotNow } from "@/features/snapshots";
 import { useHubLink } from "@/features/hubs";
 import { buildCommands } from "./commands";

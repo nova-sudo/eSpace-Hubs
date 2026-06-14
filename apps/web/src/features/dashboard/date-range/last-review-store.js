@@ -19,7 +19,7 @@ import {
   getPrefs,
   setLastReviewDatePref,
   LAST_REVIEW_CHANGE_EVENT as PREFS_LAST_REVIEW_CHANGE_EVENT,
-} from "@/features/prefs/prefs-store";
+} from "@/features/prefs";
 
 export const LAST_REVIEW_CHANGE_EVENT = PREFS_LAST_REVIEW_CHANGE_EVENT;
 

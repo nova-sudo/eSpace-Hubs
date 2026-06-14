@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>eSpace Dev Hub — Architecture</title>
+  <style>
+    :root {
+      --bg: #f8f8f7;
+      --fg: #0b0b0c;
+      --muted: #6f6f6f;
+      --dim: #9a9a9a;
+      --accent: #3826ff;
+      --accent-dim: rgba(56, 38, 255, 0.08);
+      --card: #ffffff;
+      --border: #e5e5e5;
+      --border-strong: #d4d4d4;
+      --good: #16a34a;
+      --bad: #b91c1c;
+      --warn: #c47b00;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter,
+        system-ui, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+        "Liberation Mono", monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-sans);
+      line-height: 1.55;
+      font-size: 14.5px;
+      -webkit-font-smoothing: antialiased;
+    }
+    main { max-width: 1200px; margin: 0 auto; padding: 48px 32px 80px; }
+    header { margin-bottom: 40px; }
+    .crumb {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    h1 {
+      font-size: 36px;
+      font-weight: 600;
+      letter-spacing: -1px;
+      margin: 0 0 12px;
+      line-height: 1.05;
+    }
+    h1 em { color: var(--accent); font-style: italic; }
+    .lede { max-width: 760px; color: var(--muted); font-size: 15px; margin: 0; }
+    nav.docs {
+      display: flex; gap: 4px; margin: 24px 0 0;
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: 0.4px; text-transform: uppercase;
+    }
+    nav.docs a {
+      color: var(--muted); text-decoration: none;
+      padding: 6px 10px; border: 1px solid var(--border); border-radius: 3px;
+    }
+    nav.docs a.active {
+      background: var(--accent-dim); color: var(--accent); border-color: var(--accent);
+    }
+    nav.docs a:hover { color: var(--fg); }
+    section { margin-bottom: 56px; }
+    section > h2 {
+      font-size: 13px; font-family: var(--font-mono);
+      letter-spacing: 0.5px; text-transform: uppercase;
+      color: var(--muted); margin: 0 0 14px;
+      padding-bottom: 8px; border-bottom: 1px solid var(--border);
+    }
+    section > h2 .n { color: var(--accent); margin-right: 8px; }
+    section > h3 {
+      font-size: 18px; font-weight: 600; margin: 24px 0 8px;
+      letter-spacing: -0.3px;
+    }
+    p { color: var(--fg); }
+    p.muted { color: var(--muted); }
+    code {
+      font-family: var(--font-mono); font-size: 12.5px;
+      background: var(--accent-dim); color: var(--accent);
+      padding: 1px 6px; border-radius: 3px;
+    }
+    .diagram {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      margin: 12px 0;
+      overflow-x: auto;
+    }
+    svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+    .legend {
+      display: flex; gap: 24px; flex-wrap: wrap;
+      margin-top: 16px; padding-top: 16px;
+      border-top: 1px dashed var(--border);
+      font-family: var(--font-mono); font-size: 11px;
+      color: var(--muted);
+    }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend .swatch {
+      display: inline-block; width: 14px; height: 14px;
+      border-radius: 2px; border: 1px solid var(--border-strong);
+    }
+    .flow {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 18px 22px;
+      margin: 14px 0;
+    }
+    .flow h4 {
+      margin: 0 0 12px; font-size: 14px;
+      font-family: var(--font-mono); letter-spacing: 0.5px;
+      text-transform: uppercase; color: var(--accent);
+    }
+    .flow ol {
+      list-style: none; counter-reset: step; padding: 0; margin: 0;
+    }
+    .flow ol li {
+      counter-increment: step; position: relative;
+      padding: 8px 0 8px 36px;
+      border-bottom: 1px dashed var(--border);
+      font-size: 13.5px; line-height: 1.55;
+    }
+    .flow ol li:last-child { border-bottom: 0; }
+    .flow ol li::before {
+      content: counter(step);
+      position: absolute; left: 0; top: 8px;
+      font-family: var(--font-mono); font-weight: 700;
+      width: 24px; height: 24px; border-radius: 50%;
+      background: var(--accent-dim); color: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px;
+    }
+    .flow ol li code { font-size: 11.5px; }
+    .grid-2 {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 6px; padding: 18px 20px;
+    }
+    .card h4 {
+      margin: 0 0 8px; font-size: 13px;
+      font-family: var(--font-mono); letter-spacing: 0.5px;
+      text-transform: uppercase; color: var(--muted);
+    }
+    table {
+      width: 100%; border-collapse: collapse; font-size: 13.5px;
+      margin: 8px 0;
+    }
+    th, td {
+      text-align: left; padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: 0.5px; text-transform: uppercase;
+      color: var(--muted); font-weight: 600;
+    }
+    td code { font-size: 11.5px; }
+    .badge {
+      display: inline-block; font-family: var(--font-mono);
+      font-size: 9.5px; letter-spacing: 0.4px; text-transform: uppercase;
+      padding: 2px 6px; border-radius: 2px; font-weight: 600;
+    }
+    .b-good { background: rgba(22, 163, 74, 0.12); color: var(--good); }
+    .b-warn { background: rgba(196, 123, 0, 0.12); color: var(--warn); }
+    .b-bad { background: rgba(185, 28, 28, 0.12); color: var(--bad); }
+    .b-info { background: var(--accent-dim); color: var(--accent); }
+    .b-muted { background: #f0f0ef; color: var(--muted); }
+    footer {
+      margin-top: 64px; padding-top: 24px;
+      border-top: 1px solid var(--border);
+      color: var(--dim); font-family: var(--font-mono);
+      font-size: 11px; letter-spacing: 0.4px;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="crumb">eSpace Dev Hub · documentation</div>
+    <h1>System <em>architecture</em>.</h1>
+    <p class="lede">
+      Three-tier monorepo: Next.js frontend, Express API service, MongoDB
+      backend. The API is the only thing that talks to Mongo and the
+      provider APIs — the browser never holds an integration token after
+      M6 (encrypted at rest, decrypted in-process for outbound calls).
+    </p>
+    <nav class="docs">
+      <a href="file-structure.html">File structure</a>
+      <a href="architecture.html" class="active">Architecture</a>
+      <a href="deployment.html">Deployment</a>
+      <a href="feature-log.html">Feature log</a>
+    </nav>
+  </header>
+
+  <section>
+    <h2><span class="n">01 /</span> System diagram</h2>
+    <div class="diagram">
+      <svg viewBox="0 0 1100 660" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="System architecture">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#6f6f6f"/>
+          </marker>
+          <marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#3826ff"/>
+          </marker>
+          <pattern id="grain" x="0" y="0" width="4" height="4" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.4" fill="#3826ff" fill-opacity="0.06"/>
+          </pattern>
+        </defs>
+
+        <!-- BROWSER tier -->
+        <g>
+          <rect x="40" y="30" width="280" height="120" rx="8" fill="#ffffff" stroke="#3826ff" stroke-width="1.5"/>
+          <text x="180" y="58" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#3826ff" letter-spacing="0.5">CLIENT · BROWSER</text>
+          <text x="180" y="86" text-anchor="middle" font-family="system-ui,sans-serif" font-size="16" font-weight="600" fill="#0b0b0c">Next.js 16 (apps/web)</text>
+          <text x="180" y="108" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="#6f6f6f">App Router · Turbopack · :3000</text>
+          <text x="180" y="128" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#9a9a9a">Tailwind · Radix · SWR · Recharts</text>
+        </g>
+
+        <!-- API tier -->
+        <g>
+          <rect x="410" y="30" width="280" height="120" rx="8" fill="#ffffff" stroke="#16a34a" stroke-width="1.5"/>
+          <text x="550" y="58" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#16a34a" letter-spacing="0.5">SERVICE · API</text>
+          <text x="550" y="86" text-anchor="middle" font-family="system-ui,sans-serif" font-size="16" font-weight="600" fill="#0b0b0c">Express + TS (apps/api)</text>
+          <text x="550" y="108" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="#6f6f6f">tsx watch · pino · :4000</text>
+          <text x="550" y="128" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#9a9a9a">cookie-signed sessions · argon2id · AES-256-GCM</text>
+        </g>
+
+        <!-- DB tier -->
+        <g>
+          <rect x="780" y="30" width="280" height="120" rx="8" fill="#ffffff" stroke="#6f3fb8" stroke-width="1.5"/>
+          <text x="920" y="58" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#6f3fb8" letter-spacing="0.5">DATA · MONGO</text>
+          <text x="920" y="86" text-anchor="middle" font-family="system-ui,sans-serif" font-size="16" font-weight="600" fill="#0b0b0c">MongoDB 7</text>
+          <text x="920" y="108" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="#6f6f6f">13 collections · $jsonSchema validators</text>
+          <text x="920" y="128" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#9a9a9a">TTL · keyset pagination · indexes ensured at boot</text>
+        </g>
+
+        <!-- Cookie arrow -->
+        <line x1="320" y1="78" x2="410" y2="78" stroke="#3826ff" stroke-width="2" marker-end="url(#arrow-accent)"/>
+        <text x="365" y="70" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#3826ff">signed cookie</text>
+        <text x="365" y="93" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9.5" fill="#6f6f6f">JSON over fetch</text>
+
+        <!-- Mongo arrow -->
+        <line x1="690" y1="78" x2="780" y2="78" stroke="#6f3fb8" stroke-width="2" marker-end="url(#arrow)"/>
+        <line x1="780" y1="100" x2="690" y2="100" stroke="#6f3fb8" stroke-width="2" marker-end="url(#arrow)"/>
+        <text x="735" y="70" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#6f3fb8">queries</text>
+
+        <!-- Mongo collections box -->
+        <g>
+          <rect x="780" y="180" width="280" height="200" rx="6" fill="url(#grain)" stroke="#e5e5e5" stroke-width="1"/>
+          <text x="920" y="202" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#6f6f6f" letter-spacing="0.4">COLLECTIONS</text>
+          <g font-family="ui-monospace,monospace" font-size="11" fill="#0b0b0c">
+            <text x="800" y="224">orgs</text>
+            <text x="800" y="242">users</text>
+            <text x="800" y="260">sessions</text>
+            <text x="800" y="278">audit_log</text>
+            <text x="800" y="296">auth_tokens</text>
+            <text x="800" y="314">integrations</text>
+            <text x="800" y="332">snapshots</text>
+            <text x="920" y="224">goals</text>
+            <text x="920" y="242">goal_specs</text>
+            <text x="920" y="260">goal_context</text>
+            <text x="920" y="278">goal_inputs</text>
+            <text x="920" y="296">grading_verdicts</text>
+            <text x="920" y="314">hub_configs</text>
+          </g>
+        </g>
+
+        <!-- API modules box -->
+        <g>
+          <rect x="410" y="180" width="280" height="200" rx="6" fill="url(#grain)" stroke="#e5e5e5" stroke-width="1"/>
+          <text x="550" y="202" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#6f6f6f" letter-spacing="0.4">MODULES</text>
+          <g font-family="ui-monospace,monospace" font-size="11" fill="#0b0b0c">
+            <text x="430" y="224">auth</text>
+            <text x="430" y="242">admin</text>
+            <text x="430" y="260">integrations</text>
+            <text x="430" y="278">hubs</text>
+            <text x="430" y="296">hub-configs</text>
+            <text x="430" y="314">onboarding</text>
+            <text x="430" y="332">ai</text>
+            <text x="430" y="350">migrate</text>
+            <text x="555" y="224">goals</text>
+            <text x="555" y="242">goal-specs</text>
+            <text x="555" y="260">goal-context</text>
+            <text x="555" y="278">goal-inputs</text>
+            <text x="555" y="296">snapshots</text>
+            <text x="555" y="314">grading-verdicts</text>
+            <text x="555" y="332">health</text>
+          </g>
+        </g>
+
+        <!-- Web features box -->
+        <g>
+          <rect x="40" y="180" width="280" height="200" rx="6" fill="url(#grain)" stroke="#e5e5e5" stroke-width="1"/>
+          <text x="180" y="202" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#6f6f6f" letter-spacing="0.4">FEATURES</text>
+          <g font-family="ui-monospace,monospace" font-size="11" fill="#0b0b0c">
+            <text x="60" y="224">auth · AuthGuard</text>
+            <text x="60" y="242">hubs · HubProvider</text>
+            <text x="60" y="260">dashboard · tiles</text>
+            <text x="60" y="278">integrations · proxy-fetch</text>
+            <text x="60" y="296">snapshots · pull+mirror</text>
+            <text x="60" y="314">goals + grading</text>
+            <text x="60" y="332">analyst · chat · palette</text>
+            <text x="60" y="350">settings · onboarding</text>
+          </g>
+        </g>
+
+        <!-- External providers row -->
+        <g>
+          <rect x="40" y="430" width="200" height="120" rx="8" fill="#ffffff" stroke="#c47b00" stroke-width="1.5"/>
+          <text x="140" y="458" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#c47b00" letter-spacing="0.5">PROVIDER · CODE HOSTS</text>
+          <text x="140" y="486" text-anchor="middle" font-family="system-ui,sans-serif" font-size="15" font-weight="600" fill="#0b0b0c">GitHub · GitLab</text>
+          <text x="140" y="508" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#6f6f6f">REST + Search · OAuth + PAT</text>
+          <text x="140" y="528" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9.5" fill="#9a9a9a">tokens AES-256-GCM at rest</text>
+        </g>
+        <g>
+          <rect x="270" y="430" width="200" height="120" rx="8" fill="#ffffff" stroke="#c47b00" stroke-width="1.5"/>
+          <text x="370" y="458" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#c47b00" letter-spacing="0.5">PROVIDER · TICKETS</text>
+          <text x="370" y="486" text-anchor="middle" font-family="system-ui,sans-serif" font-size="15" font-weight="600" fill="#0b0b0c">Atlassian Jira</text>
+          <text x="370" y="508" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#6f6f6f">REST v3 · /search/jql</text>
+          <text x="370" y="528" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9.5" fill="#9a9a9a">Basic auth (email + API token)</text>
+        </g>
+        <g>
+          <rect x="500" y="430" width="200" height="120" rx="8" fill="#ffffff" stroke="#c47b00" stroke-width="1.5"/>
+          <text x="600" y="458" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#c47b00" letter-spacing="0.5">PROVIDER · EMAIL</text>
+          <text x="600" y="486" text-anchor="middle" font-family="system-ui,sans-serif" font-size="15" font-weight="600" fill="#0b0b0c">Resend</text>
+          <text x="600" y="508" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#6f6f6f">invites · password reset</text>
+          <text x="600" y="528" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9.5" fill="#9a9a9a">log-fallback when key unset</text>
+        </g>
+        <g>
+          <rect x="730" y="430" width="200" height="120" rx="8" fill="#ffffff" stroke="#c47b00" stroke-width="1.5"/>
+          <text x="830" y="458" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#c47b00" letter-spacing="0.5">PROVIDER · AI</text>
+          <text x="830" y="486" text-anchor="middle" font-family="system-ui,sans-serif" font-size="15" font-weight="600" fill="#0b0b0c">Mistral via NIM</text>
+          <text x="830" y="508" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#6f6f6f">chat · grade-pr · classify</text>
+          <text x="830" y="528" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9.5" fill="#9a9a9a">NDJSON streamed back</text>
+        </g>
+        <g>
+          <rect x="960" y="430" width="100" height="120" rx="8" fill="#ffffff" stroke="#6f6f6f" stroke-width="1.5" stroke-dasharray="4 3"/>
+          <text x="1010" y="458" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#6f6f6f" letter-spacing="0.5">FUTURE</text>
+          <text x="1010" y="486" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#0b0b0c">Redis</text>
+          <text x="1010" y="506" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9.5" fill="#9a9a9a">rate-limit</text>
+          <text x="1010" y="520" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9.5" fill="#9a9a9a">+ background</text>
+          <text x="1010" y="534" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9.5" fill="#9a9a9a">queues (M4+)</text>
+        </g>
+
+        <!-- API → providers arrows -->
+        <line x1="500" y1="160" x2="140" y2="430" stroke="#c47b00" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="4 3"/>
+        <line x1="530" y1="160" x2="370" y2="430" stroke="#c47b00" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="4 3"/>
+        <line x1="570" y1="160" x2="600" y2="430" stroke="#c47b00" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="4 3"/>
+        <line x1="600" y1="160" x2="830" y2="430" stroke="#c47b00" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="4 3"/>
+
+        <!-- Footer caption -->
+        <text x="550" y="610" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="#6f6f6f">
+          Solid arrows: required path. Dashed: out-of-process call. Tokens never reach the browser after M6.
+        </text>
+        <text x="550" y="630" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#9a9a9a">
+          The Next.js layer proxies API calls server-side via rewrite (avoids CORS); raw fetches against :4000 work too in dev.
+        </text>
+      </svg>
+      <div class="legend">
+        <span><span class="swatch" style="background:#ffffff;border-color:#3826ff;"></span>Client</span>
+        <span><span class="swatch" style="background:#ffffff;border-color:#16a34a;"></span>API service</span>
+        <span><span class="swatch" style="background:#ffffff;border-color:#6f3fb8;"></span>Mongo</span>
+        <span><span class="swatch" style="background:#ffffff;border-color:#c47b00;"></span>External provider</span>
+        <span><span class="swatch" style="background:url(#grain),#fafafa;"></span>Module / collection list</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">02 /</span> Tiers, in one paragraph each</h2>
+
+    <div class="grid-2">
+      <div class="card">
+        <h4>Client · apps/web</h4>
+        <p>
+          Next.js 16 App Router. Renders the shell + every route, calls the API
+          for data. Cookies are signed by the API and travel <code>same-site
+          strict; httpOnly</code> over the same origin (Next rewrites
+          <code>/api/v1/*</code> to <code>localhost:4000</code> in dev, to the
+          deployed API host in prod). The browser <em>never</em> sees
+          integration tokens — all GitHub/GitLab/Jira calls flow through
+          <code>/api/v1/integrations/proxy/&lt;provider&gt;/*</code> on the API,
+          which decrypts in-process and streams the upstream response back.
+          State management is local-first: snapshots, goals, grading verdicts
+          all live in localStorage and mirror to the API; the API is the
+          source of truth, localStorage is the speed-of-light cache.
+        </p>
+      </div>
+      <div class="card">
+        <h4>Service · apps/api</h4>
+        <p>
+          Express + TypeScript. Hosts auth, the encrypted-token proxy, the
+          domain CRUD (goals, snapshots, grading), and the AI relay
+          (chat/grade-pr/classify-goals streams as NDJSON). One folder per
+          route group under <code>src/modules/</code>; each has its own Zod
+          schemas, controller, and router. Auth is cookie-based (M2.3), TOTP
+          enrolment is gated client-side AND server-side (M-CAP follow-up),
+          rate limits are per-IP. Boot pipeline: load env → connect Mongo →
+          apply collection validators + indexes → run migrations → start
+          listener.
+        </p>
+      </div>
+      <div class="card">
+        <h4>Data · MongoDB</h4>
+        <p>
+          One DB (<code>devhub-dev</code> in dev, managed Atlas cluster in
+          prod), 13 collections. Every collection has a <code>$jsonSchema</code>
+          validator (defense-in-depth against malformed writes) and a typed
+          accessor in <code>db/collections.ts</code>. Indexes are
+          <code>ensureIndex</code>'d at boot. Migrations live under
+          <code>db/migrations/</code> and run after validators — currently
+          <code>m-cap-roles</code> (legacy <code>role</code> → multi-role
+          <code>roles[]</code>) and <code>totp-enrolled-sessions</code>
+          (backfill server-side enforcement flag).
+        </p>
+      </div>
+      <div class="card">
+        <h4>Shared · packages/shared</h4>
+        <p>
+          Cross-workspace primitives. Three subpaths: <code>capabilities/</code>
+          (M-CAP capability tokens + role-to-cap map),
+          <code>hubs/</code> (registry of dev/qa/admin/manager hubs +
+          resolution helpers), <code>goal-specs/</code> (AI-classifier output
+          types + validators). Imported by both web and api via
+          <code>@espace-devhub/shared</code>. Pure JS with ambient
+          <code>.d.ts</code> — no build step, no tests yet.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">03 /</span> Key data flows</h2>
+
+    <div class="flow">
+      <h4>F1 · Login (with optional TOTP)</h4>
+      <ol>
+        <li>Browser <code>POST /api/v1/auth/login</code> with email + password.</li>
+        <li>API runs <code>argon2id</code> verify (always, even on unknown email — uniform timing).</li>
+        <li>If user has TOTP enrolled → mint session with <code>totpVerified: false</code> + return <code>needsTotp: true</code>. Frontend swaps to TOTP step; <code>POST /totp/verify</code> flips the flag.</li>
+        <li>If no TOTP → mint session with <code>totpVerified: true</code> AND <code>totpEnrolled: false</code>. The new server-side gate (<code>requireTotpEnrolled</code>) refuses every protected route until enrolment completes at <code>/totp-setup</code>.</li>
+        <li>Cookie set <code>httpOnly · same-site=strict · signed</code>; AuthGuard reads <code>/auth/me</code> and routes onward (totp-setup → onboarding → hub).</li>
+      </ol>
+    </div>
+
+    <div class="flow">
+      <h4>F2 · Integration proxy (browser → GitHub/GitLab/Jira)</h4>
+      <ol>
+        <li>Browser <code>fetch("/api/v1/integrations/proxy/github/...", {credentials: "include"})</code>.</li>
+        <li>API resolves the session, looks up <code>integrations</code> row keyed on <code>(orgId, userId, providerId)</code>.</li>
+        <li>Token bytes are envelope-decrypted in-process via <code>crypto-secret.ts</code> (AES-256-GCM, key derived from <code>INTEGRATION_TOKEN_KEY</code>). Plaintext stays inside the API process.</li>
+        <li>Outbound HTTPS to the provider. Response body is piped through to the client via <code>Readable.fromWeb()</code> — no buffering.</li>
+        <li>Response headers are allowlist-filtered (forward <code>content-type</code>, pagination, rate-limit; drop <code>content-encoding</code> because undici decompresses upstream gzip transparently).</li>
+        <li>Best-effort <code>lastUsedAt</code> / <code>lastErrorAt</code> update on the integrations row; never blocks the response.</li>
+      </ol>
+    </div>
+
+    <div class="flow">
+      <h4>F3 · Snapshots (mirror-mode write + pull-on-session)</h4>
+      <ol>
+        <li>User saves a snapshot in the browser → <code>saveSnapshot()</code> writes localStorage, then <code>mirrorSaveSnapshot()</code> POSTs the row.</li>
+        <li>API enforces the manual-wins-over-auto rule (an auto save can't overwrite an existing manual one for the same week).</li>
+        <li>On session establishment, <code>&lt;SnapshotsSync /&gt;</code> calls <code>GET /api/v1/snapshots</code> and merges into localStorage via <code>applyPulledSnapshot()</code> — the no-mirror variant (otherwise pull → write → mirror creates a feedback loop).</li>
+        <li>Auto-snapshotter (<code>useAutoSnapshot</code>) captures one row per completed Sun → Thu work-week on every page visit; idempotent.</li>
+        <li>Backfill engine (<code>useBackfill</code>) walks every completed week of the current year and synthesises any missing rows from loaded integration data; weeks older than ~90d carry <code>partial: true, gaps: ["events"]</code> because GitHub's events feed caps there.</li>
+      </ol>
+    </div>
+
+    <div class="flow">
+      <h4>F4 · Admin edits a user</h4>
+      <ol>
+        <li>Admin opens <code>/admin/users</code>, expands a row → AdminUsers fetches via <code>GET /admin/users</code>.</li>
+        <li>Edits roles / status / hubs / displayName → <code>PATCH /admin/users/:id</code> with minimal patch (only changed fields).</li>
+        <li>Server validates: every hub in the registry, primaryHub member of allowedHubs, no self-lockout (can't remove own admin or disable self).</li>
+        <li>If diff is non-empty, write doc + audit row (<code>user.update</code> with field-scoped before/after).</li>
+        <li>"Reset TOTP" goes through <code>POST /admin/users/:id/totp/reset</code> — clears <code>totpSecret + totpEnrolledAt</code> on the user AND flips <code>totpEnrolled: false</code> on every live session of that user so other tabs immediately bounce to <code>/totp-setup</code>.</li>
+      </ol>
+    </div>
+
+    <div class="flow">
+      <h4>F5 · Hub resolution (multi-role users)</h4>
+      <ol>
+        <li>Frontend <code>HubsFetcher</code> calls <code>GET /api/v1/hubs/me</code> once per session.</li>
+        <li>API reads the user's <code>roles[]</code>, runs <code>effectiveCapabilities()</code> → Set of capability tokens.</li>
+        <li><code>resolveHubsForCapabilities()</code> in <code>@espace-devhub/shared/hubs</code> returns every hub whose <code>requires[]</code> is fully satisfied. Preserves <code>HUB_ORDER</code>.</li>
+        <li>Per-org overrides from <code>hub_configs</code> merge on top (replace integrations array, partial-merge pages map, hide disabled hubs).</li>
+        <li>Frontend caches <code>{hubs, primaryHubId, defaultHubId}</code> in <code>hubsStore</code>; the URL slug at <code>/[hub]/*</code> must be in <code>hubs</code> or the HubProvider redirects.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">04 /</span> Crosscutting concerns</h2>
+    <table>
+      <thead>
+        <tr><th>Concern</th><th>Where</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Auth (cookies)</td>
+          <td><code>cookie-parser</code> + <code>middleware/session.ts</code></td>
+          <td>signed via <code>SESSION_SECRET</code>; sliding 12h TTL with 60s throttled touch</td>
+        </tr>
+        <tr>
+          <td>Passwords</td>
+          <td><code>lib/argon2.ts</code></td>
+          <td>argon2id, OWASP defaults; dummy-hash branch keeps unknown-email timing uniform</td>
+        </tr>
+        <tr>
+          <td>2FA</td>
+          <td><code>lib/totp.ts</code> + <code>middleware/require-auth.ts</code></td>
+          <td>RFC-6238, 30s window, ±1 step skew; <em>both</em> totpVerified AND totpEnrolled checked server-side</td>
+        </tr>
+        <tr>
+          <td>Token encryption</td>
+          <td><code>lib/crypto-secret.ts</code></td>
+          <td>AES-256-GCM, versioned envelope (<code>v1.iv.tag.ct</code>); key derived from <code>INTEGRATION_TOKEN_KEY</code></td>
+        </tr>
+        <tr>
+          <td>Rate limiting</td>
+          <td><code>middleware/rate-limit.ts</code></td>
+          <td>Per-IP limiters on login / TOTP / accept-invite / password-reset; in-process store for now (Redis TBD)</td>
+        </tr>
+        <tr>
+          <td>Audit log</td>
+          <td><code>lib/audit.ts</code> + <code>audit_log</code> collection</td>
+          <td>Single <code>writeAudit()</code> entry; best-effort, never throws; dot-namespaced verbs (<code>user.update</code>, <code>hub_config.upsert</code>, …)</td>
+        </tr>
+        <tr>
+          <td>Capabilities</td>
+          <td><code>@espace-devhub/shared/capabilities</code></td>
+          <td>roles[] → Set&lt;Capability&gt; via <code>ROLE_CAPABILITIES</code>; hub requires[] intersection-tested at <code>/hubs/me</code></td>
+        </tr>
+        <tr>
+          <td>Logging</td>
+          <td><code>lib/logger.ts</code> (pino) + <code>request-id</code> middleware</td>
+          <td>Structured JSON; req-id propagated end-to-end so a single request can be traced across the chain</td>
+        </tr>
+        <tr>
+          <td>Errors</td>
+          <td><code>middleware/error-handler.ts</code></td>
+          <td><code>HttpError</code> class; tail handler emits <code>{ error: {code, message} }</code> uniformly</td>
+        </tr>
+        <tr>
+          <td>Email</td>
+          <td><code>lib/email.ts</code> + Resend</td>
+          <td>Log-only fallback when <code>RESEND_API_KEY</code> is unset; sandbox vs verified domain modes</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2><span class="n">05 /</span> What's deliberately NOT in the architecture (yet)</h2>
+    <table>
+      <thead><tr><th>Item</th><th>Status</th><th>Why parked</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Redis</td>
+          <td><span class="badge b-warn">future</span></td>
+          <td>Compose file ships a container, but no code consumes it. Reserved for cross-process rate limits + background queues (M4+).</td>
+        </tr>
+        <tr>
+          <td>Background jobs / cron</td>
+          <td><span class="badge b-warn">future</span></td>
+          <td>Auto-snapshot fires client-side. Server-side scheduling (recompute aggregates, expire tokens) waits on Redis + a worker process.</td>
+        </tr>
+        <tr>
+          <td>QA Hub widgets</td>
+          <td><span class="badge b-warn">scaffold-only</span></td>
+          <td>Hub routes + theming wired; <code>QaPlaceholder</code> lists reserved widget IDs. Real widgets blocked on QA-team metric choices + a TestRail/Zephyr connector.</td>
+        </tr>
+        <tr>
+          <td>Manager Hub</td>
+          <td><span class="badge b-bad">empty</span></td>
+          <td>Directory doesn't exist. Gated on (a) QA widgets to compose, (b) <code>users.managerId</code> being populated (Zoho-or-admin-form), (c) cross-user data-access policy.</td>
+        </tr>
+        <tr>
+          <td>Backup codes for TOTP</td>
+          <td><span class="badge b-warn">deferred</span></td>
+          <td>Today, a user who loses their phone needs an admin TOTP-reset. Single-use recovery codes are the missing self-serve escape hatch.</td>
+        </tr>
+        <tr>
+          <td>Email change flow</td>
+          <td><span class="badge b-warn">deferred</span></td>
+          <td>Profile editor refuses email edits — it's the login key. Needs confirmation-email round-trip + every-session invalidation. Parked.</td>
+        </tr>
+        <tr>
+          <td>Zoho HR sync</td>
+          <td><span class="badge b-warn">future</span></td>
+          <td><code>users.zohoEmployeeId / managerId / level / hireDate</code> are all nullable today. A scheduled sync populates them in M9 (per the original plan).</td>
+        </tr>
+        <tr>
+          <td>Production observability stack</td>
+          <td><span class="badge b-info">partial</span></td>
+          <td>pino logs ship structured JSON; need to wire a log shipper + dashboards. Not blocking dev.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer>
+    Generated 2026-05-12 · eSpace Dev Hub docs
+  </footer>
+</main>
+</body>
+</html>

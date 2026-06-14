@@ -45,11 +45,10 @@ export function Section({
       style={{
         scrollSnapAlign: "start",
         scrollSnapStop: "always",
-        // Strict viewport height (not min-height) so `flex-1` grids inside
-        // actually constrain their rows. `min-height` would let the section
-        // grow to fit tall tile content, which defeats the 1fr grid rows and
-        // pushes content past the viewport. 57px = sticky header height.
-        height: "calc(100vh - 57px)",
+        // Strict viewport height so `flex-1` grids inside actually constrain
+        // their rows. `min-height` would let the section grow to fit tall
+        // tile content, which defeats the 1fr grid rows.
+        height: "calc(100vh - var(--header-height))",
         padding: "36px 40px 44px",
         display: "flex",
         flexDirection: "column",

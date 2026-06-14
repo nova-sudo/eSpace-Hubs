@@ -40,7 +40,7 @@ import {
 import { normalizeRubric, rubricHash } from "./rubric-hash";
 import { firstReviewComments } from "./first-review-comments";
 import { fetchWithRateLimitRetry, isRateLimitStatus } from "@/lib/rate-limit";
-import { getAiProvider } from "@/features/analyst/use-ai-provider";
+import { getAiProvider } from "@/features/analyst";
 
 /** Concurrency cap for grading calls — honour Mistral rate limits. */
 const GRADE_CONCURRENCY = 3;

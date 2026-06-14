@@ -53,14 +53,14 @@ export function RoundsTile() {
 
   if (isLoading) {
     return (
-      <BentoTile col="span 2" row="span 2" label="Review rounds">
+      <BentoTile col="span 2" row="span 2" usedInEvidence label="Review rounds">
         <TileState kind="loading" silhouette="stat" />
       </BentoTile>
     );
   }
   if (error) {
     return (
-      <BentoTile col="span 2" row="span 2" label="Review rounds">
+      <BentoTile col="span 2" row="span 2" usedInEvidence label="Review rounds">
         <TileState kind="error" message="Couldn't load rounds." />
       </BentoTile>
     );

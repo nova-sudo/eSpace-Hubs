@@ -30,7 +30,7 @@ import {
   readLastReviewDate,
   writeLastReviewDate,
   LAST_REVIEW_CHANGE_EVENT,
-} from "@/features/dashboard/date-range";
+} from "@/features/dashboard";
 
 function subscribeReviewDate(cb) {
   if (typeof window === "undefined") return () => {};

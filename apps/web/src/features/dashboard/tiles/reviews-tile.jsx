@@ -2,9 +2,16 @@
 
 import { BentoTile } from "@/components/ui";
 import {
+  getDashboardProviderDependency,
+  ProviderStateCallout,
   useCombinedEventsSince,
+  useIntegrations,
 } from "@/features/integrations";
+import { useHubLink } from "@/features/hubs";
 import { useDateRange, splitByRange } from "../date-range";
+
+const REVIEWS_DEPENDENCY = getDashboardProviderDependency("reviews");
+const CODE_HOSTS = REVIEWS_DEPENDENCY.providers;
 
 /**
  * Reviews given — "where you showed up". One row per distinct MR target the
@@ -20,8 +27,11 @@ import { useDateRange, splitByRange } from "../date-range";
  */
 export function ReviewsTile() {
   const { range } = useDateRange();
+  const { isConnected } = useIntegrations();
+  const link = useHubLink();
   const { data, isLoading, error } = useCombinedEventsSince(range.fetchSince);
   const { current } = splitByRange(data || [], range, (e) => e.created_at);
+  const hasCodeHost = CODE_HOSTS.some((id) => isConnected(id));
 
   const byBucket = groupReviewTargets(current);
   const top = byBucket.slice(0, 5);
@@ -36,6 +46,7 @@ export function ReviewsTile() {
       // full-width in row 2 below.
       col="span 3"
       row="span 1"
+      usedInEvidence
       label={`Reviews given · ${range.label.toLowerCase()}`}
       right={
         <span
@@ -46,10 +57,24 @@ export function ReviewsTile() {
         </span>
       }
     >
-      {error ? (
-        <div className="text-[12px] text-muted-fg">—</div>
+      {!hasCodeHost ? (
+        <ProviderStateCallout
+          kind="disconnected"
+          providers={CODE_HOSTS}
+          message="Connect GitLab or GitHub to track your review activity."
+          actionHref={link("/settings")}
+          actionLabel="Connect source"
+        />
       ) : isLoading ? (
         <div className="text-[12px] text-muted-fg">Loading…</div>
+      ) : error ? (
+        <ProviderStateCallout
+          kind="error"
+          providers={CODE_HOSTS}
+          message="Couldn't load review activity."
+          actionHref={link("/settings")}
+          actionLabel="Review setup"
+        />
       ) : byBucket.length === 0 ? (
         <div className="text-[12px] text-muted-fg">
           No MR comments in this period.

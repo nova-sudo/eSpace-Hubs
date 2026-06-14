@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>eSpace Dev Hub — Deployment</title>
+  <style>
+    :root {
+      --bg: #f8f8f7;
+      --fg: #0b0b0c;
+      --muted: #6f6f6f;
+      --dim: #9a9a9a;
+      --accent: #3826ff;
+      --accent-dim: rgba(56, 38, 255, 0.08);
+      --card: #ffffff;
+      --border: #e5e5e5;
+      --border-strong: #d4d4d4;
+      --good: #16a34a;
+      --bad: #b91c1c;
+      --warn: #c47b00;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter,
+        system-ui, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+        "Liberation Mono", monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font-family: var(--font-sans); line-height: 1.55;
+      font-size: 14.5px; -webkit-font-smoothing: antialiased;
+    }
+    main { max-width: 1100px; margin: 0 auto; padding: 48px 32px 80px; }
+    header { margin-bottom: 48px; }
+    .crumb {
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: 0.5px; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 8px;
+    }
+    h1 {
+      font-size: 36px; font-weight: 600; letter-spacing: -1px;
+      margin: 0 0 12px; line-height: 1.05;
+    }
+    h1 em { color: var(--accent); font-style: italic; }
+    .lede { max-width: 760px; color: var(--muted); font-size: 15px; margin: 0; }
+    nav.docs {
+      display: flex; gap: 4px; margin: 24px 0 0;
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: 0.4px; text-transform: uppercase;
+    }
+    nav.docs a {
+      color: var(--muted); text-decoration: none;
+      padding: 6px 10px; border: 1px solid var(--border); border-radius: 3px;
+    }
+    nav.docs a.active {
+      background: var(--accent-dim); color: var(--accent); border-color: var(--accent);
+    }
+    nav.docs a:hover { color: var(--fg); }
+    section { margin-bottom: 48px; }
+    section > h2 {
+      font-size: 13px; font-family: var(--font-mono);
+      letter-spacing: 0.5px; text-transform: uppercase;
+      color: var(--muted); margin: 0 0 16px;
+      padding-bottom: 8px; border-bottom: 1px solid var(--border);
+    }
+    section > h2 .n { color: var(--accent); margin-right: 8px; }
+    h3 {
+      font-size: 17px; font-weight: 600; margin: 24px 0 10px;
+      letter-spacing: -0.3px;
+    }
+    p { color: var(--fg); }
+    p.muted { color: var(--muted); }
+    code {
+      font-family: var(--font-mono); font-size: 12.5px;
+      background: var(--accent-dim); color: var(--accent);
+      padding: 1px 6px; border-radius: 3px;
+    }
+    pre {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 6px; padding: 16px 18px;
+      font-family: var(--font-mono); font-size: 12.5px;
+      line-height: 1.55; overflow-x: auto;
+      color: var(--fg); margin: 12px 0;
+    }
+    pre code { background: transparent; color: inherit; padding: 0; }
+    pre .comment { color: var(--muted); }
+    pre .cmd { color: var(--accent); }
+    table {
+      width: 100%; border-collapse: collapse; font-size: 13px;
+      margin: 8px 0; background: var(--card);
+      border: 1px solid var(--border); border-radius: 6px;
+      overflow: hidden;
+    }
+    th, td {
+      text-align: left; padding: 10px 14px;
+      border-bottom: 1px solid var(--border); vertical-align: top;
+    }
+    tr:last-child td { border-bottom: 0; }
+    th {
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: 0.5px; text-transform: uppercase;
+      color: var(--muted); font-weight: 600;
+      background: #fcfcfc;
+    }
+    td code { font-size: 11.5px; }
+    .grid-2 {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 6px; padding: 18px 22px;
+    }
+    .card h3 { margin-top: 0; }
+    .badge {
+      display: inline-block; font-family: var(--font-mono);
+      font-size: 9.5px; letter-spacing: 0.4px; text-transform: uppercase;
+      padding: 2px 6px; border-radius: 2px; font-weight: 600;
+      vertical-align: middle; margin-left: 6px;
+    }
+    .b-good { background: rgba(22, 163, 74, 0.12); color: var(--good); }
+    .b-warn { background: rgba(196, 123, 0, 0.12); color: var(--warn); }
+    .b-bad { background: rgba(185, 28, 28, 0.12); color: var(--bad); }
+    .b-info { background: var(--accent-dim); color: var(--accent); }
+    .b-muted { background: #f0f0ef; color: var(--muted); }
+    .checklist {
+      list-style: none; padding: 0; margin: 8px 0;
+    }
+    .checklist li {
+      padding: 8px 0 8px 28px; position: relative;
+      border-bottom: 1px dashed var(--border);
+      font-size: 13.5px; line-height: 1.55;
+    }
+    .checklist li:last-child { border-bottom: 0; }
+    .checklist li::before {
+      content: "▢"; position: absolute; left: 0; top: 8px;
+      color: var(--muted); font-size: 14px;
+    }
+    .checklist li.done::before {
+      content: "▣"; color: var(--good);
+    }
+    .warning {
+      background: rgba(196, 123, 0, 0.06);
+      border: 1px solid rgba(196, 123, 0, 0.3);
+      border-radius: 6px; padding: 14px 18px; margin: 16px 0;
+      font-size: 13.5px;
+    }
+    .warning strong { color: var(--warn); }
+    footer {
+      margin-top: 64px; padding-top: 24px;
+      border-top: 1px solid var(--border);
+      color: var(--dim); font-family: var(--font-mono);
+      font-size: 11px; letter-spacing: 0.4px;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="crumb">eSpace Dev Hub · documentation</div>
+    <h1>Deployment <em>guide</em>.</h1>
+    <p class="lede">
+      How the stack runs locally today and the recommended shape for
+      production. The app is a monorepo with three deployable units: web
+      (Next.js), api (Express), and mongo. There is no CI/CD pipeline yet —
+      ship via <code>git push</code> + <code>gh pr merge</code>.
+    </p>
+    <nav class="docs">
+      <a href="file-structure.html">File structure</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="deployment.html" class="active">Deployment</a>
+      <a href="feature-log.html">Feature log</a>
+    </nav>
+  </header>
+
+  <section>
+    <h2><span class="n">01 /</span> Local development</h2>
+
+    <h3>Prerequisites</h3>
+    <ul>
+      <li>Node 22+ (we use Node 22.21 locally; <code>tsx watch</code> + Next.js 16 want recent runtimes)</li>
+      <li>npm 10+ (workspaces support)</li>
+      <li>Docker Desktop for the Mongo container (or a local Mongo install at <code>:27017</code>)</li>
+      <li>Git Bash on Windows (the team has been running there) — Linux/macOS shells also fine</li>
+    </ul>
+
+    <h3>First-time setup</h3>
+<pre><span class="comment"># 1. Install deps for every workspace</span>
+npm install
+
+<span class="comment"># 2. Configure env</span>
+cp apps/api/.env.example apps/api/.env.local
+cp apps/web/.env.example apps/web/.env.local
+<span class="comment"># Then edit both files — see the env reference below.</span>
+
+<span class="comment"># 3. Start the local Mongo (and Redis, reserved for future)</span>
+docker compose up -d
+
+<span class="comment"># 4. Boot the API + web in two terminals</span>
+npm run dev:api   <span class="comment"># :4000 — Express + tsx watch</span>
+npm run dev:web   <span class="comment"># :3000 — Next.js + Turbopack</span></pre>
+
+    <p class="muted">Open <code>http://localhost:3000</code>. First time, an idempotent seed runs at API boot to create the default org. Use the admin-bootstrap CLI (M2.3b) to create the first admin user, or invite yourself from another admin's session.</p>
+
+    <h3>Useful scripts (from repo root)</h3>
+    <table>
+      <thead><tr><th>Script</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>npm run dev:api</code></td><td>Express + tsx watch on <code>:4000</code></td></tr>
+        <tr><td><code>npm run dev:web</code></td><td>Next.js (Turbopack) on <code>:3000</code></td></tr>
+        <tr><td><code>npm run build:api</code></td><td><code>tsc</code> compile → <code>apps/api/dist</code></td></tr>
+        <tr><td><code>npm run build:web</code></td><td><code>next build</code> production bundle</td></tr>
+        <tr><td><code>npm run typecheck</code></td><td><code>tsc --noEmit</code> across every workspace that opted in</td></tr>
+        <tr><td><code>docker compose up -d</code></td><td>Start Mongo + Redis containers (data persists in named volumes)</td></tr>
+        <tr><td><code>docker compose down -v</code></td><td>Stop + wipe ALL DB data (full reset)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2><span class="n">02 /</span> Environment variables</h2>
+
+    <h3>apps/api/.env.local</h3>
+    <table>
+      <thead><tr><th>Variable</th><th>Required?</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>NODE_ENV</code></td><td><span class="badge b-good">yes</span></td><td><code>development</code> locally; <code>production</code> on deploy.</td></tr>
+        <tr><td><code>PORT</code></td><td><span class="badge b-good">yes</span></td><td><code>4000</code> in dev. On most PaaS it's set by the platform.</td></tr>
+        <tr><td><code>CORS_ALLOWED_ORIGINS</code></td><td><span class="badge b-good">yes</span></td><td>Comma-separated. Dev: <code>http://localhost:3000</code>. Prod: your web origin.</td></tr>
+        <tr><td><code>MONGO_URI</code></td><td><span class="badge b-good">yes</span></td><td>Dev: <code>mongodb://localhost:27017</code>. Prod: Atlas SRV string with SCRAM auth.</td></tr>
+        <tr><td><code>MONGO_DB_NAME</code></td><td><span class="badge b-good">yes</span></td><td><code>devhub-dev</code> locally; recommend per-env DBs (<code>devhub-staging</code>, <code>devhub-prod</code>).</td></tr>
+        <tr><td><code>SESSION_SECRET</code></td><td><span class="badge b-good">yes</span></td><td>32-byte random hex in prod. Used to sign session cookies. <span class="badge b-bad">rotate carefully</span> — invalidates every active session.</td></tr>
+        <tr><td><code>INTEGRATION_TOKEN_KEY</code></td><td><span class="badge b-good">yes</span></td><td>Master key for envelope-encrypting integration tokens at rest (AES-256-GCM). 32-byte hex in prod; KMS-managed where possible. <span class="badge b-bad">rotating requires a key-versioned re-encrypt</span>.</td></tr>
+        <tr><td><code>RESEND_API_KEY</code></td><td><span class="badge b-warn">optional</span></td><td>If unset → email service degrades to a log-only transport (good for early dev; useless in prod). Sign up at <a href="https://resend.com" rel="noreferrer">resend.com</a>.</td></tr>
+        <tr><td><code>RESEND_DOMAIN_MODE</code></td><td><span class="badge b-warn">optional</span></td><td><code>sandbox</code> (only delivers to verified recipients) or <code>verified</code> (production, requires DNS DKIM/SPF setup on your domain).</td></tr>
+        <tr><td><code>RESEND_FROM_EMAIL / RESEND_FROM_NAME</code></td><td><span class="badge b-warn">optional</span></td><td>Required when <code>RESEND_DOMAIN_MODE=verified</code>; falls back to <code>onboarding@resend.dev</code> on sandbox.</td></tr>
+        <tr><td><code>MISTRAL_API_KEY</code></td><td><span class="badge b-warn">optional</span></td><td>For AI features (chat, grade-pr, classify). Without it, those endpoints surface a friendly error.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>apps/web/.env.local</h3>
+    <table>
+      <thead><tr><th>Variable</th><th>Required?</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>NEXT_PUBLIC_APP_URL</code></td><td><span class="badge b-good">yes</span></td><td>Public origin (used for OAuth redirect). <code>http://localhost:3000</code> in dev.</td></tr>
+        <tr><td><code>NEXT_PUBLIC_AUTH_REQUIRED</code></td><td><span class="badge b-good">yes</span></td><td><code>true</code> in normal use — the AuthGuard chain (login → totp-setup → onboarding) only fires when this is on. <code>false</code> turns it into a no-op (used for the localStorage-only legacy path).</td></tr>
+        <tr><td><code>NEXT_PUBLIC_GITHUB_CLIENT_ID</code></td><td><span class="badge b-warn">if-using-github</span></td><td>OAuth app's public client id; needed for the PKCE login.</td></tr>
+        <tr><td><code>GITHUB_CLIENT_SECRET</code></td><td><span class="badge b-warn">if-using-github</span></td><td>Server-only secret consumed by the Next.js route <code>/api/oauth/github/exchange</code>. <span class="badge b-bad">must not be prefixed NEXT_PUBLIC_</span>.</td></tr>
+        <tr><td><code>NEXT_PUBLIC_GITLAB_URL</code></td><td><span class="badge b-warn">if-using-gitlab</span></td><td>Base URL of your GitLab (cloud or self-hosted).</td></tr>
+        <tr><td><code>NEXT_PUBLIC_JIRA_URL</code></td><td><span class="badge b-warn">if-using-jira</span></td><td>Atlassian Cloud workspace URL, e.g. <code>https://your-tenant.atlassian.net</code>.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="warning">
+      <strong>Secret hygiene:</strong> <code>.env.local</code> files are git-ignored.
+      In production, load env from a secret manager (Doppler, AWS Secrets
+      Manager, Vault, Fly secrets, Render dashboard) — never check anything
+      sensitive into the repo. The two crypto values (<code>SESSION_SECRET</code> +
+      <code>INTEGRATION_TOKEN_KEY</code>) are the most damaging if leaked:
+      compromise of the first lets an attacker forge cookies; compromise of the
+      second lets them decrypt every integration token at rest.
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">03 /</span> Production deployment shape</h2>
+
+    <p class="muted">Currently <strong>none in production</strong>. The plan below is what to set up when you ship.</p>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>Frontend (Next.js)</h3>
+        <p><strong>Recommended:</strong> Vercel or Fly.io.</p>
+        <ul>
+          <li><code>next build</code> → <code>next start</code> on the chosen host</li>
+          <li>Environment: set <code>NEXT_PUBLIC_*</code> + <code>GITHUB_CLIENT_SECRET</code> via the platform's dashboard</li>
+          <li>Next.js rewrites <code>/api/v1/*</code> to the API host server-side — same-origin cookies for free</li>
+          <li>No long-running background work; static-asset CDN handled by the platform</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>API (Express + TS)</h3>
+        <p><strong>Recommended:</strong> Render, Fly.io, or a small ECS task.</p>
+        <ul>
+          <li>Build: <code>npm run build:api</code> → run <code>node apps/api/dist/server.js</code></li>
+          <li>Single process is fine for the current scale (in-process rate-limit store)</li>
+          <li>Scale-out later requires Redis for cross-instance rate limits and session lookups (lookups already hit Mongo, so HA is mainly about the limiter)</li>
+          <li>Healthcheck: <code>GET /healthz</code> — pings Mongo, returns 200 / 503</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Database (Mongo)</h3>
+        <p><strong>Recommended:</strong> MongoDB Atlas (M10+ shared cluster for early prod).</p>
+        <ul>
+          <li>SCRAM auth — the connection string includes the user/password</li>
+          <li><code>$jsonSchema</code> validators apply on first boot via <code>db/collections.ts</code></li>
+          <li>Indexes ensured at boot, including TTL on <code>sessions.expiresAt</code> and <code>auth_tokens.expiresAt</code></li>
+          <li>Migrations (m-cap-roles, totp-enrolled-sessions) run idempotently on every boot</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Email (Resend)</h3>
+        <p><strong>For real delivery:</strong> set <code>RESEND_DOMAIN_MODE=verified</code> and verify a sending domain.</p>
+        <ul>
+          <li>Add the DNS records Resend shows in their dashboard (DKIM, SPF, return-path)</li>
+          <li>Set <code>RESEND_FROM_EMAIL</code> to <code>no-reply@yourdomain.com</code></li>
+          <li>Sandbox mode is OK for staging — it only delivers to allowlisted addresses</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">04 /</span> Production checklist</h2>
+
+    <p class="muted">Run through this before flipping DNS to a new deployment.</p>
+
+    <h3>Secrets</h3>
+    <ul class="checklist">
+      <li><code>SESSION_SECRET</code> is 32-byte random hex (not the dev placeholder)</li>
+      <li><code>INTEGRATION_TOKEN_KEY</code> is 32-byte random hex (not the dev placeholder) — and rotation procedure is documented</li>
+      <li>Both stored in the secret manager, NOT in the repo or in CI plaintext logs</li>
+      <li><code>GITHUB_CLIENT_SECRET</code> set; <code>NEXT_PUBLIC_GITHUB_CLIENT_ID</code> matches the OAuth app's prod redirect URI</li>
+      <li><code>RESEND_API_KEY</code> set; sending domain DNS-verified</li>
+    </ul>
+
+    <h3>Mongo</h3>
+    <ul class="checklist">
+      <li>Connection string uses <code>retryWrites=true</code> and a per-env DB name</li>
+      <li>Network allowlist restricts the cluster to the API host's egress IPs</li>
+      <li>Backups configured (Atlas snapshot policy or equivalent)</li>
+      <li>On first boot, you see <code>[db] bootstrap complete</code> + the migration steps complete cleanly in the log</li>
+    </ul>
+
+    <h3>Auth / TOTP</h3>
+    <ul class="checklist">
+      <li><code>NEXT_PUBLIC_AUTH_REQUIRED=true</code> on the web</li>
+      <li>Verify a fresh user gets bounced through <code>/totp-setup</code> after first login</li>
+      <li>Verify direct API access without TOTP-enrol returns <code>401 totp_enrolment_required</code></li>
+      <li>Verify a password-reset link from the inbox actually lands on <code>/password-reset?token=…</code> at the prod origin</li>
+    </ul>
+
+    <h3>Integrations</h3>
+    <ul class="checklist">
+      <li>Connect a GitHub account end-to-end; verify the proxy decompresses upstream gzip cleanly (no <code>content-encoding</code> echo)</li>
+      <li>Connect a Jira account; verify <code>/search/jql</code> works (NOT the deprecated <code>/search</code>)</li>
+      <li>Confirm tokens in <code>integrations</code> collection are envelope-encrypted (<code>v1.iv.tag.ct</code> shape), not plaintext</li>
+    </ul>
+
+    <h3>Observability</h3>
+    <ul class="checklist">
+      <li>API logs ship to your log aggregator (pino JSON → Datadog/Logflare/whatever)</li>
+      <li>Frontend errors captured (Sentry or equivalent) — not yet wired in code; add a Sentry init in <code>app/layout.jsx</code> at deploy time</li>
+      <li>Mongo metrics monitored (Atlas dashboards or self-hosted Prom)</li>
+      <li>Healthcheck endpoint hit by the platform every &le; 60s</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="n">05 /</span> Database migrations</h2>
+
+    <p>Migrations live under <code>apps/api/src/db/migrations/</code>. The boot pipeline (<code>db/collections.ts → runMigrations()</code>) imports each one after applying validators + ensuring indexes, then awaits its completion before the HTTP listener accepts traffic. Each migration is <strong>idempotent</strong> and <strong>non-fatal on failure</strong> — a botched migration doesn't crash the server; it logs and retries on next boot.</p>
+
+    <h3>Live migrations today</h3>
+    <table>
+      <thead><tr><th>File</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>m-cap-roles.ts</code></td>
+          <td>For every user row missing <code>roles[]</code>, populates it from the legacy <code>role</code> field (members → <code>["dev"]</code>; everyone else → <code>[role]</code>).</td>
+        </tr>
+        <tr>
+          <td><code>totp-enrolled-sessions.ts</code></td>
+          <td>Backfills <code>session.totpEnrolled</code> from the owning user's <code>totpEnrolledAt</code>. Only touches sessions where the field is <em>missing</em> (not <em>null</em> — null is a legitimate state set by admin TOTP reset).</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Adding a new migration</h3>
+<pre><span class="comment"># 1. New file under apps/api/src/db/migrations/</span>
+<span class="cmd">touch</span> apps/api/src/db/migrations/your-migration.ts
+
+<span class="comment"># 2. Export an idempotent function</span>
+export async function runYourMigration(col: Collection&lt;X&gt;) {
+  <span class="comment">// match only rows that haven't been touched yet</span>
+  for await (const row of col.find({ yourField: { $exists: false } })) {
+    await col.updateOne({ _id: row._id }, { $set: { yourField: derive(row) } });
+  }
+}
+
+<span class="comment"># 3. Wire it in runMigrations() inside db/collections.ts</span>
+<span class="cmd">try {</span>
+  const { runYourMigration } = await import("./migrations/your-migration.js");
+  const col = await getYourCollection();
+  await runYourMigration(col);
+<span class="cmd">} catch (err) {</span> logger.warn(...) <span class="cmd">}</span>
+
+<span class="comment"># 4. tsc --noEmit and dev-restart to verify the log line</span></pre>
+
+    <div class="warning">
+      <strong>Schema validator changes</strong> are trickier than data migrations.
+      Mongo's <code>$jsonSchema</code> validates writes against the CURRENT
+      validator, but never replays past writes. So adding a required field
+      breaks every previous-shape doc on the next write. Pattern: add the
+      field as <strong>optional first</strong> (data migration backfills it on
+      every row), THEN flip it to required in a follow-up validator change
+      once the migration has been observed to complete in prod.
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">06 /</span> CI / CD</h2>
+    <p class="muted">There is no automated pipeline today. The current workflow is:</p>
+    <ol>
+      <li>Work on a feature branch off <code>main</code></li>
+      <li><code>git push -u origin &lt;branch&gt;</code></li>
+      <li><code>gh pr create</code> with a self-contained description</li>
+      <li>Verify locally (<code>npm run typecheck</code>, <code>npm run build:web</code>, manual smoke test)</li>
+      <li><code>gh pr merge --merge --delete-branch</code></li>
+    </ol>
+    <p class="muted">
+      <strong>What's worth adding when you scale up:</strong>
+    </p>
+    <ul>
+      <li>A GitHub Actions workflow on PR open: <code>npm install</code> → <code>npm run typecheck</code> → <code>npm run build:web</code> + <code>build:api</code>. Catches broken PRs before merge.</li>
+      <li>A <code>deploy-prod.yml</code> on push to <code>main</code> that triggers your host's deploy hook (Vercel auto-deploys today on push; Render needs a hook).</li>
+      <li>Branch protection on <code>main</code> requiring the CI to pass before merge.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="n">07 /</span> Backup &amp; recovery</h2>
+    <ul>
+      <li><strong>Mongo:</strong> Atlas continuous backup or daily snapshot policy on the cluster. PITR (point-in-time recovery) for paid tiers.</li>
+      <li><strong>Encrypted integration tokens:</strong> the ciphertext is in Mongo; the key (<code>INTEGRATION_TOKEN_KEY</code>) is in your secret manager. <strong>Losing the key without rotation means every token row becomes garbage</strong> — users have to reconnect every integration. Document key rotation; consider KMS-managed envelope encryption (per-record DEK wrapped by a KMS-resident KEK) as a follow-up.</li>
+      <li><strong>User-facing recovery:</strong> password reset via email (working). TOTP recovery via admin reset (working). Backup codes still missing — when a user loses their phone today, they're locked out until an admin runs the reset, which is a manual process.</li>
+      <li><strong>Sessions:</strong> stored in Mongo with TTL; eviction is automatic. Forced-logout-everywhere is one Mongo <code>deleteMany({userId})</code> away (already used by password-reset).</li>
+    </ul>
+  </section>
+
+  <footer>
+    Generated 2026-05-12 · eSpace Dev Hub docs
+  </footer>
+</main>
+</body>
+</html>

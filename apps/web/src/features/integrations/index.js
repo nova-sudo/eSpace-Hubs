@@ -2,6 +2,14 @@
 // Dashboard / evidence / snapshots import exclusively from here.
 export { PROVIDERS, PROVIDER_IDS } from "./providers";
 export {
+  DASHBOARD_PROVIDER_DEPENDENCIES,
+  dependencyIsSatisfied,
+  getDashboardProviderDependency,
+  providerLabel,
+  providerListLabel,
+} from "./provider-dependencies";
+export { ProviderStateCallout } from "./provider-state-callout";
+export {
   readIntegrations,
   saveConnection,
   disconnectProvider,
