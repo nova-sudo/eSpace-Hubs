@@ -121,24 +121,32 @@ Known Sprint-1 simplifications, carried forward as backlog (see Sprint 2):
 fill label is weekly-worded for all cadences; fill dots show count not which
 windows.
 
-### Sprint 2 — Intelligence layer
-- [ ] Wire `analyst` to generate Status Narrative from goal-inputs + goal-tiers
-- [ ] **(backlog)** Narrative names the actual worst goal ("Jira Linkage has
-  gone 3 weeks without data"), not just counts — reuses the existing `queue`
-- [ ] Goal tier verdict inline on Health Cards (Ahead / Role-model on top of
-  the rule-based On pace / Behind, via `STATUS_META`)
-- [ ] Trend arrow from last 3 snapshots per goal
-- [ ] **(backlog)** Trend language in the narrative ("improving" / "slipping")
-  once the snapshot trend is wired
-- [ ] **(backlog)** Auto-goal cards show the live computed value + target
-  ("12 PRs · target ≥10 ✓") instead of the opaque "computed from your activity"
-- [ ] **(backlog)** Cadence-aware fill label — "/ 4 months" for monthly,
-  "/ 4 quarters" for quarterly, not always "/ 4 wks"
-- [ ] **(backlog)** Fill dots show WHICH windows were filled (visible gaps),
-  not just the count flushed right
+### Sprint 2 — Intelligence layer ✅ SHIPPED (commit 8e180e2)
+- [x] Status Narrative is AI-INFORMED + deterministic — names the worst goal
+  by name + trend language. (Decision: NOT a per-load LLM call — too slow /
+  token-costly per page view. The AI signal is the cached tier verdict on
+  cards; a future on-demand "summarise with AI" button can use the exported
+  `ruleBasedNarrative()` as its fallback.)
+- [x] Narrative names the actual worst goal (from `queue[0]`)
+- [x] Goal tier verdict inline on Health Cards — reuses `GoalTierBadge`
+  (cached daily grade, self-hides when no tiers), beside the rule-based pill
+- [x] Trend arrow from recent snapshots, goodness-aware via target op
+- [x] Trend language in the narrative ("improving" / "slipping")
+- [x] Cadence-aware fill label ("/ 4 months", "/ 4 quarters")
+- [x] Fill dots show WHICH windows were filled (per-window pattern, gaps visible)
+- [ ] **(deferred)** Auto-goal cards show the live computed value + target
+  ("12 PRs · target ≥10 ✓") — needs per-goal integration data via
+  goal-widgets `useDataSource`; moved to Sprint 3 alongside the other
+  integration-data work
+- [ ] **(not done)** Tier-verdict COUNTS in the narrative — skipped on purpose:
+  in focus view only attention cards mount their badge, so only those goals
+  get graded; an aggregate tier count would be skewed. Revisit if/when all
+  goals are graded eagerly.
 
 ### Sprint 3 — Check-in enhancement
-- [ ] Auto-populated values for integration-backed goals
+- [ ] Auto-populated values for integration-backed goals (via goal-widgets
+  `useDataSource`) — also unlocks the deferred Sprint-2 item: auto-goal cards
+  on the Intelligence Hub showing their live computed value + target
 - [ ] Completion progress bar
 - [ ] Gap banner → actionable one-click to grid
 - [ ] **(backlog)** "Overdue" escalation in the Action Queue — a goal stale for
