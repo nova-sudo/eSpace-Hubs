@@ -105,27 +105,69 @@ linking to `/evidence`. Not in nav — accessible from BI page only.
 
 ## Build order
 
-### Sprint 1 — Foundation (no AI needed)
-- [ ] Replace `/[hub]` with Goal Intelligence Hub shell
-- [ ] Goal Health Card: fill rate + status chip + last-entry + "Fill now" CTA
-- [ ] Action Queue strip: unfilled / overdue goals from existing hooks
-- [ ] Remove PR Reviews from nav
+Items tagged **(backlog)** were added after Sprint 1 shipped — enhancements
+that surfaced from the hub's actual shape. They're slotted into the sprint
+where they fit best; reorder freely.
+
+### Sprint 1 — Foundation (no AI needed) ✅ SHIPPED (commit 1862dd8)
+- [x] Replace `/[hub]` with Goal Intelligence Hub shell
+- [x] Goal Health Card: fill rate + status chip + last-entry + "Fill now" CTA
+- [x] Action Queue strip: unfilled / overdue goals from existing hooks
+- [x] Remove PR Reviews from nav (renamed Dev tab "Performance" → "Intelligence")
+- [x] New `features/intelligence/` slice (status.js, use-goal-health.js, cards,
+  grid, action-queue, status-narrative) + `fillStats()` in goal-inputs
+
+Known Sprint-1 simplifications, carried forward as backlog (see Sprint 2):
+fill label is weekly-worded for all cadences; fill dots show count not which
+windows.
 
 ### Sprint 2 — Intelligence layer
 - [ ] Wire `analyst` to generate Status Narrative from goal-inputs + goal-tiers
-- [ ] Goal tier verdict inline on Health Cards
+- [ ] **(backlog)** Narrative names the actual worst goal ("Jira Linkage has
+  gone 3 weeks without data"), not just counts — reuses the existing `queue`
+- [ ] Goal tier verdict inline on Health Cards (Ahead / Role-model on top of
+  the rule-based On pace / Behind, via `STATUS_META`)
 - [ ] Trend arrow from last 3 snapshots per goal
+- [ ] **(backlog)** Trend language in the narrative ("improving" / "slipping")
+  once the snapshot trend is wired
+- [ ] **(backlog)** Auto-goal cards show the live computed value + target
+  ("12 PRs · target ≥10 ✓") instead of the opaque "computed from your activity"
+- [ ] **(backlog)** Cadence-aware fill label — "/ 4 months" for monthly,
+  "/ 4 quarters" for quarterly, not always "/ 4 wks"
+- [ ] **(backlog)** Fill dots show WHICH windows were filled (visible gaps),
+  not just the count flushed right
 
 ### Sprint 3 — Check-in enhancement
 - [ ] Auto-populated values for integration-backed goals
 - [ ] Completion progress bar
 - [ ] Gap banner → actionable one-click to grid
+- [ ] **(backlog)** "Overdue" escalation in the Action Queue — a goal stale for
+  more than one full cadence window gets a harder badge than "needs update"
+- [ ] **(backlog)** Snapshot-this-week signal in the Action Queue (tie the
+  existing `ReviewPrepChecklist` in so "capture this week's snapshot" is an action)
 
-### Sprint 4 — Clean-up
+### Sprint 4 — Clean-up + depth
 - [ ] Absorb snapshots as history tab inside BI page
 - [ ] Surface evidence compile as primary BI page action
 - [ ] Remove compact/presentation toggle
-- [ ] Retire old dashboard feature slice
+- [ ] Retire old dashboard feature slice (+ `/reviews`, `/snapshots` routes)
+- [ ] **(backlog)** Goal weightage on cards — eSpace goals carry `weightage`;
+  emphasise high-weight goals and weight the L1 rollup by it
+- [ ] **(backlog)** L1 rollup chip in each group header ("3 / 5 on pace") so
+  parent goals are scannable without reading every card
+- [ ] **(backlog)** Goal drill-in — clicking a card opens a goal detail page
+  (`/[hub]/goals/[goalId]`?) with history sparkline, all entries, inline edit.
+  This is also where absorbed snapshots get their home
+
+### Icebox — bigger, unscheduled
+- [ ] **(backlog)** Grid sort/filter — by status, L1, or weight, for users with
+  many goals
+- [ ] **(backlog)** Streaks — "5 weeks logged in a row" as positive
+  reinforcement, not just nagging
+- [ ] **(backlog)** Stale-goal nudges — in-app or email reminders when a goal
+  goes dark (needs backend / `apps/api` work)
+- [ ] **(backlog)** Manager / team aggregate view — roll health up across a team
+  (the `manager` hub is already a registry placeholder)
 
 ---
 
