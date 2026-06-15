@@ -26,6 +26,7 @@ import { cadenceWindowLabel } from "@/features/goal-inputs";
 import { GoalTierBadge } from "@/features/goal-tiers";
 import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
 import { cn } from "@/lib/cn";
+import { AutoGoalValue } from "./auto-value";
 import { HEALTH, STATUS_META } from "./status";
 
 function relAgo(ts) {
@@ -81,14 +82,9 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
         </div>
       </div>
 
-      {/* Body: fill-rate strip (manual) or auto note */}
+      {/* Body: live auto value (auto) or fill-rate strip (manual) */}
       {health.status === HEALTH.AUTO ? (
-        <div
-          className="text-[10px] uppercase tracking-[0.4px] text-muted-fg/70"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          Computed from your activity · no manual entry needed
-        </div>
+        <AutoGoalValue spec={spec} />
       ) : (
         <FillStrip fill={fill} cadence={cadence} />
       )}
@@ -99,7 +95,12 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
           className="text-[10px] uppercase tracking-[0.4px] text-muted-fg/70"
           style={{ fontFamily: "var(--font-mono)" }}
         >
-          {fill?.lastEntryTs ? `last logged ${relAgo(fill.lastEntryTs)}` : "never logged"}
+          {/* Auto goals aren't hand-logged — no "last logged" line for them. */}
+          {health.status === HEALTH.AUTO
+            ? ""
+            : fill?.lastEntryTs
+              ? `last logged ${relAgo(fill.lastEntryTs)}`
+              : "never logged"}
         </span>
         {!health.needsFill ? null : canInline ? (
           <button
