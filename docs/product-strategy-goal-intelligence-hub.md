@@ -228,15 +228,13 @@ Two **independent** axes, plus explicit per-window state:
    ahead. A signal, never an action. The AI tier sits on top for achievement.
 
 Concrete work this unlocks:
-- [ ] **(rethink) Name the missing window** — replace "2 / 4 quarters" with the
-  specific gap: "Q1, Q2 logged · Q3 (current) empty", and have "Fill" target
-  THAT window. Tells the user exactly what's owed instead of a ratio.
-- [ ] **(rethink) Lock / finalize a window** — a control to mark a window done
-  or "nothing to report", so it stops counting as owed. The user's escape hatch
-  from rolling-window nagging (the "maybe they didn't actually do it that week"
-  case). Needs a per-goal-per-window `locked` flag in goal-inputs (or a sibling
-  store) + UI on the card/check-in + status logic that treats locked-empty as
-  not-owed.
+- [x] **(rethink) Name the missing window** ✅ SHIPPED (commit 2175709) — cards
+  say "This week not logged yet" / "This quarter + 2 earlier empty" / "Never
+  logged" in cadence terms, not a bare ratio.
+- [x] **(rethink) Lock / finalize a window** ✅ SHIPPED (commit c5fc256) — new
+  `features/goal-locks` shared domain (localStorage, user-scoped). "Nothing to
+  report" settles a needs-fill goal → HEALTH.LOCKED, leaves Do-next; "Reopen"
+  unlocks. Device-local for now; promote to API-direct for cross-device sync.
 - [ ] **(rethink) Track from goal start, not blindly N windows back** — a goal
   tracked for 2 quarters shows "2 / 4" as if 2 were missed, but those windows
   predate the goal. Anchor the window count to first-entry / goal-creation so
