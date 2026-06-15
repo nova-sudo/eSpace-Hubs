@@ -165,8 +165,9 @@ windows.
 - [~] Gap banner → actionable one-click to grid — banner already links to the
   grid ("Catch up N weeks"); remaining nicety is landing on the FIRST unfilled
   week rather than the grid top. Minor; left as polish.
-- [ ] **(backlog)** "Overdue" escalation in the Action Queue — a goal stale for
-  more than one full cadence window gets a harder badge than "needs update"
+- [x] **Overdue escalation** ✅ SHIPPED (commit 7252523) — a goal dark for 2+
+  consecutive windows reads "Overdue" (hard red) on card + queue; queue sorts
+  most-overdue-first; narrative names it "is overdue". Via `statusDisplay()`.
 - [ ] **(backlog)** Snapshot-this-week signal in the Action Queue (tie the
   existing `ReviewPrepChecklist` in so "capture this week's snapshot" is an action)
 
