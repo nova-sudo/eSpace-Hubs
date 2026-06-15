@@ -18,11 +18,13 @@
  * AI tier verdict (when tiers exist), trend arrow (when a direction exists).
  */
 
+import { useState } from "react";
 import Link from "next/link";
 import { Pill } from "@/components/ui";
 import { SPEC_KIND_META } from "@/features/goal-specs";
 import { cadenceWindowLabel } from "@/features/goal-inputs";
 import { GoalTierBadge } from "@/features/goal-tiers";
+import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
 import { cn } from "@/lib/cn";
 import { HEALTH, STATUS_META } from "./status";
 
@@ -34,11 +36,17 @@ function relAgo(ts) {
   return `${Math.round(hr / 24)}d ago`;
 }
 
-export function GoalHealthCard({ goal, spec, health, trend, fillHref }) {
+export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
+  const [open, setOpen] = useState(false);
   const meta = STATUS_META[health.status] ?? STATUS_META[HEALTH.NO_DATA];
   const kindLabel = SPEC_KIND_META[spec?.widget]?.label ?? "Goal";
   const fill = health.fill;
   const cadence = spec?.manual?.cadence ?? null;
+
+  // Can we fill this goal right here? Needs a fill, an inline-capable
+  // editor for its widget kind, and a resolved week to write against.
+  const canInline =
+    health.needsFill && isInlineFillable(spec?.widget) && !!week;
 
   return (
     <div
@@ -93,16 +101,49 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref }) {
         >
           {fill?.lastEntryTs ? `last logged ${relAgo(fill.lastEntryTs)}` : "never logged"}
         </span>
-        {health.needsFill && fillHref ? (
+        {!health.needsFill ? null : canInline ? (
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="text-[11px] font-semibold text-accent hover:underline"
+            style={{ fontFamily: "var(--font-mono)" }}
+          >
+            {open ? "Close" : "Fill now ▾"}
+          </button>
+        ) : fillHref ? (
+          // Heavy editors (rubric / scorecard) live on the check-in page.
           <Link
             href={fillHref}
             className="text-[11px] font-semibold text-accent hover:underline"
             style={{ fontFamily: "var(--font-mono)" }}
           >
-            Fill now →
+            Fill in check-in →
           </Link>
         ) : null}
       </div>
+
+      {/* Inline editor — fill on the spot, scoped to the current work week.
+          Writes hit goal-inputs immediately, so the card's status + fill
+          strip update live (and the card may leave the focus view once
+          it's no longer "needs attention"). */}
+      {open && canInline ? (
+        <div className="mt-1 border-t border-border pt-2.5">
+          <GoalManualEditor
+            widget={spec.widget}
+            goal={goal}
+            spec={spec}
+            weekStart={week.start}
+            weekEnd={week.end}
+            activeLabel={week.weekLabel}
+          />
+          <div
+            className="mt-2 text-[9px] uppercase tracking-[0.4px] text-muted-fg/60"
+            style={{ fontFamily: "var(--font-mono)" }}
+          >
+            logging to {week.weekLabel}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

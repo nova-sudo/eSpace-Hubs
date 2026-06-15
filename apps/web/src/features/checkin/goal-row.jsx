@@ -34,7 +34,7 @@ import {
   RecurringMilestoneEditor,
   ScaleEditor,
   UnsupportedStub,
-} from "./editors";
+} from "@/features/goal-editors";
 import { CodeRubricEditor } from "./code-rubric-row";
 import {
   buildSubGoal,

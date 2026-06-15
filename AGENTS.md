@@ -44,7 +44,8 @@ what a feature is allowed to import from.
 
 | Feature | Route |
 |---|---|
-| `dashboard` | `/` |
+| `intelligence` | `/` (Goal Intelligence Hub — Dev home) |
+| `dashboard` | legacy perf bento (retired from nav; slated for removal) |
 | `evidence` | `/evidence` |
 | `checkin` | `/checkin` |
 | `settings` | `/settings` |
@@ -56,7 +57,7 @@ what a feature is allowed to import from.
 **Shared domains** — cross-cutting data, hooks, or logic consumed by many surfaces:
 
 `auth` · `hubs` · `integrations` · `goal-specs` · `goal-inputs` · `goal-context`
-· `goal-tiers` · `snapshots` · `grading` · `goal-widgets`
+· `goal-tiers` · `snapshots` · `grading` · `goal-widgets` · `goal-editors`
 
 **Platform utilities** — infrastructure helpers with no page of their own:
 

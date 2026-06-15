@@ -13,12 +13,18 @@
 
 import { useMemo, useState } from "react";
 import { MonoLabel } from "@/components/ui";
+import { resolveCompletedWorkWeek } from "@/lib/date";
 import { cn } from "@/lib/cn";
 import { GoalHealthCard } from "./goal-health-card";
 import { NEEDS_ATTENTION } from "./status";
 
 export function GoalHealthGrid({ groups, fillHref }) {
   const [showAll, setShowAll] = useState(false);
+  // The week inline "Fill now" writes against — the same most-recent
+  // completed work-week the check-in page defaults to, so filling here is
+  // identical to filling there. Resolved once per mount.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const week = useMemo(() => resolveCompletedWorkWeek(), []);
 
   const attentionCount = useMemo(
     () =>
@@ -68,14 +74,19 @@ export function GoalHealthGrid({ groups, fillHref }) {
         <AllClear total={totalCount} />
       ) : (
         visibleGroups.map((group) => (
-          <GroupBlock key={group.l1.id} group={group} fillHref={fillHref} />
+          <GroupBlock
+            key={group.l1.id}
+            group={group}
+            fillHref={fillHref}
+            week={week}
+          />
         ))
       )}
     </div>
   );
 }
 
-function GroupBlock({ group, fillHref }) {
+function GroupBlock({ group, fillHref, week }) {
   return (
     <section className="flex flex-col gap-2.5">
       <div className="flex items-baseline gap-2.5 border-b border-border pb-1.5">
@@ -118,6 +129,7 @@ function GroupBlock({ group, fillHref }) {
             health={card.health}
             trend={card.trend}
             fillHref={fillHref}
+            week={week}
           />
         ))}
       </div>
