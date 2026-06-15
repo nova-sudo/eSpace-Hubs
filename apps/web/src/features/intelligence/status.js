@@ -28,7 +28,7 @@
  *                 target defined, in which case presence === on pace).
  */
 
-import { SPEC_KIND_META, SPEC_VARIANTS } from "@/features/goal-specs";
+import { SPEC_KINDS, SPEC_KIND_META, SPEC_VARIANTS } from "@/features/goal-specs";
 import { computeCompliance, fillStats } from "@/features/goal-inputs";
 
 export const HEALTH = Object.freeze({
@@ -41,11 +41,13 @@ export const HEALTH = Object.freeze({
 });
 
 /**
- * Statuses that should pull the goal into the "needs attention" focus
- * view and the Action Queue. AUTO + ON_PACE are healthy/hands-off.
+ * Statuses that mean "you owe this goal a DATA entry" — the only thing that
+ * belongs in "Do next" / the focus view. BEHIND is deliberately NOT here:
+ * a behind-target goal is already filled, so it's a performance SIGNAL (a
+ * card chip), not a chore. AUTO + ON_PACE are healthy/hands-off.
  */
 export const NEEDS_ATTENTION = Object.freeze(
-  new Set([HEALTH.NO_DATA, HEALTH.STALE, HEALTH.BEHIND]),
+  new Set([HEALTH.NO_DATA, HEALTH.STALE]),
 );
 
 // Cadences that don't bucket into recurring windows — a milestone is
@@ -53,6 +55,16 @@ export const NEEDS_ATTENTION = Object.freeze(
 // these, "filled this week" is meaningless: presence of any data = tracked.
 const NON_BUCKETING = Object.freeze(
   new Set(["milestone", "continuous", "per-incident"]),
+);
+
+// Target-attainment ("behind") is only meaningful for widgets whose entry
+// value is a NUMBER. Checklist / composite / incident / before-after store
+// objects — feeding those to computeCompliance coerces them to NaN and
+// falsely reads "behind" (a 100%-complete milestone is NOT behind). For
+// those kinds the AI tier verdict carries achievement; the rule-based
+// status just says "on pace" once it's filled.
+const NUMERIC_MANUAL_KINDS = Object.freeze(
+  new Set([SPEC_KINDS.COUNTER, SPEC_KINDS.SCALE, SPEC_KINDS.DATE_LOG]),
 );
 
 /**
@@ -97,10 +109,13 @@ export function deriveGoalHealth({ spec, entries }) {
     return { status: HEALTH.STALE, needsFill: true, fill, compliance: null };
   }
 
-  // Filled this window — is it hitting the number? Only when a target is
-  // declared and the cadence buckets (computeCompliance returns null
-  // otherwise, which we read as "presence is enough").
-  const compliance = target ? computeCompliance(entries, target, cadence) : null;
+  // Filled this window — is it hitting the number? Only for NUMERIC widgets
+  // with a target; object-valued widgets (checklist/composite/incident) are
+  // never read as "behind" here (the AI tier judges those instead).
+  const compliance =
+    target && NUMERIC_MANUAL_KINDS.has(spec.widget)
+      ? computeCompliance(entries, target, cadence)
+      : null;
   if (compliance && compliance.latestWindowMet === false) {
     return { status: HEALTH.BEHIND, needsFill: false, fill, compliance };
   }
