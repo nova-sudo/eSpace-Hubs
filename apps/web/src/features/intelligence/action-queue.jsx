@@ -17,26 +17,38 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { MonoLabel } from "@/components/ui";
 import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
+import { useSnapshots } from "@/features/snapshots";
 import { resolveCompletedWorkWeek } from "@/lib/date";
 import { statusDisplay } from "./status";
 
 const MAX_ROWS = 6;
 
-export function ActionQueue({ queue, fillHref }) {
+export function ActionQueue({ queue, fillHref, snapshotHref }) {
   const [openId, setOpenId] = useState(null);
   // Same most-recent completed work week the cards + check-in write to.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const week = useMemo(() => resolveCompletedWorkWeek(), []);
 
-  if (!queue || queue.length === 0) return null;
+  // Has this week's snapshot been captured? Snapshots feed the trend
+  // arrows, so a missing one is a real "do next" — surfaced even when no
+  // goal needs filling.
+  const { snapshots } = useSnapshots();
+  const snapshotPending = useMemo(
+    () => !snapshots.some((s) => s.week === week.weekLabel),
+    [snapshots, week],
+  );
 
-  const rows = queue.slice(0, MAX_ROWS);
-  const overflow = queue.length - rows.length;
+  const hasQueue = Array.isArray(queue) && queue.length > 0;
+  if (!hasQueue && !snapshotPending) return null;
+
+  const rows = hasQueue ? queue.slice(0, MAX_ROWS) : [];
+  const overflow = hasQueue ? queue.length - rows.length : 0;
+  const actionCount = (hasQueue ? queue.length : 0) + (snapshotPending ? 1 : 0);
 
   return (
     <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-card px-5 py-4">
       <div className="flex items-center justify-between">
-        <MonoLabel>Do next · {queue.length}</MonoLabel>
+        <MonoLabel>Do next · {actionCount}</MonoLabel>
         {fillHref ? (
           <Link
             href={fillHref}
@@ -48,6 +60,34 @@ export function ActionQueue({ queue, fillHref }) {
         ) : null}
       </div>
 
+      {snapshotPending ? (
+        <Link
+          href={snapshotHref || "#"}
+          className="flex items-center gap-3 rounded-md border border-dashed border-border px-2.5 py-2 transition-colors hover:border-border-strong"
+        >
+          <span
+            className="inline-block h-[7px] w-[7px] shrink-0 rounded-full"
+            style={{ background: "var(--accent)" }}
+          />
+          <span className="min-w-0 flex-1 truncate text-[13px] text-fg">
+            Capture this week&rsquo;s snapshot
+          </span>
+          <span
+            className="shrink-0 text-[10px] uppercase tracking-[0.4px] text-muted-fg/70"
+            style={{ fontFamily: "var(--font-mono)" }}
+          >
+            {week.weekLabel}
+          </span>
+          <span
+            className="shrink-0 text-[11px] font-semibold text-accent"
+            style={{ fontFamily: "var(--font-mono)" }}
+          >
+            Snapshot →
+          </span>
+        </Link>
+      ) : null}
+
+      {hasQueue ? (
       <ul className="flex flex-col divide-y divide-border">
         {rows.map((card) => {
           const meta = statusDisplay(card.health);
@@ -119,6 +159,7 @@ export function ActionQueue({ queue, fillHref }) {
           );
         })}
       </ul>
+      ) : null}
 
       {overflow > 0 ? (
         <div

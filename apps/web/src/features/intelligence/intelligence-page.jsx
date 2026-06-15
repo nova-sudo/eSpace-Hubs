@@ -83,7 +83,11 @@ export function IntelligencePage() {
       ) : (
         <div className="flex flex-col gap-6">
           <StatusNarrative summary={summary} queue={queue} />
-          <ActionQueue queue={queue} fillHref={fillHref} />
+          <ActionQueue
+            queue={queue}
+            fillHref={fillHref}
+            snapshotHref={link("/snapshots")}
+          />
           {unclassifiedGoals.length > 0 ? (
             <UnclassifiedNote count={unclassifiedGoals.length} />
           ) : null}
