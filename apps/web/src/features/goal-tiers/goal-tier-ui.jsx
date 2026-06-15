@@ -7,6 +7,8 @@
  * (not re-analyzed since tiers landed).
  */
 
+import { useState } from "react";
+import { saveSpec } from "@/features/goal-specs";
 import { useGoalTier, TIER_ORDER, TIER_LABELS, TIER_FIELD } from "./use-goal-tier";
 
 const TIER_COLOR = {
@@ -88,8 +90,10 @@ export function GoalTierBadge({ goalId, spec }) {
  */
 export function GoalTierLadder({ spec, variant = "light" }) {
   const { hasTiers, tiers, verdict, loading } = useGoalTier(spec?.goalId, spec);
+  const [editing, setEditing] = useState(false);
   if (!hasTiers) return null;
 
+  const tierMap = tiers || {};
   const current = verdict?.tier || null;
   const reachedIdx = current ? TIER_ORDER.indexOf(current) : -1;
   const isLight = variant === "light";
@@ -98,20 +102,49 @@ export function GoalTierLadder({ spec, variant = "light" }) {
   const fg = isLight ? "#ffffff" : "var(--fg)";
   const surface = isLight ? "rgba(255,255,255,0.08)" : "var(--card-alt)";
 
+  if (editing) {
+    return (
+      <TierEditor
+        spec={spec}
+        tiers={tierMap}
+        variant={variant}
+        onClose={() => setEditing(false)}
+      />
+    );
+  }
+
   return (
     <div
       className="mt-3 rounded-[var(--radius-sub)] p-2"
       style={{ background: surface }}
     >
-      <div
-        className="mb-1.5 uppercase tracking-[0.5px]"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: muted }}
-      >
-        Achievement tier{loading && !verdict ? " · grading…" : ""}
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span
+          className="uppercase tracking-[0.5px]"
+          style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: muted }}
+        >
+          Achievement tier{loading && !verdict ? " · grading…" : ""}
+        </span>
+        {/* The criteria belong to the goal owner — let them correct what the
+            AI extracted. Editing re-grades against the new criteria. */}
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="shrink-0 uppercase tracking-[0.5px] hover:opacity-100"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 9,
+            color: muted,
+            opacity: 0.8,
+          }}
+          title="Edit the achievement-tier criteria for this goal"
+        >
+          edit
+        </button>
       </div>
       <div className="flex flex-col gap-1">
         {TIER_ORDER.map((t, i) => {
-          const criterion = tiers[TIER_FIELD[t]];
+          const criterion = tierMap[TIER_FIELD[t]];
           const isCurrent = t === current;
           const reached = reachedIdx >= 0 && i <= reachedIdx;
           const color = TIER_COLOR[t];
@@ -172,6 +205,130 @@ export function GoalTierLadder({ spec, variant = "light" }) {
           {verdict.confidence === "low" ? " · low confidence" : ""}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Inline editor for the four tier criteria. The criteria are the goal
+ * owner's contract — the AI only drafts them — so this lets the user
+ * correct mis-extractions. Saving writes the criteria back onto the spec
+ * (`saveSpec`), which re-grades the goal against the new criteria.
+ */
+function TierEditor({ spec, tiers, variant, onClose }) {
+  const isLight = variant === "light";
+  const muted = isLight ? "rgba(255,255,255,0.62)" : "var(--muted-fg)";
+  const fg = isLight ? "#ffffff" : "var(--fg)";
+  const surface = isLight ? "rgba(255,255,255,0.08)" : "var(--card-alt)";
+  const fieldBg = isLight ? "rgba(255,255,255,0.10)" : "var(--bg)";
+  const fieldBorder = isLight
+    ? "1px solid rgba(255,255,255,0.22)"
+    : "1px solid var(--border)";
+
+  const [draft, setDraft] = useState(() => ({
+    notAchieved: tiers.notAchieved || "",
+    achieved: tiers.achieved || "",
+    overAchieved: tiers.overAchieved || "",
+    roleModel: tiers.roleModel || "",
+  }));
+  const [saving, setSaving] = useState(false);
+
+  function save() {
+    setSaving(true);
+    const next = {
+      notAchieved: draft.notAchieved.trim() || null,
+      achieved: draft.achieved.trim() || null,
+      overAchieved: draft.overAchieved.trim() || null,
+      roleModel: draft.roleModel.trim() || null,
+    };
+    // Spread the existing (valid) spec so only the criteria change; the
+    // validator keeps it valid and the store re-grades on the new tiers.
+    saveSpec({ ...spec, tiers: next });
+    setSaving(false);
+    onClose?.();
+  }
+
+  return (
+    <div
+      className="mt-3 rounded-[var(--radius-sub)] p-2"
+      style={{ background: surface }}
+    >
+      <div
+        className="mb-1.5 uppercase tracking-[0.5px]"
+        style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: muted }}
+      >
+        Edit achievement-tier criteria
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {TIER_ORDER.map((t) => {
+          const field = TIER_FIELD[t];
+          return (
+            <label key={t} className="flex flex-col gap-0.5">
+              <span
+                className="uppercase"
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 8.5,
+                  letterSpacing: "0.3px",
+                  color: TIER_COLOR[t],
+                }}
+              >
+                {TIER_LABELS[t]}
+              </span>
+              <textarea
+                rows={2}
+                value={draft[field]}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, [field]: e.target.value }))
+                }
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: 10.5,
+                  lineHeight: 1.35,
+                  color: fg,
+                  background: fieldBg,
+                  border: fieldBorder,
+                  borderRadius: "var(--radius-sub)",
+                  padding: "4px 6px",
+                  resize: "vertical",
+                  width: "100%",
+                  outline: "none",
+                }}
+              />
+            </label>
+          );
+        })}
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="rounded-[var(--radius-sub)] px-2.5 py-1 font-bold uppercase"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 9.5,
+            letterSpacing: "0.5px",
+            background: isLight ? "#ffffff" : "var(--accent)",
+            color: isLight ? "var(--accent)" : "var(--accent-on)",
+            opacity: saving ? 0.6 : 1,
+          }}
+        >
+          {saving ? "Saving…" : "Save criteria"}
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="uppercase tracking-[0.5px]"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 9,
+            color: muted,
+          }}
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
