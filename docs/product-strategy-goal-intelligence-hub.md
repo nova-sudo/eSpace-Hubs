@@ -154,9 +154,11 @@ windows.
   recurring) vs link to /checkin (rubric, scorecard).
   - [x] *Follow-up DONE (96e854b):* Action Queue rows now fill inline too
     (`Fill ▾`), not just link out.
-- [ ] Auto-populated values for integration-backed goals (via goal-widgets
-  `useDataSource`) — also unlocks the deferred Sprint-2 item: auto-goal cards
-  on the Intelligence Hub showing their live computed value + target
+- [x] Auto-populated values ✅ SHIPPED (commit e8ac1db) — hub auto-goal cards
+  now show the live computed value + target ("12 merged · target ≥10 ✓") via
+  `AutoGoalValue` reusing goal-widgets `useDataSource`. (Check-in auto-readouts
+  for these goals already existed.) CI/CD trio + rubric/scorecard fall back to
+  the generic note — mapping their headlines is a small follow-up.
 - [ ] Completion progress bar
 - [ ] Gap banner → actionable one-click to grid
 - [ ] **(backlog)** "Overdue" escalation in the Action Queue — a goal stale for
