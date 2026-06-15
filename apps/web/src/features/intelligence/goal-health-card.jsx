@@ -86,7 +86,10 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
       {health.status === HEALTH.AUTO ? (
         <AutoGoalValue spec={spec} />
       ) : (
-        <FillStrip fill={fill} cadence={cadence} />
+        <div className="flex flex-col gap-1.5">
+          <FillHint health={health} cadence={cadence} />
+          <FillStrip fill={fill} cadence={cadence} />
+        </div>
       )}
 
       {/* Footer: last entry + CTA */}
@@ -145,6 +148,35 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Names the window that needs filling, in the goal's cadence terms —
+ * "This week not logged yet", "This quarter + 2 earlier empty", "Never
+ * logged" — instead of leaving the user to read a bare ratio. Renders
+ * nothing when the goal is up to date.
+ */
+function FillHint({ health, cadence }) {
+  const [singular] = cadenceWindowLabel(cadence);
+  let text = null;
+  if (health.status === HEALTH.NO_DATA) {
+    text = "Never logged — add your first entry";
+  } else if (health.status === HEALTH.STALE) {
+    const missed = health.missedWindows || 1;
+    text =
+      missed > 1
+        ? `This ${singular} + ${missed - 1} earlier empty`
+        : `This ${singular} not logged yet`;
+  }
+  if (!text) return null;
+  return (
+    <div
+      className="text-[11px] font-medium"
+      style={{ color: health.overdue ? "#b91c1c" : "#b45309" }}
+    >
+      {text}
     </div>
   );
 }
