@@ -25,6 +25,7 @@ import { SPEC_KIND_META } from "@/features/goal-specs";
 import { cadenceWindowLabel } from "@/features/goal-inputs";
 import { GoalTierBadge } from "@/features/goal-tiers";
 import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
+import { currentWindowKey, setLock } from "@/features/goal-locks";
 import { cn } from "@/lib/cn";
 import { AutoGoalValue } from "./auto-value";
 import { HEALTH, statusDisplay } from "./status";
@@ -43,6 +44,7 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
   const kindLabel = SPEC_KIND_META[spec?.widget]?.label ?? "Goal";
   const fill = health.fill;
   const cadence = spec?.manual?.cadence ?? null;
+  const windowKey = currentWindowKey(cadence);
 
   // Can we fill this goal right here? Needs a fill, an inline-capable
   // editor for its widget kind, and a resolved week to write against.
@@ -105,25 +107,49 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
               ? `last logged ${relAgo(fill.lastEntryTs)}`
               : "never logged"}
         </span>
-        {!health.needsFill ? null : canInline ? (
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="text-[11px] font-semibold text-accent hover:underline"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            {open ? "Close" : "Fill now ▾"}
-          </button>
-        ) : fillHref ? (
-          // Heavy editors (rubric / scorecard) live on the check-in page.
-          <Link
-            href={fillHref}
-            className="text-[11px] font-semibold text-accent hover:underline"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            Fill in check-in →
-          </Link>
-        ) : null}
+        <div className="flex items-center gap-2.5">
+          {/* Lock controls — settle a window the user can't / won't fill. */}
+          {health.status === HEALTH.LOCKED ? (
+            <button
+              type="button"
+              onClick={() => setLock(goal?.id, windowKey, false)}
+              className="text-[10px] uppercase tracking-[0.4px] text-muted-fg/70 hover:text-fg"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              Reopen
+            </button>
+          ) : health.needsFill && windowKey ? (
+            <button
+              type="button"
+              onClick={() => setLock(goal?.id, windowKey, true)}
+              className="text-[10px] uppercase tracking-[0.4px] text-muted-fg/60 hover:text-fg"
+              style={{ fontFamily: "var(--font-mono)" }}
+              title="Mark this period settled — nothing to report"
+            >
+              Nothing to report
+            </button>
+          ) : null}
+
+          {!health.needsFill ? null : canInline ? (
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className="text-[11px] font-semibold text-accent hover:underline"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              {open ? "Close" : "Fill now ▾"}
+            </button>
+          ) : fillHref ? (
+            // Heavy editors (rubric / scorecard) live on the check-in page.
+            <Link
+              href={fillHref}
+              className="text-[11px] font-semibold text-accent hover:underline"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              Fill in check-in →
+            </Link>
+          ) : null}
+        </div>
       </div>
 
       {/* Inline editor — fill on the spot, scoped to the current work week.

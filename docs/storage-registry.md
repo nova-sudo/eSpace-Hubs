@@ -26,6 +26,7 @@ list and the "User-scoped" column here in sync.
 | `espace-devhub:migrate-completed-by-user` | `features/migrate/migrate-store.js` | ✅ | Flag set after the one-time migration wizard completes for a given user ID. |
 | `espace-devhub:review-timing-cache` | `features/integrations/hooks/use-pr-review-timings.js` | ✅ | SWR-level cache for PR review timing data. Cleared on logout to avoid stale cross-user data. |
 | `espace-devhub:goal-tiers` | `features/goal-tiers/goal-tier-store.js` | ✅ | AI tier verdict cache keyed by `(goalId, rubricHash)`. Expensive to recompute; invalidated by logout and by a new spec classification. |
+| `espace-devhub:goal-locks` | `features/goal-locks/locks-store.js` | ✅ | Per-goal-per-window "finalised" flags (`{goalId::windowKey: true}`). Lets the user settle a goal window so the status model stops treating it as owed. Device-local (localStorage-first, like prefs were) — promote to API-direct for cross-device sync. |
 | `espace-devhub:dashboard-view` | `features/dashboard/use-dashboard-view.js` | ❌ | User's preferred layout: `"presentation"` or `"compact"`. Device-local — intentionally preserved across logins so the layout choice sticks on a shared machine. |
 | `eshub:qa:config:v1` | Internal / QA harness | ❌ | Test/QA configuration injected by the E2E harness. Not cleared on logout; written only in non-production environments. |
 

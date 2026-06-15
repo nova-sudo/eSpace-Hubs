@@ -59,6 +59,7 @@ const USER_SCOPED_KEYS = Object.freeze([
   "espace-devhub:migrate-completed-by-user",
   "espace-devhub:review-timing-cache",
   "espace-devhub:goal-tiers",
+  "espace-devhub:goal-locks",
   "eshub:qa:config:v1",
 ]);
 

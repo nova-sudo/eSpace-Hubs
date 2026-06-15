@@ -24,6 +24,7 @@ import {
   useAllGoalInputs,
 } from "@/features/goal-inputs";
 import { useSnapshots } from "@/features/snapshots";
+import { isLocked, currentWindowKey, useGoalLocks } from "@/features/goal-locks";
 import {
   computeTrend,
   deriveGoalHealth,
@@ -50,6 +51,8 @@ export function useGoalHealth(groupedItems) {
   // Snapshots drive the per-goal trend arrow. useSnapshots subscribes +
   // hydrates; `snapshots` is newest-first.
   const { snapshots } = useSnapshots();
+  // Window locks settle "owed" status. Subscribe so a lock/unlock re-derives.
+  const locksTick = useGoalLocks();
 
   return useMemo(() => {
     const groups = [];
@@ -70,7 +73,11 @@ export function useGoalHealth(groupedItems) {
       const cards = [];
       for (const { goal, spec } of group.items) {
         const entries = readGoalEntries(goal.id);
-        const health = deriveGoalHealth({ spec, entries });
+        const lockedCurrentWindow = isLocked(
+          goal.id,
+          currentWindowKey(spec?.manual?.cadence),
+        );
+        const health = deriveGoalHealth({ spec, entries, lockedCurrentWindow });
         const trend = computeTrend(snapshots, goal.id, spec);
         const card = { goal, spec, health, trend };
         cards.push(card);
@@ -107,7 +114,8 @@ export function useGoalHealth(groupedItems) {
     };
     // readGoalEntries / getInputsState read live store state; inputsTick
     // changes whenever that state mutates, so it's the correct memo key.
-    // snapshots identity changes when the snapshot store updates.
+    // snapshots identity changes when the snapshot store updates; locksTick
+    // bumps when a window is locked/unlocked.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupedItems, inputsTick, snapshots]);
+  }, [groupedItems, inputsTick, snapshots, locksTick]);
 }

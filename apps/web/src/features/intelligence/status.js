@@ -38,6 +38,7 @@ export const HEALTH = Object.freeze({
   STALE: "stale",
   BEHIND: "behind",
   ON_PACE: "on_pace",
+  LOCKED: "locked", // user finalised this window — settled, not owed
 });
 
 /**
@@ -78,7 +79,7 @@ const NUMERIC_MANUAL_KINDS = Object.freeze(
  *   compliance: object | null,  // computeCompliance() output when a target exists
  * }}
  */
-export function deriveGoalHealth({ spec, entries }) {
+export function deriveGoalHealth({ spec, entries, lockedCurrentWindow = false }) {
   if (!spec) {
     return { status: HEALTH.UNCLASSIFIED, needsFill: false, fill: null, compliance: null };
   }
@@ -96,6 +97,10 @@ export function deriveGoalHealth({ spec, entries }) {
   const fill = fillStats(entries, cadence);
 
   if (!fill.hasData) {
+    // User finalised this window ("nothing to report") → settled, not owed.
+    if (lockedCurrentWindow) {
+      return { status: HEALTH.LOCKED, needsFill: false, fill, compliance: null };
+    }
     return { status: HEALTH.NO_DATA, needsFill: true, fill, compliance: null };
   }
 
@@ -106,6 +111,10 @@ export function deriveGoalHealth({ spec, entries }) {
   }
 
   if (!fill.filledCurrentWindow) {
+    // A lock settles the current window even when it's empty.
+    if (lockedCurrentWindow) {
+      return { status: HEALTH.LOCKED, needsFill: false, fill, compliance: null };
+    }
     // How many consecutive recent windows (including the current one) are
     // empty? Two or more = the user has skipped a whole period, not just
     // "haven't gotten to this week yet" → escalate to overdue.
@@ -200,6 +209,7 @@ export const STATUS_META = Object.freeze({
   [HEALTH.STALE]: { label: "Needs update", tone: "warn", dot: "#ea580c" },
   [HEALTH.BEHIND]: { label: "Behind target", tone: "warn", dot: "#d97706" },
   [HEALTH.ON_PACE]: { label: "On pace", tone: "ok", dot: "var(--good)" },
+  [HEALTH.LOCKED]: { label: "Finalized", tone: "muted", dot: "#9ca3af" },
 });
 
 /**

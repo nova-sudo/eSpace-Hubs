@@ -58,6 +58,7 @@ what a feature is allowed to import from.
 
 `auth` · `hubs` · `integrations` · `goal-specs` · `goal-inputs` · `goal-context`
 · `goal-tiers` · `snapshots` · `grading` · `goal-widgets` · `goal-editors`
+· `goal-locks`
 
 **Platform utilities** — infrastructure helpers with no page of their own:
 
