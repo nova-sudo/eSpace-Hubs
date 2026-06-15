@@ -152,8 +152,8 @@ windows.
   `GoalManualEditor` + `isInlineFillable()` gate which kinds fill inline
   (counter, scale, milestone, free-text, date-log, before-after, incident,
   recurring) vs link to /checkin (rubric, scorecard).
-  - *Follow-up:* the Action Queue still links to /checkin rather than filling
-    inline — card-first was the increment; queue-inline can come later.
+  - [x] *Follow-up DONE (96e854b):* Action Queue rows now fill inline too
+    (`Fill ▾`), not just link out.
 - [ ] Auto-populated values for integration-backed goals (via goal-widgets
   `useDataSource`) — also unlocks the deferred Sprint-2 item: auto-goal cards
   on the Intelligence Hub showing their live computed value + target
@@ -186,6 +186,53 @@ windows.
   goes dark (needs backend / `apps/api` work)
 - [ ] **(backlog)** Manager / team aggregate view — roll health up across a team
   (the `manager` hub is already a registry placeholder)
+
+---
+
+## Status model rethink (post-real-data review, 2026-06-15)
+
+Real goal data exposed a conceptual flaw: the hub infers everything from
+"is there an entry in the rolling window ending now?" — which can't tell apart
+three very different states:
+
+- "I haven't logged this window yet" (genuinely owed)
+- "Nothing happened this window" (legitimately empty)
+- "This is finished / done" (complete)
+
+It also conflated **data hygiene** (did you log?) with **target attainment**
+(did you hit the number?), so a 100%-complete checklist showed "Behind target"
+and landed in "Do next".
+
+### Immediate fixes ✅ SHIPPED (commit 83165f4)
+- [x] Object-valued widgets (recurring-milestone, milestone, incident,
+  before-after) no longer run through `computeCompliance` (which coerced their
+  object value to `NaN` → false "behind"). Only numeric widgets (counter,
+  scale, date-log) get target grading; the AI tier judges the rest.
+- [x] `BEHIND` removed from `NEEDS_ATTENTION` — a behind goal is filled, so it's
+  a performance SIGNAL (card chip), not a "Do next" chore.
+
+### The rethought model (to build)
+Two **independent** axes, plus explicit per-window state:
+
+1. **Fill status (data hygiene)** — per cadence window, a window is `filled`,
+   `empty`, or `locked`. Only `empty` windows drive "Do next".
+2. **Performance status (the metric)** — on filled data: on-pace / behind /
+   ahead. A signal, never an action. The AI tier sits on top for achievement.
+
+Concrete work this unlocks:
+- [ ] **(rethink) Name the missing window** — replace "2 / 4 quarters" with the
+  specific gap: "Q1, Q2 logged · Q3 (current) empty", and have "Fill" target
+  THAT window. Tells the user exactly what's owed instead of a ratio.
+- [ ] **(rethink) Lock / finalize a window** — a control to mark a window done
+  or "nothing to report", so it stops counting as owed. The user's escape hatch
+  from rolling-window nagging (the "maybe they didn't actually do it that week"
+  case). Needs a per-goal-per-window `locked` flag in goal-inputs (or a sibling
+  store) + UI on the card/check-in + status logic that treats locked-empty as
+  not-owed.
+- [ ] **(rethink) Track from goal start, not blindly N windows back** — a goal
+  tracked for 2 quarters shows "2 / 4" as if 2 were missed, but those windows
+  predate the goal. Anchor the window count to first-entry / goal-creation so
+  the denominator is honest.
 
 ---
 
