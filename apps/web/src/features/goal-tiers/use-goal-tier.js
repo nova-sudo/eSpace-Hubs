@@ -87,8 +87,8 @@ function buildCurrentData(spec, entries, reading) {
   const latest = list.length ? list[list.length - 1] : null;
 
   switch (widget) {
-    case SPEC_KINDS.MILESTONE:
-    case SPEC_KINDS.RECURRING_MILESTONE: {
+    // One-time checklist — the latest entry IS the whole picture.
+    case SPEC_KINDS.MILESTONE: {
       const items = Array.isArray(latest?.value?.items) ? latest.value.items : [];
       if (items.length === 0) return readingToText(reading);
       const done = items.filter((it) => it && it.done).length;
@@ -98,16 +98,37 @@ function buildCurrentData(spec, entries, reading) {
         .filter((it) => it && !it.done)
         .map((it) => it.label)
         .filter(Boolean);
-      const periodNote =
-        widget === SPEC_KINDS.RECURRING_MILESTONE
-          ? " in the latest tracked period"
-          : "";
       return [
-        `${done}/${total} checklist items complete${periodNote} (${pct}%)`,
+        `${done}/${total} checklist items complete (${pct}%)`,
         open.length
           ? `incomplete: ${open.slice(0, 8).join("; ")}`
           : "all items complete",
       ].join("; ");
+    }
+    // Period-resetting checklist — tiers like "all items EVERY quarter" need
+    // the WHOLE history, not just the current period. Summarise every tracked
+    // period + the streak so the grader can actually evaluate "every period".
+    case SPEC_KINDS.RECURRING_MILESTONE: {
+      const summary = recurringMilestoneSummary(list);
+      if (!summary) return readingToText(reading);
+      const perPeriod = summary.rows
+        .map(
+          (r) =>
+            `${r.pk}: ${r.done}/${r.total} ${
+              r.complete
+                ? "complete"
+                : `INCOMPLETE${r.open.length ? ` (missing: ${r.open.slice(0, 6).join(", ")})` : ""}`
+            }`,
+        )
+        .join("; ");
+      return [
+        `${summary.total} period(s) tracked — ${perPeriod}`,
+        `${summary.completeCount} of ${summary.total} period(s) fully complete`,
+        `current streak of consecutive complete periods: ${summary.streak}`,
+        summary.firstIncomplete
+          ? `earliest incomplete period: ${summary.firstIncomplete.pk} (so NOT every tracked period is complete)`
+          : "every tracked period is complete",
+      ].join(". ");
     }
     case SPEC_KINDS.COUNTER: {
       const sum = list.reduce((s, e) => s + (Number(e?.value) || 0), 0);
@@ -145,6 +166,55 @@ function buildCurrentData(spec, entries, reading) {
       // the snapshot reading is the right current-data source.
       return readingToText(reading);
   }
+}
+
+/**
+ * Aggregate a RECURRING_MILESTONE's entries across ALL periods so the grader
+ * can judge "every period" criteria + streaks — not just the latest quarter.
+ *
+ * Each toggle appends a `{ periodKey, items }` entry; entries are ts-ascending,
+ * so the LAST entry for a given periodKey is that period's current state.
+ * Returns per-period completion, count complete, the earliest incomplete
+ * period, and the current streak of consecutive complete periods (newest back).
+ */
+function recurringMilestoneSummary(entries) {
+  const list = Array.isArray(entries) ? entries : [];
+  const byPeriod = new Map();
+  for (const e of list) {
+    const pk = e?.value?.periodKey;
+    if (!pk) continue;
+    byPeriod.set(pk, e); // ts-ascending → later write wins = current state
+  }
+  if (byPeriod.size === 0) return null;
+
+  const rows = [...byPeriod.keys()]
+    .sort() // periodKeys (e.g. "2026-Q1" < "2026-Q2") sort chronologically
+    .map((pk) => {
+      const items = Array.isArray(byPeriod.get(pk)?.value?.items)
+        ? byPeriod.get(pk).value.items
+        : [];
+      const total = items.length;
+      const done = items.filter((it) => it && it.done).length;
+      const open = items
+        .filter((it) => it && !it.done)
+        .map((it) => it.label)
+        .filter(Boolean);
+      return { pk, done, total, complete: total > 0 && done === total, open };
+    });
+
+  let streak = 0;
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    if (rows[i].complete) streak += 1;
+    else break;
+  }
+
+  return {
+    rows,
+    total: rows.length,
+    completeCount: rows.filter((r) => r.complete).length,
+    firstIncomplete: rows.find((r) => !r.complete) || null,
+    streak,
+  };
 }
 
 /** Render the goal's context answers as "- prompt: answer" lines for the grader. */
