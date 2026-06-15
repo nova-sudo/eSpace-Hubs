@@ -159,8 +159,12 @@ windows.
   `AutoGoalValue` reusing goal-widgets `useDataSource`. (Check-in auto-readouts
   for these goals already existed.) CI/CD trio + rubric/scorecard fall back to
   the generic note — mapping their headlines is a small follow-up.
-- [ ] Completion progress bar
-- [ ] Gap banner → actionable one-click to grid
+- [x] Completion progress bar ✅ SHIPPED (commit 55ba775) — check-in shows
+  "X / Y goals logged this week" with a live bar (auto goals excluded), green
+  "All caught up" when done.
+- [~] Gap banner → actionable one-click to grid — banner already links to the
+  grid ("Catch up N weeks"); remaining nicety is landing on the FIRST unfilled
+  week rather than the grid top. Minor; left as polish.
 - [ ] **(backlog)** "Overdue" escalation in the Action Queue — a goal stale for
   more than one full cadence window gets a harder badge than "needs update"
 - [ ] **(backlog)** Snapshot-this-week signal in the Action Queue (tie the
