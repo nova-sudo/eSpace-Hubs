@@ -16,6 +16,7 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
+import { AnthropicBedrock } from "@anthropic-ai/bedrock-sdk";
 import { HttpError } from "../../middleware/error-handler.js";
 import { AnalysisEvents } from "./classifier/events.js";
 import {
@@ -35,26 +36,53 @@ export function isAnthropicId(id: string): boolean {
 }
 
 /**
- * Default model. Sonnet 4.6 is the chosen baseline — strong intelligence at
- * a fraction of Opus's cost, which matters because classification + grading
- * run one call per goal / per PR. Override per-deployment via ANTHROPIC_MODEL.
+ * Backend: Amazon Bedrock (AWS-managed Claude, AWS creds) vs the direct
+ * Anthropic API (a single ANTHROPIC_API_KEY). Toggle with ANTHROPIC_BEDROCK.
+ * Both speak the identical `messages.create` API — only the client and the
+ * model-id format differ.
  */
-export function anthropicModel(): string {
-  return process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
+function useBedrock(): boolean {
+  const v = (process.env.ANTHROPIC_BEDROCK || "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
 }
 
-let client: Anthropic | null = null;
+/**
+ * Default model — Sonnet 4.6, strong + cost-sane (classification + grading
+ * run one call per goal / per PR). Override via ANTHROPIC_MODEL.
+ *
+ * Bedrock model ids are region-/inference-profile-specific and carry an
+ * `anthropic.` (often `us.anthropic.…:0`) prefix, so on Bedrock you should
+ * set ANTHROPIC_MODEL to YOUR account's exact id. The default below is a
+ * best-effort starting point.
+ */
+export function anthropicModel(): string {
+  if (process.env.ANTHROPIC_MODEL) return process.env.ANTHROPIC_MODEL;
+  return useBedrock() ? "anthropic.claude-sonnet-4-6" : "claude-sonnet-4-6";
+}
 
-function getClient(): Anthropic {
+type AnyClient = Anthropic | AnthropicBedrock;
+let client: AnyClient | null = null;
+
+function getClient(): AnyClient {
+  if (client) return client;
+  if (useBedrock()) {
+    // AnthropicBedrock resolves AWS creds from the standard chain
+    // (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN, or an
+    // IAM role). Region defaults to us-east-1 if AWS_REGION is unset.
+    client = new AnthropicBedrock(
+      process.env.AWS_REGION ? { awsRegion: process.env.AWS_REGION } : {},
+    );
+    return client;
+  }
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new HttpError(
       500,
       "ai_provider_unconfigured",
-      "Claude has no API key. Set ANTHROPIC_API_KEY in apps/api/.env.local and restart.",
+      "Claude has no credentials. Set ANTHROPIC_API_KEY, or enable Bedrock with ANTHROPIC_BEDROCK=1 + AWS creds, in the API env and restart.",
     );
   }
-  if (!client) client = new Anthropic({ apiKey });
+  client = new Anthropic({ apiKey });
   return client;
 }
 
@@ -95,15 +123,19 @@ export async function anthropicComplete(
   return { content: textOf(msg.content), model: msg.model, usage: msg.usage };
 }
 
-/** Map SDK errors onto the same HttpError shape the OpenAI path uses. */
+/**
+ * Map SDK errors onto the same HttpError shape the OpenAI path uses.
+ * Duck-typed on `.status` so it works for both the direct and Bedrock
+ * SDK error classes.
+ */
 function mapSdkError(err: unknown): HttpError {
-  if (err instanceof Anthropic.APIError) {
-    const status = typeof err.status === "number" ? err.status : 502;
+  const status = (err as { status?: unknown })?.status;
+  if (typeof status === "number") {
     const rateLimited = status === 429;
     return new HttpError(
       status,
       rateLimited ? "ai_provider_rate_limited" : "ai_provider_error",
-      `Claude ${status}: ${err.message}`,
+      `Claude ${status}: ${err instanceof Error ? err.message : String(err)}`,
       undefined,
       rateLimited ? 30_000 : undefined,
     );
@@ -126,7 +158,7 @@ function mapSdkError(err: unknown): HttpError {
  */
 async function* classifyOneGoalAnthropic(
   goal: GoalForClassification,
-  c: Anthropic,
+  c: AnyClient,
   signal?: AbortSignal,
 ): AsyncGenerator<AnalysisEvent, void, unknown> {
   yield AnalysisEvents.goalStarted({

@@ -24,6 +24,7 @@
     "admin:create": "tsx scripts/admin-create.ts"
   },
   "dependencies": {
+    "@anthropic-ai/bedrock-sdk": "^0.30.2",
     "@anthropic-ai/sdk": "^0.104.1",
     "@espace-devhub/shared": "*",
     "@node-rs/argon2": "^2.0.2",
