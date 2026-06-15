@@ -168,8 +168,9 @@ windows.
 - [x] **Overdue escalation** ✅ SHIPPED (commit 7252523) — a goal dark for 2+
   consecutive windows reads "Overdue" (hard red) on card + queue; queue sorts
   most-overdue-first; narrative names it "is overdue". Via `statusDisplay()`.
-- [ ] **(backlog)** Snapshot-this-week signal in the Action Queue (tie the
-  existing `ReviewPrepChecklist` in so "capture this week's snapshot" is an action)
+- [x] **Snapshot-this-week signal** ✅ SHIPPED (commit e4ee2a4) — Action Queue
+  shows "Capture this week's snapshot → W##" when the current week has none
+  (shown even with an empty goal queue, since snapshots feed the trends).
 
 ### Sprint 4 — Clean-up + depth
 - [ ] Absorb snapshots as history tab inside BI page
