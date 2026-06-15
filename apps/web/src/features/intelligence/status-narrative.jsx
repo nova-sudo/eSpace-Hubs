@@ -3,26 +3,35 @@
 /**
  * Zone 1 of the Intelligence Hub — the status narrative.
  *
- * SPRINT 1: this renders a deterministic, rule-based sentence built from
- * the health summary counts. No model call. It is the honest baseline.
+ * The intelligence here is AI-INFORMED but deterministic: it weaves in the
+ * snapshot trend (improving/slipping) and names the single most urgent goal
+ * by name, rather than firing a per-load LLM completion (which would be slow
+ * and burn tokens on every page view). The genuinely-AI signal — the
+ * achievement-tier verdict — lives per-card via GoalTierBadge, where it's
+ * honest about which goals have actually been graded.
  *
- * SPRINT 2: the AI narrative lands HERE — same slot, same props. The plan
- * is to call the `analyst` feature with the goal-health model and stream a
- * richer paragraph, falling back to `ruleBasedNarrative()` below whenever
- * the AI provider is unconfigured or errors. Keeping the rule-based text
- * as an exported pure function means that fallback is free.
+ * `ruleBasedNarrative()` stays exported as the fallback for any future
+ * on-demand "summarise with AI" affordance.
  */
 
 import { HEALTH } from "./status";
 
+const WORST_REASON = {
+  [HEALTH.NO_DATA]: "has no data yet",
+  [HEALTH.STALE]: "has gone quiet",
+  [HEALTH.BEHIND]: "is behind target",
+};
+
 /**
- * Deterministic summary line(s) from the health summary counts.
- * Exported so Sprint 2 can use it as the AI fallback.
+ * Deterministic summary line(s) from the health model.
  *
+ * @param {object} summary  useGoalHealth().summary
+ * @param {Array}  queue    useGoalHealth().queue (severity-sorted; [0] worst)
  * @returns {{ headline: string, detail: string | null }}
  */
-export function ruleBasedNarrative(summary) {
-  const { total, onPace, auto, attention, noData, stale, behind } = summary;
+export function ruleBasedNarrative(summary, queue = []) {
+  const { total, onPace, auto, attention, noData, stale, behind, slipping } =
+    summary;
   const healthy = onPace + auto;
 
   if (total === 0) {
@@ -33,12 +42,13 @@ export function ruleBasedNarrative(summary) {
   }
 
   if (attention === 0) {
+    const base =
+      auto > 0
+        ? `${auto} run automatically from your activity; the rest are filled and meeting target.`
+        : "Everything's filled and meeting target — nothing needs you right now.";
     return {
       headline: `All ${total} tracked goals are on pace.`,
-      detail:
-        auto > 0
-          ? `${auto} run automatically from your activity; the rest are filled and meeting target.`
-          : "Everything's filled and meeting target — nothing needs you right now.",
+      detail: base + trendTail(summary),
     };
   }
 
@@ -47,14 +57,38 @@ export function ruleBasedNarrative(summary) {
       ? `${healthy} of ${total} goals are healthy — ${attention} need your attention.`
       : `${attention} of ${total} goals need your attention.`;
 
-  // Lead the detail with the most urgent bucket.
-  const parts = [];
-  if (noData > 0) parts.push(`${noData} ${noData === 1 ? "has" : "have"} no data yet`);
-  if (stale > 0) parts.push(`${stale} ${stale === 1 ? "has" : "have"} gone quiet`);
-  if (behind > 0) parts.push(`${behind} ${behind === 1 ? "is" : "are"} behind target`);
-  const detail = parts.length ? `${capitalize(parts.join(", "))}.` : null;
+  // Lead with the single most urgent goal BY NAME — concrete beats counts.
+  const worst = queue[0];
+  let detail;
+  if (worst) {
+    const why = WORST_REASON[worst.health.status] ?? "needs an update";
+    detail = `Start with “${worst.goal.title}” — it ${why}.`;
+    const tail = [];
+    if (noData > 0) tail.push(`${noData} with no data`);
+    if (stale > 0) tail.push(`${stale} gone quiet`);
+    if (behind > 0) tail.push(`${behind} behind target`);
+    if (tail.length > 1) detail += ` In all: ${tail.join(", ")}.`;
+  } else {
+    const parts = [];
+    if (noData > 0) parts.push(`${noData} ${noData === 1 ? "has" : "have"} no data yet`);
+    if (stale > 0) parts.push(`${stale} ${stale === 1 ? "has" : "have"} gone quiet`);
+    if (behind > 0) parts.push(`${behind} ${behind === 1 ? "is" : "are"} behind target`);
+    detail = parts.length ? `${capitalize(parts.join(", "))}.` : null;
+  }
 
-  return { headline, detail };
+  return { headline, detail: (detail || "") + trendTail(summary) || null };
+}
+
+/** Trailing trend clause — only when something is moving. */
+function trendTail(summary) {
+  const { improving = 0, slipping = 0 } = summary;
+  if (slipping > 0) {
+    return ` ${slipping} ${slipping === 1 ? "goal is" : "goals are"} slipping vs the last snapshot.`;
+  }
+  if (improving > 0) {
+    return ` ${improving} ${improving === 1 ? "goal is" : "goals are"} trending up.`;
+  }
+  return "";
 }
 
 function capitalize(s) {
@@ -62,10 +96,10 @@ function capitalize(s) {
 }
 
 /**
- * The rendered narrative block. `summary` is useGoalHealth().summary.
+ * The rendered narrative block. `summary` + `queue` come from useGoalHealth().
  */
-export function StatusNarrative({ summary }) {
-  const { headline, detail } = ruleBasedNarrative(summary);
+export function StatusNarrative({ summary, queue }) {
+  const { headline, detail } = ruleBasedNarrative(summary, queue);
   const tone = summary.attention > 0 ? "attention" : "calm";
 
   return (

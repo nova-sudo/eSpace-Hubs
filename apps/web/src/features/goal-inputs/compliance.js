@@ -183,6 +183,7 @@ export function computeCompliance(entries, target, cadence) {
  *   filledCurrentWindow: boolean,
  *   filledRecent: number,      // distinct recent windows with >=1 entry
  *   recentWindows: number,     // === recentN (echoed for the UI label)
+ *   windows: boolean[],        // newest→oldest, [0]=current; true = filled
  *   lastEntryTs: number | null,
  *   cadenceDays: number,       // window size actually used
  * }}
@@ -195,6 +196,7 @@ export function fillStats(entries, cadence, recentN = 4) {
       filledCurrentWindow: false,
       filledRecent: 0,
       recentWindows: recentN,
+      windows: new Array(recentN).fill(false),
       lastEntryTs: null,
       cadenceDays,
     };
@@ -203,21 +205,22 @@ export function fillStats(entries, cadence, recentN = 4) {
   const now = Date.now();
   const lastEntryTs = entries[entries.length - 1].ts;
 
-  const filledWindows = new Set();
-  let filledCurrentWindow = false;
+  // windows[i] = "did window i (i back from now) get at least one entry?"
+  // — the actual fill PATTERN, so the UI can show gaps, not just a count.
+  const windows = new Array(recentN).fill(false);
   for (const e of entries) {
     const age = now - e.ts;
     if (age < 0) continue; // future-dated entry — ignore for "recent fill"
     const widx = Math.floor(age / cadMs); // 0 = current window
-    if (widx < recentN) filledWindows.add(widx);
-    if (widx === 0) filledCurrentWindow = true;
+    if (widx < recentN) windows[widx] = true;
   }
 
   return {
     hasData: true,
-    filledCurrentWindow,
-    filledRecent: filledWindows.size,
+    filledCurrentWindow: windows[0] === true,
+    filledRecent: windows.filter(Boolean).length,
     recentWindows: recentN,
+    windows,
     lastEntryTs,
     cadenceDays,
   };

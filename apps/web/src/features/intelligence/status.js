@@ -109,6 +109,48 @@ export function deriveGoalHealth({ spec, entries }) {
 }
 
 /**
+ * Direction-of-travel for one goal, from its recent snapshot readings.
+ *
+ * Snapshots are newest-first; each carries `goalReadings[goalId]`. We take
+ * the two most recent comparable scalars (per-period `weekContribution`
+ * preferred over lifetime `cumulative`) and compare them. Crucially,
+ * "up" isn't always good — for a `<=` target (e.g. turnaround time, lower
+ * is better) a rising value is bad — so we resolve GOODNESS against the
+ * spec's target op, not the raw direction.
+ *
+ * @returns {{ dir: "up"|"down"|"flat", good: boolean|null } | null}
+ *          null when there aren't two comparable readings yet.
+ */
+export function computeTrend(snapshots, goalId, spec) {
+  if (!Array.isArray(snapshots) || !goalId) return null;
+
+  const series = [];
+  for (const s of snapshots) {
+    const r = s?.goalReadings?.[goalId];
+    if (!r) continue;
+    const raw = r.weekContribution ?? r.cumulative ?? null;
+    const v = raw == null ? null : Number(raw);
+    if (v == null || !Number.isFinite(v)) continue;
+    series.push(v);
+    if (series.length >= 2) break; // newest two is enough for a direction
+  }
+  if (series.length < 2) return null;
+
+  const [latest, prev] = series;
+  let dir = "flat";
+  if (latest > prev) dir = "up";
+  else if (latest < prev) dir = "down";
+
+  const op = (spec?.manual?.target || spec?.source?.target)?.op || null;
+  let good = null;
+  if (dir !== "flat" && op) {
+    if (op === ">=") good = dir === "up";
+    else if (op === "<=") good = dir === "down";
+  }
+  return { dir, good };
+}
+
+/**
  * Display metadata per status — label + tone token for chips. `tone` maps
  * to the Pill component's vocabulary (default/accent/solid/warn/ok/muted).
  * `dot` is a hex for the leading status dot, letting the three "attention"

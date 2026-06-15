@@ -116,6 +116,7 @@ function GroupBlock({ group, fillHref }) {
             goal={card.goal}
             spec={card.spec}
             health={card.health}
+            trend={card.trend}
             fillHref={fillHref}
           />
         ))}

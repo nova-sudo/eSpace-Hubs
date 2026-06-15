@@ -23,7 +23,13 @@ import {
   readGoalEntries,
   useAllGoalInputs,
 } from "@/features/goal-inputs";
-import { deriveGoalHealth, HEALTH, NEEDS_ATTENTION } from "./status";
+import { useSnapshots } from "@/features/snapshots";
+import {
+  computeTrend,
+  deriveGoalHealth,
+  HEALTH,
+  NEEDS_ATTENTION,
+} from "./status";
 
 // Action-Queue ordering: an untouched goal is more urgent than a stale
 // one, which is more urgent than one that's filled-but-behind.
@@ -41,6 +47,9 @@ export function useGoalHealth(groupedItems) {
   // Subscribe to the inputs store (returns a tick) AND guarantee the
   // one-shot hydration fires even if no per-goal hook is mounted.
   const inputsTick = useAllGoalInputs();
+  // Snapshots drive the per-goal trend arrow. useSnapshots subscribes +
+  // hydrates; `snapshots` is newest-first.
+  const { snapshots } = useSnapshots();
 
   return useMemo(() => {
     const groups = [];
@@ -53,6 +62,8 @@ export function useGoalHealth(groupedItems) {
       noData: 0,
       stale: 0,
       behind: 0,
+      improving: 0,
+      slipping: 0,
     };
 
     for (const group of groupedItems || []) {
@@ -60,7 +71,8 @@ export function useGoalHealth(groupedItems) {
       for (const { goal, spec } of group.items) {
         const entries = readGoalEntries(goal.id);
         const health = deriveGoalHealth({ spec, entries });
-        const card = { goal, spec, health };
+        const trend = computeTrend(snapshots, goal.id, spec);
+        const card = { goal, spec, health, trend };
         cards.push(card);
 
         summary.total += 1;
@@ -69,6 +81,8 @@ export function useGoalHealth(groupedItems) {
         if (health.status === HEALTH.NO_DATA) summary.noData += 1;
         if (health.status === HEALTH.STALE) summary.stale += 1;
         if (health.status === HEALTH.BEHIND) summary.behind += 1;
+        if (trend?.good === true) summary.improving += 1;
+        if (trend?.good === false) summary.slipping += 1;
         if (NEEDS_ATTENTION.has(health.status)) {
           summary.attention += 1;
           queue.push(card);
@@ -90,6 +104,7 @@ export function useGoalHealth(groupedItems) {
     };
     // readGoalEntries / getInputsState read live store state; inputsTick
     // changes whenever that state mutates, so it's the correct memo key.
+    // snapshots identity changes when the snapshot store updates.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupedItems, inputsTick]);
+  }, [groupedItems, inputsTick, snapshots]);
 }
