@@ -42,6 +42,23 @@ export function GoalTierBadge({ goalId, spec }) {
       </span>
     ) : null;
   }
+  // W1: no usable reading yet — defer, don't show a misleading tier.
+  if (verdict.awaiting) {
+    return (
+      <span
+        className="inline-flex shrink-0 items-center rounded-[var(--radius-pill)] px-1.5 py-px uppercase tracking-[0.3px]"
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 9,
+          color: "var(--muted-fg)",
+          border: "1px solid var(--border)",
+        }}
+        title={verdict.reasoning || "Awaiting data to grade this goal."}
+      >
+        awaiting data
+      </span>
+    );
+  }
   const color = TIER_COLOR[verdict.tier] || "var(--muted-fg)";
   const title =
     `${TIER_LABELS[verdict.tier]}` +

@@ -220,6 +220,38 @@ function validateTiers(tiers) {
   return out;
 }
 
+const TIER_SCALE_DIRECTIONS = new Set(["higher", "lower"]);
+
+/**
+ * Validate a `tierScale` block — the MACHINE-CHECKABLE numeric ladder that
+ * lets a goal be graded deterministically (compare the widget's reading to
+ * the thresholds) instead of asking an AI. Parallel to the prose `tiers`,
+ * which stay for display.
+ *
+ *   { unit, direction: "higher"|"lower", achieved, overAchieved, roleModel }
+ *
+ * `direction` = is a bigger number better? Thresholds are the value needed
+ * to REACH each tier (notAchieved is implicit = below `achieved`). Permissive:
+ * collapses to null when it isn't a usable ladder (no direction, or no
+ * `achieved` threshold) so consumers fall back to AI grading on `null`.
+ */
+function validateTierScale(scale) {
+  if (!isObject(scale)) return null;
+  const direction = TIER_SCALE_DIRECTIONS.has(scale.direction)
+    ? scale.direction
+    : null;
+  const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const achieved = num(scale.achieved);
+  if (!direction || achieved == null) return null;
+  return {
+    unit: isNonEmptyString(scale.unit) ? scale.unit.trim() : null,
+    direction,
+    achieved,
+    overAchieved: num(scale.overAchieved),
+    roleModel: num(scale.roleModel),
+  };
+}
+
 function validateDelegated(delegated, errors) {
   if (delegated == null) return null;
   if (!isObject(delegated)) {
@@ -534,6 +566,7 @@ export function validateSpec(obj) {
   const context = validateContext(obj.context, errors);
   const delegated = validateDelegated(obj.delegated, errors);
   const tiers = validateTiers(obj.tiers);
+  const tierScale = validateTierScale(obj.tierScale);
 
   if (errors.length > 0) return { ok: false, errors };
 
@@ -551,6 +584,9 @@ export function validateSpec(obj) {
     untrackable,
     scorecard,
     tiers,
+    // W1: optional numeric ladder for deterministic grading. Kept as
+    // undefined when absent so older specs serialise byte-identically.
+    ...(tierScale ? { tierScale } : {}),
     // Phase F: top-level firstReviewOnly applies to standalone
     // CODE_RUBRIC specs. Optional boolean, false-by-default — kept
     // as undefined when not set so older specs serialise identically.
@@ -586,6 +622,7 @@ export function buildSpec({
   untrackable = null,
   scorecard = null,
   tiers = null,
+  tierScale = null,
   classifiedAt = Date.now(),
 }) {
   return validateSpec({
@@ -602,6 +639,7 @@ export function buildSpec({
     untrackable,
     scorecard,
     tiers,
+    tierScale,
     classifiedAt,
   });
 }

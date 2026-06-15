@@ -132,6 +132,30 @@ export async function gradeGoalTier({
   }
 }
 
+/**
+ * Write a locally-computed verdict (a deterministic numeric grade, or the
+ * "awaiting data" state) WITHOUT an API call — same cache shape + persistence
+ * as the AI path. Idempotent: no-ops when the stored verdict for this key is
+ * already equal, so callers can safely invoke it from a render effect without
+ * looping.
+ */
+export function setGoalTierVerdict(goalId, verdict, key) {
+  load();
+  if (!goalId || !verdict || !key) return;
+  const existing = state[goalId];
+  if (
+    existing &&
+    existing.key === key &&
+    existing.tier === verdict.tier &&
+    Boolean(existing.awaiting) === Boolean(verdict.awaiting)
+  ) {
+    return; // already current — avoid a redundant notify/re-render loop
+  }
+  state = { ...state, [goalId]: { ...verdict, key } };
+  persist();
+  notify();
+}
+
 export function resetGoalTiers() {
   state = {};
   loaded = true;

@@ -22,8 +22,18 @@ import {
   getGoalTiersServerSnapshot,
   getGoalTiersSnapshot,
   readGoalTier,
+  setGoalTierVerdict,
   subscribeGoalTiers,
 } from "./goal-tier-store";
+import { gradeNumericTier, numericReadingFor } from "./grade-numeric";
+
+/** Shown when there's no usable reading yet — deferred, not "not achieved". */
+const AWAITING_VERDICT = Object.freeze({
+  tier: null,
+  awaiting: true,
+  reasoning: "Awaiting data — fill the check-in or connect the source.",
+  confidence: "low",
+});
 
 function todayStamp() {
   return new Date().toISOString().slice(0, 10);
@@ -149,41 +159,76 @@ export function useGoalTier(goalId, spec) {
   // hydration — used below to defer grading until the live data is loaded.
   const inputsHydrated = getInputsState().fetched;
   const tiers = spec?.tiers || null;
+  const tierScale = spec?.tierScale || null;
 
-  // Grade against the goal's LIVE state — the same goal-inputs the widget
-  // renders — falling back to the snapshot reading for auto widgets. This
-  // is what fixes "100% complete but graded Not-achieved / no data": the
-  // grader used to see only the snapshot reading, which is empty for
-  // recurring-milestone / incident / scorecard widgets.
+  const snapReading = useMemo(
+    () => latestReadingFor(snapshots, goalId),
+    [snapshots, goalId],
+  );
+
+  // W1: the single numeric reading the widget is graded on, when a numeric
+  // ladder (tierScale) exists. Null for qualitative widgets / no data yet.
+  const reading = useMemo(
+    () => (tierScale ? numericReadingFor(spec, entries, snapReading) : null),
+    [tierScale, spec, entries, snapReading],
+  );
+  const hasAnyData =
+    (Array.isArray(entries) && entries.length > 0) || snapReading != null;
+
+  // Prose summary the AI grader sees (qualitative fallback path only).
   const currentData = useMemo(
-    () => buildCurrentData(spec, entries, latestReadingFor(snapshots, goalId)),
-    [spec, entries, snapshots, goalId],
+    () => buildCurrentData(spec, entries, snapReading),
+    [spec, entries, snapReading],
   );
 
-  // Cache key: a new day OR changed tiers/data busts it and re-grades.
-  const key = useMemo(
-    () =>
-      tiers
-        ? `${todayStamp()}:${hashStr(JSON.stringify(tiers) + "|" + currentData)}`
-        : null,
-    [tiers, currentData],
-  );
+  // Cache key busts on a new day OR any change to what the verdict depends
+  // on: tiers, live data, the numeric ladder, and the numeric value.
+  const key = useMemo(() => {
+    if (!tiers && !tierScale) return null;
+    const basis =
+      JSON.stringify(tiers) +
+      "|" +
+      currentData +
+      "|" +
+      JSON.stringify(tierScale) +
+      "|" +
+      (reading ? String(reading.value) : "");
+    return `${todayStamp()}:${hashStr(basis)}`;
+  }, [tiers, currentData, tierScale, reading]);
 
   useEffect(() => {
-    if (!goalId || !tiers || !key) return;
-    // Defer grading until goal-inputs have hydrated. Otherwise the first
-    // render (entries=[]) grades against empty data and caches a throwaway
-    // "no data" verdict. `inputsHydrated` is a dep, so when it flips true
-    // the grade fires — even for auto widgets whose `key` didn't change.
+    if (!goalId || !key) return;
+    if (!tiers && !tierScale) return;
     if (!inputsHydrated) return;
-    void gradeGoalTier({
-      goalId,
-      goalTitle: spec?.title,
-      tiers,
-      currentData,
-      key,
-      aiProvider: getAiProvider(),
-    });
+
+    // 1. Deterministic numeric grade — compare reading to thresholds, no AI.
+    //    Instant, free, always consistent with the displayed number.
+    if (tierScale && reading) {
+      const verdict = gradeNumericTier(reading.value, tierScale);
+      if (verdict) {
+        setGoalTierVerdict(goalId, verdict, key);
+        return;
+      }
+    }
+    // 2. Nothing usable to grade yet → "awaiting data" (don't spend an AI
+    //    call grading emptiness, which is what produced "can't rank").
+    if (!hasAnyData || (tierScale && !reading && !tiers)) {
+      setGoalTierVerdict(goalId, AWAITING_VERDICT, key);
+      return;
+    }
+    // 3. Qualitative widget (or a spec without a numeric ladder) → AI grader.
+    if (tiers) {
+      void gradeGoalTier({
+        goalId,
+        goalTitle: spec?.title,
+        tiers,
+        currentData,
+        key,
+        aiProvider: getAiProvider(),
+      });
+    } else {
+      setGoalTierVerdict(goalId, AWAITING_VERDICT, key);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goalId, key, inputsHydrated]);
 
@@ -191,10 +236,10 @@ export function useGoalTier(goalId, spec) {
   const verdict = stored && stored.key === key ? stored : null;
 
   return {
-    hasTiers: !!tiers,
+    hasTiers: !!(tiers || tierScale),
     tiers,
     verdict,
-    loading: !!tiers && !verdict,
+    loading: !!(tiers || tierScale) && !verdict,
     regrade: () =>
       gradeGoalTier({
         goalId,
