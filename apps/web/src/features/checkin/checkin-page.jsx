@@ -25,14 +25,14 @@ import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import { Save, AlertTriangle, ArrowRight, LayoutGrid } from "lucide-react";
 import { useGoals } from "@/features/goals";
-import { useGoalSpecs } from "@/features/goal-specs";
+import { useGoalSpecs, SPEC_KIND_META, SPEC_VARIANTS } from "@/features/goal-specs";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
 import {
   useCombinedEventsSince,
   useCombinedMergedSince,
   useJiraTickets,
 } from "@/features/integrations";
-import { readInputs } from "@/features/goal-inputs";
+import { readInputs, readGoalEntries, useAllGoalInputs } from "@/features/goal-inputs";
 import {
   readSnapshots,
   synthesiseWeek,
@@ -69,6 +69,33 @@ export function CheckinPage() {
   // Count completed weeks BEFORE the active one that have no snapshot.
   // Drives the gap banner. Cheap — both inputs change rarely.
   const gapCount = useUnfilledWeeksBefore(activeLabel);
+
+  // "How done is this week?" — manual goals with an entry inside the active
+  // week window, over all manual goals. Auto goals are excluded (nothing to
+  // hand-fill). Subscribes to the inputs store so it climbs live as the
+  // user fills rows.
+  const inputsTick = useAllGoalInputs();
+  const completion = useMemo(() => {
+    const s = range.start.getTime();
+    const e = range.end.getTime();
+    let total = 0;
+    let filled = 0;
+    for (const group of groupedItems) {
+      for (const item of group.items) {
+        if (item.goal.kind === "L1") continue;
+        if (SPEC_KIND_META[item.spec.widget]?.variant === SPEC_VARIANTS.AUTO) {
+          continue; // auto-tracked — no manual entry expected
+        }
+        total += 1;
+        const hit = readGoalEntries(item.goal.id).some(
+          (en) => en.ts >= s && en.ts < e,
+        );
+        if (hit) filled += 1;
+      }
+    }
+    return { total, filled };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupedItems, range, inputsTick]);
 
   const params = useParams();
   const hubId = params?.hub || "dev";
@@ -180,6 +207,8 @@ export function CheckinPage() {
         </div>
       </div>
 
+      <CompletionBar filled={completion.filled} total={completion.total} label={activeLabel} />
+
       {gapCount > 0 && (
         <GapBanner count={gapCount} hubId={hubId} />
       )}
@@ -242,6 +271,36 @@ function L1Group({ group, children }) {
       </header>
       <div className="flex flex-col gap-2">{children}</div>
     </section>
+  );
+}
+
+function CompletionBar({ filled, total, label }) {
+  if (total === 0) return null; // all-auto week — nothing to hand-fill
+  const pct = Math.round((filled / total) * 100);
+  const done = filled >= total;
+  return (
+    <div className="flex flex-col gap-1.5 rounded-md border border-border bg-bg px-3 py-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[12px] font-medium text-fg">
+          {done ? `All caught up for ${label}` : `Logged this week`}
+        </span>
+        <span
+          className="text-[10px] tabular-nums text-muted-fg"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          {filled} / {total} goals
+        </span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-[rgba(0,0,0,0.08)]">
+        <div
+          className="h-full rounded-full transition-[width] duration-300"
+          style={{
+            width: `${pct}%`,
+            background: done ? "var(--good)" : "var(--accent)",
+          }}
+        />
+      </div>
+    </div>
   );
 }
 
