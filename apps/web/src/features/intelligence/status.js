@@ -106,7 +106,18 @@ export function deriveGoalHealth({ spec, entries }) {
   }
 
   if (!fill.filledCurrentWindow) {
-    return { status: HEALTH.STALE, needsFill: true, fill, compliance: null };
+    // How many consecutive recent windows (including the current one) are
+    // empty? Two or more = the user has skipped a whole period, not just
+    // "haven't gotten to this week yet" → escalate to overdue.
+    const missedWindows = leadingEmpty(fill.windows);
+    return {
+      status: HEALTH.STALE,
+      needsFill: true,
+      overdue: missedWindows >= 2,
+      missedWindows,
+      fill,
+      compliance: null,
+    };
   }
 
   // Filled this window — is it hitting the number? Only for NUMERIC widgets
@@ -121,6 +132,17 @@ export function deriveGoalHealth({ spec, entries }) {
   }
 
   return { status: HEALTH.ON_PACE, needsFill: false, fill, compliance };
+}
+
+/** Count leading empty windows (newest→oldest) — how long it's gone dark. */
+function leadingEmpty(windows) {
+  if (!Array.isArray(windows)) return 0;
+  let n = 0;
+  for (const filled of windows) {
+    if (filled) break;
+    n += 1;
+  }
+  return n;
 }
 
 /**
@@ -179,3 +201,15 @@ export const STATUS_META = Object.freeze({
   [HEALTH.BEHIND]: { label: "Behind target", tone: "warn", dot: "#d97706" },
   [HEALTH.ON_PACE]: { label: "On pace", tone: "ok", dot: "var(--good)" },
 });
+
+/**
+ * The chip to show for a card's health — STATUS_META, but escalated to a
+ * harder "Overdue" when a stale goal has gone dark for 2+ windows. One
+ * place so cards and the Action Queue stay in sync.
+ */
+export function statusDisplay(health) {
+  if (health?.overdue) {
+    return { label: "Overdue", tone: "warn", dot: "#b91c1c" };
+  }
+  return STATUS_META[health?.status] ?? STATUS_META[HEALTH.NO_DATA];
+}

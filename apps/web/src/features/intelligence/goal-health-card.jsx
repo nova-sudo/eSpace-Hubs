@@ -27,7 +27,7 @@ import { GoalTierBadge } from "@/features/goal-tiers";
 import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
 import { cn } from "@/lib/cn";
 import { AutoGoalValue } from "./auto-value";
-import { HEALTH, STATUS_META } from "./status";
+import { HEALTH, statusDisplay } from "./status";
 
 function relAgo(ts) {
   if (!ts) return "—";
@@ -39,7 +39,7 @@ function relAgo(ts) {
 
 export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
   const [open, setOpen] = useState(false);
-  const meta = STATUS_META[health.status] ?? STATUS_META[HEALTH.NO_DATA];
+  const meta = statusDisplay(health);
   const kindLabel = SPEC_KIND_META[spec?.widget]?.label ?? "Goal";
   const fill = health.fill;
   const cadence = spec?.manual?.cadence ?? null;

@@ -13,4 +13,10 @@ export { GoalHealthGrid } from "./goal-health-grid";
 export { GoalHealthCard } from "./goal-health-card";
 export { ActionQueue } from "./action-queue";
 export { useGoalHealth } from "./use-goal-health";
-export { deriveGoalHealth, HEALTH, NEEDS_ATTENTION, STATUS_META } from "./status";
+export {
+  deriveGoalHealth,
+  HEALTH,
+  NEEDS_ATTENTION,
+  STATUS_META,
+  statusDisplay,
+} from "./status";

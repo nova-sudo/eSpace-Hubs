@@ -61,7 +61,9 @@ export function ruleBasedNarrative(summary, queue = []) {
   const worst = queue[0];
   let detail;
   if (worst) {
-    const why = WORST_REASON[worst.health.status] ?? "needs an update";
+    const why = worst.health.overdue
+      ? "is overdue"
+      : (WORST_REASON[worst.health.status] ?? "needs an update");
     detail = `Start with “${worst.goal.title}” — it ${why}.`;
     const tail = [];
     if (noData > 0) tail.push(`${noData} with no data`);

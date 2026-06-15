@@ -18,7 +18,7 @@ import Link from "next/link";
 import { MonoLabel } from "@/components/ui";
 import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
 import { resolveCompletedWorkWeek } from "@/lib/date";
-import { STATUS_META } from "./status";
+import { statusDisplay } from "./status";
 
 const MAX_ROWS = 6;
 
@@ -50,7 +50,7 @@ export function ActionQueue({ queue, fillHref }) {
 
       <ul className="flex flex-col divide-y divide-border">
         {rows.map((card) => {
-          const meta = STATUS_META[card.health.status];
+          const meta = statusDisplay(card.health);
           const canInline = isInlineFillable(card.spec?.widget) && !!week;
           const isOpen = openId === card.goal.id;
           return (

@@ -91,10 +91,13 @@ export function useGoalHealth(groupedItems) {
       if (cards.length > 0) groups.push({ l1: group.l1, cards });
     }
 
-    queue.sort(
-      (a, b) =>
-        (SEVERITY[a.health.status] ?? 9) - (SEVERITY[b.health.status] ?? 9),
-    );
+    queue.sort((a, b) => {
+      const sev =
+        (SEVERITY[a.health.status] ?? 9) - (SEVERITY[b.health.status] ?? 9);
+      if (sev !== 0) return sev;
+      // Same status → the one that's gone dark longer comes first.
+      return (b.health.missedWindows ?? 0) - (a.health.missedWindows ?? 0);
+    });
 
     return {
       ready: getInputsState().fetched,
