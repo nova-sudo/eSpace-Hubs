@@ -144,26 +144,16 @@ windows.
   goals are graded eagerly.
 
 ### Sprint 3 — Check-in enhancement + inline fill
-- [ ] **(backlog, HEADLINE) Inline fill from the hub** — let users fill a
-  not-met / unfilled goal *on the spot* instead of bouncing to `/checkin`.
-  Today the card + Action Queue "Fill now →" just navigates away; that's a
-  context switch for what's often a one-number entry. Instead, "Fill now"
-  expands the right editor inline (or in a lightweight drawer/popover) scoped
-  to the current cadence window, writes to `goal-inputs` on input (the editors
-  already do this), and the card's status/fill-strip updates live without a
-  page change.
-  - *Architecture decision needed first:* the editors (`editors.jsx`,
-    `goal-row.jsx`, `code-rubric-row.jsx`) live in `features/checkin`, a
-    sibling PRODUCT surface — `intelligence` can't import them directly
-    (product→product is banned). Options: (a) promote the editor set into a
-    shared domain (e.g. `goal-widgets` or a new `goal-editors` slice) and have
-    BOTH checkin and intelligence consume it — cleanest, removes the
-    duplication risk; or (b) intelligence opens a small modal that renders the
-    existing check-in row for one goal via a thin shared wrapper. Prefer (a).
-  - Scope guard: start with the simple manual editors (counter, scale,
-    free-text, date-log) inline; defer the heavy ones (scorecard, code-rubric,
-    recurring-milestone) to "opens the full check-in" until the shared editor
-    module proves out.
+- [x] **HEADLINE: Inline fill from the hub** ✅ SHIPPED (commit cd96abe) —
+  "Fill now ▾" on a card expands the right editor inline (scoped to the most-
+  recent completed work week), writes to goal-inputs immediately, card updates
+  live. Took architecture option (a): new shared domain `features/goal-editors`
+  (editors git-moved out of check-in; both surfaces consume the barrel).
+  `GoalManualEditor` + `isInlineFillable()` gate which kinds fill inline
+  (counter, scale, milestone, free-text, date-log, before-after, incident,
+  recurring) vs link to /checkin (rubric, scorecard).
+  - *Follow-up:* the Action Queue still links to /checkin rather than filling
+    inline — card-first was the increment; queue-inline can come later.
 - [ ] Auto-populated values for integration-backed goals (via goal-widgets
   `useDataSource`) — also unlocks the deferred Sprint-2 item: auto-goal cards
   on the Intelligence Hub showing their live computed value + target
