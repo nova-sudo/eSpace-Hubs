@@ -144,15 +144,18 @@ recurring-milestone). Gaps worth filling:
 
 ## Sprint plan
 
-### Sprint W1 — Close the grading loop (fixes Issue 1, highest value)
-- [ ] Add machine-checkable `threshold {op,value}` to each tier in the spec
-  schema; classifier emits it; validator enforces for numeric widgets.
-- [ ] Deterministic tier grader for numeric ladders (compare reading vs
-  thresholds) — bypass the AI call.
-- [ ] Structured reading object replacing `buildCurrentData`'s string.
-- [ ] "Awaiting data" tier state (defer grading when no usable reading) wired
-  into `GoalTierBadge` / hub card.
-- [ ] Feed `goal-context` answers into the AI grader for qualitative widgets.
+### Sprint W1 — Close the grading loop ✅ SHIPPED (03e1bb2 + b198742)
+- [x] `tierScale` numeric ladder on the spec (validator) — `{unit, direction,
+  achieved, overAchieved, roleModel}`, parallel to the prose `tiers`.
+- [x] Deterministic numeric grader (`grade-numeric.js`: gradeNumericTier +
+  numericReadingFor) — compares reading vs thresholds, no AI call.
+- [x] `useGoalTier` grades deterministic-first; "awaiting data" state when no
+  usable reading (no longer grades emptiness); AI grader only for qualitative.
+  `setGoalTierVerdict` writes local verdicts; `GoalTierBadge` shows awaiting.
+- [x] Classifier emits `tierScale` for numeric widgets (prompt + candidate).
+- [x] goal-context answers folded into the AI grader's currentData.
+- [ ] *(follow-up)* widen the OpenAI `SPEC_RESPONSE_SCHEMA` (strict json_schema)
+  to allow `tierScale` so Mistral/GLM emit it too (Bedrock/direct already do).
 
 ### Sprint W2 — Conversational context (fixes Issue 2)
 - [ ] Multi-step wizard collector + new kinds (`resource_link`, `file`, `examples`).
