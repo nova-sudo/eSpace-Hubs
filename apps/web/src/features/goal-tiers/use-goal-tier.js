@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useSnapshots } from "@/features/snapshots";
 import { useGoalInputs, getInputsState } from "@/features/goal-inputs";
+import { useGoalContext } from "@/features/goal-context";
 import { SPEC_KINDS } from "@/features/goal-specs";
 import { getAiProvider } from "@/features/analyst";
 import {
@@ -146,6 +147,24 @@ function buildCurrentData(spec, entries, reading) {
   }
 }
 
+/** Render the goal's context answers as "- prompt: answer" lines for the grader. */
+function contextToText(spec, answers) {
+  const questions = spec?.context?.questions || [];
+  if (questions.length === 0 || !answers || typeof answers !== "object") {
+    return "";
+  }
+  const lines = [];
+  for (const q of questions) {
+    const a = answers[q.id];
+    if (a == null) continue;
+    const text = Array.isArray(a)
+      ? a.map((s) => String(s).trim()).filter(Boolean).join("; ")
+      : String(a).trim();
+    if (text) lines.push(`- ${q.prompt}: ${text}`);
+  }
+  return lines.join("\n");
+}
+
 export function useGoalTier(goalId, spec) {
   // Re-render when a verdict lands in the store.
   useSyncExternalStore(
@@ -175,11 +194,18 @@ export function useGoalTier(goalId, spec) {
   const hasAnyData =
     (Array.isArray(entries) && entries.length > 0) || snapReading != null;
 
+  // The user's own definitions (context answers) — fed into the AI grader
+  // so it judges qualitative goals against the user's truth, not a guess.
+  const { answers: contextAnswers } = useGoalContext(goalId);
+
   // Prose summary the AI grader sees (qualitative fallback path only).
-  const currentData = useMemo(
-    () => buildCurrentData(spec, entries, snapReading),
-    [spec, entries, snapReading],
-  );
+  const currentData = useMemo(() => {
+    const base = buildCurrentData(spec, entries, snapReading);
+    const ctx = contextToText(spec, contextAnswers);
+    return ctx
+      ? `${base}\n\nUser's definitions (authoritative):\n${ctx}`
+      : base;
+  }, [spec, entries, snapReading, contextAnswers]);
 
   // Cache key busts on a new day OR any change to what the verdict depends
   // on: tiers, live data, the numeric ladder, and the numeric value.
