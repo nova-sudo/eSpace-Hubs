@@ -118,7 +118,7 @@ export type PasswordResetInput = z.infer<typeof passwordResetSchema>;
  * controller merges it over the stored prefs. `lastReviewDate` accepts
  * "" to clear it.
  */
-const aiProviderId = z.enum(["mistral", "glm", "openrouter"]);
+const aiProviderId = z.enum(["anthropic", "mistral", "glm", "openrouter"]);
 export const prefsSchema = z
   .object({
     aiProvider: aiProviderId.optional(),

@@ -225,7 +225,7 @@ export interface User {
    * (the user edits these about themselves via PATCH /auth/me).
    * Readers apply defaults so pre-C7 rows (missing/null) keep working.
    *   aiProvider     — chat/classify/grade model provider id
-   *                    ("mistral" | "glm" | "openrouter")
+   *                    ("anthropic" | "mistral" | "glm" | "openrouter")
    *   lastReviewDate — ISO date of the user's last formal review,
    *                    driving the "Since review" date-range preset.
    *                    "" / absent = unset.
