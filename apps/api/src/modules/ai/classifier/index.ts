@@ -14,7 +14,8 @@
  */
 
 import type { Request } from "express";
-import { selectProvider } from "../provider.js";
+import { resolveRequestedId, selectProvider } from "../provider.js";
+import { createAnthropicClassifier, isAnthropicId } from "../anthropic.js";
 import {
   createMistralClassifier,
   type ClassifierPort,
@@ -49,15 +50,11 @@ interface CreateDefaultOpts {
 export function createDefaultClassifier(
   opts: CreateDefaultOpts = {},
 ): ClassifierPort {
-  const provider = selectProvider({
+  const selectInput = {
     ...(opts.request ? { request: opts.request } : {}),
     bodyProvider: opts.bodyProvider ?? null,
-  });
-  if (!provider.apiKey) {
-    throw new Error(
-      `${provider.label} has no API key. Set ${provider.keyEnv} in apps/api/.env.local and restart.`,
-    );
-  }
+  };
+
   const concurrencyEnv = Number(
     process.env.GOAL_CLASSIFIER_CONCURRENCY,
   );
@@ -65,6 +62,20 @@ export function createDefaultClassifier(
     Number.isFinite(concurrencyEnv) && concurrencyEnv > 0
       ? concurrencyEnv
       : 3;
+
+  // Claude uses its own SDK path, not the OpenAI-compatible classifier.
+  // getClient() inside throws the missing-key HttpError, which the
+  // controller catches and surfaces as a 500 just like the OpenAI branch.
+  if (isAnthropicId(resolveRequestedId(selectInput))) {
+    return createAnthropicClassifier(concurrency);
+  }
+
+  const provider = selectProvider(selectInput);
+  if (!provider.apiKey) {
+    throw new Error(
+      `${provider.label} has no API key. Set ${provider.keyEnv} in apps/api/.env.local and restart.`,
+    );
+  }
   return createMistralClassifier({
     apiKey: provider.apiKey,
     url: provider.url,

@@ -29,8 +29,8 @@
 import { apiPatch } from "@/lib/api-client";
 import { getSession, subscribeSession } from "@/features/auth/session-store";
 
-const DEFAULTS = Object.freeze({ aiProvider: "mistral", lastReviewDate: "" });
-const VALID_PROVIDERS = new Set(["mistral", "glm", "openrouter"]);
+const DEFAULTS = Object.freeze({ aiProvider: "anthropic", lastReviewDate: "" });
+const VALID_PROVIDERS = new Set(["anthropic", "mistral", "glm", "openrouter"]);
 
 // Legacy localStorage keys (pre-C7). Read once for migrate-up, then
 // dropped. Kept in sync with clear-user-storage.js's allowlist.

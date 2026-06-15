@@ -24,6 +24,7 @@
     "admin:create": "tsx scripts/admin-create.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.1",
     "@espace-devhub/shared": "*",
     "@node-rs/argon2": "^2.0.2",
     "@types/cookie": "^0.6.0",

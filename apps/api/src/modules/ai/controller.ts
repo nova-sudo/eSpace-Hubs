@@ -19,8 +19,24 @@ import {
   retryAfterMsFromHeaders,
 } from "../../lib/rate-limit.js";
 import { HttpError } from "../../middleware/error-handler.js";
-import { selectProvider } from "./provider.js";
+import { resolveRequestedId, selectProvider } from "./provider.js";
+import { anthropicComplete, isAnthropicId } from "./anthropic.js";
 import { chatSchema, gradePrSchema, gradeGoalTierSchema } from "./schemas.js";
+
+/** Parse a model's JSON reply, tolerating stray prose / markdown fences
+ *  (the OpenAI path uses json_object mode; Claude relies on the prompt). */
+function parseJsonLoose(content: string): unknown {
+  try {
+    return JSON.parse(content);
+  } catch {
+    const first = content.indexOf("{");
+    const last = content.lastIndexOf("}");
+    if (first !== -1 && last > first) {
+      return JSON.parse(content.slice(first, last + 1));
+    }
+    throw new Error("no JSON object in response");
+  }
+}
 
 const COMMENT_CHAR_LIMIT = 12_000;
 const PR_BODY_CHAR_LIMIT = 4_000;
@@ -206,6 +222,24 @@ export async function chatHandler(
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
     const payload = chatSchema.parse(req.body);
+
+    // Claude (native SDK) branch — system goes in its own param, not the
+    // message list.
+    if (isAnthropicId(resolveRequestedId({ request: req, bodyProvider: payload.provider ?? null }))) {
+      const r = await anthropicComplete({
+        system: CHAT_SYSTEM_PROMPT,
+        messages: payload.messages,
+        maxTokens: 4096,
+      });
+      res.json({
+        content: r.content,
+        model: r.model,
+        provider: "anthropic",
+        usage: r.usage,
+      });
+      return;
+    }
+
     const provider = selectProvider({
       request: req,
       bodyProvider: payload.provider ?? null,
@@ -246,33 +280,55 @@ export async function gradePrHandler(
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
     const payload = gradePrSchema.parse(req.body);
-    const provider = selectProvider({
-      request: req,
-      bodyProvider: payload.provider ?? null,
-    });
-
     const userPrompt = buildGraderUserPrompt(payload.pr, payload.rubric);
 
-    const upstream = await callProvider(provider, {
-      model: provider.model,
-      temperature: 0.1,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: GRADER_SYSTEM_PROMPT },
-        { role: "user", content: userPrompt },
-      ],
-    });
+    let content: string;
+    let modelName: string | undefined;
+    let usage: unknown;
+    let providerId: string;
+    let providerLabel: string;
 
-    const data = upstream.data as CompletionResponse;
-    const content = data.choices?.[0]?.message?.content ?? "";
+    if (isAnthropicId(resolveRequestedId({ request: req, bodyProvider: payload.provider ?? null }))) {
+      const r = await anthropicComplete({
+        system: GRADER_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userPrompt }],
+        maxTokens: 2048,
+      });
+      content = r.content;
+      modelName = r.model;
+      usage = r.usage;
+      providerId = "anthropic";
+      providerLabel = "Claude";
+    } else {
+      const provider = selectProvider({
+        request: req,
+        bodyProvider: payload.provider ?? null,
+      });
+      const upstream = await callProvider(provider, {
+        model: provider.model,
+        temperature: 0.1,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: GRADER_SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+        ],
+      });
+      const data = upstream.data as CompletionResponse;
+      content = data.choices?.[0]?.message?.content ?? "";
+      modelName = data.model;
+      usage = data.usage;
+      providerId = provider.id;
+      providerLabel = provider.label;
+    }
+
     let parsed: { pass?: unknown; reasoning?: unknown; violations?: unknown };
     try {
-      parsed = JSON.parse(content);
+      parsed = parseJsonLoose(content) as typeof parsed;
     } catch {
       throw new HttpError(
         502,
         "ai_provider_bad_response",
-        `${provider.label} returned non-JSON content: ${content.slice(0, 200)}`,
+        `${providerLabel} returned non-JSON content: ${content.slice(0, 200)}`,
       );
     }
 
@@ -295,16 +351,16 @@ export async function gradePrHandler(
         prId: String(payload.pr.id),
         rubricLen: payload.rubric.length,
         pass: verdict.pass,
-        provider: provider.id,
+        provider: providerId,
       },
       "[ai] graded pr",
     );
 
     res.json({
       verdict,
-      model: data.model,
-      provider: provider.id,
-      usage: data.usage,
+      model: modelName,
+      provider: providerId,
+      usage,
     });
   } catch (err) {
     next(err);
@@ -391,37 +447,56 @@ export async function gradeGoalTierHandler(
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
     const payload = gradeGoalTierSchema.parse(req.body);
-    const provider = selectProvider({
-      request: req,
-      bodyProvider: payload.provider ?? null,
-    });
-
     const userPrompt = buildTierUserPrompt(
       payload.goalTitle,
       payload.tiers,
       payload.currentData,
     );
 
-    const upstream = await callProvider(provider, {
-      model: provider.model,
-      temperature: 0.1,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: GOAL_TIER_SYSTEM_PROMPT },
-        { role: "user", content: userPrompt },
-      ],
-    });
+    let content: string;
+    let modelName: string | undefined;
+    let providerId: string;
+    let providerLabel: string;
 
-    const data = upstream.data as CompletionResponse;
-    const content = data.choices?.[0]?.message?.content ?? "";
+    if (isAnthropicId(resolveRequestedId({ request: req, bodyProvider: payload.provider ?? null }))) {
+      const r = await anthropicComplete({
+        system: GOAL_TIER_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userPrompt }],
+        maxTokens: 1024,
+      });
+      content = r.content;
+      modelName = r.model;
+      providerId = "anthropic";
+      providerLabel = "Claude";
+    } else {
+      const provider = selectProvider({
+        request: req,
+        bodyProvider: payload.provider ?? null,
+      });
+      const upstream = await callProvider(provider, {
+        model: provider.model,
+        temperature: 0.1,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: GOAL_TIER_SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+        ],
+      });
+      const data = upstream.data as CompletionResponse;
+      content = data.choices?.[0]?.message?.content ?? "";
+      modelName = data.model;
+      providerId = provider.id;
+      providerLabel = provider.label;
+    }
+
     let parsed: { tier?: unknown; reasoning?: unknown; confidence?: unknown };
     try {
-      parsed = JSON.parse(content);
+      parsed = parseJsonLoose(content) as typeof parsed;
     } catch {
       throw new HttpError(
         502,
         "ai_provider_bad_response",
-        `${provider.label} returned non-JSON content: ${content.slice(0, 200)}`,
+        `${providerLabel} returned non-JSON content: ${content.slice(0, 200)}`,
       );
     }
 
@@ -439,7 +514,7 @@ export async function gradeGoalTierHandler(
           : "low",
     };
 
-    res.json({ verdict, model: data.model, provider: provider.id });
+    res.json({ verdict, model: modelName, provider: providerId });
   } catch (err) {
     next(err);
   }

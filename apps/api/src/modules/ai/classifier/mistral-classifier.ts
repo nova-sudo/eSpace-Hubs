@@ -637,7 +637,7 @@ function buildSystemPrompt(): string {
   ].join("\n");
 }
 
-const SYSTEM_PROMPT = buildSystemPrompt();
+export const SYSTEM_PROMPT = buildSystemPrompt();
 
 /**
  * Fallback scorecard used when the model picks `widget: "SCORECARD"`
@@ -672,7 +672,7 @@ function seedDefaultScorecard() {
   };
 }
 
-function buildUserPrompt(goal: GoalForClassification): string {
+export function buildUserPrompt(goal: GoalForClassification): string {
   const lines = [
     `Goal ID: ${goal.id}`,
     `Goal kind: ${goal.kind}`,
@@ -874,15 +874,29 @@ async function* classifyOneGoal(
     return;
   }
 
+  yield specEventFromBuffer(goal, jsonBuffer);
+}
+
+/**
+ * Turn a model's raw JSON-buffer output into a terminal AnalysisEvent —
+ * GOAL_CLASSIFIED on a valid spec, GOAL_FAILED otherwise. Shared by the
+ * OpenAI-compatible streamer above AND the native Anthropic classifier
+ * (anthropic.ts), so the parse → candidate → validate → emit logic has
+ * exactly one home. Defensive about stray prose/markdown fences around
+ * the JSON, which non-JSON-mode models (Anthropic) can wrap it in.
+ */
+export function specEventFromBuffer(
+  goal: GoalForClassification,
+  jsonBuffer: string,
+): AnalysisEvent {
   let parsedSpec: unknown;
   try {
-    parsedSpec = JSON.parse(jsonBuffer.trim());
+    parsedSpec = JSON.parse(extractJsonObject(jsonBuffer));
   } catch (err) {
-    yield AnalysisEvents.goalFailed({
+    return AnalysisEvents.goalFailed({
       goalId: goal.id,
       error: `Invalid JSON from classifier: ${err instanceof Error ? err.message : String(err)}`,
     });
-    return;
   }
 
   // The model returns the spec body without the goalId/title — caller
@@ -899,30 +913,11 @@ async function* classifyOneGoal(
     context: obj.context ?? null,
     delegated: obj.delegated ?? null,
     untrackable: obj.untrackable ?? null,
-    // Phase E: thread the scorecard block through. Without this, a
-    // model that correctly emits `widget: "SCORECARD"` + a valid
-    // scorecard payload still fails validation because the candidate
-    // object drops the block before validateSpec sees it.
     scorecard: obj.scorecard ?? null,
-    // Phase G: the four AI-gradeable achievement tiers (see prompt +
-    // shared validator). Distilled by the classifier from the goal's
-    // rubric; the goal-tier grader (Phase 2) scores the dev against them.
     tiers: obj.tiers ?? null,
-    // Phase F: top-level firstReviewOnly for standalone CODE_RUBRIC.
-    // Component-level firstReviewOnly lives inside scorecard.components
-    // and is threaded by the shared validator.
     firstReviewOnly: obj.firstReviewOnly === true,
     classifiedAt: Date.now(),
   };
-  // Safety net for SCORECARD: when the model picks the widget but
-  // omits / nullifies the scorecard block (a real failure mode —
-  // strict JSON Schema allows `"scorecard": null` because the field
-  // is nullable in the schema, but the validator rejects null for
-  // SCORECARD widgets), seed a default 2-component scorecard so the
-  // classification doesn't fail outright. The user finishes the
-  // components in the Review pane. We also reset top-level
-  // source/manual to null because SCORECARD forbids them; without
-  // this the validator rejects on a different rule.
   if (candidate.widget === "SCORECARD" && !candidate.scorecard) {
     candidate.scorecard = seedDefaultScorecard();
     candidate.source = null;
@@ -931,16 +926,26 @@ async function* classifyOneGoal(
   }
   const result = validateSpec(candidate);
   if (!result.ok) {
-    yield AnalysisEvents.goalFailed({
+    return AnalysisEvents.goalFailed({
       goalId: goal.id,
       error: `Spec failed validation: ${result.errors.join("; ")}`,
     });
-    return;
   }
-  yield AnalysisEvents.goalClassified({
-    goalId: goal.id,
-    spec: result.spec,
-  });
+  return AnalysisEvents.goalClassified({ goalId: goal.id, spec: result.spec });
+}
+
+/**
+ * Pull the JSON object out of a model response. JSON-mode providers
+ * return clean JSON; others may wrap it in ```json fences or a sentence.
+ * We slice from the first `{` to the last `}` — good enough for the
+ * single-object specs the classifier emits.
+ */
+function extractJsonObject(raw: string): string {
+  const s = raw.trim();
+  const first = s.indexOf("{");
+  const last = s.lastIndexOf("}");
+  if (first === -1 || last === -1 || last < first) return s;
+  return s.slice(first, last + 1);
 }
 
 // ─── factory ─────────────────────────────────────────────────────────

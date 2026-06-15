@@ -108,16 +108,24 @@ interface SelectInput {
   bodyProvider?: string | null;
 }
 
-export function selectProvider(opts: SelectInput = {}): ResolvedProvider {
+/**
+ * Resolve the requested provider id (header → body → env → default),
+ * lower-cased. Exported so non-OpenAI providers (Anthropic, which uses
+ * its own SDK rather than the OpenAI-compatible `selectProvider` path)
+ * can branch on the same resolution before `selectProvider` runs.
+ */
+export function resolveRequestedId(opts: SelectInput = {}): string {
   const headerHint = opts.request?.header?.("x-ai-provider");
   const bodyHint =
     typeof opts.bodyProvider === "string" ? opts.bodyProvider : null;
   const envHint = process.env.AI_PROVIDER;
-  const requested = String(
-    headerHint || bodyHint || envHint || DEFAULT_PROVIDER_ID,
-  )
+  return String(headerHint || bodyHint || envHint || DEFAULT_PROVIDER_ID)
     .trim()
     .toLowerCase();
+}
+
+export function selectProvider(opts: SelectInput = {}): ResolvedProvider {
+  const requested = resolveRequestedId(opts);
 
   const provider =
     PROVIDERS[requested] ||
