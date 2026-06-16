@@ -188,6 +188,10 @@ export const CONTEXT_QUESTION_KINDS = Object.freeze([
   "list",
   "number",
   "select",
+  // W2: a list of resource URLs (Jira filter, Confluence page, repo,
+  // example PRs/tickets) the classifier asks for to build a better widget.
+  // Stored + serialised like "list"; rendered as link inputs.
+  "resource_link",
 ]);
 
 export const DELEGATED_JUDGES = Object.freeze(["manager", "senior", "peer"]);

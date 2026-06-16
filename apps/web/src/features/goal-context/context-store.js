@@ -124,7 +124,8 @@ export function isContextComplete(spec) {
 
 function hasAnswer(value, kind) {
   if (value == null) return false;
-  if (kind === "list") return Array.isArray(value) && value.length > 0;
+  if (kind === "list" || kind === "resource_link")
+    return Array.isArray(value) && value.length > 0;
   if (kind === "number")
     return typeof value === "number" && !Number.isNaN(value);
   if (typeof value === "string") return value.trim().length > 0;

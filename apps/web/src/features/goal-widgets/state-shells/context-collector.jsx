@@ -45,6 +45,13 @@ export function ContextCollector({
   // new widget.
   const [busy, setBusy] = useState(false);
   const [reclassifyError, setReclassifyError] = useState(null);
+  // W2: walk the questions one at a time instead of one big form, so the
+  // collector reads like a short interview. Single-question goals collapse
+  // to one step.
+  const [step, setStep] = useState(0);
+  const lastStep = Math.max(0, questions.length - 1);
+  const activeStep = Math.min(step, lastStep);
+  const onLastStep = activeStep >= lastStep;
 
   function update(id, value) {
     setDraft((d) => ({ ...d, [id]: value }));
@@ -101,12 +108,15 @@ export function ContextCollector({
         className="flex h-full flex-col gap-3"
         onSubmit={(e) => {
           e.preventDefault();
-          // When a reclassify path is wired (dashboard GoalWidget), saving
-          // your answers ALSO re-runs the classifier so the freshly-defined
-          // truths actually re-scope the spec/tiers — that's what "save"
-          // means here, and it's the whole point of answering. Without a
-          // reclassify path (e.g. the Review pane), just persist and hand
-          // control back so the real widget takes the slot.
+          // Wizard: advance to the next question until the last, then submit.
+          if (!onLastStep) {
+            commit(); // persist what's typed so far
+            setStep(activeStep + 1);
+            return;
+          }
+          // Final step. With a reclassify path wired, saving re-runs the
+          // classifier so the freshly-defined truths re-scope the spec/tiers.
+          // Without one (Review pane), just persist and hand control back.
           if (onReclassify) {
             void handleReclassify();
           } else {
@@ -116,6 +126,7 @@ export function ContextCollector({
         }}
       >
         <div
+          className="flex items-center justify-between gap-2"
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 10.5,
@@ -123,20 +134,24 @@ export function ContextCollector({
             lineHeight: 1.45,
           }}
         >
-          This goal refers to concepts only you (or your team) can define.
-          Answer once; the widget will activate after that.
+          <span>Define before tracking</span>
+          {questions.length > 1 ? (
+            <span style={{ opacity: 0.8 }}>
+              {activeStep + 1} / {questions.length}
+            </span>
+          ) : null}
         </div>
         <div className="flex flex-1 flex-col gap-2.5 overflow-y-auto pr-1">
-          {questions.map((q) => (
+          {questions[activeStep] ? (
             <QuestionField
-              key={q.id}
-              question={q}
-              value={draft[q.id]}
-              onChange={(v) => update(q.id, v)}
+              key={questions[activeStep].id}
+              question={questions[activeStep]}
+              value={draft[questions[activeStep].id]}
+              onChange={(v) => update(questions[activeStep].id, v)}
               onBlur={commit}
               variant={variant}
             />
-          ))}
+          ) : null}
         </div>
         {reclassifyError ? (
           <div
@@ -151,6 +166,21 @@ export function ContextCollector({
           </div>
         ) : null}
         <div className="flex flex-wrap items-center gap-2">
+          {activeStep > 0 ? (
+            <button
+              type="button"
+              onClick={() => setStep(activeStep - 1)}
+              disabled={busy}
+              className="uppercase tracking-[0.5px]"
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 10,
+                color: variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)",
+              }}
+            >
+              ← Back
+            </button>
+          ) : null}
           <button
             type="submit"
             disabled={busy}
@@ -172,11 +202,13 @@ export function ContextCollector({
                 : undefined
             }
           >
-            {onReclassify
-              ? busy
-                ? "Saving & re-analyzing…"
-                : "Save & re-analyze"
-              : "Save answers"}
+            {!onLastStep
+              ? "Next →"
+              : onReclassify
+                ? busy
+                  ? "Saving & re-analyzing…"
+                  : "Save & re-analyze"
+                : "Save answers"}
           </button>
         </div>
       </form>
@@ -208,7 +240,7 @@ function buildAnswerPairs(questions, normalizedAnswers) {
 
 function serializeAnswer(value, kind) {
   if (value == null) return "";
-  if (kind === "list") {
+  if (kind === "list" || kind === "resource_link") {
     return Array.isArray(value)
       ? value.map((s) => String(s).trim()).filter(Boolean).join("\n")
       : "";
@@ -278,6 +310,18 @@ function QuestionField({ question: q, value, onChange, onBlur, variant }) {
           onBlur={onBlur}
           style={{ ...inputStyle, resize: "vertical" }}
         />
+      ) : q.kind === "resource_link" ? (
+        <textarea
+          rows={3}
+          value={Array.isArray(value) ? value.join("\n") : typeof value === "string" ? value : ""}
+          placeholder={
+            q.placeholder ||
+            "One link per line — Jira filter, runbook/Confluence, repo, example PRs…"
+          }
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
+          style={{ ...inputStyle, resize: "vertical" }}
+        />
       ) : q.kind === "select" ? (
         <select
           value={typeof value === "string" ? value : ""}
@@ -312,7 +356,7 @@ function normalizeAnswers(questions, draft) {
   const out = {};
   for (const q of questions) {
     const raw = draft[q.id];
-    if (q.kind === "list") {
+    if (q.kind === "list" || q.kind === "resource_link") {
       // Accept either the stored array or a textarea string.
       const items = Array.isArray(raw)
         ? raw
