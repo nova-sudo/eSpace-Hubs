@@ -8,7 +8,7 @@
  */
 
 import { useState } from "react";
-import { saveSpec } from "@/features/goal-specs";
+import { updateSpecTiers } from "@/features/goal-specs";
 import { useGoalTier, TIER_ORDER, TIER_LABELS, TIER_FIELD } from "./use-goal-tier";
 
 const TIER_COLOR = {
@@ -123,10 +123,13 @@ export function GoalTierLadder({ spec, variant = "light" }) {
           className="uppercase tracking-[0.5px]"
           style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: muted }}
         >
-          Achievement tier{loading && !verdict ? " · grading…" : ""}
+          Achievement tier
+          {spec?.tiersLocked ? " · 🔒" : ""}
+          {loading && !verdict ? " · grading…" : ""}
         </span>
         {/* The criteria belong to the goal owner — let them correct what the
-            AI extracted. Editing re-grades against the new criteria. */}
+            AI extracted. Editing re-grades against the new criteria; saving
+            locks them so re-analysis won't overwrite. */}
         <button
           type="button"
           onClick={() => setEditing(true)}
@@ -137,7 +140,11 @@ export function GoalTierLadder({ spec, variant = "light" }) {
             color: muted,
             opacity: 0.8,
           }}
-          title="Edit the achievement-tier criteria for this goal"
+          title={
+            spec?.tiersLocked
+              ? "Criteria locked — re-analysis won't overwrite. Click to edit or unlock."
+              : "Edit the achievement-tier criteria for this goal"
+          }
         >
           edit
         </button>
@@ -232,18 +239,31 @@ function TierEditor({ spec, tiers, variant, onClose }) {
     roleModel: tiers.roleModel || "",
   }));
   const [saving, setSaving] = useState(false);
+  const locked = spec?.tiersLocked === true;
 
-  function save() {
-    setSaving(true);
-    const next = {
+  function draftTiers() {
+    return {
       notAchieved: draft.notAchieved.trim() || null,
       achieved: draft.achieved.trim() || null,
       overAchieved: draft.overAchieved.trim() || null,
       roleModel: draft.roleModel.trim() || null,
     };
-    // Spread the existing (valid) spec so only the criteria change; the
-    // validator keeps it valid and the store re-grades on the new tiers.
-    saveSpec({ ...spec, tiers: next });
+  }
+
+  // Save + LOCK: the user owns these criteria now, so re-analysis won't
+  // overwrite them. Updates the spec → the goal re-grades on the new tiers.
+  function save() {
+    setSaving(true);
+    updateSpecTiers(spec.goalId, draftTiers(), true);
+    setSaving(false);
+    onClose?.();
+  }
+
+  // Drop the lock so a future re-analysis may regenerate the criteria
+  // (keeps the current edits as the spec's tiers until then).
+  function unlock() {
+    setSaving(true);
+    updateSpecTiers(spec.goalId, draftTiers(), false);
     setSaving(false);
     onClose?.();
   }
@@ -257,7 +277,7 @@ function TierEditor({ spec, tiers, variant, onClose }) {
         className="mb-1.5 uppercase tracking-[0.5px]"
         style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: muted }}
       >
-        Edit achievement-tier criteria
+        Edit achievement-tier criteria{locked ? " · 🔒 locked" : ""}
       </div>
       <div className="flex flex-col gap-1.5">
         {TIER_ORDER.map((t) => {
@@ -314,8 +334,24 @@ function TierEditor({ spec, tiers, variant, onClose }) {
             opacity: saving ? 0.6 : 1,
           }}
         >
-          {saving ? "Saving…" : "Save criteria"}
+          {saving ? "Saving…" : "Save & lock"}
         </button>
+        {locked ? (
+          <button
+            type="button"
+            onClick={unlock}
+            disabled={saving}
+            className="uppercase tracking-[0.5px]"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              color: muted,
+            }}
+            title="Allow re-analysis to regenerate these criteria"
+          >
+            Unlock
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onClose}

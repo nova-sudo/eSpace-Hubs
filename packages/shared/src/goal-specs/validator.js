@@ -587,6 +587,10 @@ export function validateSpec(obj) {
     // W1: optional numeric ladder for deterministic grading. Kept as
     // undefined when absent so older specs serialise byte-identically.
     ...(tierScale ? { tierScale } : {}),
+    // User-locked tiers: when true, the user has edited the criteria and
+    // re-analysis must not overwrite them. Stored only when true (absence
+    // = unlocked), so unlocking is just dropping the flag.
+    ...(obj.tiersLocked === true ? { tiersLocked: true } : {}),
     // Phase F: top-level firstReviewOnly applies to standalone
     // CODE_RUBRIC specs. Optional boolean, false-by-default — kept
     // as undefined when not set so older specs serialise identically.
@@ -623,6 +627,7 @@ export function buildSpec({
   scorecard = null,
   tiers = null,
   tierScale = null,
+  tiersLocked = false,
   classifiedAt = Date.now(),
 }) {
   return validateSpec({
@@ -640,6 +645,7 @@ export function buildSpec({
     scorecard,
     tiers,
     tierScale,
+    tiersLocked,
     classifiedAt,
   });
 }

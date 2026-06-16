@@ -50,6 +50,7 @@ export {
   removeSpec,
   replaceSpecs,
   saveSpec,
+  updateSpecTiers,
   SPECS_CHANGE_EVENT,
   SPECS_STORAGE_KEY,
 } from "./specs-store";

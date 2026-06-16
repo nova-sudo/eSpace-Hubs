@@ -176,9 +176,39 @@ export async function fetchSpecs() {
  * so a locally-accepted spec passes server validation.
  */
 export function saveSpec(spec) {
-  const res = validateSpec(spec);
+  // Locked tiers are the user's contract — a re-analysis (or any external
+  // save) must NOT overwrite them. When the stored spec is locked, carry its
+  // tiers/ladder + the lock flag onto the incoming spec before validating.
+  // (Explicit tier edits go through `updateSpecTiers`, which bypasses this.)
+  let input = spec;
+  const existing = spec?.goalId ? state.specs[spec.goalId] : null;
+  if (existing?.tiersLocked === true) {
+    input = {
+      ...spec,
+      tiers: existing.tiers,
+      tierScale: existing.tierScale,
+      tiersLocked: true,
+    };
+  }
+  const res = validateSpec(input);
   if (!res.ok) return res;
   const goalId = res.spec.goalId;
+  setState({ specs: { ...state.specs, [goalId]: res.spec }, error: null });
+  void putSpecRemote(goalId, res.spec);
+  return res;
+}
+
+/**
+ * Set a goal's achievement-tier criteria (the tier editor's save path).
+ * `locked` true marks the criteria as user-owned so re-analysis preserves
+ * them; false drops the lock (next re-analysis may regenerate). Bypasses
+ * saveSpec's preserve guard because this IS the explicit user edit.
+ */
+export function updateSpecTiers(goalId, tiers, locked) {
+  const existing = goalId ? state.specs[goalId] : null;
+  if (!existing) return { ok: false, errors: ["no spec for goal"] };
+  const res = validateSpec({ ...existing, tiers, tiersLocked: locked === true });
+  if (!res.ok) return res;
   setState({ specs: { ...state.specs, [goalId]: res.spec }, error: null });
   void putSpecRemote(goalId, res.spec);
   return res;
