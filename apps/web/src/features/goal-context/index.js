@@ -24,3 +24,7 @@ export {
   clearContextFor,
   isContextComplete,
 } from "./context-store";
+export {
+  resolveMilestoneItems,
+  collectListAnswers,
+} from "./milestone-items";

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { WidgetShell } from "../widget-shell";
 import { useGoalInputs } from "@/features/goal-inputs";
-import { useGoalContext } from "@/features/goal-context";
+import { useGoalContext, resolveMilestoneItems } from "@/features/goal-context";
 
 /**
  * Milestone checklist.
@@ -26,8 +26,12 @@ import { useGoalContext } from "@/features/goal-context";
 export function MilestoneWidget({ spec, goal, variant = "light", className, onRetry }) {
   const { entries, latest, append } = useGoalInputs(goal?.id);
   const { answers: contextAnswers } = useGoalContext(goal?.id);
+  // One-time milestone: an emptied list re-seeds from the latest truths.
   const items = useMemo(
-    () => resolveItems(latest, spec, contextAnswers),
+    () =>
+      resolveMilestoneItems(latest?.value?.items, spec, contextAnswers, {
+        reseedOnEmpty: true,
+      }),
     [latest, spec, contextAnswers],
   );
   const done = items.filter((i) => i.done).length;
@@ -225,78 +229,4 @@ export function MilestoneWidget({ spec, goal, variant = "light", className, onRe
       </div>
     </WidgetShell>
   );
-}
-
-function resolveItems(latestEntry, spec, contextAnswers) {
-  // 1) User-owned list wins — anything the user has actually edited.
-  const existing = latestEntry?.value?.items;
-  if (Array.isArray(existing) && existing.length > 0) return existing;
-
-  // 2) Otherwise, seed from the user's context list-answers (the user
-  //    just defined "what counts" via the ContextCollector).
-  const contextItems = collectListAnswers(spec, contextAnswers);
-  if (contextItems.length > 0) {
-    return contextItems.map((label, i) => ({
-      id: `ctx-${i}`,
-      label,
-      done: false,
-    }));
-  }
-
-  // 3) Final fallback — AI-pre-seeded items in the spec itself.
-  const seed = spec.manual?.items || [];
-  return seed.map((label, i) => ({
-    id: `seed-${i}`,
-    label,
-    done: false,
-  }));
-}
-
-/**
- * Pull every list-shaped or text-shaped context answer from a goal's
- * context and flatten the collected strings into a single de-duped
- * array, preserving question order.
- *
- * Accepts both:
- *   - `kind: "list"`  → answer is already string[]; flatten + dedupe.
- *   - `kind: "text"`  → answer is a single string; split on newlines so
- *                       a user who pasted multi-line milestones into a
- *                       single-line input (because the AI emitted
- *                       `kind: "text"` instead of `kind: "list"` for a
- *                       milestone-style question) still gets their
- *                       items materialised. Single-line text answers
- *                       become a one-item list.
- *
- * Why widen to `text`: the classifier occasionally picks `kind: "text"`
- * for "What are your X milestones?" style questions even though it
- * should pick `"list"`. Before this widening, the saved answer was
- * silently dropped by the widget (rendered as an empty checklist) and
- * the user saw "Save did nothing". Being defensive here matches the
- * permissive-on-shape stance the rest of the spec layer takes.
- *
- * Why dedupe: the user's two questions may share an item ("Documented
- * milestones" mentioned in both), and we don't want it to appear twice
- * in the checklist.
- */
-function collectListAnswers(spec, answers) {
-  if (!spec?.context?.questions || !answers) return [];
-  const seen = new Set();
-  const out = [];
-  for (const q of spec.context.questions) {
-    if (q.kind !== "list" && q.kind !== "text") continue;
-    const raw = answers[q.id];
-    const items =
-      Array.isArray(raw)
-        ? raw
-        : typeof raw === "string"
-          ? raw.split(/\r?\n/)
-          : [];
-    for (const r of items) {
-      const label = typeof r === "string" ? r.trim() : "";
-      if (!label || seen.has(label)) continue;
-      seen.add(label);
-      out.push(label);
-    }
-  }
-  return out;
 }

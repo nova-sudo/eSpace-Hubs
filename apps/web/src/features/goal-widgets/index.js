@@ -23,3 +23,9 @@ export {
   WeeklyCompareTable,
 } from "./weekly-compare-table";
 export { ComplianceLine } from "./compliance-line";
+export {
+  goalReadiness,
+  isGoalReady,
+  readinessLabel,
+  GOAL_READINESS,
+} from "./readiness";

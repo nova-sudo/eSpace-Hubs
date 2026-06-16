@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { WidgetShell } from "../widget-shell";
 import { useGoalInputs } from "@/features/goal-inputs";
-import { useGoalContext } from "@/features/goal-context";
+import { useGoalContext, resolveMilestoneItems } from "@/features/goal-context";
 
 /**
  * Recurring milestone — a milestone checklist that RESETS each
@@ -57,11 +57,11 @@ export function RecurringMilestoneWidget({
     [entries, nowPeriodKey],
   );
 
-  // The active items list: current period's entry wins; else seed
-  // from context answers (the user just defined "what to track" via
-  // the ContextCollector); else fall back to spec.manual.items.
+  // The active items list: current period's entry wins (even when empty —
+  // an emptied period stays empty); else seed from context answers (the user
+  // just defined "what to track"); else fall back to spec.manual.items.
   const items = useMemo(
-    () => resolveItems(currentEntry, spec, contextAnswers),
+    () => resolveMilestoneItems(currentEntry?.value?.items, spec, contextAnswers),
     [currentEntry, spec, contextAnswers],
   );
 
@@ -304,71 +304,6 @@ function cadenceNoun(cadence, n) {
     default:
       return `period${plural}`;
   }
-}
-
-/**
- * Choose the items array to render this period.
- *
- * Priority:
- *   1. Current period's entry (if the user has interacted this period).
- *   2. Context answers — the user's `kind: "list"` (or `kind: "text"`,
- *      split on newlines) answers from the ContextCollector. This is
- *      the "I just defined what counts" path; matches MilestoneWidget.
- *   3. AI-pre-seeded items in `spec.manual.items` — older specs that
- *      didn't go through context collection.
- *
- * The seed copy is fresh per period — earlier periods that DIDN'T
- * tick any items left an empty entry; that doesn't poison the
- * current period.
- */
-function resolveItems(currentEntry, spec, contextAnswers) {
-  if (currentEntry?.value?.items) {
-    return currentEntry.value.items;
-  }
-  const contextItems = collectListAnswers(spec, contextAnswers);
-  if (contextItems.length > 0) {
-    return contextItems.map((label, i) => ({
-      id: `ctx-${i}`,
-      label,
-      done: false,
-    }));
-  }
-  const seed = spec.manual?.items || [];
-  return seed.map((label, i) => ({
-    id: `seed-${i}`,
-    label,
-    done: false,
-  }));
-}
-
-/**
- * Same widened list/text collector MilestoneWidget uses — see its
- * collectListAnswers for the rationale. Duplicated here on purpose:
- * the two widgets are independent and importing across widget files
- * would couple them in a way the registry/architecture deliberately
- * avoids.
- */
-function collectListAnswers(spec, answers) {
-  if (!spec?.context?.questions || !answers) return [];
-  const seen = new Set();
-  const out = [];
-  for (const q of spec.context.questions) {
-    if (q.kind !== "list" && q.kind !== "text") continue;
-    const raw = answers[q.id];
-    const items =
-      Array.isArray(raw)
-        ? raw
-        : typeof raw === "string"
-          ? raw.split(/\r?\n/)
-          : [];
-    for (const r of items) {
-      const label = typeof r === "string" ? r.trim() : "";
-      if (!label || seen.has(label)) continue;
-      seen.add(label);
-      out.push(label);
-    }
-  }
-  return out;
 }
 
 /**

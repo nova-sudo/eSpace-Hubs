@@ -30,6 +30,7 @@
 import { useMemo, useState } from "react";
 import { Minus, Plus, Check } from "lucide-react";
 import { useGoalInputs } from "@/features/goal-inputs";
+import { useGoalContext, resolveMilestoneItems } from "@/features/goal-context";
 import { midWeekTs } from "@/lib/date";
 import { cn } from "@/lib/cn";
 
@@ -118,23 +119,18 @@ export function ScaleEditor({ goal, weekStart, weekEnd, activeLabel }) {
 
 export function MilestoneEditor({ goal, spec, weekStart, weekEnd, activeLabel }) {
   const { entries, append } = useGoalInputs(goal?.id);
-  // The widget stores the WHOLE checklist as one entry's value. We take
-  // the latest entry (up to and including this week) as the current
-  // state, then write a new entry on every toggle.
+  const { answers: contextAnswers } = useGoalContext(goal?.id);
+  // Resolve the SAME way the Goals-page MilestoneWidget does (shared resolver:
+  // edited entry → context answers → AI seed) so the two surfaces never show
+  // different lists. We bound to this week's snapshot for historical accuracy;
+  // for the live (current) week the latest entry is the same one Goals reads.
   const items = useMemo(() => {
     const upToWeek = entries.filter((e) => e.ts <= weekEnd.getTime());
     const latest = upToWeek[upToWeek.length - 1];
-    const stored = Array.isArray(latest?.value?.items) ? latest.value.items : null;
-    if (stored) return stored;
-    // First-time-this-goal: seed from the spec's manual.items (the
-    // classifier's authoritative list).
-    const seed = Array.isArray(spec.manual?.items) ? spec.manual.items : [];
-    return seed.map((it) => ({
-      id: it.id || slugify(it.label || it),
-      label: it.label || it,
-      done: false,
-    }));
-  }, [entries, weekEnd, spec.manual?.items]);
+    return resolveMilestoneItems(latest?.value?.items, spec, contextAnswers, {
+      reseedOnEmpty: true,
+    });
+  }, [entries, weekEnd, spec, contextAnswers]);
 
   const toggle = (id) => {
     const ts = midWeekTs(activeLabel);
@@ -517,6 +513,7 @@ export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel 
  */
 export function RecurringMilestoneEditor({ goal, spec, activeLabel }) {
   const { entries, append } = useGoalInputs(goal?.id);
+  const { answers: contextAnswers } = useGoalContext(goal?.id);
   const cadence = spec.manual?.cadence || "quarterly";
 
   // Resolve the active week's period key (e.g. "2026-Q2"). All weeks
@@ -526,22 +523,16 @@ export function RecurringMilestoneEditor({ goal, spec, activeLabel }) {
     return ts == null ? "all" : periodKeyFor(ts, cadence);
   }, [activeLabel, cadence]);
 
-  // Latest entry whose periodKey matches the active period.
+  // Resolve identically to the Goals-page RecurringMilestoneWidget (shared
+  // resolver: this period's entry → context answers → AI seed) so check-in and
+  // Goals never disagree. An emptied period stays empty (no reseedOnEmpty).
   const items = useMemo(() => {
     const matching = (entries || []).filter(
       (e) => e?.value?.periodKey === activePeriodKey,
     );
     const latest = matching[matching.length - 1];
-    const stored = Array.isArray(latest?.value?.items) ? latest.value.items : null;
-    if (stored) return stored;
-    // First time we see this period — seed from spec.manual.items.
-    const seed = Array.isArray(spec.manual?.items) ? spec.manual.items : [];
-    return seed.map((it) => ({
-      id: it.id || slugify(it.label || it),
-      label: it.label || it,
-      done: false,
-    }));
-  }, [entries, activePeriodKey, spec.manual?.items]);
+    return resolveMilestoneItems(latest?.value?.items, spec, contextAnswers);
+  }, [entries, activePeriodKey, spec, contextAnswers]);
 
   const done = items.filter((i) => i.done).length;
   const total = items.length;
@@ -729,13 +720,6 @@ function formatNumber(n) {
   if (Math.abs(n) >= 1000) return n.toLocaleString();
   if (Number.isInteger(n)) return String(n);
   return n.toFixed(2).replace(/\.?0+$/, "");
-}
-
-function slugify(s) {
-  return String(s || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
 }
 
 /**

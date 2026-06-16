@@ -30,9 +30,12 @@
 
 import { SPEC_KINDS, SPEC_KIND_META, SPEC_VARIANTS } from "@/features/goal-specs";
 import { computeCompliance, fillStats } from "@/features/goal-inputs";
+import { goalReadiness, GOAL_READINESS } from "@/features/goal-widgets";
 
 export const HEALTH = Object.freeze({
   UNCLASSIFIED: "unclassified",
+  NEEDS_SETUP: "needs_setup", // classified but not ready: context unanswered,
+  //                             untrackable, or delegated — can't be filled yet
   AUTO: "auto",
   NO_DATA: "no_data",
   STALE: "stale",
@@ -79,9 +82,31 @@ const NUMERIC_MANUAL_KINDS = Object.freeze(
  *   compliance: object | null,  // computeCompliance() output when a target exists
  * }}
  */
-export function deriveGoalHealth({ spec, entries, lockedCurrentWindow = false }) {
+export function deriveGoalHealth({
+  spec,
+  entries,
+  lockedCurrentWindow = false,
+  contextComplete = false,
+}) {
   if (!spec) {
     return { status: HEALTH.UNCLASSIFIED, needsFill: false, fill: null, compliance: null };
+  }
+
+  // Readiness gate — the SAME gate the hub widget and check-in obey. A goal
+  // that still needs setup (context unanswered) or is untrackable/delegated
+  // can't be filled or graded, so it must not read as NO_DATA ("you owe a
+  // fill") — that's the bug where check-in offered a fillable milestone for a
+  // goal whose context questions weren't answered. It gets its own status and
+  // is excluded from the fill/attention math.
+  const readiness = goalReadiness(spec, contextComplete);
+  if (readiness !== GOAL_READINESS.READY) {
+    return {
+      status: HEALTH.NEEDS_SETUP,
+      readiness,
+      needsFill: false,
+      fill: null,
+      compliance: null,
+    };
   }
 
   const variant = SPEC_KIND_META[spec.widget]?.variant ?? null;
@@ -204,6 +229,7 @@ export function computeTrend(snapshots, goalId, spec) {
  */
 export const STATUS_META = Object.freeze({
   [HEALTH.UNCLASSIFIED]: { label: "Not classified", tone: "muted", dot: "#9ca3af" },
+  [HEALTH.NEEDS_SETUP]: { label: "Needs setup", tone: "muted", dot: "#a855f7" },
   [HEALTH.AUTO]: { label: "Auto-tracked", tone: "accent", dot: "var(--accent)" },
   [HEALTH.NO_DATA]: { label: "No data", tone: "warn", dot: "#dc2626" },
   [HEALTH.STALE]: { label: "Needs update", tone: "warn", dot: "#ea580c" },

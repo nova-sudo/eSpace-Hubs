@@ -26,6 +26,8 @@ import { cadenceWindowLabel } from "@/features/goal-inputs";
 import { GoalTierBadge } from "@/features/goal-tiers";
 import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
 import { currentWindowKey, setLock } from "@/features/goal-locks";
+import { GOAL_READINESS, readinessLabel } from "@/features/goal-widgets";
+import { useHubLink } from "@/features/hubs";
 import { cn } from "@/lib/cn";
 import { AutoGoalValue } from "./auto-value";
 import { HEALTH, statusDisplay } from "./status";
@@ -40,16 +42,21 @@ function relAgo(ts) {
 
 export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
   const [open, setOpen] = useState(false);
+  const hubLink = useHubLink();
   const meta = statusDisplay(health);
   const kindLabel = SPEC_KIND_META[spec?.widget]?.label ?? "Goal";
   const fill = health.fill;
   const cadence = spec?.manual?.cadence ?? null;
   const windowKey = currentWindowKey(cadence);
 
+  // G1 — a not-ready goal can't be filled or graded. Show a setup affordance
+  // pointing back to Goals (where context is answered) instead of any fill UI.
+  const needsSetup = health.status === HEALTH.NEEDS_SETUP;
+
   // Can we fill this goal right here? Needs a fill, an inline-capable
   // editor for its widget kind, and a resolved week to write against.
   const canInline =
-    health.needsFill && isInlineFillable(spec?.widget) && !!week;
+    !needsSetup && health.needsFill && isInlineFillable(spec?.widget) && !!week;
 
   return (
     <div
@@ -84,8 +91,15 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
         </div>
       </div>
 
-      {/* Body: live auto value (auto) or fill-rate strip (manual) */}
-      {health.status === HEALTH.AUTO ? (
+      {/* Body: setup hint (not ready) · live auto value (auto) · fill strip */}
+      {needsSetup ? (
+        <div
+          className="text-[11px] text-muted-fg/80"
+          style={{ lineHeight: 1.4 }}
+        >
+          {readinessLabel(health.readiness)}
+        </div>
+      ) : health.status === HEALTH.AUTO ? (
         <AutoGoalValue spec={spec} />
       ) : (
         <div className="flex flex-col gap-1.5">
@@ -100,16 +114,29 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
           className="text-[10px] uppercase tracking-[0.4px] text-muted-fg/70"
           style={{ fontFamily: "var(--font-mono)" }}
         >
-          {/* Auto goals aren't hand-logged — no "last logged" line for them. */}
-          {health.status === HEALTH.AUTO
+          {/* Auto goals aren't hand-logged — no "last logged" line for them;
+              setup-pending goals have no log history yet either. */}
+          {health.status === HEALTH.AUTO || needsSetup
             ? ""
             : fill?.lastEntryTs
               ? `last logged ${relAgo(fill.lastEntryTs)}`
               : "never logged"}
         </span>
         <div className="flex items-center gap-2.5">
+          {/* Not ready → the only action is to go finish setup in Goals. */}
+          {needsSetup ? (
+            <Link
+              href={hubLink("/goals")}
+              className="text-[11px] font-semibold text-accent hover:underline"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              {health.readiness === GOAL_READINESS.NEEDS_CONTEXT
+                ? "Finish setup →"
+                : "View in Goals →"}
+            </Link>
+          ) : null}
           {/* Lock controls — settle a window the user can't / won't fill. */}
-          {health.status === HEALTH.LOCKED ? (
+          {!needsSetup && health.status === HEALTH.LOCKED ? (
             <button
               type="button"
               onClick={() => setLock(goal?.id, windowKey, false)}

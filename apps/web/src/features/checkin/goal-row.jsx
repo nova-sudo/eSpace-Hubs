@@ -16,7 +16,11 @@
  */
 
 import { useEffect, useMemo } from "react";
+import Link from "next/link";
 import { SPEC_KINDS } from "@/features/goal-specs";
+import { useIsContextComplete } from "@/features/goal-context";
+import { goalReadiness, readinessLabel, GOAL_READINESS } from "@/features/goal-widgets";
+import { useHubLink } from "@/features/hubs";
 import {
   avgReviewerComments,
   firstPassRatePct,
@@ -68,6 +72,28 @@ export function GoalRow({
   tickets,
 }) {
   const widget = spec.widget;
+
+  // G1 — readiness gate. The hub (goal-widget.jsx) walks these same states
+  // before it renders a fillable widget; check-in MUST obey the same gate so
+  // a goal can't be data-entered here while it still says "finish setup" on
+  // the Goals page (the bug: a milestone was fillable in check-in before its
+  // context questions were answered, then the two surfaces disagreed).
+  // Hooks run unconditionally and before any early return; readiness only
+  // flips on a stable spec property, so hook order stays consistent per goal.
+  const contextComplete = useIsContextComplete(spec);
+  const hubLink = useHubLink();
+  const readiness = goalReadiness(spec, contextComplete);
+  if (readiness !== GOAL_READINESS.READY) {
+    return (
+      <SetupNeededRow
+        goal={goal}
+        spec={spec}
+        widget={widget}
+        readiness={readiness}
+        href={hubLink("/goals")}
+      />
+    );
+  }
 
   // SCORECARD goals expand into ONE banner row + N child rows, one per
   // sub-component. Each child renders a regular GoalRow with the
@@ -175,6 +201,45 @@ export function GoalRow({
     <div className="flex items-start justify-between gap-4 rounded-md border border-border bg-bg/40 px-3 py-2.5">
       {titleBlock}
       <div className="min-w-0 shrink-0">{editor}</div>
+    </div>
+  );
+}
+
+/**
+ * G1 — the row a not-ready goal shows in check-in INSTEAD of a fillable
+ * editor. No inputs here on purpose: you can't log progress against a goal
+ * that isn't fully set up, and pretending otherwise is exactly the bug we're
+ * fixing. Links back to Goals where the readiness state is resolved (answer
+ * context questions, mark trackable, etc.). DELEGATED/UNTRACKABLE goals also
+ * land here — they're informational, with no setup to finish.
+ */
+function SetupNeededRow({ goal, spec, widget, readiness, href }) {
+  const actionable = readiness === GOAL_READINESS.NEEDS_CONTEXT;
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-md border border-dashed border-border bg-bg/20 px-3 py-2.5">
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <span
+            className="shrink-0 rounded-[3px] border border-border px-1 py-px text-[9px] uppercase tracking-[0.6px] text-muted-fg"
+            style={{ fontFamily: "var(--font-mono)" }}
+          >
+            {kindLabel(widget)}
+          </span>
+          <div className="truncate text-[13px] font-medium text-muted-fg">
+            {goal?.title || spec?.title || "Untitled"}
+          </div>
+        </div>
+        <div className="text-[11px] text-muted-fg/80">
+          {readinessLabel(readiness)}
+        </div>
+      </div>
+      <Link
+        href={href}
+        className="shrink-0 self-center rounded-[3px] border border-border px-2 py-1 text-[10px] uppercase tracking-[0.5px] text-fg/80 transition-colors hover:bg-card-alt"
+        style={{ fontFamily: "var(--font-mono)" }}
+      >
+        {actionable ? "Finish setup →" : "View in Goals →"}
+      </Link>
     </div>
   );
 }

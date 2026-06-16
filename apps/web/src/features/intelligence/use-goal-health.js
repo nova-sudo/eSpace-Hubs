@@ -25,6 +25,7 @@ import {
 } from "@/features/goal-inputs";
 import { useSnapshots } from "@/features/snapshots";
 import { isLocked, currentWindowKey, useGoalLocks } from "@/features/goal-locks";
+import { isContextComplete, useAllGoalContext } from "@/features/goal-context";
 import {
   computeTrend,
   deriveGoalHealth,
@@ -53,6 +54,9 @@ export function useGoalHealth(groupedItems) {
   const { snapshots } = useSnapshots();
   // Window locks settle "owed" status. Subscribe so a lock/unlock re-derives.
   const locksTick = useGoalLocks();
+  // Context completeness drives the readiness gate. Subscribe + hydrate so a
+  // card flips out of "Needs setup" the instant its questions are answered.
+  const contextTick = useAllGoalContext();
 
   return useMemo(() => {
     const groups = [];
@@ -65,6 +69,7 @@ export function useGoalHealth(groupedItems) {
       noData: 0,
       stale: 0,
       behind: 0,
+      setup: 0,
       improving: 0,
       slipping: 0,
     };
@@ -77,7 +82,12 @@ export function useGoalHealth(groupedItems) {
           goal.id,
           currentWindowKey(spec?.manual?.cadence),
         );
-        const health = deriveGoalHealth({ spec, entries, lockedCurrentWindow });
+        const health = deriveGoalHealth({
+          spec,
+          entries,
+          lockedCurrentWindow,
+          contextComplete: isContextComplete(spec),
+        });
         const trend = computeTrend(snapshots, goal.id, spec);
         const card = { goal, spec, health, trend };
         cards.push(card);
@@ -88,6 +98,7 @@ export function useGoalHealth(groupedItems) {
         if (health.status === HEALTH.NO_DATA) summary.noData += 1;
         if (health.status === HEALTH.STALE) summary.stale += 1;
         if (health.status === HEALTH.BEHIND) summary.behind += 1;
+        if (health.status === HEALTH.NEEDS_SETUP) summary.setup += 1;
         if (trend?.good === true) summary.improving += 1;
         if (trend?.good === false) summary.slipping += 1;
         if (NEEDS_ATTENTION.has(health.status)) {
@@ -117,5 +128,5 @@ export function useGoalHealth(groupedItems) {
     // snapshots identity changes when the snapshot store updates; locksTick
     // bumps when a window is locked/unlocked.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupedItems, inputsTick, snapshots, locksTick]);
+  }, [groupedItems, inputsTick, snapshots, locksTick, contextTick]);
 }
