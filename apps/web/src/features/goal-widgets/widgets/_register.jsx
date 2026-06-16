@@ -37,6 +37,7 @@ import { BeforeAfterWidget } from "./before-after-widget";
 import { IncidentLogWidget } from "./incident-log-widget";
 import { RecurringMilestoneWidget } from "./recurring-milestone-widget";
 import { ScorecardWidget } from "./scorecard-widget";
+import { ComposedWidget } from "./composed-widget";
 
 // AUTO widgets — read from integration sources via useDataSource.
 registerWidget(SPEC_KINDS.MERGED_COUNT, {
@@ -147,4 +148,13 @@ registerWidget(SPEC_KINDS.SCORECARD, {
   Component: ScorecardWidget,
   description:
     "Composite scorecard — 2-3 component sub-specs, weighted aggregate.",
+});
+registerWidget(SPEC_KINDS.COMPOSED, {
+  // The generative widget — interprets a declarative `spec.fields[]`
+  // schema at runtime. One component renders any field combination, so
+  // the classifier can mint a new "widget type" as data.
+  variant: SPEC_VARIANTS.MANUAL,
+  Component: ComposedWidget,
+  description:
+    "Generative widget — renders a declarative field schema (checkbox/counter/scale/number/text/date/select/link) with per-field evidence.",
 });

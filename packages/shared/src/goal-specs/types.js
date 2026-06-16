@@ -58,7 +58,42 @@ export const SPEC_KINDS = Object.freeze({
   // Variant is "auto" when every component is AUTO, "hybrid" when
   // any component is MANUAL.
   SCORECARD: "SCORECARD",
+  // Phase G: the GENERATIVE widget. The classifier (or a human) emits a
+  // declarative field schema (`spec.fields[]`) drawn from a fixed
+  // primitive vocabulary, and one interpreter component renders ANY
+  // combination at runtime. No code is generated or executed — the
+  // "new widget type" is DATA. This is how a goal can grow exactly the
+  // inputs it needs (a measured number here, a checklist there, an
+  // evidence link) without a hand-written component per shape, while the
+  // grader still reads structured data. See docs/generative-widget.md.
+  COMPOSED: "COMPOSED",
 });
+
+/**
+ * Field-primitive vocabulary for COMPOSED widgets. The classifier may ONLY
+ * emit fields of these kinds — a bounded, gradeable set of inputs, so a
+ * generated widget can never produce something the interpreter can't render
+ * or the grader can't read. Each maps to a small, already-trusted control.
+ *
+ *   checkbox — boolean "done"          value: boolean
+ *   counter  — running integer count   value: number   (optional unit/target)
+ *   scale    — 1–5 rating              value: number 1..5
+ *   number   — a measured value        value: number   (optional unit/target)
+ *   text     — short free text         value: string
+ *   date     — a date                  value: string (YYYY-MM-DD)
+ *   select   — one of fixed options    value: string   (requires options[])
+ *   link     — a URL / resource        value: string (url)  — first-class evidence
+ */
+export const COMPOSED_FIELD_KINDS = Object.freeze([
+  "checkbox",
+  "counter",
+  "scale",
+  "number",
+  "text",
+  "date",
+  "select",
+  "link",
+]);
 
 export const ALL_SPEC_KINDS = Object.freeze(Object.values(SPEC_KINDS));
 
@@ -254,6 +289,16 @@ export const SPEC_KIND_META = Object.freeze({
   [SPEC_KINDS.SCORECARD]: {
     label: "Scorecard",
     variant: SPEC_VARIANTS.AUTO,
+    requiresSource: false,
+    requiresManual: false,
+  },
+  // COMPOSED owns its data through `spec.fields[]`, not source/manual —
+  // both `requires*` are false so the validator doesn't demand them. It's
+  // a MANUAL-lane widget (hand-filled), so the variant cross-check expects
+  // spec.kind === "manual".
+  [SPEC_KINDS.COMPOSED]: {
+    label: "Composed",
+    variant: SPEC_VARIANTS.MANUAL,
     requiresSource: false,
     requiresManual: false,
   },

@@ -98,11 +98,13 @@ function buildCurrentData(spec, entries, reading) {
         .filter((it) => it && !it.done)
         .map((it) => it.label)
         .filter(Boolean);
+      const evidence = evidenceLines(items);
       return [
         `${done}/${total} checklist items complete (${pct}%)`,
         open.length
           ? `incomplete: ${open.slice(0, 8).join("; ")}`
           : "all items complete",
+        evidence ? `evidence provided — ${evidence}` : "no evidence attached",
       ].join("; ");
     }
     // Period-resetting checklist — tiers like "all items EVERY quarter" need
@@ -121,6 +123,10 @@ function buildCurrentData(spec, entries, reading) {
             }`,
         )
         .join("; ");
+      const evidence = summary.rows
+        .filter((r) => r.evidence)
+        .map((r) => `${r.pk} — ${r.evidence}`)
+        .join(" | ");
       return [
         `${summary.total} period(s) tracked — ${perPeriod}`,
         `${summary.completeCount} of ${summary.total} period(s) fully complete`,
@@ -128,6 +134,41 @@ function buildCurrentData(spec, entries, reading) {
         summary.firstIncomplete
           ? `earliest incomplete period: ${summary.firstIncomplete.pk} (so NOT every tracked period is complete)`
           : "every tracked period is complete",
+        evidence
+          ? `evidence provided — ${evidence}`
+          : "no evidence attached to any period",
+      ].join(". ");
+    }
+    // The generative widget — serialize its declarative field schema +
+    // captured values + per-field evidence into one model-readable line, so
+    // a goal that invented its own inputs is graded on real, structured data.
+    case SPEC_KINDS.COMPOSED: {
+      const fields = Array.isArray(spec.fields) ? spec.fields : [];
+      if (fields.length === 0) return readingToText(reading);
+      const rec =
+        latest && typeof latest.value === "object" ? latest.value : {};
+      const vals = rec.values && typeof rec.values === "object" ? rec.values : {};
+      const ev = rec.evidence && typeof rec.evidence === "object" ? rec.evidence : {};
+      const filled = fields.filter((f) => {
+        const v = vals[f.id];
+        return f.kind === "checkbox" ? v === true : v != null && v !== "";
+      }).length;
+      const lines = fields.map((f) => {
+        const v = vals[f.id];
+        const blank = v == null || v === "";
+        const shown = blank
+          ? "—"
+          : f.kind === "checkbox"
+            ? v
+              ? "yes"
+              : "no"
+            : `${v}${f.unit ? ` ${f.unit}` : ""}`;
+        const proof = ev[f.id] ? ` [evidence: ${ev[f.id]}]` : "";
+        return `${f.label}: ${shown}${proof}`;
+      });
+      return [
+        `composed widget — ${filled}/${fields.length} field(s) captured`,
+        lines.join("; "),
       ].join(". ");
     }
     case SPEC_KINDS.COUNTER: {
@@ -169,6 +210,21 @@ function buildCurrentData(spec, entries, reading) {
 }
 
 /**
+ * Render the evidence a user attached to checklist items as a compact
+ * "label: proof" string for the grader. Empty when no item carries evidence.
+ * This is what lets the grader credit "documented" criteria against real
+ * proof (a note, link, or measured value) instead of a bare checkbox.
+ */
+function evidenceLines(items) {
+  if (!Array.isArray(items)) return "";
+  return items
+    .filter((it) => it && typeof it.evidence === "string" && it.evidence.trim())
+    .map((it) => `${it.label}: ${String(it.evidence).trim()}`)
+    .slice(0, 8)
+    .join("; ");
+}
+
+/**
  * Aggregate a RECURRING_MILESTONE's entries across ALL periods so the grader
  * can judge "every period" criteria + streaks — not just the latest quarter.
  *
@@ -199,7 +255,14 @@ function recurringMilestoneSummary(entries) {
         .filter((it) => it && !it.done)
         .map((it) => it.label)
         .filter(Boolean);
-      return { pk, done, total, complete: total > 0 && done === total, open };
+      return {
+        pk,
+        done,
+        total,
+        complete: total > 0 && done === total,
+        open,
+        evidence: evidenceLines(items),
+      };
     });
 
   let streak = 0;

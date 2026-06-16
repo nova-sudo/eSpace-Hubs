@@ -15,6 +15,7 @@ import {
   ALL_SOURCE_PROVIDERS,
   ALL_SPEC_KINDS,
   ALL_SPEC_VARIANTS,
+  COMPOSED_FIELD_KINDS,
   CONTEXT_QUESTION_KINDS,
   DELEGATED_JUDGES,
   MANUAL_CADENCES,
@@ -413,6 +414,101 @@ function validateScorecard(scorecard, errors) {
   return { components, aggregate };
 }
 
+/**
+ * Validate the field schema of a COMPOSED (generative) widget.
+ *
+ * `spec.fields` is the declarative description of the inputs a generated
+ * widget renders. Each field is drawn from the bounded COMPOSED_FIELD_KINDS
+ * vocabulary so the output is always renderable AND gradeable — the
+ * classifier can invent the *combination* (and the cadence), never an
+ * arbitrary control. Strict on the bits the interpreter needs (kind, label,
+ * select options); permissive on cosmetics.
+ *
+ * Caps at 10 fields — beyond that a single widget tile is unreadable and the
+ * generated schema is almost always two goals wearing a trenchcoat.
+ */
+const COMPOSED_MAX_FIELDS = 10;
+
+function validateField(f, i, errors) {
+  if (!isObject(f)) {
+    errors.push(`fields[${i}]: must be an object`);
+    return null;
+  }
+  if (!COMPOSED_FIELD_KINDS.includes(f.kind)) {
+    errors.push(
+      `fields[${i}].kind: must be one of ${COMPOSED_FIELD_KINDS.join(", ")}`,
+    );
+    return null;
+  }
+  if (!isNonEmptyString(f.label)) {
+    errors.push(`fields[${i}].label: required string`);
+    return null;
+  }
+  const out = {
+    id: isNonEmptyString(f.id) ? f.id.trim() : `f${i + 1}`,
+    kind: f.kind,
+    label: f.label.trim(),
+  };
+  if (isNonEmptyString(f.unit)) out.unit = f.unit.trim();
+  if (isNonEmptyString(f.help)) out.help = f.help.trim();
+  if (f.optional === true) out.optional = true;
+  if (f.kind === "select") {
+    const options = Array.isArray(f.options)
+      ? f.options.map((o) => (typeof o === "string" ? o.trim() : "")).filter(Boolean)
+      : [];
+    if (options.length === 0) {
+      errors.push(`fields[${i}].options: required non-empty for kind "select"`);
+      return null;
+    }
+    out.options = options;
+  }
+  // counter / number fields may carry a numeric target the grader can read.
+  if (f.kind === "counter" || f.kind === "number") {
+    const target = validateTarget(f.target, `fields[${i}]`, errors);
+    if (target) out.target = target;
+  }
+  return out;
+}
+
+function validateFields(fields, errors) {
+  if (!Array.isArray(fields) || fields.length === 0) {
+    errors.push("fields: COMPOSED requires a non-empty `fields` array");
+    return null;
+  }
+  if (fields.length > COMPOSED_MAX_FIELDS) {
+    errors.push(`fields: at most ${COMPOSED_MAX_FIELDS} fields`);
+    return null;
+  }
+  const seen = new Set();
+  const out = [];
+  fields.forEach((f, i) => {
+    const v = validateField(f, i, errors);
+    if (!v) return;
+    if (seen.has(v.id)) {
+      errors.push(`fields[${i}].id: duplicate id "${v.id}"`);
+      return;
+    }
+    seen.add(v.id);
+    out.push(v);
+  });
+  return out.length ? out : null;
+}
+
+/**
+ * Validate the optional `composed` block — the cadence + prompt that frame a
+ * COMPOSED widget. Cadence drives how the widget is bucketed/labelled (the
+ * "needed cadence" the AI picks); prompt is the one-line instruction shown
+ * above the fields. Both optional; collapses to null when empty.
+ */
+function validateComposed(composed) {
+  if (!isObject(composed)) return null;
+  const out = {};
+  const cadence = normalizeCadence(composed.cadence);
+  if (cadence) out.cadence = cadence;
+  if (isNonEmptyString(composed.prompt)) out.prompt = composed.prompt.trim();
+  return Object.keys(out).length ? out : null;
+}
+
 function validateManual(manual, errors) {
   if (!isObject(manual)) {
     errors.push("manual: must be an object when kind is manual/hybrid");
@@ -479,8 +575,11 @@ export function validateSpec(obj) {
   let source = null;
   let manual = null;
   let scorecard = null;
+  let fields = null;
+  let composed = null;
   const meta = widgetMeta || {};
   const isScorecard = obj.widget === "SCORECARD";
+  const isComposed = obj.widget === "COMPOSED";
 
   if (!untrackable) {
     // Soft cross-check: spec variant should align with the widget's
@@ -498,7 +597,12 @@ export function validateSpec(obj) {
       );
     }
 
-    if (isScorecard) {
+    if (isComposed) {
+      // COMPOSED owns its data through `fields[]`, not source/manual. Validate
+      // the generated field schema + the optional cadence/prompt frame.
+      fields = validateFields(obj.fields, errors);
+      composed = validateComposed(obj.composed);
+    } else if (isScorecard) {
       // SCORECARD owns its data through components — the top-level
       // source/manual are always null on a clean spec. The component
       // validator runs the per-component source/manual checks.
@@ -561,6 +665,12 @@ export function validateSpec(obj) {
       const collected = [];
       scorecard = validateScorecard(obj.scorecard, collected) || null;
     }
+    // …and the COMPOSED field schema, so parking + un-parking keeps it.
+    if (obj.fields != null) {
+      const collected = [];
+      fields = validateFields(obj.fields, collected) || null;
+    }
+    if (obj.composed != null) composed = validateComposed(obj.composed);
   }
 
   const context = validateContext(obj.context, errors);
@@ -583,6 +693,11 @@ export function validateSpec(obj) {
     delegated,
     untrackable,
     scorecard,
+    // Phase G: COMPOSED widgets carry their generated field schema +
+    // cadence/prompt frame. Kept as undefined when absent so older specs
+    // serialise byte-identically.
+    ...(fields ? { fields } : {}),
+    ...(composed ? { composed } : {}),
     tiers,
     // W1: optional numeric ladder for deterministic grading. Kept as
     // undefined when absent so older specs serialise byte-identically.
@@ -625,6 +740,8 @@ export function buildSpec({
   delegated = null,
   untrackable = null,
   scorecard = null,
+  fields = null,
+  composed = null,
   tiers = null,
   tierScale = null,
   tiersLocked = false,
@@ -643,6 +760,8 @@ export function buildSpec({
     delegated,
     untrackable,
     scorecard,
+    fields,
+    composed,
     tiers,
     tierScale,
     tiersLocked,

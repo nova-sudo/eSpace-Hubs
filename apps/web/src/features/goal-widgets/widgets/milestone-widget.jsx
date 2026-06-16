@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { WidgetShell } from "../widget-shell";
 import { useGoalInputs } from "@/features/goal-inputs";
 import { useGoalContext, resolveMilestoneItems } from "@/features/goal-context";
+import { ItemEvidence } from "./_milestone-evidence.jsx";
 
 /**
  * Milestone checklist.
@@ -61,6 +62,13 @@ export function MilestoneWidget({ spec, goal, variant = "light", className, onRe
 
   function remove(id) {
     const next = items.filter((i) => i.id !== id);
+    append({ items: next });
+  }
+
+  function setEvidence(id, text) {
+    const next = items.map((it) =>
+      it.id === id ? { ...it, evidence: text || undefined } : it,
+    );
     append({ items: next });
   }
 
@@ -134,42 +142,51 @@ export function MilestoneWidget({ spec, goal, variant = "light", className, onRe
             </li>
           ) : null}
           {items.map((it) => (
-            <li key={it.id} className="group flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={!!it.done}
-                onChange={() => toggle(it.id)}
-                className="h-3.5 w-3.5"
-              />
-              <span
-                className="flex-1 truncate"
-                style={{
-                  textDecoration: it.done ? "line-through" : "none",
-                  color: it.done
-                    ? variant === "light"
-                      ? "rgba(255,255,255,0.5)"
-                      : "var(--dim-fg)"
-                    : "inherit",
-                }}
-                title={it.label}
-              >
-                {it.label}
-              </span>
-              <button
-                type="button"
-                onClick={() => remove(it.id)}
-                className="opacity-0 transition-opacity group-hover:opacity-100"
-                style={{
-                  fontSize: 10,
-                  color:
-                    variant === "light"
-                      ? "rgba(255,255,255,0.6)"
-                      : "var(--dim-fg)",
-                }}
-                aria-label={`Remove ${it.label}`}
-              >
-                ✕
-              </button>
+            <li key={it.id} className="group flex flex-col gap-0.5">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={!!it.done}
+                  onChange={() => toggle(it.id)}
+                  className="h-3.5 w-3.5"
+                />
+                <span
+                  className="flex-1 truncate"
+                  style={{
+                    textDecoration: it.done ? "line-through" : "none",
+                    color: it.done
+                      ? variant === "light"
+                        ? "rgba(255,255,255,0.5)"
+                        : "var(--dim-fg)"
+                      : "inherit",
+                  }}
+                  title={it.label}
+                >
+                  {it.label}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => remove(it.id)}
+                  className="opacity-0 transition-opacity group-hover:opacity-100"
+                  style={{
+                    fontSize: 10,
+                    color:
+                      variant === "light"
+                        ? "rgba(255,255,255,0.6)"
+                        : "var(--dim-fg)",
+                  }}
+                  aria-label={`Remove ${it.label}`}
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="min-w-0 pl-[22px]">
+                <ItemEvidence
+                  value={it.evidence}
+                  variant={variant}
+                  onSave={(t) => setEvidence(it.id, t)}
+                />
+              </div>
             </li>
           ))}
         </ul>
