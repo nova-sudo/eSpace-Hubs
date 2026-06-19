@@ -1,0 +1,202 @@
+"use client";
+
+/**
+ * CadenceStepper — a per-widget gauge of the goal's cycle windows.
+ *
+ * Phase 1: READ-ONLY. Shows, for a manual widget, whether each cadence window
+ * in the review cycle was filled — doubling as a status gauge and (later) the
+ * check-in surface. Three adaptive modes from `buildCycleWindows`:
+ *   - pip      non-bucketing / no cadence → complete ↔ incomplete
+ *   - stepper  ≤13 windows (quarterly = 4, monthly = 12) — labelled cells
+ *   - heatmap  many windows (weekly ≈ 52, daily ≈ 365) — compact grid
+ *
+ * Rendered once per tile from <WidgetShell> for MANUAL-variant widgets. Future
+ * phases make cells selectable (pick a window to fill/backfill) and fold in
+ * goal-locks "settled" state — at which point this replaces the /checkin page.
+ *
+ * State is never colour-only (a11y): each cell carries shape + glyph + a
+ * `title` tooltip (`Q2 · current`). `prefers-reduced-motion` is respected by
+ * using no animation at all here.
+ */
+
+import { useMemo } from "react";
+import { useGoalInputs, buildCycleWindows } from "@/features/goal-inputs";
+
+const STATE_LABEL = {
+  filled: "filled",
+  owed: "not logged",
+  current: "current",
+  future: "upcoming",
+  settled: "nothing to report",
+};
+
+function palette(variant) {
+  const light = variant === "light";
+  return {
+    label: light ? "rgba(255,255,255,0.68)" : "var(--muted-fg)",
+    dim: light ? "rgba(255,255,255,0.45)" : "var(--dim-fg)",
+    filledBg: light ? "rgba(255,255,255,0.92)" : "var(--accent)",
+    filledFg: light ? "#1d4ed8" : "var(--accent-on)",
+    currentBorder: light ? "#ffffff" : "var(--accent)",
+    currentBg: light ? "rgba(255,255,255,0.16)" : "var(--accent-dim)",
+    currentFg: light ? "#ffffff" : "var(--accent)",
+    owedBorder: light ? "rgba(255,255,255,0.55)" : "var(--border)",
+    owedDot: light ? "rgba(255,255,255,0.85)" : "var(--muted-fg)",
+    futureBorder: light ? "rgba(255,255,255,0.22)" : "var(--border)",
+  };
+}
+
+function Check({ size = 15, color }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 13l4 4L19 7" />
+    </svg>
+  );
+}
+
+function cellVisual(state, p) {
+  switch (state) {
+    case "filled":
+      return { background: p.filledBg, border: "none", glyph: <Check color={p.filledFg} /> };
+    case "current":
+      return {
+        background: p.currentBg,
+        border: `2px solid ${p.currentBorder}`,
+        glyph: (
+          <span style={{ color: p.currentFg, fontSize: 16, lineHeight: 1 }}>+</span>
+        ),
+      };
+    case "settled":
+      return {
+        background:
+          "repeating-linear-gradient(45deg, rgba(128,128,128,0.18), rgba(128,128,128,0.18) 3px, transparent 3px, transparent 6px)",
+        border: `1px solid ${p.futureBorder}`,
+        glyph: <span style={{ color: p.dim, fontSize: 13 }}>–</span>,
+      };
+    case "owed":
+      return {
+        background: "transparent",
+        border: `1.5px dashed ${p.owedBorder}`,
+        glyph: <span style={{ width: 5, height: 5, borderRadius: "50%", background: p.owedDot }} />,
+      };
+    default: // future
+      return { background: "transparent", border: `1px solid ${p.futureBorder}`, glyph: null, faint: true };
+  }
+}
+
+export function CadenceStepper({ spec, variant = "light" }) {
+  const goalId = spec?.goalId;
+  const { entries } = useGoalInputs(goalId);
+  const cadence = spec?.manual?.cadence ?? spec?.composed?.cadence ?? null;
+
+  const data = useMemo(
+    () => buildCycleWindows({ entries, cadence, now: Date.now() }),
+    [entries, cadence],
+  );
+
+  const p = palette(variant);
+
+  if (data.mode === "pip") {
+    const done = data.complete;
+    return (
+      <div className="mt-3 flex items-center gap-2" style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: p.label }}>
+        <span
+          title={done ? "complete" : "not complete"}
+          style={{
+            width: 18,
+            height: 18,
+            borderRadius: "50%",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: done ? p.filledBg : "transparent",
+            border: done ? "none" : `1.5px dashed ${p.owedBorder}`,
+          }}
+        >
+          {done ? <Check size={12} color={p.filledFg} /> : null}
+        </span>
+        {done ? "complete" : "not completed yet"}
+      </div>
+    );
+  }
+
+  const windows = data.windows || [];
+
+  if (data.mode === "heatmap") {
+    return (
+      <div className="mt-3">
+        <div className="mb-1.5 flex items-center justify-between" style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: p.label }}>
+          <span style={{ textTransform: "uppercase", letterSpacing: "0.5px" }}>{data.cadence} · cycle</span>
+          <span>{data.filledCount}/{data.total} filled</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(9px, 1fr))", gap: 3 }}>
+          {windows.map((w) => {
+            const v = cellVisual(w.state, p);
+            return (
+              <div
+                key={w.key}
+                title={`${w.label} · ${STATE_LABEL[w.state]}`}
+                style={{
+                  aspectRatio: "1 / 1",
+                  borderRadius: 2,
+                  background: v.background,
+                  border: v.border,
+                  opacity: v.faint ? 0.5 : 1,
+                }}
+              />
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // stepper
+  return (
+    <div className="mt-3">
+      <div className="mb-1.5 flex items-center justify-between" style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: p.label }}>
+        <span style={{ textTransform: "uppercase", letterSpacing: "0.5px" }}>{data.cadence} · cycle</span>
+        <span>{data.filledCount}/{data.total} filled</span>
+      </div>
+      <div className="flex items-start gap-1.5">
+        {windows.map((w, i) => {
+          const v = cellVisual(w.state, p);
+          const isCurrent = w.state === "current";
+          const sz = isCurrent ? 40 : 34;
+          return (
+            <div key={w.key} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+              <div
+                title={`${w.label} · ${STATE_LABEL[w.state]}`}
+                style={{
+                  width: "100%",
+                  maxWidth: sz + 8,
+                  height: sz,
+                  borderRadius: 8,
+                  background: v.background,
+                  border: v.border,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  opacity: v.faint ? 0.45 : 1,
+                  boxShadow: isCurrent ? `0 0 0 3px ${p.currentBg}` : "none",
+                }}
+              >
+                {v.glyph}
+              </div>
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 8.5,
+                  color: isCurrent ? p.currentFg : p.dim,
+                  fontWeight: isCurrent ? 500 : 400,
+                }}
+              >
+                {w.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

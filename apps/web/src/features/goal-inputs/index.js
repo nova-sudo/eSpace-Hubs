@@ -12,3 +12,4 @@ export {
 } from "./inputs-store";
 export { useGoalInputs, useAllGoalInputs } from "./use-goal-inputs";
 export { computeCompliance, fillStats, cadenceWindowLabel } from "./compliance";
+export { buildCycleWindows } from "./cadence-windows";

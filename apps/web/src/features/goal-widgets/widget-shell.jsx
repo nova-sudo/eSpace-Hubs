@@ -24,6 +24,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useWidgetControls } from "./widget-controls-context";
 import { GoalTierLadder } from "@/features/goal-tiers";
+import { SPEC_KIND_META, SPEC_VARIANTS } from "@/features/goal-specs";
+import { CadenceStepper } from "./cadence-stepper";
 
 const VARIANT_STYLES = {
   light: {
@@ -136,6 +138,13 @@ export function WidgetShell({
       ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+
+      {/* Cadence stepper — per-window fill/status gauge for MANUAL widgets.
+          Read-only (Phase 1). Gated on the manual variant so AUTO tiles don't
+          mount the goal-inputs subscription. */}
+      {spec && SPEC_KIND_META[spec.widget]?.variant === SPEC_VARIANTS.MANUAL ? (
+        <CadenceStepper spec={spec} variant={variant} />
+      ) : null}
 
       {/* Achievement-tier ladder (AI-graded). Renders only once the goal
           has been re-analyzed with the four `tiers` — shows the dev where
