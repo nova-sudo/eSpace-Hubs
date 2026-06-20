@@ -135,44 +135,107 @@ export function CadenceStepper({ spec, variant = "light" }) {
   }
 
   const windows = data.windows || [];
+  const selected = selectedKey ? windows.find((w) => w.key === selectedKey) : null;
+  const settledOf = (w) =>
+    isLocked(goalId, w.key) && w.state !== "filled" && w.state !== "future";
+
+  // Header + inline editor panel are shared by stepper and heatmap modes.
+  const header = (
+    <div className="mb-1.5 flex items-center justify-between" style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: p.label }}>
+      <span style={{ textTransform: "uppercase", letterSpacing: "0.5px" }}>{data.cadence} · cycle</span>
+      <span>{data.filledCount}/{data.total} filled</span>
+    </div>
+  );
+
+  const editorPanel = selected ? (
+    <div
+      className="mt-2 rounded-[var(--radius-sub)] p-2.5"
+      style={{ background: "var(--card)", color: "var(--fg)", border: "1px solid var(--border)" }}
+    >
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+          logging {selected.label}
+        </span>
+        <div className="flex items-center gap-3">
+          {/* "Nothing to report" settle — the same goal-locks escape hatch the
+              check-in had, so a quiet period stops reading as owed. */}
+          <button
+            type="button"
+            onClick={() => setLock(goalId, selected.key, !isLocked(goalId, selected.key))}
+            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", border: "none", background: "transparent", cursor: "pointer" }}
+            title="Settle this period — nothing happened, stop flagging it as owed"
+          >
+            {isLocked(goalId, selected.key) ? "reopen" : "nothing to report"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedKey(null)}
+            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", border: "none", background: "transparent", cursor: "pointer" }}
+          >
+            close
+          </button>
+        </div>
+      </div>
+      {isComposed ? (
+        <ComposedFields goalId={goalId} fields={spec.fields} periodKey={selected.key} variant="dark" />
+      ) : (
+        <GoalManualEditor
+          widget={spec.widget}
+          goal={goal}
+          spec={spec}
+          weekStart={new Date(selected.start)}
+          weekEnd={new Date(selected.end)}
+          activeLabel={selected.label}
+          writeTs={Math.floor((selected.start + selected.end) / 2)}
+        />
+      )}
+    </div>
+  ) : null;
 
   if (data.mode === "heatmap") {
     return (
       <div className="mt-3">
-        <div className="mb-1.5 flex items-center justify-between" style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: p.label }}>
-          <span style={{ textTransform: "uppercase", letterSpacing: "0.5px" }}>{data.cadence} · cycle</span>
-          <span>{data.filledCount}/{data.total} filled</span>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(9px, 1fr))", gap: 3 }}>
+        {header}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(11px, 1fr))", gap: 3 }}>
           {windows.map((w) => {
-            const v = cellVisual(w.state, p);
-            return (
-              <div
+            const effState = settledOf(w) ? "settled" : w.state;
+            const v = cellVisual(effState, p);
+            const isSelected = w.key === selectedKey;
+            const canFill = fillable && w.state !== "future";
+            const cellStyle = {
+              aspectRatio: "1 / 1",
+              width: "100%",
+              borderRadius: 2,
+              background: v.background,
+              border: v.border,
+              opacity: v.faint ? 0.5 : 1,
+              boxShadow: isSelected ? `0 0 0 2px ${p.currentBorder}` : "none",
+              padding: 0,
+            };
+            return canFill ? (
+              <button
                 key={w.key}
-                title={`${w.label} · ${STATE_LABEL[w.state]}`}
-                style={{
-                  aspectRatio: "1 / 1",
-                  borderRadius: 2,
-                  background: v.background,
-                  border: v.border,
-                  opacity: v.faint ? 0.5 : 1,
-                }}
+                type="button"
+                onClick={() => setSelectedKey(isSelected ? null : w.key)}
+                aria-pressed={isSelected}
+                aria-label={`${isSelected ? "Close" : "Log"} ${w.label} (${STATE_LABEL[effState]})`}
+                title={`${w.label} · ${STATE_LABEL[effState]}`}
+                style={{ ...cellStyle, cursor: "pointer" }}
               />
+            ) : (
+              <div key={w.key} title={`${w.label} · ${STATE_LABEL[effState]}`} style={cellStyle} />
             );
           })}
         </div>
+        {editorPanel}
       </div>
     );
   }
 
   // stepper
-  const selected = selectedKey ? windows.find((w) => w.key === selectedKey) : null;
   return (
     <div className="mt-3">
-      <div className="mb-1.5 flex items-center justify-between" style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: p.label }}>
-        <span style={{ textTransform: "uppercase", letterSpacing: "0.5px" }}>{data.cadence} · cycle</span>
-        <span>{data.filledCount}/{data.total} filled</span>
-      </div>
+      {header}
       <div className="flex items-start gap-1.5">
         {windows.map((w) => {
           // A "nothing to report" lock overlays owed/current windows as settled
@@ -240,60 +303,7 @@ export function CadenceStepper({ spec, variant = "light" }) {
           );
         })}
       </div>
-
-      {/* Inline backfill editor for the selected window — the same shared
-          check-in editor, scoped to that period via writeTs. Rendered on its
-          own light surface so the dark-on-light editors read correctly even on
-          an indigo (light-variant) tile. */}
-      {selected ? (
-        <div
-          className="mt-2 rounded-[var(--radius-sub)] p-2.5"
-          style={{ background: "var(--card)", color: "var(--fg)", border: "1px solid var(--border)" }}
-        >
-          <div className="mb-1.5 flex items-center justify-between gap-2">
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-              logging {selected.label}
-            </span>
-            <div className="flex items-center gap-3">
-              {/* "Nothing to report" settle — the same goal-locks escape hatch
-                  the check-in had, so a quiet period stops reading as owed. */}
-              <button
-                type="button"
-                onClick={() => setLock(goalId, selected.key, !isLocked(goalId, selected.key))}
-                style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", border: "none", background: "transparent", cursor: "pointer" }}
-                title="Settle this period — nothing happened, stop flagging it as owed"
-              >
-                {isLocked(goalId, selected.key) ? "reopen" : "nothing to report"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedKey(null)}
-                style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", border: "none", background: "transparent", cursor: "pointer" }}
-              >
-                close
-              </button>
-            </div>
-          </div>
-          {isComposed ? (
-            <ComposedFields
-              goalId={goalId}
-              fields={spec.fields}
-              periodKey={selected.key}
-              variant="dark"
-            />
-          ) : (
-            <GoalManualEditor
-              widget={spec.widget}
-              goal={goal}
-              spec={spec}
-              weekStart={new Date(selected.start)}
-              weekEnd={new Date(selected.end)}
-              activeLabel={selected.label}
-              writeTs={Math.floor((selected.start + selected.end) / 2)}
-            />
-          )}
-        </div>
-      ) : null}
+      {editorPanel}
     </div>
   );
 }

@@ -119,8 +119,9 @@ The pattern already exists — this is mostly promotion + interactivity.
    - ☐ SCORECARD + CODE_RUBRIC fill — the heavy editors that currently live
      ONLY on `/checkin` (excluded from `INLINE_FILLABLE_KINDS`). Need a home on
      the widget (or an explicit "open full editor" affordance).
-   - ☐ Weekly/daily backfill — heatmap cells are read-only today; `/checkin`
-     let you fill any week. Make heatmap cells selectable (mind the 44px target).
+   - ✅ Weekly/daily backfill — heatmap cells are now selectable → same inline
+     editor + settle as the stepper. (44px target relaxed for dense year grids,
+     GitHub-contributions style.)
    - ☐ Cross-goal "what's owed this week" — covered by the intelligence hub
      action queue; confirm it deep-links to the goal + current cell.
 4. **Remove** — once the three Parity boxes are checked: delete the `/checkin`
