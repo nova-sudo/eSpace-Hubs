@@ -36,7 +36,7 @@ import { cn } from "@/lib/cn";
 
 /* ─────────────────────── Counter ─────────────────────── */
 
-export function CounterEditor({ goal, spec, weekStart, weekEnd, activeLabel }) {
+export function CounterEditor({ goal, spec, weekStart, weekEnd, activeLabel, writeTs }) {
   const { entries, append } = useGoalInputs(goal?.id);
   const weekTotal = useMemo(
     () => sumNumericInWindow(entries, weekStart, weekEnd),
@@ -46,7 +46,7 @@ export function CounterEditor({ goal, spec, weekStart, weekEnd, activeLabel }) {
   const unit = spec.manual?.unit || "";
 
   const add = (delta) => {
-    const ts = midWeekTs(activeLabel);
+    const ts = writeTs ?? midWeekTs(activeLabel);
     if (ts == null) return;
     append(delta, undefined, ts);
   };
@@ -74,7 +74,7 @@ export function CounterEditor({ goal, spec, weekStart, weekEnd, activeLabel }) {
 
 /* ─────────────────────── Scale (1–5) ─────────────────────── */
 
-export function ScaleEditor({ goal, weekStart, weekEnd, activeLabel }) {
+export function ScaleEditor({ goal, weekStart, weekEnd, activeLabel, writeTs }) {
   const { entries, append } = useGoalInputs(goal?.id);
   const currentValue = useMemo(() => {
     const inWindow = entries.filter(
@@ -88,7 +88,7 @@ export function ScaleEditor({ goal, weekStart, weekEnd, activeLabel }) {
   }, [entries, weekStart, weekEnd]);
 
   const pick = (n) => {
-    const ts = midWeekTs(activeLabel);
+    const ts = writeTs ?? midWeekTs(activeLabel);
     if (ts == null) return;
     append(n, undefined, ts);
   };
@@ -117,7 +117,7 @@ export function ScaleEditor({ goal, weekStart, weekEnd, activeLabel }) {
 
 /* ─────────────────────── Milestone (checklist) ─────────────────────── */
 
-export function MilestoneEditor({ goal, spec, weekStart, weekEnd, activeLabel }) {
+export function MilestoneEditor({ goal, spec, weekStart, weekEnd, activeLabel, writeTs }) {
   const { entries, append } = useGoalInputs(goal?.id);
   const { answers: contextAnswers } = useGoalContext(goal?.id);
   // Resolve the SAME way the Goals-page MilestoneWidget does (shared resolver:
@@ -133,7 +133,7 @@ export function MilestoneEditor({ goal, spec, weekStart, weekEnd, activeLabel })
   }, [entries, weekEnd, spec, contextAnswers]);
 
   const toggle = (id) => {
-    const ts = midWeekTs(activeLabel);
+    const ts = writeTs ?? midWeekTs(activeLabel);
     if (ts == null) return;
     const next = items.map((it) =>
       it.id === id ? { ...it, done: !it.done } : it,
@@ -179,7 +179,7 @@ export function MilestoneEditor({ goal, spec, weekStart, weekEnd, activeLabel })
 
 /* ─────────────────────── Free-text ─────────────────────── */
 
-export function FreeTextEditor({ goal, weekStart, weekEnd, activeLabel }) {
+export function FreeTextEditor({ goal, weekStart, weekEnd, activeLabel, writeTs }) {
   const { entries, append } = useGoalInputs(goal?.id);
   const initial = useMemo(() => {
     const inWindow = entries.filter(
@@ -193,7 +193,7 @@ export function FreeTextEditor({ goal, weekStart, weekEnd, activeLabel }) {
   const dirty = draft !== initial;
 
   const save = () => {
-    const ts = midWeekTs(activeLabel);
+    const ts = writeTs ?? midWeekTs(activeLabel);
     if (ts == null) return;
     append(draft, undefined, ts);
   };
@@ -230,7 +230,7 @@ export function FreeTextEditor({ goal, weekStart, weekEnd, activeLabel }) {
 
 /* ─────────────────────── Date-log ─────────────────────── */
 
-export function DateLogEditor({ goal, weekStart, weekEnd, activeLabel }) {
+export function DateLogEditor({ goal, weekStart, weekEnd, activeLabel, writeTs }) {
   const { entries, append } = useGoalInputs(goal?.id);
   const weekCount = useMemo(
     () =>
@@ -241,7 +241,7 @@ export function DateLogEditor({ goal, weekStart, weekEnd, activeLabel }) {
   );
 
   const add = () => {
-    const ts = midWeekTs(activeLabel);
+    const ts = writeTs ?? midWeekTs(activeLabel);
     if (ts == null) return;
     append(true, undefined, ts);
   };
@@ -264,7 +264,7 @@ export function DateLogEditor({ goal, weekStart, weekEnd, activeLabel }) {
 
 /* ─────────────────────── Before-after ─────────────────────── */
 
-export function BeforeAfterEditor({ goal, weekStart, weekEnd, activeLabel }) {
+export function BeforeAfterEditor({ goal, weekStart, weekEnd, activeLabel, writeTs }) {
   const { entries, append } = useGoalInputs(goal?.id);
   const initial = useMemo(() => {
     const upToWeek = entries.filter((e) => e.ts <= weekEnd.getTime());
@@ -281,7 +281,7 @@ export function BeforeAfterEditor({ goal, weekStart, weekEnd, activeLabel }) {
   const dirty = draft.baseline !== initial.baseline || draft.current !== initial.current;
 
   const save = () => {
-    const ts = midWeekTs(activeLabel);
+    const ts = writeTs ?? midWeekTs(activeLabel);
     if (ts == null) return;
     const baseline = Number(draft.baseline);
     const current = Number(draft.current);
@@ -336,7 +336,7 @@ const SEVERITIES = [
   { id: "P4", label: "P4 · low" },
 ];
 
-export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel }) {
+export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel, writeTs }) {
   const { entries, append, remove } = useGoalInputs(goal?.id);
   const inWindow = useMemo(
     () =>
@@ -378,7 +378,7 @@ export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel 
 
   const log = () => {
     if (!canLog) return;
-    const ts = midWeekTs(activeLabel);
+    const ts = writeTs ?? midWeekTs(activeLabel);
     if (ts == null) return;
     append(
       {
@@ -511,17 +511,17 @@ export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel 
  * all share the same period entry. The write uses `ts = midWeekTs`
  * of the active week so the entry lives on a known weekday.
  */
-export function RecurringMilestoneEditor({ goal, spec, activeLabel }) {
+export function RecurringMilestoneEditor({ goal, spec, activeLabel, writeTs }) {
   const { entries, append } = useGoalInputs(goal?.id);
   const { answers: contextAnswers } = useGoalContext(goal?.id);
   const cadence = spec.manual?.cadence || "quarterly";
 
-  // Resolve the active week's period key (e.g. "2026-Q2"). All weeks
-  // inside the same quarter share this key.
+  // Resolve the active period's key (e.g. "2026-Q2") from the explicit
+  // write timestamp (the selected stepper window) or the active-label week.
   const activePeriodKey = useMemo(() => {
-    const ts = midWeekTs(activeLabel);
+    const ts = writeTs ?? midWeekTs(activeLabel);
     return ts == null ? "all" : periodKeyFor(ts, cadence);
-  }, [activeLabel, cadence]);
+  }, [activeLabel, cadence, writeTs]);
 
   // Resolve identically to the Goals-page RecurringMilestoneWidget (shared
   // resolver: this period's entry → context answers → AI seed) so check-in and
@@ -539,7 +539,7 @@ export function RecurringMilestoneEditor({ goal, spec, activeLabel }) {
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
   const toggle = (id) => {
-    const ts = midWeekTs(activeLabel);
+    const ts = writeTs ?? midWeekTs(activeLabel);
     if (ts == null) return;
     const next = items.map((it) =>
       it.id === id ? { ...it, done: !it.done } : it,

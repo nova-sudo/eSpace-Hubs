@@ -19,8 +19,9 @@
  * using no animation at all here.
  */
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useGoalInputs, buildCycleWindows } from "@/features/goal-inputs";
+import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
 
 const STATE_LABEL = {
   filled: "filled",
@@ -88,6 +89,13 @@ export function CadenceStepper({ spec, variant = "light" }) {
   const goalId = spec?.goalId;
   const { entries } = useGoalInputs(goalId);
   const cadence = spec?.manual?.cadence ?? spec?.composed?.cadence ?? null;
+  // The shared check-in editors only exist for these kinds; COMPOSED fills via
+  // its own widget body, so its stepper stays read-only (gauge only).
+  const fillable = isInlineFillable(spec?.widget);
+  const goal = useMemo(() => ({ id: goalId, title: spec?.title }), [goalId, spec?.title]);
+  // Which window the user opened to fill/backfill (null = none; current period
+  // is filled via the widget body above, as before).
+  const [selectedKey, setSelectedKey] = useState(null);
 
   const data = useMemo(
     () => buildCycleWindows({ entries, cadence, now: Date.now() }),
@@ -152,6 +160,7 @@ export function CadenceStepper({ spec, variant = "light" }) {
   }
 
   // stepper
+  const selected = selectedKey ? windows.find((w) => w.key === selectedKey) : null;
   return (
     <div className="mt-3">
       <div className="mb-1.5 flex items-center justify-between" style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: p.label }}>
@@ -159,36 +168,59 @@ export function CadenceStepper({ spec, variant = "light" }) {
         <span>{data.filledCount}/{data.total} filled</span>
       </div>
       <div className="flex items-start gap-1.5">
-        {windows.map((w, i) => {
+        {windows.map((w) => {
           const v = cellVisual(w.state, p);
           const isCurrent = w.state === "current";
+          const isSelected = w.key === selectedKey;
+          // Interactive only for inline-fillable widgets, and only for windows
+          // that have started (you can't log the future).
+          const canFill = fillable && w.state !== "future";
           const sz = isCurrent ? 40 : 34;
+          const cell = (
+            <div
+              title={`${w.label} · ${STATE_LABEL[w.state]}`}
+              style={{
+                width: "100%",
+                maxWidth: sz + 8,
+                height: sz,
+                borderRadius: 8,
+                background: v.background,
+                border: v.border,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: v.faint ? 0.45 : 1,
+                boxShadow: isSelected
+                  ? `0 0 0 2px ${p.currentBorder}`
+                  : isCurrent
+                    ? `0 0 0 3px ${p.currentBg}`
+                    : "none",
+              }}
+            >
+              {v.glyph}
+            </div>
+          );
           return (
             <div key={w.key} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-              <div
-                title={`${w.label} · ${STATE_LABEL[w.state]}`}
-                style={{
-                  width: "100%",
-                  maxWidth: sz + 8,
-                  height: sz,
-                  borderRadius: 8,
-                  background: v.background,
-                  border: v.border,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  opacity: v.faint ? 0.45 : 1,
-                  boxShadow: isCurrent ? `0 0 0 3px ${p.currentBg}` : "none",
-                }}
-              >
-                {v.glyph}
-              </div>
+              {canFill ? (
+                <button
+                  type="button"
+                  onClick={() => setSelectedKey(isSelected ? null : w.key)}
+                  aria-pressed={isSelected}
+                  aria-label={`${isSelected ? "Close" : "Log"} ${w.label} (${STATE_LABEL[w.state]})`}
+                  style={{ width: "100%", maxWidth: sz + 8, padding: 0, border: "none", background: "transparent", cursor: "pointer" }}
+                >
+                  {cell}
+                </button>
+              ) : (
+                cell
+              )}
               <span
                 style={{
                   fontFamily: "var(--font-mono)",
                   fontSize: 8.5,
-                  color: isCurrent ? p.currentFg : p.dim,
-                  fontWeight: isCurrent ? 500 : 400,
+                  color: isCurrent || isSelected ? p.currentFg : p.dim,
+                  fontWeight: isCurrent || isSelected ? 500 : 400,
                 }}
               >
                 {w.label}
@@ -197,6 +229,39 @@ export function CadenceStepper({ spec, variant = "light" }) {
           );
         })}
       </div>
+
+      {/* Inline backfill editor for the selected window — the same shared
+          check-in editor, scoped to that period via writeTs. Rendered on its
+          own light surface so the dark-on-light editors read correctly even on
+          an indigo (light-variant) tile. */}
+      {selected ? (
+        <div
+          className="mt-2 rounded-[var(--radius-sub)] p-2.5"
+          style={{ background: "var(--card)", color: "var(--fg)", border: "1px solid var(--border)" }}
+        >
+          <div className="mb-1.5 flex items-center justify-between">
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              logging {selected.label}
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedKey(null)}
+              style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", border: "none", background: "transparent", cursor: "pointer" }}
+            >
+              close
+            </button>
+          </div>
+          <GoalManualEditor
+            widget={spec.widget}
+            goal={goal}
+            spec={spec}
+            weekStart={new Date(selected.start)}
+            weekEnd={new Date(selected.end)}
+            activeLabel={selected.label}
+            writeTs={Math.floor((selected.start + selected.end) / 2)}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

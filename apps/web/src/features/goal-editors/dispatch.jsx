@@ -56,6 +56,10 @@ export function GoalManualEditor({
   weekStart,
   weekEnd,
   activeLabel,
+  // Explicit write timestamp — the cadence stepper passes the mid-point of the
+  // SELECTED window so a fill lands in that period (backfill). When omitted,
+  // editors fall back to `midWeekTs(activeLabel)` (the weekly check-in path).
+  writeTs,
 }) {
   switch (widget) {
     case SPEC_KINDS.COUNTER:
@@ -66,6 +70,7 @@ export function GoalManualEditor({
           weekStart={weekStart}
           weekEnd={weekEnd}
           activeLabel={activeLabel}
+          writeTs={writeTs}
         />
       );
     case SPEC_KINDS.SCALE:
@@ -75,6 +80,7 @@ export function GoalManualEditor({
           weekStart={weekStart}
           weekEnd={weekEnd}
           activeLabel={activeLabel}
+          writeTs={writeTs}
         />
       );
     case SPEC_KINDS.MILESTONE:
@@ -85,6 +91,7 @@ export function GoalManualEditor({
           weekStart={weekStart}
           weekEnd={weekEnd}
           activeLabel={activeLabel}
+          writeTs={writeTs}
         />
       );
     case SPEC_KINDS.FREE_TEXT:
@@ -94,6 +101,7 @@ export function GoalManualEditor({
           weekStart={weekStart}
           weekEnd={weekEnd}
           activeLabel={activeLabel}
+          writeTs={writeTs}
         />
       );
     case SPEC_KINDS.DATE_LOG:
@@ -103,6 +111,7 @@ export function GoalManualEditor({
           weekStart={weekStart}
           weekEnd={weekEnd}
           activeLabel={activeLabel}
+          writeTs={writeTs}
         />
       );
     case SPEC_KINDS.BEFORE_AFTER:
@@ -112,6 +121,7 @@ export function GoalManualEditor({
           weekStart={weekStart}
           weekEnd={weekEnd}
           activeLabel={activeLabel}
+          writeTs={writeTs}
         />
       );
     case SPEC_KINDS.INCIDENT_LOG:
@@ -122,11 +132,17 @@ export function GoalManualEditor({
           weekStart={weekStart}
           weekEnd={weekEnd}
           activeLabel={activeLabel}
+          writeTs={writeTs}
         />
       );
     case SPEC_KINDS.RECURRING_MILESTONE:
       return (
-        <RecurringMilestoneEditor goal={goal} spec={spec} activeLabel={activeLabel} />
+        <RecurringMilestoneEditor
+          goal={goal}
+          spec={spec}
+          activeLabel={activeLabel}
+          writeTs={writeTs}
+        />
       );
     default:
       return null;
