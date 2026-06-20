@@ -108,13 +108,27 @@ The pattern already exists — this is mostly promotion + interactivity.
   per-period stepper. Until then its stepper reflects "filled this period or not".
 
 ## Phased rollout
-1. **Gauge half (zero risk):** `CadenceStepper` read-only on each manual widget
-   on Goals. `/checkin` still exists.
-2. **Fill half:** cells become selectable; wire widget inputs to the selected
-   per-widget period.
-3. **Parity:** inline the check-in editors per selected period; verify against
-   `/checkin` feature-by-feature.
-4. **Remove:** delete the `/checkin` route + nav; redirect → Goals.
+1. ✅ **Gauge half** — `CadenceStepper` read-only on each manual widget (stepper
+   / heatmap / pip). (commit 7462456)
+2. ✅ **Fill half** — selectable cells → inline shared editor per window via
+   `writeTs`; COMPOSED made period-aware so its stepper fills per period.
+   (569f42c, 42cf20e). Readiness gate so it hides in "define before tracking"
+   (1cf4951).
+3. **Parity (in progress)** — make the widget do everything `/checkin` does:
+   - ✅ "Nothing to report" settle (goal-locks) folded into the stepper.
+   - ☐ SCORECARD + CODE_RUBRIC fill — the heavy editors that currently live
+     ONLY on `/checkin` (excluded from `INLINE_FILLABLE_KINDS`). Need a home on
+     the widget (or an explicit "open full editor" affordance).
+   - ☐ Weekly/daily backfill — heatmap cells are read-only today; `/checkin`
+     let you fill any week. Make heatmap cells selectable (mind the 44px target).
+   - ☐ Cross-goal "what's owed this week" — covered by the intelligence hub
+     action queue; confirm it deep-links to the goal + current cell.
+4. **Remove** — once the three Parity boxes are checked: delete the `/checkin`
+   route + nav entry; redirect `/checkin` → Goals. Small change, gated on
+   parity so no capability is lost.
+
+**When `/checkin` is removed:** Phase 4, after the three Phase-3 parity items
+above — realistically the next 2–3 increments. Not before, so nothing regresses.
 
 ## Open question (decide before phase 2)
 Backfill scope: **any past window**, or **current + previous only** (older =

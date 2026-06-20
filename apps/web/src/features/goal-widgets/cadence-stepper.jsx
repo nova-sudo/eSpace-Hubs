@@ -23,6 +23,7 @@ import { useMemo, useState } from "react";
 import { useGoalInputs, buildCycleWindows } from "@/features/goal-inputs";
 import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
 import { SPEC_KINDS } from "@/features/goal-specs";
+import { isLocked, setLock, useGoalLocks } from "@/features/goal-locks";
 import { ComposedFields } from "./widgets/composed-fields.jsx";
 
 const STATE_LABEL = {
@@ -99,6 +100,8 @@ export function CadenceStepper({ spec, variant = "light" }) {
   // Which window the user opened to fill/backfill (null = none; current period
   // is filled via the widget body above, as before).
   const [selectedKey, setSelectedKey] = useState(null);
+  // Subscribe to lock changes so "nothing to report" settles re-render the cells.
+  useGoalLocks();
 
   const data = useMemo(
     () => buildCycleWindows({ entries, cadence, now: Date.now() }),
@@ -172,7 +175,12 @@ export function CadenceStepper({ spec, variant = "light" }) {
       </div>
       <div className="flex items-start gap-1.5">
         {windows.map((w) => {
-          const v = cellVisual(w.state, p);
+          // A "nothing to report" lock overlays owed/current windows as settled
+          // (filled windows already count; the future can't be settled).
+          const settled =
+            isLocked(goalId, w.key) && w.state !== "filled" && w.state !== "future";
+          const effState = settled ? "settled" : w.state;
+          const v = cellVisual(effState, p);
           const isCurrent = w.state === "current";
           const isSelected = w.key === selectedKey;
           // Interactive only for inline-fillable widgets, and only for windows
@@ -181,7 +189,7 @@ export function CadenceStepper({ spec, variant = "light" }) {
           const sz = isCurrent ? 40 : 34;
           const cell = (
             <div
-              title={`${w.label} · ${STATE_LABEL[w.state]}`}
+              title={`${w.label} · ${STATE_LABEL[effState]}`}
               style={{
                 width: "100%",
                 maxWidth: sz + 8,
@@ -242,17 +250,29 @@ export function CadenceStepper({ spec, variant = "light" }) {
           className="mt-2 rounded-[var(--radius-sub)] p-2.5"
           style={{ background: "var(--card)", color: "var(--fg)", border: "1px solid var(--border)" }}
         >
-          <div className="mb-1.5 flex items-center justify-between">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
             <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
               logging {selected.label}
             </span>
-            <button
-              type="button"
-              onClick={() => setSelectedKey(null)}
-              style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", border: "none", background: "transparent", cursor: "pointer" }}
-            >
-              close
-            </button>
+            <div className="flex items-center gap-3">
+              {/* "Nothing to report" settle — the same goal-locks escape hatch
+                  the check-in had, so a quiet period stops reading as owed. */}
+              <button
+                type="button"
+                onClick={() => setLock(goalId, selected.key, !isLocked(goalId, selected.key))}
+                style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", border: "none", background: "transparent", cursor: "pointer" }}
+                title="Settle this period — nothing happened, stop flagging it as owed"
+              >
+                {isLocked(goalId, selected.key) ? "reopen" : "nothing to report"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedKey(null)}
+                style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", border: "none", background: "transparent", cursor: "pointer" }}
+              >
+                close
+              </button>
+            </div>
           </div>
           {isComposed ? (
             <ComposedFields
