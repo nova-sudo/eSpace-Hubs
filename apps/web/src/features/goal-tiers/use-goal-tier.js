@@ -14,7 +14,7 @@
 
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useSnapshots } from "@/features/snapshots";
-import { useGoalInputs, getInputsState } from "@/features/goal-inputs";
+import { useGoalInputs, getInputsState, currentPeriodKey } from "@/features/goal-inputs";
 import { useGoalContext } from "@/features/goal-context";
 import { SPEC_KINDS } from "@/features/goal-specs";
 import { getAiProvider } from "@/features/analyst";
@@ -145,8 +145,17 @@ function buildCurrentData(spec, entries, reading) {
     case SPEC_KINDS.COMPOSED: {
       const fields = Array.isArray(spec.fields) ? spec.fields : [];
       if (fields.length === 0) return readingToText(reading);
+      // Period-aware: grade the CURRENT period's record, not whatever was
+      // edited last (backfilling an old quarter must not skew the grade).
+      const curKey = currentPeriodKey(spec.composed?.cadence, Date.now());
+      const matching = list.filter((e) =>
+        curKey == null
+          ? e?.value && e.value.periodKey == null
+          : e?.value?.periodKey === curKey,
+      );
+      const curEntry = matching.length ? matching[matching.length - 1] : null;
       const rec =
-        latest && typeof latest.value === "object" ? latest.value : {};
+        curEntry && typeof curEntry.value === "object" ? curEntry.value : {};
       const vals = rec.values && typeof rec.values === "object" ? rec.values : {};
       const ev = rec.evidence && typeof rec.evidence === "object" ? rec.evidence : {};
       const filled = fields.filter((f) => {

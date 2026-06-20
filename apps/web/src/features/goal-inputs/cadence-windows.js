@@ -80,6 +80,23 @@ function enumerateWindows(cadence, year, cycleStart, cycleEnd) {
   return out;
 }
 
+/**
+ * The window KEY for the period containing `now` (e.g. "2026-Q2") — or null
+ * for non-bucketing / cadence-less goals. Shares the exact key scheme of
+ * `buildCycleWindows`, so a COMPOSED widget's "current period" record lines up
+ * with the stepper cell the user clicks and with the grader's reading.
+ */
+export function currentPeriodKey(cadence, now) {
+  if (!cadence || NON_BUCKETING.has(cadence)) return null;
+  const year = new Date(now).getUTCFullYear();
+  const start = Date.UTC(year, 0, 1);
+  const end = Date.UTC(year + 1, 0, 1);
+  const w = enumerateWindows(cadence, year, start, end).find(
+    (x) => now >= x.start && now < x.end,
+  );
+  return w ? w.key : null;
+}
+
 export function buildCycleWindows({
   entries,
   cadence,

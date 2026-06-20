@@ -22,6 +22,8 @@
 import { useMemo, useState } from "react";
 import { useGoalInputs, buildCycleWindows } from "@/features/goal-inputs";
 import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
+import { SPEC_KINDS } from "@/features/goal-specs";
+import { ComposedFields } from "./widgets/composed-fields.jsx";
 
 const STATE_LABEL = {
   filled: "filled",
@@ -89,9 +91,10 @@ export function CadenceStepper({ spec, variant = "light" }) {
   const goalId = spec?.goalId;
   const { entries } = useGoalInputs(goalId);
   const cadence = spec?.manual?.cadence ?? spec?.composed?.cadence ?? null;
-  // The shared check-in editors only exist for these kinds; COMPOSED fills via
-  // its own widget body, so its stepper stays read-only (gauge only).
-  const fillable = isInlineFillable(spec?.widget);
+  // Inline-fillable: the shared check-in editors, plus COMPOSED (which fills
+  // per-period via its own <ComposedFields> body).
+  const isComposed = spec?.widget === SPEC_KINDS.COMPOSED;
+  const fillable = isInlineFillable(spec?.widget) || isComposed;
   const goal = useMemo(() => ({ id: goalId, title: spec?.title }), [goalId, spec?.title]);
   // Which window the user opened to fill/backfill (null = none; current period
   // is filled via the widget body above, as before).
@@ -251,15 +254,24 @@ export function CadenceStepper({ spec, variant = "light" }) {
               close
             </button>
           </div>
-          <GoalManualEditor
-            widget={spec.widget}
-            goal={goal}
-            spec={spec}
-            weekStart={new Date(selected.start)}
-            weekEnd={new Date(selected.end)}
-            activeLabel={selected.label}
-            writeTs={Math.floor((selected.start + selected.end) / 2)}
-          />
+          {isComposed ? (
+            <ComposedFields
+              goalId={goalId}
+              fields={spec.fields}
+              periodKey={selected.key}
+              variant="dark"
+            />
+          ) : (
+            <GoalManualEditor
+              widget={spec.widget}
+              goal={goal}
+              spec={spec}
+              weekStart={new Date(selected.start)}
+              weekEnd={new Date(selected.end)}
+              activeLabel={selected.label}
+              writeTs={Math.floor((selected.start + selected.end) / 2)}
+            />
+          )}
         </div>
       ) : null}
     </div>

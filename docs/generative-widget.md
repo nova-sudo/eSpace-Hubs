@@ -140,10 +140,11 @@ generation.
 
 ## 8. Roadmap beyond v1
 
-- **Period reset (v2).** v1 keeps one running record. Mirror
-  `RECURRING_MILESTONE`: store `{ periodKey, values, evidence }` per period so a
-  quarterly `COMPOSED` resets and tracks a streak. (`use-goal-tier` already has
-  the per-period summary pattern to copy.)
+- **Period reset.** ✅ SHIPPED. COMPOSED now stores one record per period
+  (`{ periodKey, values, evidence }`); the widget shows the current period and
+  the cadence stepper fills/backfills any period (shared `<ComposedFields>`).
+  The grader reads the CURRENT period's record (`currentPeriodKey`). Remaining:
+  a cross-period streak summary for the grader.
 - **Check-in editor.** Add a compact `COMPOSED` editor to `goal-editors` so
   fields can be filled from the weekly check-in, not just the Goals page.
 - **Deterministic sub-grading.** `number`/`counter` fields with a `target` can
