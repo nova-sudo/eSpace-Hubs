@@ -25,7 +25,9 @@ import { toast } from "sonner";
 import { useWidgetControls } from "./widget-controls-context";
 import { GoalTierLadder } from "@/features/goal-tiers";
 import { SPEC_KIND_META, SPEC_VARIANTS } from "@/features/goal-specs";
+import { useIsContextComplete } from "@/features/goal-context";
 import { CadenceStepper } from "./cadence-stepper";
+import { isGoalReady } from "./readiness";
 
 const VARIANT_STYLES = {
   light: {
@@ -67,6 +69,11 @@ export function WidgetShell({
   // rendering — widgets rendered outside the resolver (e.g. tests) still
   // work unchanged.
   const { onMarkDelegated, onEditContext, onReanalyze } = useWidgetControls();
+  // Readiness gate for the cadence stepper. The state shells (ContextCollector
+  // / Delegated / Untrackable) also render through WidgetShell, so gating the
+  // stepper on widget-variant alone leaked it into the "define before tracking"
+  // state. Only show the stepper once the goal is actually trackable.
+  const contextComplete = useIsContextComplete(spec);
 
   // The footer "re-analyze" chip. Prefer the direct reclassify+save path
   // (onReanalyze, injected by GoalWidget) so a single click re-runs the
@@ -140,9 +147,12 @@ export function WidgetShell({
       <div className="flex min-h-0 flex-1 flex-col">{children}</div>
 
       {/* Cadence stepper — per-window fill/status gauge for MANUAL widgets.
-          Read-only (Phase 1). Gated on the manual variant so AUTO tiles don't
-          mount the goal-inputs subscription. */}
-      {spec && SPEC_KIND_META[spec.widget]?.variant === SPEC_VARIANTS.MANUAL ? (
+          Gated on the manual variant (so AUTO tiles don't mount the goal-inputs
+          subscription) AND on readiness (so it never appears in the "define
+          before tracking" / delegated / untrackable state shells). */}
+      {spec &&
+      SPEC_KIND_META[spec.widget]?.variant === SPEC_VARIANTS.MANUAL &&
+      isGoalReady(spec, contextComplete) ? (
         <CadenceStepper spec={spec} variant={variant} />
       ) : null}
 
