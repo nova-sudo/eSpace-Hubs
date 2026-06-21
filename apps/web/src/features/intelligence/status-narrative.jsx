@@ -102,40 +102,74 @@ function capitalize(s) {
  */
 export function StatusNarrative({ summary, queue }) {
   const { headline, detail } = ruleBasedNarrative(summary, queue);
-  const tone = summary.attention > 0 ? "attention" : "calm";
+  const attentionMode = summary.attention > 0;
+
+  // Big dot-matrix stat: how many need you, over total. Calm → all-on-pace.
+  const statNum = attentionMode
+    ? summary.attention
+    : summary.onPace + summary.auto;
+  const statStr = String(statNum).padStart(2, "0");
+  const statLabel = attentionMode ? "Need your attention" : "All on pace";
+  const statLabelColor = attentionMode ? "var(--bad)" : "var(--good)";
 
   return (
     <div
-      className="rounded-lg border border-border bg-card px-6 py-5"
+      className="relative overflow-hidden rounded-[var(--radius-tile)] border border-border"
       style={{
-        // Subtle accent wash when something needs the user; flat when calm.
-        background:
-          tone === "attention"
-            ? "linear-gradient(180deg, var(--accent-dim) 0%, var(--card) 60%)"
-            : undefined,
+        backgroundColor: "var(--card)",
+        // Nothing's signature halftone dot-grid, faded toward the right.
+        backgroundImage: "radial-gradient(var(--dot-dim) 1px, transparent 1px)",
+        backgroundSize: "9px 9px",
       }}
     >
-      <div
-        className="text-[10px] uppercase tracking-[0.6px] text-muted-fg"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
-        {/* Sprint 2 swaps this label to "AI summary" when the model drives it. */}
-        Where you stand
+      <div className="flex flex-col gap-5 px-6 py-5 sm:flex-row sm:items-center sm:gap-7">
+        {/* Left — the dot-matrix stat block */}
+        <div className="flex shrink-0 flex-col gap-2">
+          <span
+            className="uppercase tracking-[1.5px] text-muted-fg"
+            style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
+          >
+            Where you stand
+          </span>
+          <div className="flex items-end gap-1" style={{ fontFamily: "var(--font-dot)", fontWeight: 900, lineHeight: 0.8 }}>
+            <span style={{ fontSize: 52, color: "var(--accent)" }}>{statStr}</span>
+            <span style={{ fontSize: 24, color: "var(--dim-fg)", paddingBottom: 2 }}>
+              /{summary.total}
+            </span>
+          </div>
+          <span
+            className="uppercase tracking-[1.5px]"
+            style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: statLabelColor }}
+          >
+            {statLabel}
+          </span>
+        </div>
+
+        {/* Dashed hairline divider — vertical on wide, horizontal on narrow */}
+        <div
+          aria-hidden="true"
+          className="hidden self-stretch sm:block"
+          style={{ borderLeft: "1px dashed var(--border-strong)" }}
+        />
+        <div
+          aria-hidden="true"
+          className="block h-0 w-full sm:hidden"
+          style={{ borderTop: "1px dashed var(--border-strong)" }}
+        />
+
+        {/* Right — the narrative */}
+        <div className="min-w-0 flex-1">
+          <div
+            className="font-semibold text-fg"
+            style={{ fontFamily: "var(--font-display)", fontSize: 20, lineHeight: 1.25, letterSpacing: "-0.3px" }}
+          >
+            {headline}
+          </div>
+          {detail ? (
+            <div className="mt-1.5 text-[13px] leading-[1.5] text-muted-fg">{detail}</div>
+          ) : null}
+        </div>
       </div>
-      <div
-        className="mt-1.5 font-semibold text-fg"
-        style={{
-          fontFamily: "var(--font-display)",
-          fontSize: 22,
-          lineHeight: 1.2,
-          letterSpacing: "-0.4px",
-        }}
-      >
-        {headline}
-      </div>
-      {detail ? (
-        <div className="mt-1 text-[13px] text-muted-fg">{detail}</div>
-      ) : null}
     </div>
   );
 }
