@@ -145,7 +145,7 @@ export function EvidencePage() {
         }
       />
 
-      <div className="grid grid-cols-[340px_minmax(0,1fr)] items-start gap-5">
+      <div className="grid grid-cols-[320px_minmax(0,1fr)] items-start gap-5">
         <div className="no-print">
           <ConfigPanel
             format={format}
@@ -160,7 +160,8 @@ export function EvidencePage() {
           />
         </div>
 
-        <div className="flex min-w-0 flex-col gap-5">
+        <div className="flex min-w-0 flex-col gap-[18px]">
+          <MetricsRow metrics={metrics} />
           <ParagraphCard
             metrics={metrics}
             rangeLabel={rangeLabel}
@@ -191,5 +192,48 @@ export function EvidencePage() {
         </div>
       </div>
     </main>
+  );
+}
+
+/**
+ * Five-up headline metric tiles — big Doto numerals over a label + mono
+ * sub. Mirrors the reference's metrics strip above the auto-narrative.
+ * Reads the same `metrics` tuples [label, value, sub, good] the rest of
+ * the page uses.
+ */
+function MetricsRow({ metrics }) {
+  return (
+    <div className="grid grid-cols-5 gap-3 no-print">
+      {metrics.map(([label, value, sub, good]) => (
+        <div
+          key={label}
+          className="rounded-[9px] border border-border bg-card px-[13px] py-[14px]"
+        >
+          <div
+            className="text-fg"
+            style={{
+              fontFamily: "var(--font-dot)",
+              fontWeight: 900,
+              fontSize: 30,
+              lineHeight: 0.85,
+            }}
+          >
+            {value}
+          </div>
+          <div className="mt-[9px] text-[11px] font-semibold text-fg">{label}</div>
+          <div
+            className="mt-[3px] uppercase"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              letterSpacing: "0.5px",
+              color: good ? "var(--good)" : "var(--dim-fg)",
+            }}
+          >
+            {sub}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

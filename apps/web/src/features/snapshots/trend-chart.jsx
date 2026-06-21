@@ -3,6 +3,7 @@
 import {
   Area,
   AreaChart,
+  CartesianGrid,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -41,11 +42,12 @@ export function TrendChart({
             </MonoLabel>
             <div className="mt-1.5 flex items-baseline gap-3">
               <span
-                className="font-semibold leading-none"
+                className="leading-none text-accent"
                 style={{
-                  fontFamily: "var(--font-display)",
+                  fontFamily: "var(--font-dot)",
+                  fontWeight: 900,
                   fontSize: 44,
-                  letterSpacing: "-1.4px",
+                  letterSpacing: "0.5px",
                 }}
               >
                 {only[metricKey] ?? "—"}
@@ -93,11 +95,12 @@ export function TrendChart({
           </MonoLabel>
           <div className="mt-1.5 flex items-baseline gap-3">
             <span
-              className="font-semibold leading-none"
+              className="leading-none text-accent"
               style={{
-                fontFamily: "var(--font-display)",
+                fontFamily: "var(--font-dot)",
+                fontWeight: 900,
                 fontSize: 44,
-                letterSpacing: "-1.4px",
+                letterSpacing: "0.5px",
               }}
             >
               {last}
@@ -121,11 +124,12 @@ export function TrendChart({
         <div className="text-right">
           <MonoLabel>{series.length}-week avg</MonoLabel>
           <div
-            className="mt-1 font-semibold"
+            className="mt-1"
             style={{
-              fontFamily: "var(--font-display)",
+              fontFamily: "var(--font-dot)",
+              fontWeight: 900,
               fontSize: 22,
-              letterSpacing: "-0.5px",
+              letterSpacing: "0.5px",
             }}
           >
             {avg.toFixed(metricKey === "rounds" ? 1 : 0)}
@@ -157,6 +161,11 @@ export function TrendChart({
                 />
               </linearGradient>
             </defs>
+            <CartesianGrid
+              vertical={false}
+              stroke="var(--dot-dim)"
+              strokeDasharray="3 5"
+            />
             <XAxis
               dataKey="week"
               interval={0}

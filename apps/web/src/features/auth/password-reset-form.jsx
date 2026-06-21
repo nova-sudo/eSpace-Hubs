@@ -34,6 +34,260 @@ import { apiPost } from "@/lib/api-client";
 
 const MIN_PASSWORD_LENGTH = 12;
 
+/* ── Nothing UI auth chrome (inlined per file — mirrors the reference
+   ScreenAuth.dc.html "reset" variant in the migration kit). ───────── */
+
+const FIELD_LABEL = {
+  fontFamily: "var(--font-mono)",
+  fontSize: 10,
+  textTransform: "uppercase",
+  letterSpacing: "1.5px",
+  color: "var(--muted-fg)",
+};
+
+const INPUT = {
+  fontFamily: "var(--font-mono)",
+  fontSize: 14,
+  letterSpacing: "4px",
+  color: "var(--fg)",
+  border: "1px solid var(--border-strong)",
+  borderRadius: "var(--radius-sub)",
+  padding: "11px 14px",
+  background: "var(--card)",
+  outline: "none",
+  width: "100%",
+};
+
+const ERROR = {
+  fontFamily: "var(--font-mono)",
+  fontSize: 11.5,
+  color: "var(--bad)",
+};
+
+const BRAND = {
+  brandTitle: ["One", "new key"],
+  brandBody:
+    "Set a fresh password — long and unique. We hash it with argon2id and never see the plaintext.",
+  flow: ["Email", "Reset link", "New password"],
+};
+
+function AuthShell({ brandTitle, brandBody, flow, flowActive, children }) {
+  return (
+    <div
+      style={{
+        "--brand-bg": "#000",
+        "--brand-fg": "#fff",
+        "--brand-muted": "rgba(255,255,255,0.6)",
+        "--brand-dim": "rgba(255,255,255,0.22)",
+        "--brand-line": "rgba(255,255,255,0.22)",
+        "--brand-dot": "rgba(255,255,255,0.13)",
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1.05fr) minmax(0, 1fr)",
+        minHeight: "100vh",
+        background: "var(--bg)",
+      }}
+      className="auth-shell"
+    >
+      <div
+        className="auth-brand"
+        style={{
+          position: "relative",
+          overflow: "hidden",
+          background: "var(--brand-bg)",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          padding: "46px 44px",
+        }}
+      >
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundImage:
+              "radial-gradient(var(--brand-dot) 1.1px, transparent 1.1px)",
+            backgroundSize: "11px 11px",
+            opacity: 0.6,
+            pointerEvents: "none",
+          }}
+        />
+        <BrandMark />
+        <div style={{ position: "relative" }}>
+          <div
+            style={{
+              fontFamily: "var(--font-dot)",
+              fontWeight: 900,
+              fontSize: 54,
+              lineHeight: 0.9,
+              letterSpacing: "1px",
+              textTransform: "uppercase",
+              color: "var(--brand-fg)",
+            }}
+          >
+            {brandTitle.map((line, i) => (
+              <span key={i}>
+                {line}
+                {i < brandTitle.length - 1 ? <br /> : null}
+              </span>
+            ))}
+            <span style={{ color: "var(--accent)" }}>.</span>
+          </div>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: 14.5,
+              lineHeight: 1.55,
+              color: "var(--brand-muted)",
+              maxWidth: 340,
+              margin: "22px 0 0",
+            }}
+          >
+            {brandBody}
+          </p>
+        </div>
+        <FlowPills flow={flow} active={flowActive} />
+      </div>
+
+      <div
+        style={{
+          background: "var(--bg)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 40,
+        }}
+      >
+        <div style={{ width: "100%", maxWidth: 380 }}>{children}</div>
+      </div>
+
+      <style>{`
+        @media (max-width: 720px) {
+          .auth-shell { grid-template-columns: 1fr !important; }
+          .auth-brand { display: none !important; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function BrandMark() {
+  const cell = (bg) => <i style={{ background: bg, borderRadius: "50%" }} />;
+  return (
+    <div
+      style={{
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        gap: 11,
+      }}
+    >
+      <div
+        style={{
+          width: 30,
+          height: 30,
+          borderRadius: 7,
+          border: "1px solid var(--brand-line)",
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gridTemplateRows: "repeat(3, 1fr)",
+          gap: 3,
+          padding: 6,
+        }}
+      >
+        {cell("var(--brand-fg)")}
+        {cell("var(--brand-dim)")}
+        {cell("var(--brand-fg)")}
+        {cell("var(--brand-dim)")}
+        {cell("var(--accent)")}
+        {cell("var(--brand-dim)")}
+        {cell("var(--brand-fg)")}
+        {cell("var(--brand-dim)")}
+        {cell("var(--brand-fg)")}
+      </div>
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontWeight: 700,
+          fontSize: 16,
+          color: "var(--brand-fg)",
+        }}
+      >
+        eSpace<span style={{ color: "var(--accent)" }}>/</span>DevHub
+      </span>
+    </div>
+  );
+}
+
+function FlowPills({ flow = [], active = 0 }) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        gap: 9,
+        flexWrap: "wrap",
+      }}
+    >
+      {flow.map((label, i) => {
+        const on = i <= active;
+        return (
+          <span
+            key={i}
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              textTransform: "uppercase",
+              letterSpacing: "1px",
+              color: on ? "var(--brand-fg)" : "var(--brand-dim)",
+              border: `1px solid ${on ? "var(--accent)" : "var(--brand-line)"}`,
+              borderRadius: 999,
+              padding: "4px 9px",
+            }}
+          >
+            {label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function Title({ children, size = 32 }) {
+  return (
+    <h1
+      style={{
+        fontFamily: "var(--font-dot)",
+        fontWeight: 900,
+        fontSize: size,
+        letterSpacing: "1px",
+        textTransform: "uppercase",
+        color: "var(--fg)",
+        margin: 0,
+      }}
+    >
+      {children}
+    </h1>
+  );
+}
+
+function Lead({ children, mb = 24 }) {
+  return (
+    <p
+      style={{
+        fontFamily: "var(--font-sans)",
+        fontSize: 13.5,
+        lineHeight: 1.5,
+        color: "var(--muted-fg)",
+        margin: `10px 0 ${mb}px`,
+      }}
+    >
+      {children}
+    </p>
+  );
+}
+
 export function PasswordResetForm() {
   const router = useRouter();
   const params = useSearchParams();
@@ -47,10 +301,29 @@ export function PasswordResetForm() {
 
   if (!token) {
     return (
-      <ErrorPanel
-        title="Missing reset token."
-        body="Your reset link is incomplete. Open it again from the email you received, or request a new link."
-      />
+      <AuthShell {...BRAND} flowActive={2}>
+        <Title size={28}>Missing reset token.</Title>
+        <Lead mb={0}>
+          Your reset link is incomplete. Open it again from the email you
+          received, or request a new link.
+        </Lead>
+        <div
+          style={{
+            marginTop: 18,
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
+            color: "var(--muted-fg)",
+          }}
+        >
+          <Link
+            href="/forgot-password"
+            className="text-accent hover:underline"
+            style={{ fontWeight: 600 }}
+          >
+            Request a new link
+          </Link>
+        </div>
+      </AuthShell>
     );
   }
 
@@ -83,32 +356,41 @@ export function PasswordResetForm() {
   }
 
   if (done) {
-    return <SuccessPanel />;
+    return (
+      <AuthShell {...BRAND} flowActive={2}>
+        <Title size={28}>Password updated.</Title>
+        <Lead mb={4}>
+          Redirecting you to sign-in. Use your new password to continue.
+        </Lead>
+        <div
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
+            color: "var(--muted-fg)",
+          }}
+        >
+          Not redirected?{" "}
+          <Link
+            href="/login"
+            className="text-accent hover:underline"
+            style={{ fontWeight: 600 }}
+          >
+            Go to sign-in
+          </Link>
+        </div>
+      </AuthShell>
+    );
   }
 
   return (
-    <div className="mx-auto flex max-w-sm flex-col gap-5 py-12">
-      <div>
-        <h1
-          className="font-semibold"
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 28,
-            letterSpacing: "-0.8px",
-          }}
-        >
-          Set a new password
-        </h1>
-        <p
-          className="mt-1 text-muted-fg"
-          style={{ fontSize: 13.5, lineHeight: 1.5 }}
-        >
-          Pick something long. You&apos;ll be signed in fresh after
-          you set it.
-        </p>
-      </div>
+    <AuthShell {...BRAND} flowActive={2}>
+      <Title>New password</Title>
+      <Lead>
+        Choose a new password. You&apos;ll be signed in on this device once
+        it&apos;s set.
+      </Lead>
 
-      <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
+      <form className="flex flex-col" onSubmit={handleSubmit}>
         <PasswordField
           label="New password"
           value={password}
@@ -116,59 +398,52 @@ export function PasswordResetForm() {
           autoFocus
           autoComplete="new-password"
           disabled={submitting}
+          marginBottom={14}
         />
         <PasswordField
-          label="Confirm new password"
+          label="Confirm password"
           value={confirm}
           onChange={setConfirm}
           autoComplete="new-password"
           disabled={submitting}
+          marginBottom={8}
         />
-        <p
-          className="text-muted-fg"
+        <span
           style={{
             fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            letterSpacing: "0.3px",
+            fontSize: 10,
+            color: "var(--dim-fg)",
           }}
         >
-          {MIN_PASSWORD_LENGTH}+ characters · stored as an argon2id hash
-        </p>
+          {MIN_PASSWORD_LENGTH}+ characters · argon2id hash
+        </span>
 
-        {error ? (
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11.5,
-              color: "var(--bad)",
-            }}
-          >
-            {error}
-          </div>
-        ) : null}
+        {error ? <div style={{ ...ERROR, marginTop: 10 }}>{error}</div> : null}
 
         <button
           type="submit"
           disabled={!password || !confirm || submitting}
           style={{
+            width: "100%",
             fontFamily: "var(--font-mono)",
             fontSize: 11,
             fontWeight: 700,
-            letterSpacing: "0.5px",
             textTransform: "uppercase",
+            letterSpacing: "1px",
+            color: "var(--accent-on)",
             background: "var(--accent)",
-            color: "var(--accent-on, #fff)",
             border: 0,
-            borderRadius: "var(--radius-sub, 3px)",
-            padding: "12px 16px",
+            borderRadius: "var(--radius-sub)",
+            padding: 13,
+            marginTop: 18,
             cursor: submitting ? "wait" : "pointer",
             opacity: password && confirm && !submitting ? 1 : 0.6,
           }}
         >
-          {submitting ? "Updating…" : "Set new password"}
+          {submitting ? "Updating…" : "Update password →"}
         </button>
       </form>
-    </div>
+    </AuthShell>
   );
 }
 
@@ -179,20 +454,11 @@ function PasswordField({
   autoFocus,
   autoComplete,
   disabled,
+  marginBottom,
 }) {
   return (
-    <label className="flex flex-col gap-1.5">
-      <span
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          letterSpacing: "0.5px",
-          color: "var(--muted-fg)",
-          textTransform: "uppercase",
-        }}
-      >
-        {label}
-      </span>
+    <label className="flex flex-col gap-[7px]" style={{ marginBottom }}>
+      <span style={FIELD_LABEL}>{label}</span>
       <input
         type="password"
         autoComplete={autoComplete}
@@ -201,95 +467,9 @@ function PasswordField({
         disabled={disabled}
         required
         autoFocus={autoFocus}
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 13,
-          padding: "10px 14px",
-          background: "var(--card)",
-          border: "1px solid var(--border-strong)",
-          borderRadius: "var(--radius-sub, 3px)",
-          outline: "none",
-        }}
+        style={INPUT}
       />
     </label>
-  );
-}
-
-function SuccessPanel() {
-  return (
-    <div className="mx-auto flex max-w-sm flex-col gap-4 py-12">
-      <h1
-        className="font-semibold"
-        style={{
-          fontFamily: "var(--font-display)",
-          fontSize: 26,
-          letterSpacing: "-0.7px",
-        }}
-      >
-        Password updated.
-      </h1>
-      <p
-        className="text-muted-fg"
-        style={{ fontSize: 13.5, lineHeight: 1.55 }}
-      >
-        Redirecting you to sign-in. Use your new password to continue.
-      </p>
-      <div
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 11,
-          color: "var(--muted-fg)",
-        }}
-      >
-        Not redirected?{" "}
-        <Link
-          href="/login"
-          className="text-accent hover:underline"
-          style={{ fontWeight: 600 }}
-        >
-          Go to sign-in
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function ErrorPanel({ title, body }) {
-  return (
-    <div className="mx-auto flex max-w-sm flex-col gap-3 py-12">
-      <h1
-        className="font-semibold"
-        style={{
-          fontFamily: "var(--font-display)",
-          fontSize: 24,
-          letterSpacing: "-0.6px",
-        }}
-      >
-        {title}
-      </h1>
-      <p
-        className="text-muted-fg"
-        style={{ fontSize: 13.5, lineHeight: 1.5 }}
-      >
-        {body}
-      </p>
-      <div
-        className="mt-1"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 11,
-          color: "var(--muted-fg)",
-        }}
-      >
-        <Link
-          href="/forgot-password"
-          className="text-accent hover:underline"
-          style={{ fontWeight: 600 }}
-        >
-          Request a new link
-        </Link>
-      </div>
-    </div>
   );
 }
 

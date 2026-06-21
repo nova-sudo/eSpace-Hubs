@@ -14,7 +14,7 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Button, MonoLabel } from "@/components/ui";
+import { Button } from "@/components/ui";
 import { generateReviewParagraph } from "./auto-paragraph";
 import { useAiProvider } from "@/features/analyst";
 
@@ -100,9 +100,14 @@ export function ParagraphCard({ metrics, rangeLabel, level, starred }) {
 
   if (!baseParagraph) {
     return (
-      <div className="rounded-[var(--radius-tile)] border border-dashed border-border bg-card-alt px-5 py-4 no-print">
-        <MonoLabel>Auto paragraph</MonoLabel>
-        <p className="mt-2 text-[13px] text-muted-fg">
+      <div className="rounded-[var(--radius-tile)] border border-dashed border-border-strong bg-card px-5 py-4 no-print">
+        <span
+          className="uppercase text-accent"
+          style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "2px" }}
+        >
+          Auto-drafted narrative
+        </span>
+        <p className="mt-2.5 text-[13px] text-muted-fg">
           Connect GitHub or GitLab — the paragraph fills in once the metrics land.
         </p>
       </div>
@@ -110,39 +115,66 @@ export function ParagraphCard({ metrics, rangeLabel, level, starred }) {
   }
 
   return (
-    <div className="rounded-[var(--radius-tile)] border border-border bg-card-alt px-5 py-4 no-print">
-      <div className="flex items-baseline justify-between gap-3">
-        <MonoLabel>Paste-ready paragraph</MonoLabel>
-        <span
-          className="text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-        >
-          {polished ? "polished by " + provider : "deterministic draft"} ·{" "}
-          {text.length}c
-        </span>
-      </div>
+    <div className="relative overflow-hidden rounded-[var(--radius-tile)] border border-border bg-card px-5 py-[18px] no-print">
+      {/* Dot-grid texture fading in from the right — the Nothing signature. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute right-0 top-0 h-full"
+        style={{
+          width: 160,
+          backgroundImage: "radial-gradient(var(--dot-dim) 1px, transparent 1px)",
+          backgroundSize: "8px 8px",
+          opacity: 0.6,
+          WebkitMaskImage: "linear-gradient(90deg, transparent, #000)",
+          maskImage: "linear-gradient(90deg, transparent, #000)",
+        }}
+      />
 
-      <p
-        className="mt-2 text-[14px] leading-[1.6]"
-        style={{ fontFamily: "var(--font-serif)" }}
-      >
-        {text}
-      </p>
+      <div className="relative">
+        <div className="mb-[11px] flex flex-wrap items-center gap-2">
+          <span
+            className="uppercase text-accent"
+            style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "2px" }}
+          >
+            Auto-drafted narrative
+          </span>
+          <span
+            className="uppercase text-muted-fg"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              letterSpacing: "0.5px",
+              border: "1px solid var(--border)",
+              borderRadius: 999,
+              padding: "2px 8px",
+            }}
+          >
+            editable
+          </span>
+          <span
+            className="ml-auto text-muted-fg"
+            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
+          >
+            {polished ? "polished by " + provider : "deterministic draft"} ·{" "}
+            {text.length}c
+          </span>
+        </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Button onClick={handleCopy}>Copy paragraph</Button>
-        <Button
-          variant="ghost"
-          onClick={handlePolish}
-          disabled={polishing}
-        >
-          {polishing ? "Polishing…" : `Polish with ${provider}`}
-        </Button>
-        {polished ? (
-          <Button variant="ghost" onClick={handleReset}>
-            Revert to draft
+        <p className="m-0 max-w-[640px] text-[14.5px] leading-[1.6] text-fg">
+          {text}
+        </p>
+
+        <div className="mt-3.5 flex flex-wrap items-center gap-2">
+          <Button onClick={handleCopy}>Copy paragraph</Button>
+          <Button variant="ghost" onClick={handlePolish} disabled={polishing}>
+            {polishing ? "Polishing…" : `Polish with ${provider}`}
           </Button>
-        ) : null}
+          {polished ? (
+            <Button variant="ghost" onClick={handleReset}>
+              Revert to draft
+            </Button>
+          ) : null}
+        </div>
       </div>
     </div>
   );

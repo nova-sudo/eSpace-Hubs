@@ -257,11 +257,11 @@ function AnalystHeader({
         </button>
         <div>
           <div
-            className="font-semibold"
+            className="font-black uppercase"
             style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 18,
-              letterSpacing: "-0.3px",
+              fontFamily: "var(--font-dot)",
+              fontSize: 19,
+              letterSpacing: "1px",
             }}
           >
             AI Goal Analyst
@@ -477,12 +477,12 @@ function EmptyCta({ title, body, ctaLabel, ctaHref, onCta }) {
         }}
       >
         <div
-          className="font-semibold"
+          className="font-black uppercase"
           style={{
-            fontFamily: "var(--font-display)",
+            fontFamily: "var(--font-dot)",
             fontSize: 24,
-            letterSpacing: "-0.6px",
-            lineHeight: 1.15,
+            letterSpacing: "1px",
+            lineHeight: 1.05,
           }}
         >
           {title}

@@ -1,12 +1,12 @@
 "use client";
 
-import { Card, DitherField, MonoLabel } from "@/components/ui";
+import { Card, DitherField } from "@/components/ui";
 import { useIntegrations } from "@/features/integrations";
 
 const STATUS_PILL_COLORS = {
-  ok: { bg: "rgba(4,120,87,0.10)", fg: "var(--good)" },
+  ok: { bg: "color-mix(in srgb, var(--good) 14%, transparent)", fg: "var(--good)" },
   accent: { bg: "var(--accent-dim)", fg: "var(--accent)" },
-  warn: { bg: "rgba(185,28,28,0.10)", fg: "var(--bad)" },
+  warn: { bg: "color-mix(in srgb, var(--bad) 14%, transparent)", fg: "var(--bad)" },
   muted: { bg: "var(--card-alt)", fg: "var(--muted-fg)" },
 };
 
@@ -27,26 +27,36 @@ export function DocumentPreview({
   const tickets = starred.filter((s) => s.kind === "ticket");
   const reviews = starred.filter((s) => s.kind === "review");
 
-  const filename = `# performance-review-${range}.${format === "markdown" ? "md" : "pdf"}`;
+  const filename = `performance-review-${range}.${format === "markdown" ? "md" : "pdf"}`;
+
+  // Count the sections actually rendered into the preview — drives the
+  // Doto "N sections" tally in the preview header.
+  const sectionCount =
+    (include.narrative ? 1 : 0) +
+    (include.metrics && metrics ? 1 : 0) +
+    (include.prs && prs.length > 0 ? 1 : 0) +
+    (include.tickets && tickets.length > 0 ? 1 : 0) +
+    (include.reviews && reviews.length > 0 ? 1 : 0) +
+    (include.goals && goalReadings && goalReadings.length > 0 ? 1 : 0);
 
   return (
     <Card className="overflow-hidden p-0">
-      <div className="flex items-center justify-between border-b border-border bg-card-alt px-5 py-2.5">
-        <div className="flex items-center gap-2.5">
-          <span
-            className="block h-1.5 w-1.5 rounded-full"
-            style={{ background: "var(--accent-2)" }}
-          />
-          <MonoLabel>
-            Live preview · {format === "markdown" ? "Markdown" : "PDF"}
-          </MonoLabel>
-        </div>
-        <div
-          className="text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
+      <div
+        className="flex items-center justify-between border-b border-border px-[18px] py-[11px]"
+        style={{ background: "var(--panel)" }}
+      >
+        <span
+          className="uppercase text-muted-fg"
+          style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "2px" }}
         >
-          {starred.length} items
-        </div>
+          Document preview · {filename}
+        </span>
+        <span
+          className="tracking-[1px] text-accent"
+          style={{ fontFamily: "var(--font-dot)", fontWeight: 700, fontSize: 12 }}
+        >
+          {sectionCount} section{sectionCount === 1 ? "" : "s"}
+        </span>
       </div>
 
       <div className="relative min-h-[640px] bg-card px-12 py-10">
@@ -63,28 +73,28 @@ export function DocumentPreview({
         </div>
 
         <div
-          className="mb-2 text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-        >
-          {filename}
-        </div>
-        <div
-          className="mb-1 font-semibold"
+          className="uppercase text-fg"
           style={{
-            fontFamily: "var(--font-serif)",
-            fontSize: 34,
-            letterSpacing: "-0.8px",
-            lineHeight: 1.1,
+            fontFamily: "var(--font-dot)",
+            fontWeight: 900,
+            fontSize: 24,
+            letterSpacing: "0.5px",
+            lineHeight: 1.05,
           }}
         >
-          {me?.name ?? "Your name"} — {level}
+          {me?.name ?? "Your name"} — {me?.team ?? "—"}
         </div>
         <div
-          className="mb-7 text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
+          className="mt-[5px] uppercase text-muted-fg"
+          style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1px" }}
         >
-          {me?.team ?? "—"} · {rangeLabel}
+          Level {level} · {rangeLabel}
         </div>
+        <div
+          aria-hidden="true"
+          className="my-4"
+          style={{ height: 1, background: "var(--border)" }}
+        />
 
         {include.narrative ? (
           <DocSection title="01 / Summary" rangeLabel={rangeLabel}>
@@ -93,11 +103,11 @@ export function DocumentPreview({
               onChange={(e) => setNarrative(e.target.value)}
               rows={5}
               placeholder="A few sentences on what this window meant — what shipped, what shifted, what's next. Numbers come from the receipts below; this is the throughline."
-              className="w-full rounded-[var(--radius-sub)] border border-dashed border-border bg-card-alt p-2.5 outline-none placeholder:text-dim-fg"
+              className="w-full rounded-[var(--radius-sub)] border border-dashed border-border-strong bg-card-alt p-2.5 text-fg outline-none placeholder:text-dim-fg focus:border-accent"
               style={{
-                fontFamily: "var(--font-serif)",
-                fontSize: 15,
-                lineHeight: 1.55,
+                fontFamily: "var(--font-sans)",
+                fontSize: 14.5,
+                lineHeight: 1.6,
                 resize: "vertical",
               }}
             />
@@ -183,20 +193,21 @@ export function DocumentPreview({
 
 function DocSection({ title, rangeLabel, children }) {
   return (
-    <div className="mt-6 border-t border-border pt-4">
-      <div className="mb-3 flex items-baseline justify-between">
+    <div className="mb-3.5 mt-6">
+      <div className="mb-[5px] flex items-baseline justify-between gap-3">
         <h3
-          className="m-0 font-semibold"
+          className="m-0 uppercase text-accent"
           style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 16,
-            letterSpacing: "-0.2px",
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            letterSpacing: "1.5px",
+            fontWeight: 400,
           }}
         >
           {title}
         </h3>
         <span
-          className="uppercase tracking-[0.4px] text-dim-fg"
+          className="uppercase tracking-[0.5px] text-dim-fg"
           style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
         >
           {rangeLabel}
@@ -217,11 +228,12 @@ function MetricBox({ label, value, sub, good }) {
         {label}
       </div>
       <div
-        className="font-semibold leading-none"
+        className="leading-none"
         style={{
-          fontFamily: "var(--font-display)",
+          fontFamily: "var(--font-dot)",
+          fontWeight: 900,
           fontSize: 26,
-          letterSpacing: "-0.6px",
+          letterSpacing: "0.5px",
         }}
       >
         {value}

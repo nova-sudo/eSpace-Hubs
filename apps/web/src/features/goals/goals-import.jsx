@@ -98,7 +98,7 @@ export function GoalsImport({ onClose }) {
         {onClose ? (
           <button
             onClick={onClose}
-            className="rounded-full p-1 text-dim-fg hover:bg-[rgba(0,0,0,0.04)] hover:text-fg"
+            className="rounded-full p-1 text-dim-fg hover:bg-card-alt hover:text-fg"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -121,7 +121,7 @@ export function GoalsImport({ onClose }) {
       />
 
       {warnings.length > 0 ? (
-        <ul className="mt-3 rounded-[var(--radius-sub)] border border-dashed border-[rgba(185,28,28,0.3)] bg-[rgba(185,28,28,0.04)] p-3 text-[12px] text-bad">
+        <ul className="mt-3 rounded-[var(--radius-sub)] border border-dashed border-[color-mix(in_srgb,var(--bad)_30%,transparent)] bg-[color-mix(in_srgb,var(--bad)_6%,transparent)] p-3 text-[12px] text-bad">
           {warnings.map((w, i) => (
             <li key={i} className="py-0.5">
               ⚠ {w}
@@ -282,9 +282,9 @@ function Preview({ parsed }) {
       </ul>
 
       {unmatchedL2s.length > 0 ? (
-        <div className="mt-3 rounded-[var(--radius-sub)] border border-dashed border-[rgba(234,88,12,0.3)] bg-[rgba(234,88,12,0.04)] p-3">
+        <div className="mt-3 rounded-[var(--radius-sub)] border border-dashed border-[color-mix(in_srgb,var(--warn)_30%,transparent)] bg-[color-mix(in_srgb,var(--warn)_6%,transparent)] p-3">
           <div
-            className="mb-1 uppercase tracking-[0.5px] text-[#b45309]"
+            className="mb-1 uppercase tracking-[0.5px] text-warn"
             style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, fontWeight: 700 }}
           >
             {unmatchedL2s.length} L2{" "}

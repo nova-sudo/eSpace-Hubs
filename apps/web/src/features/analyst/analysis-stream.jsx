@@ -117,11 +117,12 @@ function SummaryStrip({ summary, phase, error, startedAt, onSwitchToGrid }) {
     >
       <div className="flex items-baseline gap-3">
         <span
-          className="font-semibold"
+          className="font-black"
           style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 22,
-            letterSpacing: "-0.4px",
+            fontFamily: "var(--font-dot)",
+            fontSize: 34,
+            lineHeight: 0.8,
+            letterSpacing: "0.5px",
           }}
         >
           {summary.classified}
@@ -205,9 +206,10 @@ function GoalBlock({ block }) {
           <span
             className="font-semibold"
             style={{
-              fontFamily: "var(--font-display)",
+              fontFamily: "var(--font-sans)",
               fontSize: 14,
-              letterSpacing: "-0.2px",
+              lineHeight: 1.3,
+              color: "#fff",
             }}
             title={block.title}
           >

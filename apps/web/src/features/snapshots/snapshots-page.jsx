@@ -80,7 +80,7 @@ export function SnapshotsPage() {
                 key={m.id}
                 onClick={() => setMetric(m.id)}
                 className={cn(
-                  "cursor-pointer rounded-[var(--radius-sub)] border px-3.5 py-2 uppercase tracking-[0.3px] transition-colors",
+                  "cursor-pointer rounded-[var(--radius-sub)] border px-3.5 py-2 uppercase tracking-[0.5px] transition-colors",
                   metric === m.id
                     ? "border-accent bg-accent text-accent-on"
                     : "border-border bg-transparent text-fg hover:border-border-strong",
@@ -115,21 +115,35 @@ export function SnapshotsPage() {
                 />
               }
             >
-              <div className="grid grid-cols-5 gap-4 py-1.5">
-                <Stat label="Merged PRs" value={selectedSnap.merged} sub="in the week" />
-                <Stat label="Reviews given" value={selectedSnap.reviews} sub="comments on MRs" />
-                <Stat
-                  label="Turnaround"
-                  value={selectedSnap.turnaround}
-                  unit="h"
-                  sub="median open → merge"
-                />
-                <Stat
-                  label="Jira linkage"
-                  value={`${selectedSnap.linkage}%`}
-                  sub="MRs with ticket key"
-                />
-                <Stat label="Rounds / MR" value={selectedSnap.rounds} sub="reviewer comments" />
+              <div className="grid grid-cols-5 gap-3.5 py-1.5">
+                <StatCard>
+                  <Stat label="Merged PRs" value={selectedSnap.merged} sub="in the week" />
+                </StatCard>
+                <StatCard>
+                  <Stat
+                    label="Reviews given"
+                    value={selectedSnap.reviews}
+                    sub="comments on MRs"
+                  />
+                </StatCard>
+                <StatCard>
+                  <Stat
+                    label="Turnaround"
+                    value={selectedSnap.turnaround}
+                    unit="h"
+                    sub="median open → merge"
+                  />
+                </StatCard>
+                <StatCard>
+                  <Stat
+                    label="Jira linkage"
+                    value={`${selectedSnap.linkage}%`}
+                    sub="MRs with ticket key"
+                  />
+                </StatCard>
+                <StatCard>
+                  <Stat label="Rounds / MR" value={selectedSnap.rounds} sub="reviewer comments" />
+                </StatCard>
               </div>
               {compareSnap ? (
                 <CompareGrid base={selectedSnap} other={compareSnap} />
@@ -165,12 +179,21 @@ export function SnapshotsPage() {
   );
 }
 
+/** Bordered shell for a selected-week Stat — the boxed grid in the reference. */
+function StatCard({ children }) {
+  return (
+    <div className="rounded-[var(--radius-tile)] border border-border bg-card px-3.5 py-3.5">
+      {children}
+    </div>
+  );
+}
+
 function SnapshotTable({ snapshots, selected, onSelect }) {
   const cols = "62px 56px 110px 80px 80px 90px 80px 80px 1fr";
   return (
     <div className="overflow-hidden rounded-[var(--radius-sub)] border border-border bg-card">
       <div
-        className="grid border-b border-border bg-card-alt px-3.5 py-2.5 uppercase tracking-[0.5px] text-muted-fg"
+        className="grid border-b border-border bg-panel px-3.5 py-2.5 uppercase tracking-[1px] text-muted-fg"
         style={{
           gridTemplateColumns: cols,
           fontFamily: "var(--font-mono)",
@@ -208,7 +231,8 @@ function SnapshotTable({ snapshots, selected, onSelect }) {
             <span
               className="font-bold"
               style={{
-                fontFamily: "var(--font-mono)",
+                fontFamily: "var(--font-dot)",
+                letterSpacing: "1px",
                 color: isSel ? "var(--accent)" : "var(--fg)",
               }}
             >
@@ -225,7 +249,7 @@ function SnapshotTable({ snapshots, selected, onSelect }) {
                 background:
                   s.capturedBy === "auto"
                     ? "var(--accent-dim)"
-                    : "var(--card-alt)",
+                    : "var(--panel)",
                 color:
                   s.capturedBy === "auto"
                     ? "var(--accent)"
@@ -241,10 +265,10 @@ function SnapshotTable({ snapshots, selected, onSelect }) {
             >
               {fullDate(s.capturedAt)}
             </span>
-            <span className="font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+            <span className="font-bold" style={{ fontFamily: "var(--font-dot)" }}>
               {s.merged}
             </span>
-            <span className="font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+            <span className="font-bold" style={{ fontFamily: "var(--font-dot)" }}>
               {s.reviews}
             </span>
             <span style={{ fontFamily: "var(--font-mono)" }}>{s.turnaround}h</span>
@@ -348,7 +372,7 @@ function CompareGrid({ base, other }) {
             <span className="text-muted-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>
               {r.label}
             </span>
-            <span className="font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+            <span className="font-bold" style={{ fontFamily: "var(--font-dot)" }}>
               {a}
             </span>
             <span className="text-muted-fg" style={{ fontFamily: "var(--font-mono)" }}>
@@ -369,11 +393,12 @@ function EmptyState({ onCapture }) {
     <div className="rounded-[var(--radius-tile)] border border-dashed border-border-strong bg-card px-10 py-16 text-center">
       <MonoLabel>No snapshots yet</MonoLabel>
       <h2
-        className="mx-auto mt-3 max-w-[520px] font-semibold"
+        className="mx-auto mt-3 max-w-[520px] font-bold uppercase"
         style={{
-          fontFamily: "var(--font-display)",
+          fontFamily: "var(--font-dot)",
           fontSize: 28,
-          letterSpacing: "-0.8px",
+          letterSpacing: "0.5px",
+          lineHeight: 1.0,
         }}
       >
         Capture your first snapshot to start building a trend.

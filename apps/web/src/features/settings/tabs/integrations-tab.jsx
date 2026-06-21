@@ -1,7 +1,7 @@
 "use client";
 
 import { toast } from "sonner";
-import { Button, Card, MonoLabel, Section } from "@/components/ui";
+import { Button, Card, Section } from "@/components/ui";
 import {
   DASHBOARD_PROVIDER_DEPENDENCIES,
   disconnectProvider,
@@ -55,7 +55,7 @@ export function IntegrationsTab() {
           ))}
           {hub && hiddenCount > 0 ? (
             <div
-              className="rounded-[var(--radius-sub)] border border-dashed border-border bg-card-alt px-4 py-3 text-[12px] text-muted-fg"
+              className="rounded-[var(--radius-sub)] border border-dashed border-border-strong bg-panel px-4 py-3 text-[12px] text-muted-fg"
               style={{ fontFamily: "var(--font-mono)" }}
             >
               {hiddenCount} provider{hiddenCount === 1 ? " is" : "s are"} hidden in
@@ -65,6 +65,7 @@ export function IntegrationsTab() {
             </div>
           ) : null}
         </div>
+        <LocalCallout />
       </Section>
 
       <Section num="02 /" title="How tokens are stored">
@@ -135,13 +136,15 @@ function IntegrationHealthSummary({ providers }) {
                     style={{
                       fontFamily: "var(--font-mono)",
                       fontSize: 10,
-                      background: connected ? "var(--accent-dim)" : "rgba(0,0,0,0.04)",
+                      background: connected
+                        ? "color-mix(in srgb, var(--good) 13%, transparent)"
+                        : "var(--panel-2)",
                       color: connected ? "var(--good)" : "var(--muted-fg)",
                     }}
                   >
                     <span
                       className="inline-block h-1.5 w-1.5 rounded-full"
-                      style={{ background: connected ? "var(--good)" : "var(--muted-fg)" }}
+                      style={{ background: connected ? "var(--good)" : "var(--dim-fg)" }}
                     />
                     {connected ? "Connected" : "Not connected"}
                   </span>
@@ -186,27 +189,26 @@ function ProviderCard({ provider }) {
   return (
     <Card className="p-5">
       <div className="grid grid-cols-[48px_1fr_auto] items-start gap-4">
-        <div
-          className="grid h-12 w-12 place-items-center rounded-[var(--radius-sub)] bg-accent-dim font-bold text-accent"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 15 }}
-        >
-          {provider.glyph}
-        </div>
+        <ProviderGlyph connected={connected} />
         <div>
           <div className="mb-0.5 flex items-center gap-2.5">
             <span className="text-[15px] font-semibold">{provider.label}</span>
             <span
-              className="rounded-full px-2 py-0.5 font-bold uppercase tracking-[0.4px]"
+              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-[5px] font-bold uppercase tracking-[0.5px]"
               style={{
                 fontFamily: "var(--font-mono)",
                 fontSize: 10,
                 background: connected
-                  ? "var(--accent-dim)"
-                  : "rgba(0,0,0,0.04)",
+                  ? "color-mix(in srgb, var(--good) 13%, transparent)"
+                  : "var(--panel-2)",
                 color: connected ? "var(--good)" : "var(--muted-fg)",
               }}
             >
-              {connected ? "● Connected" : "○ Not connected"}
+              <span
+                className="inline-block h-1.5 w-1.5 rounded-full"
+                style={{ background: connected ? "var(--good)" : "var(--dim-fg)" }}
+              />
+              {connected ? "Connected" : "Not set"}
             </span>
           </div>
           {connected && meta ? (
@@ -301,6 +303,48 @@ function ProviderCard({ provider }) {
         ) : null}
       </div>
     </Card>
+  );
+}
+
+/**
+ * 3×3 dot-matrix provider mark (the Nothing UI `.n-glyph`). Dots brighten
+ * to --dot when the provider is connected, fade to --dim-fg when not.
+ */
+function ProviderGlyph({ connected }) {
+  const on = connected ? "var(--dot)" : "var(--dim-fg)";
+  const off = "var(--dot-dim)";
+  const cells = [on, off, on, off, on, off, on, off, on];
+  return (
+    <span
+      className="grid h-12 w-12 grid-cols-3 grid-rows-3 rounded-[var(--radius-sub)] border border-border-strong bg-panel"
+      style={{ gap: 3, padding: 9 }}
+    >
+      {cells.map((c, i) => (
+        <i
+          key={i}
+          className="block rounded-full"
+          style={{ background: c }}
+        />
+      ))}
+    </span>
+  );
+}
+
+/** "100% local" privacy callout — matches the reference's dashed strip. */
+function LocalCallout() {
+  return (
+    <div className="mt-[18px] flex items-center gap-3 rounded-[var(--radius-tile)] border border-dashed border-border-strong bg-panel px-4 py-3.5">
+      <span
+        className="text-accent"
+        style={{ fontFamily: "var(--font-dot)", fontWeight: 900, fontSize: 22, letterSpacing: "1px" }}
+      >
+        100%
+      </span>
+      <span className="text-[13px] text-muted-fg">
+        local — tokens never touch our servers. Clear them anytime from this
+        tab.
+      </span>
+    </div>
   );
 }
 

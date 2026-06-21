@@ -145,10 +145,15 @@ function L1Card({ l1, index }) {
         <div className="flex items-center gap-2">
           <GripVertical className="h-4 w-4 text-dim-fg" />
           <span
-            className="text-muted-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, fontWeight: 700 }}
+            className="uppercase text-accent"
+            style={{
+              fontFamily: "var(--font-dot)",
+              fontWeight: 700,
+              fontSize: 15,
+              letterSpacing: "1px",
+            }}
           >
-            L1 / {String(index + 1).padStart(2, "0")}
+            L1 · {String(index + 1).padStart(2, "0")}
           </span>
         </div>
         <Button
@@ -317,7 +322,7 @@ function L2Summary({ l2, index, expanded, onToggle, onRemove }) {
           e.stopPropagation();
           onRemove();
         }}
-        className="shrink-0 rounded-full p-1 text-dim-fg hover:bg-[rgba(185,28,28,0.08)] hover:text-bad"
+        className="shrink-0 rounded-full p-1 text-dim-fg hover:bg-[color-mix(in_srgb,var(--bad)_12%,transparent)] hover:text-bad"
         aria-label="Remove L2"
       >
         <Trash2 className="h-3 w-3" />
@@ -360,9 +365,12 @@ function SummaryChips({ l2 }) {
 
 function ChipInline({ children, tone }) {
   const toneStyles = {
-    muted: { bg: "var(--card-alt)", color: "var(--muted-fg)" },
+    muted: { bg: "var(--panel-2)", color: "var(--muted-fg)" },
     accent: { bg: "var(--accent-dim)", color: "var(--accent)" },
-    bad: { bg: "rgba(185,28,28,0.08)", color: "var(--bad)" },
+    bad: {
+      bg: "color-mix(in srgb, var(--bad) 13%, transparent)",
+      color: "var(--bad)",
+    },
   };
   const style = toneStyles[tone] || toneStyles.muted;
   return (

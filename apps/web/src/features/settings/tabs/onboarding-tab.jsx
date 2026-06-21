@@ -99,8 +99,8 @@ function IntegrationSummary() {
                 className={cn(
                   "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.4px]",
                   connected
-                    ? "bg-accent-dim text-good"
-                    : "bg-[rgba(0,0,0,0.04)] text-muted-fg",
+                    ? "bg-[color-mix(in_srgb,var(--good)_13%,transparent)] text-good"
+                    : "bg-panel-2 text-muted-fg",
                 )}
                 style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}
               >

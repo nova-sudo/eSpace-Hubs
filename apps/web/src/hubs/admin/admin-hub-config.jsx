@@ -25,6 +25,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiDelete, apiGet, apiPut } from "@/lib/api-client";
 import { useSession } from "@/features/auth";
+import { MonoLabel, PageHeader, Pill } from "@/components/ui";
 import { CAPABILITIES } from "@espace-devhub/shared/capabilities";
 import { ALL_PROVIDERS } from "@espace-devhub/shared/hubs";
 
@@ -106,42 +107,32 @@ export function AdminHubConfig() {
 
   if (!canConfigure) {
     return (
-      <main className="mx-auto max-w-3xl px-10 py-12">
-        <h1 className="mb-3 text-[24px] font-semibold">Not authorised.</h1>
-        <p className="text-[13px] text-muted-fg">
-          This view requires the {CAPABILITIES.ADMIN_HUBS_CONFIGURE}{" "}
-          capability. Ask your org admin to extend your roles.
-        </p>
+      <main className="relative z-[2] mx-auto max-w-3xl px-10 pb-14 pt-10">
+        <PageHeader
+          crumb="Admin · hub configuration"
+          title="Not authorised."
+          italicWord="authorised"
+          subtitle={`This view requires the ${CAPABILITIES.ADMIN_HUBS_CONFIGURE} capability. Ask your org admin to extend your roles.`}
+        />
       </main>
     );
   }
 
   return (
     <main className="relative z-[2] mx-auto max-w-4xl px-10 pb-14 pt-10">
-      <header className="mb-8">
-        <div
-          className="mb-2 uppercase tracking-[0.5px] text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-        >
-          Admin · hub configuration
-        </div>
-        <h1
-          className="font-semibold"
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 28,
-            letterSpacing: "-0.5px",
-          }}
-        >
-          Per-hub overrides.
-        </h1>
-        <p className="mt-2 max-w-2xl text-[13.5px] leading-[1.55] text-muted-fg">
-          Toggle integrations and pages per hub for this org. Overrides
-          merge on top of registry defaults; an empty override means
-          "use defaults". Changes take effect on the next /hubs/me
-          round-trip (~one page load for each user).
-        </p>
-      </header>
+      <PageHeader
+        crumb="Admin · hub configuration"
+        title="Per-hub overrides."
+        italicWord="overrides"
+        subtitle={
+          <>
+            Toggle integrations and pages per hub for this org. Overrides merge
+            on top of registry defaults; an empty override means &quot;use
+            defaults&quot;. Changes take effect on the next /hubs/me round-trip
+            (~one page load for each user).
+          </>
+        }
+      />
 
       {loading ? (
         <div
@@ -179,7 +170,7 @@ function HubRow({ hub, override, expanded, onExpand, onSave, onRevert, saving })
 
   return (
     <div
-      className="rounded-md border border-border bg-card"
+      className="rounded-[var(--radius-tile)] border border-border bg-card"
       style={{ borderColor: "var(--border-strong)" }}
     >
       <button
@@ -195,28 +186,36 @@ function HubRow({ hub, override, expanded, onExpand, onSave, onRevert, saving })
             }}
           />
           <div>
-            <div className="text-[14px] font-semibold">{hub.label}</div>
             <div
-              className="text-muted-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
+              className="font-bold uppercase text-fg"
+              style={{
+                fontFamily: "var(--font-dot)",
+                fontSize: 17,
+                letterSpacing: "0.5px",
+                lineHeight: 1.05,
+              }}
             >
+              {hub.label}
+            </div>
+            <MonoLabel className="mt-1 block">
               {hub.id} · {Object.keys(hub.pages).length} pages ·{" "}
               {hub.allowedIntegrations.length} integrations
-            </div>
+            </MonoLabel>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {hasOverride ? (
-            <span
-              className="rounded-full border border-dashed border-border px-2 py-0.5 text-muted-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
+            <Pill
+              tone="accent"
+              mono
+              className="border border-dashed border-accent bg-transparent"
             >
               custom
-            </span>
+            </Pill>
           ) : null}
           <span
-            className="text-muted-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}
+            className="text-dim-fg"
+            style={{ fontFamily: "var(--font-mono)", fontSize: 14 }}
           >
             {expanded ? "−" : "+"}
           </span>
@@ -280,7 +279,7 @@ function HubRow({ hub, override, expanded, onExpand, onSave, onRevert, saving })
                     // Null out the slot in the override to remove it.
                     onSave({ pages: { ...(override?.pages ?? {}), [slot]: null } });
                   }}
-                  className="rounded-full border border-border px-2.5 py-1 transition-colors hover:border-red-300 hover:text-red-600"
+                  className="rounded-full border border-border px-2.5 py-1 text-muted-fg transition-colors hover:border-[var(--bad)] hover:text-[var(--bad)]"
                   style={{
                     fontFamily: "var(--font-mono)",
                     fontSize: 11,
@@ -300,7 +299,7 @@ function HubRow({ hub, override, expanded, onExpand, onSave, onRevert, saving })
                 type="button"
                 onClick={onRevert}
                 disabled={saving}
-                className="text-[11px] font-bold uppercase tracking-[0.4px] text-red-600 hover:underline disabled:opacity-50"
+                className="text-[11px] font-bold uppercase tracking-[0.4px] text-bad hover:underline disabled:opacity-50"
                 style={{ fontFamily: "var(--font-mono)" }}
               >
                 Revert to defaults

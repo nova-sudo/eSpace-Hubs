@@ -56,64 +56,84 @@ export function ReviewPrepChecklist() {
     },
   ];
 
+  // The generate step is the 4th window in the fill-strip: lit only once the
+  // three prerequisites are met.
+  const doneCount = steps.filter((s) => s.done).length;
   const allDone = steps.every((s) => s.done);
+  const total = steps.length + 1;
+  const ready = doneCount + (allDone ? 1 : 0);
 
   return (
     <div
-      className="flex flex-wrap items-center gap-3 rounded-[var(--radius-tile)] border border-border bg-card-alt px-4 py-3"
+      className="flex items-center gap-3.5 rounded-[var(--radius-tile)] border border-dashed border-border-strong px-4 py-3"
+      style={{ background: "var(--panel)" }}
       role="status"
       aria-label="Review prep checklist"
     >
       <span
-        className="shrink-0 uppercase tracking-[0.4px] text-muted-fg"
+        className="shrink-0 uppercase tracking-[1.5px] text-muted-fg"
         style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
       >
         Review prep
       </span>
-      <span className="h-3 w-px bg-border" aria-hidden="true" />
-      {steps.map((step) => (
-        <CheckStep key={step.id} step={step} />
-      ))}
-      <span className="h-3 w-px bg-border" aria-hidden="true" />
-      <Link
-        href={link("/evidence")}
-        className="inline-flex items-center gap-1 rounded-[var(--radius-sub)] border border-border bg-card px-2.5 py-1 transition-colors hover:border-border-strong"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.35px" }}
+
+      <div className="flex flex-1 items-center gap-1.5">
+        {steps.map((step) => (
+          <SegmentLink key={step.id} step={step} />
+        ))}
+        <Link
+          href={link("/evidence")}
+          aria-label="Generate evidence"
+          title={allDone ? "Generate evidence" : "Finish the prep steps first"}
+          className="h-[5px] flex-1 rounded-full transition-colors"
+          style={{
+            background: allDone ? "var(--accent)" : "var(--dot-dim)",
+          }}
+        />
+      </div>
+
+      <span
+        className="shrink-0 tracking-[1px]"
+        style={{
+          fontFamily: "var(--font-dot)",
+          fontWeight: 700,
+          fontSize: 14,
+          color: "var(--accent)",
+        }}
       >
-        {allDone ? (
-          <span className="text-accent font-bold">→ Generate evidence</span>
-        ) : (
-          <span className="text-muted-fg">Generate evidence</span>
-        )}
-      </Link>
+        {ready}/{total} ready
+      </span>
     </div>
   );
 }
 
-function CheckStep({ step }) {
-  const dot = step.done ? (
-    <span style={{ color: "var(--good)" }}>✓</span>
-  ) : (
-    <span style={{ color: "var(--muted-fg)" }}>○</span>
-  );
-
-  return (
+/**
+ * One window in the prep fill-strip. Filled (good) when the step is done;
+ * otherwise a faint track that links to the action that completes it.
+ */
+function SegmentLink({ step }) {
+  const seg = (
     <span
-      className="flex items-center gap-1"
-      style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
+      className="block h-[5px] w-full rounded-full transition-colors"
+      style={{ background: step.done ? "var(--good)" : "var(--dot-dim)" }}
+    />
+  );
+  if (step.done) {
+    return (
+      <span className="flex-1" title={step.label} aria-label={`${step.label} ready`}>
+        {seg}
+      </span>
+    );
+  }
+  return (
+    <Link
+      href={step.href}
+      className="flex-1"
+      title={`${step.label} — ${step.actionLabel}`}
+      aria-label={`${step.label}: ${step.actionLabel}`}
     >
-      {dot}
-      {step.done ? (
-        <span className="text-fg">{step.label}</span>
-      ) : (
-        <Link
-          href={step.href}
-          className="text-accent underline-offset-2 hover:underline"
-        >
-          {step.label}
-        </Link>
-      )}
-    </span>
+      {seg}
+    </Link>
   );
 }
 

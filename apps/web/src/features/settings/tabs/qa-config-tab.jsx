@@ -129,7 +129,6 @@ export function QaConfigTab() {
             <Button variant="ghost" onClick={handleReset}>
               Reset to defaults
             </Button>
-            {!dirty && draft !== config ? null : null}
           </div>
         </Card>
       </Section>

@@ -23,7 +23,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
-import { Card, Field, Input, Section } from "@/components/ui";
+import { Button, Card, Field, Input, Section } from "@/components/ui";
 import { apiPatch } from "@/lib/api-client";
 import { useSession } from "@/features/auth";
 import {
@@ -154,27 +154,14 @@ export function AccountTab() {
 
           <div className="mt-5 flex items-center justify-between">
             <ProfileMeta user={user} />
-            <button
+            <Button
               type="button"
+              size="sm"
               onClick={handleSave}
               disabled={!dirty || saving}
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: "0.5px",
-                textTransform: "uppercase",
-                background: "var(--accent)",
-                color: "var(--accent-on, #fff)",
-                border: 0,
-                borderRadius: "var(--radius-sub, 3px)",
-                padding: "9px 16px",
-                cursor: saving ? "wait" : dirty ? "pointer" : "default",
-                opacity: dirty && !saving ? 1 : 0.55,
-              }}
             >
               {saving ? "Saving…" : dirty ? "Save changes" : "No changes"}
-            </button>
+            </Button>
           </div>
         </Card>
       </Section>
@@ -189,7 +176,7 @@ export function AccountTab() {
                 : "Not enabled — you should never see this row. Contact admin."
             }
             badge={user?.totpEnrolled ? "Enrolled" : "Not enrolled"}
-            badgeColor={user?.totpEnrolled ? "var(--good, #16a34a)" : "var(--bad)"}
+            badgeColor={user?.totpEnrolled ? "var(--good)" : "var(--bad)"}
           />
           <SecurityRow
             label="Password"

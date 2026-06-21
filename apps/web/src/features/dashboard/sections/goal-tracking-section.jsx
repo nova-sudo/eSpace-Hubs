@@ -9,7 +9,7 @@ import {
 } from "@/features/goal-widgets";
 import { useAnalyst, ANALYST_MODES } from "@/features/analyst";
 import { removeSpec } from "@/features/goal-specs";
-import { Loading } from "@/components/ui";
+import { Button, Loading } from "@/components/ui";
 
 /**
  * GOALS TAB · SECTION 02 — Goal tracking (AI-classified).
@@ -133,32 +133,22 @@ function Toolbar({
       </span>
       <div className="flex items-center gap-2">
         {hasGoals && hasSpecs ? (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => requestOpen(ANALYST_MODES.WIDGETS)}
-            className="cursor-pointer rounded-[var(--radius-sub)] border border-border bg-card-alt px-3 py-1.5 uppercase text-fg transition-colors hover:border-border-strong"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10,
-              letterSpacing: "0.5px",
-            }}
           >
             Open analyst
-          </button>
+          </Button>
         ) : null}
         {hasGoals ? (
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="sm"
             onClick={() => requestOpen(ANALYST_MODES.ANALYSIS)}
-            className="cursor-pointer rounded-[var(--radius-sub)] bg-accent px-3 py-1.5 font-bold uppercase text-accent-on transition-transform hover:-translate-y-px"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10.5,
-              letterSpacing: "0.5px",
-            }}
           >
             {hasSpecs ? "Re-analyze" : "Analyze with AI"}
-          </button>
+          </Button>
         ) : null}
       </div>
     </div>
@@ -213,12 +203,12 @@ function L1Group({ l1, items, index }) {
             ›
           </span>
           <span
-            className="text-accent"
+            className="uppercase text-accent"
             style={{
-              fontFamily: "var(--font-serif)",
-              fontStyle: "italic",
-              fontSize: 20,
-              fontWeight: 500,
+              fontFamily: "var(--font-dot)",
+              fontWeight: 700,
+              fontSize: 16,
+              letterSpacing: "1px",
               lineHeight: 1,
             }}
           >
@@ -226,11 +216,10 @@ function L1Group({ l1, items, index }) {
           </span>
           <h3
             id={headingId}
-            className="m-0 truncate font-semibold text-fg"
+            className="m-0 truncate font-bold text-fg"
             style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 17,
-              letterSpacing: "-0.3px",
+              fontFamily: "var(--font-sans)",
+              fontSize: 15,
               lineHeight: 1.25,
             }}
             title={l1.title}
@@ -286,27 +275,14 @@ function EmptyState({ title, body, ctaLabel, ctaHref, onCta }) {
           {body}
         </div>
         {onCta ? (
-          <button
-            type="button"
-            onClick={onCta}
-            className="cursor-pointer rounded-[var(--radius-sub)] bg-accent px-4 py-2 font-bold uppercase text-accent-on"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              letterSpacing: "0.6px",
-            }}
-          >
+          <Button variant="primary" size="sm" onClick={onCta}>
             {ctaLabel}
-          </button>
+          </Button>
         ) : (
           <a
             href={ctaHref}
-            className="rounded-[var(--radius-sub)] bg-accent px-4 py-2 font-bold uppercase text-accent-on"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              letterSpacing: "0.6px",
-            }}
+            className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-[var(--radius-tile)] border border-accent bg-accent px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.4px] text-accent-on transition-colors hover:opacity-90"
+            style={{ fontFamily: "var(--font-mono)" }}
           >
             {ctaLabel}
           </a>

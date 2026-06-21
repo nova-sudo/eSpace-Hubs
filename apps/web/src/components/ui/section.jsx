@@ -22,11 +22,11 @@ export function Section({ num, title, children, right, className }) {
             </span>
           ) : null}
           <h2
-            className="m-0 font-semibold"
+            className="m-0 font-bold uppercase"
             style={{
-              fontFamily: "var(--font-display)",
+              fontFamily: "var(--font-dot)",
               fontSize: 22,
-              letterSpacing: "-0.5px",
+              letterSpacing: "0.5px",
             }}
           >
             {title}

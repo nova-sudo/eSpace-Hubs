@@ -43,6 +43,214 @@ const PHASE_SHOW_SECRET = "show_secret";
 const PHASE_VERIFY = "verify";
 const PHASE_DONE = "done";
 
+/* ── Nothing UI auth chrome (inlined per file — mirrors the reference
+   ScreenAuth.dc.html "totp" variant in the migration kit). ────────── */
+
+const FIELD_LABEL = {
+  fontFamily: "var(--font-mono)",
+  fontSize: 10,
+  textTransform: "uppercase",
+  letterSpacing: "1.5px",
+  color: "var(--muted-fg)",
+};
+
+const ERROR = {
+  fontFamily: "var(--font-mono)",
+  fontSize: 11.5,
+  color: "var(--bad)",
+};
+
+const BRAND = {
+  brandTitle: ["Lock it", "down"],
+  brandBody:
+    "Two-factor is required before you reach the app. Your secret stays in this browser.",
+  flow: ["Sign up", "2FA", "Onboarding"],
+  flowActive: 1,
+};
+
+function AuthShell({ brandTitle, brandBody, flow, flowActive, children }) {
+  return (
+    <div
+      style={{
+        "--brand-bg": "#000",
+        "--brand-fg": "#fff",
+        "--brand-muted": "rgba(255,255,255,0.6)",
+        "--brand-dim": "rgba(255,255,255,0.22)",
+        "--brand-line": "rgba(255,255,255,0.22)",
+        "--brand-dot": "rgba(255,255,255,0.13)",
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1.05fr) minmax(0, 1fr)",
+        minHeight: "100vh",
+        background: "var(--bg)",
+      }}
+      className="auth-shell"
+    >
+      <div
+        className="auth-brand"
+        style={{
+          position: "relative",
+          overflow: "hidden",
+          background: "var(--brand-bg)",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          padding: "46px 44px",
+        }}
+      >
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundImage:
+              "radial-gradient(var(--brand-dot) 1.1px, transparent 1.1px)",
+            backgroundSize: "11px 11px",
+            opacity: 0.6,
+            pointerEvents: "none",
+          }}
+        />
+        <BrandMark />
+        <div style={{ position: "relative" }}>
+          <div
+            style={{
+              fontFamily: "var(--font-dot)",
+              fontWeight: 900,
+              fontSize: 54,
+              lineHeight: 0.9,
+              letterSpacing: "1px",
+              textTransform: "uppercase",
+              color: "var(--brand-fg)",
+            }}
+          >
+            {brandTitle.map((line, i) => (
+              <span key={i}>
+                {line}
+                {i < brandTitle.length - 1 ? <br /> : null}
+              </span>
+            ))}
+            <span style={{ color: "var(--accent)" }}>.</span>
+          </div>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: 14.5,
+              lineHeight: 1.55,
+              color: "var(--brand-muted)",
+              maxWidth: 340,
+              margin: "22px 0 0",
+            }}
+          >
+            {brandBody}
+          </p>
+        </div>
+        <FlowPills flow={flow} active={flowActive} />
+      </div>
+
+      <div
+        style={{
+          background: "var(--bg)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 40,
+        }}
+      >
+        <div style={{ width: "100%", maxWidth: 380 }}>{children}</div>
+      </div>
+
+      <style>{`
+        @media (max-width: 720px) {
+          .auth-shell { grid-template-columns: 1fr !important; }
+          .auth-brand { display: none !important; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function BrandMark() {
+  const cell = (bg) => <i style={{ background: bg, borderRadius: "50%" }} />;
+  return (
+    <div
+      style={{
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        gap: 11,
+      }}
+    >
+      <div
+        style={{
+          width: 30,
+          height: 30,
+          borderRadius: 7,
+          border: "1px solid var(--brand-line)",
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gridTemplateRows: "repeat(3, 1fr)",
+          gap: 3,
+          padding: 6,
+        }}
+      >
+        {cell("var(--brand-fg)")}
+        {cell("var(--brand-dim)")}
+        {cell("var(--brand-fg)")}
+        {cell("var(--brand-dim)")}
+        {cell("var(--accent)")}
+        {cell("var(--brand-dim)")}
+        {cell("var(--brand-fg)")}
+        {cell("var(--brand-dim)")}
+        {cell("var(--brand-fg)")}
+      </div>
+      <span
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontWeight: 700,
+          fontSize: 16,
+          color: "var(--brand-fg)",
+        }}
+      >
+        eSpace<span style={{ color: "var(--accent)" }}>/</span>DevHub
+      </span>
+    </div>
+  );
+}
+
+function FlowPills({ flow = [], active = 0 }) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        gap: 9,
+        flexWrap: "wrap",
+      }}
+    >
+      {flow.map((label, i) => {
+        const on = i <= active;
+        return (
+          <span
+            key={i}
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              textTransform: "uppercase",
+              letterSpacing: "1px",
+              color: on ? "var(--brand-fg)" : "var(--brand-dim)",
+              border: `1px solid ${on ? "var(--accent)" : "var(--brand-line)"}`,
+              borderRadius: 999,
+              padding: "4px 9px",
+            }}
+          >
+            {label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 export function TotpSetupForm() {
   const { refresh } = useSession();
   const [phase, setPhase] = useState(PHASE_LOADING);
@@ -125,7 +333,7 @@ export function TotpSetupForm() {
   }
 
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-6 py-12">
+    <AuthShell {...BRAND}>
       <Header phase={phase} />
 
       {phase === PHASE_LOADING ? (
@@ -138,78 +346,69 @@ export function TotpSetupForm() {
             <SecretPanel qrDataUrl={qrDataUrl} secret={secret} />
           ) : null}
 
-          <form
-            onSubmit={handleVerify}
-            className="flex flex-col gap-3"
-          >
-            <CodeInput
-              value={code}
-              onChange={setCode}
-              disabled={submitting}
-            />
+          <form onSubmit={handleVerify} className="flex flex-col gap-3">
+            <CodeInput value={code} onChange={setCode} disabled={submitting} />
 
-            {error ? (
-              <div
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11.5,
-                  color: "var(--bad)",
-                }}
-              >
-                {error}
-              </div>
-            ) : null}
+            {error ? <div style={ERROR}>{error}</div> : null}
 
             <button
               type="submit"
               disabled={code.length !== 6 || submitting}
               style={{
+                width: "100%",
                 fontFamily: "var(--font-mono)",
                 fontSize: 11,
                 fontWeight: 700,
-                letterSpacing: "0.5px",
                 textTransform: "uppercase",
+                letterSpacing: "1px",
+                color: "var(--accent-on)",
                 background: "var(--accent)",
-                color: "var(--accent-on, #fff)",
                 border: 0,
-                borderRadius: "var(--radius-sub, 3px)",
-                padding: "12px 16px",
+                borderRadius: "var(--radius-sub)",
+                padding: 13,
                 cursor: submitting ? "wait" : "pointer",
                 opacity: code.length === 6 && !submitting ? 1 : 0.6,
               }}
             >
-              {submitting ? "Verifying…" : "Verify & enable"}
+              {submitting ? "Verifying…" : "Verify & enable →"}
             </button>
           </form>
         </>
       )}
-    </div>
+    </AuthShell>
   );
 }
 
 function Header({ phase }) {
-  const title =
-    phase === PHASE_DONE ? "Two-factor enabled." : "Set up two-factor.";
+  const title = phase === PHASE_DONE ? "Enabled" : "Two-factor";
   const subtitle =
     phase === PHASE_DONE
       ? "Your account now requires a 6-digit code at sign-in."
-      : "Required before you can use the app. Scan the QR with an authenticator app (1Password, Authy, Google Authenticator, etc.), then enter the 6-digit code it generates.";
+      : "Scan the QR with your authenticator, then enter the 6-digit code it generates.";
 
   return (
     <div>
       <h1
-        className="font-semibold"
         style={{
-          fontFamily: "var(--font-display)",
-          fontSize: 28,
-          letterSpacing: "-0.8px",
+          fontFamily: "var(--font-dot)",
+          fontWeight: 900,
+          fontSize: 30,
+          letterSpacing: "1px",
+          textTransform: "uppercase",
+          color: "var(--fg)",
+          margin: 0,
         }}
       >
         {title}
       </h1>
       <p
-        className="mt-1 text-muted-fg"
-        style={{ fontSize: 13.5, lineHeight: 1.5 }}
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: 13,
+          lineHeight: 1.5,
+          color: "var(--muted-fg)",
+          margin: "9px 0 20px",
+        }}
       >
         {subtitle}
       </p>
@@ -220,8 +419,11 @@ function Header({ phase }) {
 function LoadingPanel() {
   return (
     <div
-      className="text-muted-fg"
-      style={{ fontFamily: "var(--font-mono)", fontSize: 11.5 }}
+      style={{
+        fontFamily: "var(--font-mono)",
+        fontSize: 11.5,
+        color: "var(--muted-fg)",
+      }}
     >
       Generating your secret…
     </div>
@@ -233,60 +435,85 @@ function SecretPanel({ qrDataUrl, secret }) {
 
   return (
     <div
-      className="flex flex-col items-center gap-4 rounded-md border bg-card p-5"
-      style={{ borderColor: "var(--border-strong)" }}
+      style={{
+        display: "flex",
+        gap: 16,
+        alignItems: "center",
+        border: "1px solid var(--border-strong)",
+        borderRadius: 9,
+        background: "var(--card)",
+        padding: 16,
+        marginBottom: 16,
+      }}
     >
       {qrDataUrl ? (
         <img
           src={qrDataUrl}
           alt="TOTP QR code"
-          width={220}
-          height={220}
+          width={108}
+          height={108}
           style={{
             display: "block",
+            flex: "none",
             background: "#fff",
-            borderRadius: 4,
+            borderRadius: 6,
+            padding: 8,
+            boxSizing: "content-box",
           }}
         />
       ) : (
         <div
           style={{
+            width: 108,
+            height: 108,
+            flex: "none",
+            display: "flex",
+            alignItems: "center",
+            textAlign: "center",
             fontFamily: "var(--font-mono)",
-            fontSize: 11,
+            fontSize: 10,
             color: "var(--muted-fg)",
           }}
         >
-          QR rendering failed — use manual entry below.
+          QR rendering failed — use manual entry.
         </div>
       )}
 
-      <div className="w-full">
+      <div style={{ minWidth: 0 }}>
         <div
-          className="mb-1 uppercase tracking-[0.4px] text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 9,
+            textTransform: "uppercase",
+            letterSpacing: "1px",
+            color: "var(--muted-fg)",
+            marginBottom: 5,
+          }}
         >
           Manual entry secret
         </div>
         <code
-          className="block break-all rounded-sm border bg-card-alt px-3 py-2 text-fg"
           style={{
+            display: "block",
             fontFamily: "var(--font-mono)",
-            fontSize: 13,
-            letterSpacing: "0.6px",
-            borderColor: "var(--border)",
+            fontSize: 12,
+            letterSpacing: "1px",
+            color: "var(--fg)",
+            wordBreak: "break-all",
+            lineHeight: 1.5,
           }}
         >
           {formatted}
         </code>
         <div
-          className="mt-1 text-muted-fg"
           style={{
             fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            letterSpacing: "0.3px",
+            fontSize: 9,
+            color: "var(--dim-fg)",
+            marginTop: 8,
           }}
         >
-          Algorithm: SHA-1 · 6 digits · 30-second period
+          SHA-1 · 6 digits · 30s period
         </div>
       </div>
     </div>
@@ -295,18 +522,8 @@ function SecretPanel({ qrDataUrl, secret }) {
 
 function CodeInput({ value, onChange, disabled }) {
   return (
-    <label className="flex flex-col gap-1.5">
-      <span
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          letterSpacing: "0.5px",
-          color: "var(--muted-fg)",
-          textTransform: "uppercase",
-        }}
-      >
-        Code from your authenticator
-      </span>
+    <label className="flex flex-col gap-[7px]">
+      <span style={FIELD_LABEL}>Code from your app</span>
       <input
         type="text"
         inputMode="numeric"
@@ -319,15 +536,18 @@ function CodeInput({ value, onChange, disabled }) {
         autoFocus
         required
         style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 18,
-          letterSpacing: "8px",
-          padding: "10px 14px",
+          fontFamily: "var(--font-dot)",
+          fontWeight: 700,
+          fontSize: 22,
+          letterSpacing: "12px",
           textAlign: "center",
-          background: "var(--card)",
+          color: "var(--fg)",
           border: "1px solid var(--border-strong)",
-          borderRadius: "var(--radius-sub, 3px)",
+          borderRadius: "var(--radius-sub)",
+          padding: "9px 14px",
+          background: "var(--card)",
           outline: "none",
+          width: "100%",
         }}
       />
     </label>
@@ -342,12 +562,21 @@ function DonePanel() {
   // doing both would race.
   return (
     <div
-      className="rounded-md border bg-card p-4"
-      style={{ borderColor: "var(--border-strong)" }}
+      style={{
+        border: "1px solid var(--border-strong)",
+        borderRadius: "var(--radius-tile)",
+        background: "var(--card)",
+        padding: 16,
+      }}
     >
       <p
-        className="text-fg"
-        style={{ fontSize: 13.5, lineHeight: 1.55 }}
+        style={{
+          fontFamily: "var(--font-sans)",
+          fontSize: 13.5,
+          lineHeight: 1.55,
+          color: "var(--fg)",
+          margin: 0,
+        }}
       >
         Routing you to the next step…
       </p>
