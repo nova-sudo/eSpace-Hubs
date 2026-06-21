@@ -195,7 +195,7 @@ em.accent {
   font-style: normal;
   font-family: var(--font-dot);
   color: var(--accent);
-  font-weight: 500;
+  font-weight: inherit; /* match the surrounding title weight (Doto 900 in headers) */
 }
 
 /* Scrollbars — hairline, off-white */

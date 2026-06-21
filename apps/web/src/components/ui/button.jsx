@@ -32,7 +32,7 @@ export function Button({
       {...rest}
       disabled={disabled}
       className={cn(
-        "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-[var(--radius-tile)] font-bold uppercase tracking-[0.4px] transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-[var(--radius-sub)] font-normal uppercase tracking-[0.8px] transition-colors disabled:cursor-not-allowed disabled:opacity-50",
         SIZES[size],
         VARIANTS[variant],
         className,

@@ -27,12 +27,13 @@ export function PageHeader({ crumb, title, italicWord, subtitle, right }) {
       <div>
         {crumb ? <Eyebrow>{crumb}</Eyebrow> : null}
         <h1
-          className="mt-2 font-semibold"
+          className="mt-3.5"
           style={{
             fontFamily: "var(--font-dot)",
-            fontSize: "clamp(36px, 4.6vw, 60px)",
-            lineHeight: 1.0,
-            letterSpacing: "0.5px",
+            fontWeight: 900,
+            fontSize: "clamp(40px, 5.2vw, 62px)",
+            lineHeight: 0.92,
+            letterSpacing: "1px",
             textTransform: "uppercase",
             textWrap: "balance",
           }}
