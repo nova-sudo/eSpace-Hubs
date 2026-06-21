@@ -167,13 +167,13 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
               {open ? "Close" : "Fill now ▾"}
             </button>
           ) : fillHref ? (
-            // Heavy editors (rubric / scorecard) live on the check-in page.
+            // Heavy editors (rubric / scorecard) fill on the Goals page now.
             <Link
               href={fillHref}
               className="text-[11px] font-semibold text-accent hover:underline"
               style={{ fontFamily: "var(--font-mono)" }}
             >
-              Fill in check-in →
+              Open in goals →
             </Link>
           ) : null}
         </div>

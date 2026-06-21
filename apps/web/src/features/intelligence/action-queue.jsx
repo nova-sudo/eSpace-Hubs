@@ -55,7 +55,7 @@ export function ActionQueue({ queue, fillHref, snapshotHref }) {
             className="text-[10px] uppercase tracking-[0.4px] text-accent hover:underline"
             style={{ fontFamily: "var(--font-mono)" }}
           >
-            Open check-in →
+            Open goals →
           </Link>
         ) : null}
       </div>

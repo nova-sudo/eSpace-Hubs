@@ -24,7 +24,8 @@ import { cn } from "@/lib/cn";
  */
 const NAV_ITEMS = [
   { slot: "dashboard", subpath: "" },
-  { slot: "checkin", subpath: "/checkin" },
+  // "checkin" retired — filling now lives on the Goals page via the per-widget
+  // cadence stepper. The /checkin routes redirect to Goals for old bookmarks.
   { slot: "goals", subpath: "/goals" },
   { slot: "evidence", subpath: "/evidence" },
   { slot: "hub-config", subpath: "/hub-config" },

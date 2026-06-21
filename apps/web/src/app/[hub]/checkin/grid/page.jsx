@@ -1,24 +1,22 @@
 "use client";
 
 /**
- * /[hub]/checkin/grid — multi-week catch-up grid view.
- *
- * Same slot guard as the single-week page (`checkin`), so any hub
- * exposing the slot gets both pages.
+ * /[hub]/checkin/grid — RETIRED with the rest of the check-in page. The
+ * per-widget cadence stepper covers multi-period backfill on Goals now.
+ * Redirects old links to Goals.
  */
 
-import { AppShell } from "@/components/shell/app-shell";
-import { useHubSlotGuard } from "@/features/hubs";
-import { CheckinGridPage } from "@/features/checkin";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useHubLink } from "@/features/hubs";
 
 export const dynamic = "force-dynamic";
 
 export default function Page() {
-  const exposed = useHubSlotGuard("checkin");
-  if (!exposed) return null;
-  return (
-    <AppShell>
-      <CheckinGridPage />
-    </AppShell>
-  );
+  const link = useHubLink();
+  const router = useRouter();
+  useEffect(() => {
+    router.replace(link("/goals"));
+  }, [router, link]);
+  return null;
 }

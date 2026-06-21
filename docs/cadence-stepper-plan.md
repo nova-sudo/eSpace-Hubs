@@ -116,20 +116,24 @@ The pattern already exists — this is mostly promotion + interactivity.
    (1cf4951).
 3. **Parity (in progress)** — make the widget do everything `/checkin` does:
    - ✅ "Nothing to report" settle (goal-locks) folded into the stepper.
-   - ☐ SCORECARD + CODE_RUBRIC fill — the heavy editors that currently live
-     ONLY on `/checkin` (excluded from `INLINE_FILLABLE_KINDS`). Need a home on
-     the widget (or an explicit "open full editor" affordance).
+   - ✅ SCORECARD + CODE_RUBRIC fill — ALREADY covered on the Goals widgets:
+     CodeRubricWidget has Grade-now/week/YTD; ScorecardWidget opens a per-
+     component modal with each sub-widget's full editor. `/checkin` was only a
+     redundant entry point for these.
    - ✅ Weekly/daily backfill — heatmap cells are now selectable → same inline
      editor + settle as the stepper. (44px target relaxed for dense year grids,
      GitHub-contributions style.)
    - ☐ Cross-goal "what's owed this week" — covered by the intelligence hub
      action queue; confirm it deep-links to the goal + current cell.
-4. **Remove** — once the three Parity boxes are checked: delete the `/checkin`
-   route + nav entry; redirect `/checkin` → Goals. Small change, gated on
-   parity so no capability is lost.
-
-**When `/checkin` is removed:** Phase 4, after the three Phase-3 parity items
-above — realistically the next 2–3 increments. Not before, so nothing regresses.
+4. ✅ **Remove** — DONE. Nav entry dropped; `/checkin` and `/checkin/grid`
+   redirect to Goals; the intelligence hub's CTAs ("Track goals", "Open goals",
+   "Open in goals") point at Goals. The `features/checkin` code is kept (dead
+   but importable) so the removal is reversible; a later cleanup can delete it.
+   **One capability dropped:** the multi-week cross-goal *grid* (catch up many
+   weeks across all goals in one table). Per-goal multi-period backfill is
+   covered by the stepper; the cross-goal "what's owed" view is the intelligence
+   hub action queue. If the batch grid is missed, it can return as a Goals-page
+   view later.
 
 ## Open question (decide before phase 2)
 Backfill scope: **any past window**, or **current + previous only** (older =

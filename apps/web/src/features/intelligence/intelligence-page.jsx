@@ -37,7 +37,9 @@ export function IntelligencePage() {
   const { ready: inputsReady, groups, queue, summary } = useGoalHealth(groupedItems);
 
   const link = useHubLink();
-  const fillHref = link("/checkin");
+  // Filling now lives on the Goals page (per-widget cadence stepper); the
+  // standalone check-in page is retired.
+  const fillHref = link("/goals");
 
   const loading = !itemsReady || !inputsReady;
 
@@ -54,7 +56,7 @@ export function IntelligencePage() {
               <Button variant="ghost">Compile review →</Button>
             </Link>
             <Link href={fillHref}>
-              <Button size="lg">Weekly check-in</Button>
+              <Button size="lg">Track goals →</Button>
             </Link>
           </div>
         }
