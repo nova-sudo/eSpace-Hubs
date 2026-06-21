@@ -87,10 +87,12 @@ export function Header() {
           <LogoMark />
           <div
             className="font-semibold"
-            style={{ fontFamily: "var(--font-display)", fontSize: 18, letterSpacing: "-0.3px" }}
+            style={{ fontFamily: "var(--font-display)", fontSize: 15, letterSpacing: "-0.2px" }}
           >
             eSpace<span style={{ color: "var(--accent)" }}>/</span>
-            {hub?.label?.replace(/ Hub$/, "") ?? "DevHub"}
+            <span style={{ fontFamily: "var(--font-dot)", fontWeight: 700, letterSpacing: "1px" }}>
+              {hub?.label?.replace(/ Hub$/, "") ?? "DevHub"}
+            </span>
           </div>
           <span
             className="rounded-[4px] border border-border px-1.5 py-0.5 text-[10px] text-dim-fg"

@@ -128,17 +128,29 @@
   --color-bad: var(--bad);
   --color-panel: var(--panel);
   --color-panel-2: var(--panel-2);
+
+  /* Map the font tokens into Tailwind's theme so font-* utilities
+     (font-sans / font-mono / font-display / font-dot — used across every
+     component) resolve to the Nothing fonts. Same `var()` pattern as the
+     colors above; the literal families live in the :root block below so
+     inline `style={{ fontFamily: "var(--font-dot)" }}` usage works too. */
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
+  --font-mono: var(--font-mono);
+  --font-dot: var(--font-dot);
+  --font-serif: var(--font-serif);
 }
 
-/* Font families — Nothing UI three-font system.
-   --font-dot (Doto) is the dot-matrix signature for page titles + big numerals;
-   --font-display/--font-sans (Hanken Grotesk) for headings + body;
-   --font-mono (Space Mono) for overlines, labels, meta. */
+/* Font families — Nothing UI three-font system. Literal values for `var()`
+   usage; @theme above wires the same names into Tailwind utilities.
+     --font-dot   Doto           dot-matrix display: page titles + big numerals
+     --font-display/--font-sans  Hanken Grotesk: headings + body
+     --font-mono  Space Mono     overlines, labels, meta */
 :root {
-  --font-dot: "Doto", "Space Mono", monospace;
-  --font-display: "Hanken Grotesk", system-ui, -apple-system, sans-serif;
   --font-sans: "Hanken Grotesk", system-ui, -apple-system, sans-serif;
+  --font-display: "Hanken Grotesk", system-ui, -apple-system, sans-serif;
   --font-mono: "Space Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-dot: "Doto", "Space Mono", monospace;
   --font-serif: "Doto", "Space Mono", monospace; /* legacy serif slot → dot */
 }
 
