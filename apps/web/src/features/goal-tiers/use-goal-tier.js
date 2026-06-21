@@ -175,10 +175,19 @@ function buildCurrentData(spec, entries, reading) {
         const proof = ev[f.id] ? ` [evidence: ${ev[f.id]}]` : "";
         return `${f.label}: ${shown}${proof}`;
       });
+      // Period-resetting COMPOSED also needs the cross-period picture so tiers
+      // like "every quarter fully done" can be judged — mirror the recurring-
+      // milestone streak (a period is complete when every required field is set).
+      const span = curKey == null ? null : composedPeriodSummary(list, fields);
       return [
-        `composed widget — ${filled}/${fields.length} field(s) captured`,
+        `composed widget — ${filled}/${fields.length} field(s) captured${curKey ? ` this period (${curKey})` : ""}`,
         lines.join("; "),
-      ].join(". ");
+        span
+          ? `across periods: ${span.completeCount} of ${span.total} fully complete; current streak of complete periods: ${span.streak}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(". ");
     }
     case SPEC_KINDS.COUNTER: {
       const sum = list.reduce((s, e) => s + (Number(e?.value) || 0), 0);
@@ -285,6 +294,50 @@ function recurringMilestoneSummary(entries) {
     total: rows.length,
     completeCount: rows.filter((r) => r.complete).length,
     firstIncomplete: rows.find((r) => !r.complete) || null,
+    streak,
+  };
+}
+
+/**
+ * Cross-period completion summary for a period-resetting COMPOSED widget —
+ * the generative analogue of `recurringMilestoneSummary`. A period is COMPLETE
+ * when every required (non-optional) field carries a value. Returns per-period
+ * complete-count + the streak of consecutive complete periods (newest back),
+ * so the grader can judge "every quarter fully done" style tiers.
+ */
+function composedPeriodSummary(entries, fields) {
+  const list = Array.isArray(entries) ? entries : [];
+  const required = (Array.isArray(fields) ? fields : []).filter((f) => !f.optional);
+  if (required.length === 0) return null;
+
+  const byPeriod = new Map();
+  for (const e of list) {
+    const pk = e?.value?.periodKey;
+    if (!pk) continue;
+    byPeriod.set(pk, e); // ts-ascending → later write wins = current state
+  }
+  if (byPeriod.size === 0) return null;
+
+  const complete = (rec) => {
+    const vals = rec?.values && typeof rec.values === "object" ? rec.values : {};
+    return required.every((f) => {
+      const v = vals[f.id];
+      return f.kind === "checkbox" ? v === true : v != null && v !== "";
+    });
+  };
+
+  const rows = [...byPeriod.keys()]
+    .sort()
+    .map((pk) => ({ pk, complete: complete(byPeriod.get(pk).value) }));
+
+  let streak = 0;
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    if (rows[i].complete) streak += 1;
+    else break;
+  }
+  return {
+    total: rows.length,
+    completeCount: rows.filter((r) => r.complete).length,
     streak,
   };
 }

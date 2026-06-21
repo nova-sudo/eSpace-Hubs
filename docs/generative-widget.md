@@ -143,8 +143,9 @@ generation.
 - **Period reset.** ✅ SHIPPED. COMPOSED now stores one record per period
   (`{ periodKey, values, evidence }`); the widget shows the current period and
   the cadence stepper fills/backfills any period (shared `<ComposedFields>`).
-  The grader reads the CURRENT period's record (`currentPeriodKey`). Remaining:
-  a cross-period streak summary for the grader.
+  The grader reads the CURRENT period's record (`currentPeriodKey`) AND a
+  cross-period summary (`composedPeriodSummary`: complete-count + streak of
+  consecutive complete periods), so "every quarter fully done" tiers grade.
 - **Check-in editor.** Add a compact `COMPOSED` editor to `goal-editors` so
   fields can be filled from the weekly check-in, not just the Goals page.
 - **Deterministic sub-grading.** `number`/`counter` fields with a `target` can
