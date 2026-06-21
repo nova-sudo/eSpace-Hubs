@@ -43,7 +43,6 @@ const NAV_ITEMS = [
 const DEFAULT_LABELS = {
   dashboard: "Dashboard",
   goals: "Goals",
-  checkin: "Check-in",
   evidence: "Evidence",
   "hub-config": "Hubs",
   users: "Users",

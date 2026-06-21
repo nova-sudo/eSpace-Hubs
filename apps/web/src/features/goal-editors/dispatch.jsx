@@ -6,10 +6,10 @@
  *
  * Scope: MANUAL-family widgets only — the kinds that take a hand-entered
  * value scoped to a cadence window. AUTO widgets need no filling, and the
- * two composite kinds (CODE_RUBRIC, SCORECARD) have richer editors that
- * live with the check-in page; callers should route those to /checkin
- * instead of rendering them inline. `isInlineFillable()` tells a caller
- * which path to take.
+ * two composite kinds (CODE_RUBRIC, SCORECARD) fill via their own Goals-page
+ * widgets (rubric Grade-now/week/YTD; scorecard's per-component modal), so
+ * they aren't inline-fillable here. `isInlineFillable()` tells a caller which
+ * path to take.
  *
  * Every editor writes straight to the goal-inputs store on input (scoped
  * to `activeLabel`'s mid-week timestamp), so the dispatch holds no state.
