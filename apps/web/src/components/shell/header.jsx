@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoMark } from "./logo-mark";
+import { ThemeToggle } from "./theme-toggle";
 import { AnalystActivator } from "@/features/analyst";
 import { UserChip } from "@/features/auth";
 import { CompanionIndicator } from "@/features/companion";
@@ -135,6 +136,9 @@ export function Header() {
         </nav>
       </div>
       <div className="flex items-center gap-3.5">
+        {/* Light/dark switch — persists to localStorage('espace-theme'),
+            which the no-flash script in layout.jsx reads on first paint. */}
+        <ThemeToggle />
         {/* Inverse-themed activator — opens the accent-ground analyst page. */}
         <AnalystActivator />
         {/* Companion-routing indicator — self-hides when the user has
