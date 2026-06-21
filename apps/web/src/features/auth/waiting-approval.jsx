@@ -29,7 +29,7 @@ export function WaitingApproval() {
       <h1
         className="font-semibold"
         style={{
-          fontFamily: "var(--font-display, var(--font-inter-tight))",
+          fontFamily: "var(--font-display)",
           fontSize: 26,
           letterSpacing: "-0.5px",
         }}

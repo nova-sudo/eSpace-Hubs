@@ -18,7 +18,7 @@ import { useChatState } from "./chat-provider";
  * AppShell transforms the dashboard body to `translateX(-100%)`. Together
  * they produce a single horizontal "swipe to the new page" transition.
  *
- * Inverse HexaCore theme: accent indigo ground, warm-paper ink.
+ * Inverse Nothing UI theme: accent indigo ground, warm-paper ink.
  */
 export function ChatPage() {
   const { open, close } = useChatState();

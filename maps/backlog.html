@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>eSpace Dev Hub — Engineering Backlog</title>
+<style>
+  @import url("https://fonts.googleapis.com/css2?family=Doto:wght@400;500;700;900&family=Space+Mono:wght@400;700&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap");
+  /* Nothing UI — warm-white/black, dot-matrix Doto titles, cobalt accent. */
+  :root {
+    --bg:#efede7; --surface:#ffffff; --surface-alt:#f7f5ef; --fg:#0b0b0e; --muted:rgba(11,11,14,0.56); --dim:rgba(11,11,14,0.38);
+    --border:rgba(15,15,18,0.13); --hair:rgba(15,15,18,0.07); --accent:#1d4ed8;
+    --crit:#cf2b2b; --high:#b4690e; --med:rgba(11,11,14,0.56); --later:#0f8a5b;
+    --crit-bg:rgba(207,43,43,0.10); --high-bg:rgba(180,105,14,0.12); --med-bg:rgba(11,11,14,0.07); --later-bg:rgba(15,138,91,0.10);
+    --mono:"Space Mono",ui-monospace,Menlo,Consolas,monospace;
+    --sans:"Hanken Grotesk",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+    --dotfont:"Doto","Space Mono",monospace;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#050505; --surface:#101010; --surface-alt:#161616; --fg:#f5f5f5; --muted:rgba(245,245,245,0.55); --dim:rgba(245,245,245,0.34);
+    --border:rgba(255,255,255,0.10); --hair:rgba(255,255,255,0.06); --accent:#4d7cff;
+    --crit:#ff5a5a; --high:#ffb24d; --med:rgba(245,245,245,0.55); --later:#3fcf8e;
+    --crit-bg:rgba(255,90,90,0.12); --high-bg:rgba(255,178,77,0.13); --med-bg:rgba(255,255,255,0.08); --later-bg:rgba(63,207,142,0.12);
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.55;-webkit-font-smoothing:antialiased;padding:32px 24px 56px}
+  .wrap{max-width:1180px;margin:0 auto}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+  h1{font-family:var(--dotfont);font-size:29px;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px}
+  h1 .it{font-family:var(--dotfont);font-style:normal;font-weight:500}
+  .sub{color:var(--muted);font-size:15px;max-width:820px;margin:0 0 22px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin:0 2px 4px;font-size:12px;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .sw{width:11px;height:11px;border-radius:50%}
+  .summary{display:flex;gap:10px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--dim);margin:14px 2px 0}
+  .summary b{color:var(--fg);font-weight:600}
+  h2{font-size:13px;font-family:var(--mono);letter-spacing:0.8px;text-transform:uppercase;color:var(--dim);margin:32px 0 14px;font-weight:600;display:flex;align-items:center;gap:10px}
+  h2 .bar{width:24px;height:3px;border-radius:2px;background:var(--med)}
+  h2.p0 .bar{background:var(--crit)} h2.p1 .bar{background:var(--high)} h2.p2 .bar{background:var(--med)} h2.p3 .bar{background:var(--later)}
+  h2 .cnt{font-weight:500;color:var(--dim);letter-spacing:0}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:15px 17px 16px;border-left:3px solid var(--med);display:flex;flex-direction:column}
+  .card.crit{border-left-color:var(--crit)} .card.high{border-left-color:var(--high)} .card.med{border-left-color:var(--med)} .card.later{border-left-color:var(--later)}
+  .chead{display:flex;align-items:baseline;gap:8px;margin-bottom:7px}
+  .id{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--dim);letter-spacing:0.5px;flex-shrink:0}
+  .card h3{font-size:14.5px;font-weight:600;margin:0;line-height:1.35}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px}
+  .chip{font-family:var(--mono);font-size:10px;font-weight:600;padding:2px 7px;border-radius:5px;white-space:nowrap;text-transform:uppercase;letter-spacing:0.3px}
+  .chip.type{color:var(--muted);background:var(--surface-alt)}
+  .chip.size{color:var(--dim);background:var(--surface-alt)}
+  .why{font-size:13px;color:var(--muted);margin:0 0 10px}
+  .ac{margin:0 0 10px;padding-left:17px;font-size:12.5px;color:var(--muted)}
+  .ac li{margin-bottom:4px}
+  .src{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-top:auto;border-top:1px solid var(--hair);padding-top:9px;word-break:break-word}
+  .src b{color:var(--muted);font-weight:600}
+  footer{margin-top:34px;font-family:var(--mono);font-size:11px;color:var(--dim);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  footer a{color:var(--accent);text-decoration:none}
+  @media(max-width:640px){body{padding:20px 13px 40px}h1{font-size:23px}.cards{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">Engineering backlog</p>
+  <h1>What to <span class="it">build and fix</span>, in order</h1>
+  <p class="sub">A prioritized ticket list correlated from the <a href="complexity-map.html" style="color:var(--accent);text-decoration:none">complexity &amp; risk audit</a> (12 source-anchored risks) plus remaining roadmap work. The canonical text version lives at <code>docs/backlog.md</code>; this board is the same 16 tickets, grouped by priority.</p>
+
+  <div class="legend">
+    <span><span class="sw" style="background:var(--crit)"></span>P0 critical</span>
+    <span><span class="sw" style="background:var(--high)"></span>P1 high</span>
+    <span><span class="sw" style="background:var(--med)"></span>P2 medium</span>
+    <span><span class="sw" style="background:var(--later)"></span>P3 later</span>
+  </div>
+  <div class="summary" id="summary"></div>
+
+  <div id="board"></div>
+
+  <footer>
+    <span>eSpace Dev Hub · backlog · correlated from complexity-mapper audit + roadmap</span>
+    <span id="stamp"></span>
+  </footer>
+</div>
+
+<script>
+const SEVCLASS = { P0:"crit", P1:"high", P2:"med", P3:"later" };
+const GROUPS = [
+  { p:"P0", label:"Critical", hint:"do now" },
+  { p:"P1", label:"High", hint:"" },
+  { p:"P2", label:"Medium", hint:"" },
+  { p:"P3", label:"Later", hint:"" },
+];
+const TICKETS = [
+  { id:"BL-001", p:"P0", type:"reliability", size:"L",
+    title:"Degraded-mode fallback for the companion request path",
+    why:"The prod path is 5 SPOFs in series (Vercel → Mongo route → CF tunnel → one container → VPN → Crealogix GitLab); 3 are owned by others and the catch-all deliberately won't fall back.",
+    ac:["“Backend offline” UI state replaces broken/empty tiles","Tiles show last-good cached data with an “as of” marker","Sign-in + settings still reachable when the companion is down"],
+    src:"[...path].ts:162-184 · RUN_LOCALLY.md:102" },
+  { id:"BL-002", p:"P0", type:"reliability", size:"M",
+    title:"Companion/tunnel health check + alerting",
+    why:"A dropped tunnel (CF 1033/530) is discovered only via blank tiles. A liveness probe turns a silent outage into a detected one.",
+    ac:["Probe distinguishes “companion reachable” from “tunnel up, api down”","Dropped tunnel alerts within minutes, not on next visit","Pairing UI surfaces live tunnel status"],
+    src:"[...path].ts:265-273" },
+  { id:"BL-003", p:"P1", type:"cost", size:"M",
+    title:"Instrument AI cost + cap per-user grade-all",
+    why:"CODE_RUBRIC grade-all fires one Claude call per PR over a ≤1000-PR year window, with no shared limiter and a per-device cache that re-spends tokens.",
+    ac:["Calls/day + tokens/call recorded and queryable","Per-user grade-all ceiling blocks/batches oversized runs","User sees estimated cost / PR count before confirming"],
+    src:"use-graded-prs.js:262-368 · github.js:67" },
+  { id:"BL-004", p:"P1", type:"security", size:"S",
+    title:"INTEGRATION_TOKEN_KEY backup & rotation runbook",
+    why:"Provider tokens are encrypted-at-rest in Mongo, decryptable only with this key. Losing or rotating it on the companion host bricks every token irreversibly.",
+    ac:["Documented backup + restore procedure","Rotation re-encrypts existing tokens (or forces re-auth) with no loss","Runbook names blast radius + recovery on key loss"],
+    src:"proxy.ts (encrypt/decrypt) · docker-compose.yml:65" },
+  { id:"BL-005", p:"P1", type:"security", size:"S",
+    title:"Cross-user localStorage leak regression test",
+    why:"Per-user isolation on shared browsers rides on a manual allowlist wiped on auth transition. A new key added without allowlisting leaks data to the next user.",
+    ac:["Test asserts every espace-devhub:* key is in the wipe allowlist","CI fails when a new prefixed key isn’t allowlisted"],
+    src:"clear-user-storage.js:47-62" },
+  { id:"BL-006", p:"P1", type:"reliability", size:"M",
+    title:"Provision Redis for cross-process rate limiting",
+    why:"There is zero shared rate limiter. Redis is reserved in compose but unused; a 2nd API instance would multiply upstream call rates with no coordination.",
+    ac:["Redis-backed limiter gates upstream/AI calls across processes","Limits hold correctly with ≥2 API instances","Graceful single-process fallback when Redis absent in dev"],
+    src:"docker-compose.yml:172-189" },
+  { id:"BL-007", p:"P1", type:"security", size:"M",
+    title:"Harden dev Mongo + companion-host secret handling",
+    why:"Dev Mongo runs with no auth and companion-host secrets sit in plaintext .env.local — an exposure on any shared/persistent host.",
+    ac:["Mongo requires auth in persistent/production shapes","`.env.local` secret handling documented + least-privilege","No secret logged or echoed by the boot path"],
+    src:"docker-compose.yml:32-35 · RUN_LOCALLY.md" },
+  { id:"BL-008", p:"P2", type:"docs", size:"S",
+    title:"Fix CLAUDE.md “Rule 4” privacy doc-drift",
+    why:"Rule 4 claims tokens “never leave the browser,” but they now live encrypted-at-rest in Mongo and are decrypted server-side. The advertised posture is stale.",
+    ac:["Rule 4 + settings privacy copy describe encrypted-at-rest + server decrypt","Doc states where the key lives and links BL-004"],
+    src:"CLAUDE.md Rule 4 vs proxy.ts" },
+  { id:"BL-009", p:"P2", type:"data-integrity", size:"M",
+    title:"Surface “graded on truncated evidence” + chunk grader inputs",
+    why:"Comments truncate at 12k chars, body at 4k, and absence-of-evidence currently passes — so a long/noisy PR can be graded on a clipped, lenient view.",
+    ac:["Verdict on truncated input carries a visible flag","Long inputs chunked so the grader sees the full PR","“No evidence either way” distinct from an affirmative pass"],
+    src:"controller.ts:41-79" },
+  { id:"BL-010", p:"P2", type:"data-integrity", size:"M",
+    title:"Surface silent upstream truncation",
+    why:"GitHub 1000-result/300-event caps and GitLab 1000-MR cap silently drop heavy-author data, so metrics quietly understate activity with no signal.",
+    ac:["Client detects cap hits and sets a “results truncated” signal","Affected tiles render a “showing first N — truncated” marker","Signal testable from a mocked capped response"],
+    src:"github.js:67,147-201 · gitlab.js:19-30" },
+  { id:"BL-011", p:"P2", type:"data-integrity", size:"L",
+    title:"Server-persist snapshots, tier verdicts, and goal locks",
+    why:"These are localStorage-only — device-local and wiped on every auth transition. A user loses history on device change or re-login.",
+    ac:["Snapshots, verdicts, locks persist server-side keyed by user","Data survives logout/login and works across devices","Migration imports existing localStorage data on first sync"],
+    src:"goal-tier-store.js:1-17 · snapshots-store.js · goal-locks" },
+  { id:"BL-012", p:"P2", type:"tech-debt", size:"M",
+    title:"Replace user_notes_count review-rounds proxy with real rounds",
+    why:"Review-rounds is approximated by user_notes_count, conflating comment volume with iteration count. Real rounds need per-MR /discussions.",
+    ac:["Rounds derive from per-MR /discussions, not a raw note count","N+1 call cost bounded (cached/batched) so load time holds","Rounds tile matches a hand-counted sample MR"],
+    src:"CLAUDE.md “Open questions #2” · metrics/rounds.js" },
+  { id:"BL-013", p:"P2", type:"feature", size:"M",
+    title:"First-class PDF evidence export",
+    why:"PDF export is window.print() today — fragile, browser-dependent, off-brand. A real renderer gives a controlled, reproducible document.",
+    ac:["PDF export produces a styled doc without the print dialog","Output matches .md content + the HexaCore aesthetic","Works headlessly (no manual print-to-PDF step)"],
+    src:"CLAUDE.md “What’s real vs. stubbed”" },
+  { id:"BL-014", p:"P3", type:"feature", size:"L",
+    title:"W3 — widget catalog expansion",
+    why:"Remaining widget-system-rethink work: ship the cheap AUTO widgets (REVIEWS_GIVEN, TIME_TO_FIRST_REVIEW, PR_SIZE, ACTIVE_DAYS) reusing existing data, then fill catalog gaps.",
+    ac:["Four cheap AUTO widgets ship reusing existing integration data","New widgets carry unit-typed structured tiers (closed-loop fix)","Catalog additions documented in the widget doc"],
+    src:"widget-system-rethink.md § Sprint W3 (line 165) + § Issue 3" },
+  { id:"BL-015", p:"P3", type:"tech-debt", size:"S",
+    title:"Remove the retired legacy dashboard feature",
+    why:"The perf bento dashboard is retired from nav and slated for removal per CLAUDE.md — dead weight and an architecture-boundary trap.",
+    ac:["src/features/dashboard/ and its route wiring removed","No imports reference it; architecture-boundaries test passes","Any still-needed component relocated before deletion"],
+    src:"CLAUDE.md feature table (slated for removal)" },
+  { id:"BL-016", p:"P3", type:"tech-debt", size:"M",
+    title:"Refactor classify/grade endpoints to client-driven fan-out",
+    why:"classify-goals + grade-pr stream through Vercel’s 10s/60s function cap and get cut off mid-stream. A fan-out of one short request per goal stays under the cap.",
+    ac:["Classification/grading runs as many short requests, not one stream","No request nears the 10s Hobby / 60s Pro cap under normal load","Progress reported incrementally as each unit completes"],
+    src:"[...path].ts:48-58, 242-258" },
+];
+
+// Summary counts
+const counts = { P0:0, P1:0, P2:0, P3:0 };
+TICKETS.forEach(t => counts[t.p]++);
+document.getElementById("summary").innerHTML =
+  `<span><b>${TICKETS.length}</b> tickets</span>` +
+  GROUPS.map(g => `<span><b>${counts[g.p]}</b> ${g.p}</span>`).join("");
+
+const board = document.getElementById("board");
+GROUPS.forEach(g => {
+  const cls = SEVCLASS[g.p];
+  const items = TICKETS.filter(t => t.p === g.p);
+  const h = document.createElement("h2");
+  h.className = g.p.toLowerCase();
+  h.innerHTML = `<span class="bar"></span>${g.p} — ${g.label}` +
+    (g.hint ? ` <span class="cnt">· ${g.hint}</span>` : "") +
+    ` <span class="cnt">· ${items.length}</span>`;
+  board.appendChild(h);
+
+  const grid = document.createElement("div");
+  grid.className = "cards";
+  items.forEach(t => {
+    const card = document.createElement("div");
+    card.className = `card ${cls}`;
+    card.innerHTML =
+      `<div class="chead"><span class="id">${t.id}</span><h3>${t.title}</h3></div>` +
+      `<div class="chips">` +
+        `<span class="chip type">${t.type}</span>` +
+        `<span class="chip size">size ${t.size}</span>` +
+      `</div>` +
+      `<p class="why">${t.why}</p>` +
+      `<ul class="ac">${t.ac.map(a => `<li>${a}</li>`).join("")}</ul>` +
+      `<div class="src"><b>src</b> ${t.src}</div>`;
+    grid.appendChild(card);
+  });
+  board.appendChild(grid);
+});
+
+document.getElementById("stamp").textContent = "generated " + new Date().toISOString().slice(0,10);
+</script>
+</body>
+</html>

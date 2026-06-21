@@ -1,24 +1,12 @@
 import "./globals.css";
-import { Inter_Tight, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { SessionProvider } from "@/features/auth";
 import { CompanionApiOriginProvider } from "@/features/companion";
 import { MigrateOnce } from "@/features/migrate";
 import { HubsFetcher } from "@/features/hubs";
 
-const interTight = Inter_Tight({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-inter-tight",
-  display: "swap",
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-jetbrains-mono",
-  display: "swap",
-});
+// Nothing UI fonts (Doto / Hanken Grotesk / Space Mono) load via the Google
+// Fonts @import in globals.css, so no next/font wiring is needed here.
 
 export const metadata = {
   title: "eSpace Dev Hub",
@@ -28,8 +16,17 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={`${interTight.variable} ${jetbrainsMono.variable}`}>
+    <html lang="en">
       <body>
+        {/* No-flash theme: apply the saved dark/light choice before hydration
+            so the first paint matches. "system" leaves the attribute off and
+            prefers-color-scheme decides (handled in globals.css). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{var t=localStorage.getItem('espace-theme');if(t&&t!=='system')document.documentElement.setAttribute('data-theme',t);}catch(e){}",
+          }}
+        />
         {/* SessionProvider kicks off the initial /auth/me lookup so
             useSession() reads from a populated store on first render.
             It's a no-op when the user has no cookie (returns 401 →
@@ -60,7 +57,7 @@ export default function RootLayout({ children }) {
           {children}
         </SessionProvider>
         <Toaster
-          theme="light"
+          theme="system"
           richColors
           closeButton
           toastOptions={{

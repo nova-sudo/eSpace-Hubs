@@ -16,7 +16,7 @@ const VARIANTS = {
 };
 
 /**
- * The single Button primitive — mono uppercase per HexaCore.
+ * The single Button primitive — mono uppercase per Nothing UI.
  * All interactive CTAs in the app use this.
  */
 export function Button({

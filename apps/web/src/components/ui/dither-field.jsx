@@ -1,7 +1,7 @@
 /**
  * Deterministic halftone dot field — the brand's signature texture.
  *
- * Ported from .design-reference/primitives.jsx (HexaCore).
+ * Ported from .design-reference/primitives.jsx (Nothing UI).
  *
  * Cross-engine determinism: `Math.sin` isn't bit-stable across V8 builds
  * (Node vs Chrome), so server-rendered radii drift from client-rendered by

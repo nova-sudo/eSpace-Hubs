@@ -2,7 +2,8 @@ import { MonoLabel } from "./mono-label";
 
 /**
  * Editorial page header used by secondary screens (evidence, snapshots, settings).
- * `italicWord` gets swapped with a serif-italic accent em.
+ * The title renders in the dot-matrix display face (Doto); `italicWord` becomes
+ * the accent dot-word via `em.accent` (Doto + cobalt, see globals.css).
  */
 export function PageHeader({ crumb, title, italicWord, subtitle, right }) {
   const parts =
@@ -14,10 +15,11 @@ export function PageHeader({ crumb, title, italicWord, subtitle, right }) {
         <h1
           className="mt-2 font-semibold"
           style={{
-            fontFamily: "var(--font-display)",
-            fontSize: "clamp(40px, 5vw, 68px)",
-            lineHeight: 0.98,
-            letterSpacing: "-1.8px",
+            fontFamily: "var(--font-dot)",
+            fontSize: "clamp(36px, 4.6vw, 60px)",
+            lineHeight: 1.0,
+            letterSpacing: "0.5px",
+            textTransform: "uppercase",
             textWrap: "balance",
           }}
         >

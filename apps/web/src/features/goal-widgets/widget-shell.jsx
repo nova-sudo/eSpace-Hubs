@@ -6,7 +6,7 @@
  * Two visual variants — picked by prop, not by fork:
  *   - "light"  : white-on-indigo (for the inverse-themed Section 5 and the
  *                analyst page)
- *   - "dark"   : dark-on-white (regular HexaCore look; kept for reuse on the
+ *   - "dark"   : dark-on-white (regular Nothing UI look; kept for reuse on the
  *                main dashboard if we ever want to embed widgets there)
  *
  * Provides:

@@ -1,44 +1,112 @@
 @import "tailwindcss";
 
+/* Nothing UI fonts — Doto (dot-matrix display), Hanken Grotesk (sans/display),
+   Space Mono (mono/labels). Self-host for production if preferred. */
+@import url("https://fonts.googleapis.com/css2?family=Doto:wght@400;500;700;900&family=Space+Mono:wght@400;700&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap");
+
 /* ─────────────────────────────────────────────────────────────
-   eSpace Dev Hub — HexaCore tokens.
-   Editorial, dithered, electric blue on warm off-white.
-   See .design-reference/README.md for the full spec.
+   eSpace DevHub — "Nothing UI" tokens.
+   Pure-black / warm-white surfaces, dot-matrix Doto display type,
+   halftone dot-grid texture, dashed hairlines, one cobalt accent.
+   Light + dark. Token names are unchanged, so every component that
+   reads them inherits the new look with no edits.
    ───────────────────────────────────────────────────────────── */
 
 :root {
   /* Surfaces */
-  --bg: #f1eee6;
-  --fg: #0b0b14;
-  --card: #ffffff;
-  --card-alt: #faf8f2;
+  --bg: #efede7;          /* warm off-white canvas */
+  --fg: #0b0b0e;          /* near-black ink */
+  --card: #ffffff;        /* primary card surface */
+  --card-alt: #f7f5ef;    /* nested / secondary surface */
+  --panel: #faf9f5;       /* inset panels, table headers */
+  --panel-2: #eceae3;     /* chips, track backgrounds */
 
   /* Secondary text */
-  --muted-fg: rgba(11, 11, 20, 0.55);
-  --dim-fg: rgba(11, 11, 20, 0.38);
+  --muted-fg: rgba(11, 11, 14, 0.56);
+  --dim-fg: rgba(11, 11, 14, 0.38);
 
   /* Hairline borders */
-  --border: rgba(10, 11, 22, 0.10);
-  --border-strong: rgba(10, 11, 22, 0.18);
+  --border: rgba(15, 15, 18, 0.13);
+  --border-strong: rgba(15, 15, 18, 0.24);
 
-  /* Accent — Electric blue (HexaCore default). Swap to #1D4ED8 (cobalt) if product dictates. */
-  --accent: #1D4ED8;
+  /* Accent — the single cobalt. Status, links, focus, active. */
+  --accent: #1d4ed8;
   --accent-on: #ffffff;
-  --accent-dim: rgba(56, 38, 255, 0.10);
-  --accent-2: #00c48a;
+  --accent-dim: rgba(29, 78, 216, 0.10);
+  --accent-2: #0f8a5b;
 
   /* Semantic */
-  --good: #047857;
-  --bad: #b91c1c;
+  --good: #0f8a5b;
+  --warn: #b4690e;
+  --bad: #cf2b2b;
 
-  /* Radii — deliberately small; HexaCore is crisp, not rounded */
-  --radius-tile: 4px;
-  --radius-sub: 3px;
+  /* Dot-matrix / halftone texture */
+  --dot: #111111;                  /* solid dot ink (glyph grids) */
+  --dot-dim: rgba(0, 0, 0, 0.14);  /* faint dot-field texture */
+  --accent-dot: rgba(29, 78, 216, 0.30);
+
+  /* Radii — deliberately small; Nothing is crisp, not rounded */
+  --radius-tile: 8px;
+  --radius-sub: 6px;
   --radius-pill: 999px;
 
   /* Shell layout — shared by scroll-snap dashboard and any surface that
      needs to size itself relative to the sticky header. Change here only. */
   --header-height: 57px;
+
+  color-scheme: light;
+}
+
+/* DARK — set [data-theme="dark"] on <html> (theme toggle + no-flash script). */
+[data-theme="dark"] {
+  --bg: #050505;          /* pure black canvas */
+  --fg: #f5f5f5;
+  --card: #101010;
+  --card-alt: #161616;
+  --panel: #0d0d0d;
+  --panel-2: #1c1c1c;
+  --muted-fg: rgba(245, 245, 245, 0.55);
+  --dim-fg: rgba(245, 245, 245, 0.34);
+  --border: rgba(255, 255, 255, 0.10);
+  --border-strong: rgba(255, 255, 255, 0.20);
+  --accent: #4d7cff;
+  --accent-on: #ffffff;
+  --accent-dim: rgba(77, 124, 255, 0.18);
+  --accent-2: #3fcf8e;
+  --good: #3fcf8e;
+  --warn: #ffb24d;
+  --bad: #ff5a5a;
+  --dot: #ffffff;
+  --dot-dim: rgba(255, 255, 255, 0.16);
+  --accent-dot: rgba(77, 124, 255, 0.35);
+  color-scheme: dark;
+}
+
+/* System preference — auto-dark unless the user explicitly picked light. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    --bg: #050505;
+    --fg: #f5f5f5;
+    --card: #101010;
+    --card-alt: #161616;
+    --panel: #0d0d0d;
+    --panel-2: #1c1c1c;
+    --muted-fg: rgba(245, 245, 245, 0.55);
+    --dim-fg: rgba(245, 245, 245, 0.34);
+    --border: rgba(255, 255, 255, 0.10);
+    --border-strong: rgba(255, 255, 255, 0.20);
+    --accent: #4d7cff;
+    --accent-on: #ffffff;
+    --accent-dim: rgba(77, 124, 255, 0.18);
+    --accent-2: #3fcf8e;
+    --good: #3fcf8e;
+    --warn: #ffb24d;
+    --bad: #ff5a5a;
+    --dot: #ffffff;
+    --dot-dim: rgba(255, 255, 255, 0.16);
+    --accent-dot: rgba(77, 124, 255, 0.35);
+    color-scheme: dark;
+  }
 }
 
 /* Map design tokens → Tailwind v4 theme so Tailwind utilities (bg-card, text-accent) work. */
@@ -56,15 +124,22 @@
   --color-accent-dim: var(--accent-dim);
   --color-accent-2: var(--accent-2);
   --color-good: var(--good);
+  --color-warn: var(--warn);
   --color-bad: var(--bad);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
 }
 
-/* Font families — next/font CSS vars (see app/layout.jsx). */
+/* Font families — Nothing UI three-font system.
+   --font-dot (Doto) is the dot-matrix signature for page titles + big numerals;
+   --font-display/--font-sans (Hanken Grotesk) for headings + body;
+   --font-mono (Space Mono) for overlines, labels, meta. */
 :root {
-  --font-display: var(--font-inter-tight), "Inter", system-ui, -apple-system, sans-serif;
-  --font-sans: var(--font-inter-tight), "Inter", system-ui, -apple-system, sans-serif;
-  --font-mono: var(--font-jetbrains-mono), "SF Mono", Menlo, monospace;
-  --font-serif: ui-serif, "Iowan Old Style", Georgia, serif;
+  --font-dot: "Doto", "Space Mono", monospace;
+  --font-display: "Hanken Grotesk", system-ui, -apple-system, sans-serif;
+  --font-sans: "Hanken Grotesk", system-ui, -apple-system, sans-serif;
+  --font-mono: "Space Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-serif: "Doto", "Space Mono", monospace; /* legacy serif slot → dot */
 }
 
 * {
@@ -99,13 +174,13 @@ body {
 
 body {
   margin: 0;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
 }
 
-/* Serif italic — used for one accent word per big headline */
+/* Accent word per big headline — was serif-italic; now the dot-matrix
+   signature (Doto, upright) so it reads as the Nothing display face. */
 em.accent {
-  font-style: italic;
-  font-family: var(--font-serif);
+  font-style: normal;
+  font-family: var(--font-dot);
   color: var(--accent);
   font-weight: 500;
 }

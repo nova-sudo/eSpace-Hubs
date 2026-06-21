@@ -92,7 +92,7 @@ export function AcceptInviteForm({ onSuccess }) {
         <h1
           className="font-semibold"
           style={{
-            fontFamily: "var(--font-display, var(--font-inter-tight))",
+            fontFamily: "var(--font-display)",
             fontSize: 28,
             letterSpacing: "-0.8px",
           }}
@@ -220,7 +220,7 @@ function ErrorPanel({ title, body }) {
       <h1
         className="font-semibold"
         style={{
-          fontFamily: "var(--font-display, var(--font-inter-tight))",
+          fontFamily: "var(--font-display)",
           fontSize: 24,
           letterSpacing: "-0.6px",
         }}

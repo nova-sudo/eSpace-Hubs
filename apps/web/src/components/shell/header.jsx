@@ -80,7 +80,7 @@ export function Header() {
   return (
     <header
       className="sticky top-0 z-20 flex items-center justify-between border-b border-border px-10 py-3.5 backdrop-blur-xl"
-      style={{ background: "rgba(241, 238, 230, 0.80)" }}
+      style={{ background: "color-mix(in srgb, var(--bg) 82%, transparent)" }}
     >
       <div className="flex items-center gap-8">
         <Link href={hubPrefix || "/"} className="flex items-center gap-2.5">

@@ -21,7 +21,7 @@ export function meanTurnaroundDays(mrs = []) {
 }
 
 /**
- * Bucketize turnaround into the 6 display bins the HexaCore histogram uses.
+ * Bucketize turnaround into the 6 display bins the Nothing UI histogram uses.
  * Units: hours.
  */
 const BINS = [

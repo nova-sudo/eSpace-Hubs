@@ -43,13 +43,9 @@ import { HUBS } from "@espace-devhub/shared/hubs";
 // covers the rest.
 const QUICK_PICKS = ["Engineering", "QA", "Platform", "DevOps", "Frontend"];
 
-// Theme overrides — the form is its own visual surface, not a hub.
-// Warm sand accent so it's clearly a transitional page.
-const ONBOARDING_THEME = {
-  "--accent": "#8a6b3c",
-  "--accent-dim": "rgba(138,107,60,0.10)",
-  "--accent-on": "#ffffff",
-};
+// No theme override — onboarding inherits the Nothing UI tokens (cobalt accent,
+// light/dark) so it honours the user's theme like every other surface.
+const ONBOARDING_THEME = {};
 
 export function OnboardingPage() {
   const router = useRouter();
@@ -111,7 +107,7 @@ export function OnboardingPage() {
       <main
         style={{
           minHeight: "100vh",
-          background: "#f5f1e8",
+          background: "var(--bg)",
           color: "var(--muted-fg)",
           display: "grid",
           placeItems: "center",
@@ -129,22 +125,22 @@ export function OnboardingPage() {
     <main
       style={{
         minHeight: "100vh",
-        background: "#f5f1e8",
-        color: "#1c1c1c",
+        background: "var(--bg)",
+        color: "var(--fg)",
         ...ONBOARDING_THEME,
       }}
     >
       <div className="mx-auto grid min-h-screen max-w-3xl grid-rows-[1fr_auto] px-6 py-16">
         <div className="flex flex-col justify-center">
           <div
-            className="mb-4 inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(28,28,28,0.12)] px-3 py-1"
+            className="mb-4 inline-flex w-fit items-center gap-2 rounded-full border border-[var(--border)] px-3 py-1"
             style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
           >
             <span
               className="block h-1.5 w-1.5 rounded-full"
               style={{ background: "var(--accent)" }}
             />
-            <span className="uppercase tracking-[0.5px] text-[#5a4a2c]">
+            <span className="uppercase tracking-[0.5px] text-[var(--muted-fg)]">
               Step 1 of 1 · One-time setup
             </span>
           </div>
@@ -152,18 +148,19 @@ export function OnboardingPage() {
           <h1
             className="mb-3 font-semibold"
             style={{
-              fontFamily: "var(--font-display)",
+              fontFamily: "var(--font-dot)",
               fontSize: 44,
               lineHeight: 1.05,
-              letterSpacing: "-0.8px",
+              letterSpacing: "0.5px",
+              textTransform: "uppercase",
             }}
           >
-            Welcome to <span style={{ fontStyle: "italic", color: "var(--accent)" }}>eSpace</span> Dev Hub.
+            Welcome to <em className="accent">eSpace</em> Dev Hub.
           </h1>
 
           <p
             className="mb-10 max-w-xl text-[15px] leading-[1.55]"
-            style={{ color: "#5a4a2c" }}
+            style={{ color: "var(--muted-fg)" }}
           >
             Three quick fields so we know how to route you. You can change
             them later from your profile — there's no wrong answer here.
@@ -177,7 +174,7 @@ export function OnboardingPage() {
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Your name"
                 autoComplete="name"
-                className="w-full rounded-md border border-[rgba(28,28,28,0.16)] bg-white px-3.5 py-2.5 text-[14px] outline-none transition-colors focus:border-[color:var(--accent)]"
+                className="w-full rounded-md border border-[var(--border)] bg-card px-3.5 py-2.5 text-[14px] outline-none transition-colors focus:border-[color:var(--accent)]"
               />
             </Field>
 
@@ -190,7 +187,7 @@ export function OnboardingPage() {
                 value={employeeId}
                 onChange={(e) => setEmployeeId(e.target.value)}
                 placeholder="e.g. EMP-1042"
-                className="w-full rounded-md border border-[rgba(28,28,28,0.16)] bg-white px-3.5 py-2.5 text-[14px] outline-none transition-colors focus:border-[color:var(--accent)]"
+                className="w-full rounded-md border border-[var(--border)] bg-card px-3.5 py-2.5 text-[14px] outline-none transition-colors focus:border-[color:var(--accent)]"
                 style={{ fontFamily: "var(--font-mono)" }}
               />
             </Field>
@@ -217,9 +214,9 @@ export function OnboardingPage() {
                         fontSize: 11,
                         borderColor: active
                           ? "var(--accent)"
-                          : "rgba(28,28,28,0.16)",
+                          : "var(--border)",
                         background: active ? "var(--accent-dim)" : "transparent",
-                        color: active ? "var(--accent)" : "#5a4a2c",
+                        color: active ? "var(--accent)" : "var(--muted-fg)",
                       }}
                     >
                       {q}
@@ -232,7 +229,7 @@ export function OnboardingPage() {
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
                 placeholder="e.g. QA"
-                className="w-full rounded-md border border-[rgba(28,28,28,0.16)] bg-white px-3.5 py-2.5 text-[14px] outline-none transition-colors focus:border-[color:var(--accent)]"
+                className="w-full rounded-md border border-[var(--border)] bg-card px-3.5 py-2.5 text-[14px] outline-none transition-colors focus:border-[color:var(--accent)]"
               />
             </Field>
 
@@ -253,7 +250,7 @@ export function OnboardingPage() {
                   className="text-[12px]"
                   style={{
                     fontFamily: "var(--font-mono)",
-                    color: "#5a4a2c",
+                    color: "var(--muted-fg)",
                   }}
                 >
                   → {previewHub.label}
@@ -264,7 +261,7 @@ export function OnboardingPage() {
         </div>
 
         <div
-          className="mt-12 border-t border-[rgba(28,28,28,0.08)] pt-4 text-[11px]"
+          className="mt-12 border-t border-[var(--border)] pt-4 text-[11px]"
           style={{ fontFamily: "var(--font-mono)", color: "#7a6a4c" }}
         >
           Signed in as {user.email}. This is a one-time setup; you won't see

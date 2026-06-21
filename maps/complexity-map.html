@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>eSpace Dev Hub — Complexity & Risk Map</title>
+<style>
+  @import url("https://fonts.googleapis.com/css2?family=Doto:wght@400;500;700;900&family=Space+Mono:wght@400;700&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap");
+  /* Nothing UI — warm-white/black, dot-matrix Doto titles, cobalt accent. */
+  :root {
+    --bg:#efede7; --surface:#ffffff; --surface-alt:#f7f5ef; --fg:#0b0b0e; --muted:rgba(11,11,14,0.56); --dim:rgba(11,11,14,0.38);
+    --border:rgba(15,15,18,0.13); --hair:rgba(15,15,18,0.07); --accent:#1d4ed8;
+    --crit:#cf2b2b; --high:#b4690e; --med:rgba(11,11,14,0.56);
+    --crit-bg:rgba(207,43,43,0.10); --high-bg:rgba(180,105,14,0.12); --med-bg:rgba(11,11,14,0.07);
+    --mono:"Space Mono",ui-monospace,Menlo,Consolas,monospace;
+    --sans:"Hanken Grotesk",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+    --dotfont:"Doto","Space Mono",monospace;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#050505; --surface:#101010; --surface-alt:#161616; --fg:#f5f5f5; --muted:rgba(245,245,245,0.55); --dim:rgba(245,245,245,0.34);
+    --border:rgba(255,255,255,0.10); --hair:rgba(255,255,255,0.06); --accent:#4d7cff;
+    --crit:#ff5a5a; --high:#ffb24d; --med:rgba(245,245,245,0.55);
+    --crit-bg:rgba(255,90,90,0.12); --high-bg:rgba(255,178,77,0.13); --med-bg:rgba(255,255,255,0.08);
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.55;-webkit-font-smoothing:antialiased;padding:32px 24px 56px}
+  .wrap{max-width:1180px;margin:0 auto}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+  h1{font-family:var(--dotfont);font-size:29px;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px}
+  h1 .it{font-family:var(--dotfont);font-style:normal;font-weight:500}
+  .sub{color:var(--muted);font-size:15px;max-width:780px;margin:0 0 28px}
+  h2{font-size:13px;font-family:var(--mono);letter-spacing:0.8px;text-transform:uppercase;color:var(--dim);margin:34px 0 14px;font-weight:600}
+  .top3{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:6px}
+  .tc{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:16px 18px;border-left:3px solid var(--crit)}
+  .tc:nth-child(2){border-left-color:var(--high)} .tc:nth-child(3){border-left-color:var(--high)}
+  .tc .rank{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:1px}
+  .tc h3{font-size:15px;font-weight:600;margin:4px 0 7px}
+  .tc p{font-size:13px;color:var(--muted);margin:0}
+  .grid2{display:grid;grid-template-columns:1.05fr 0.95fr;gap:26px;align-items:start}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:0.5px;text-transform:uppercase;color:var(--dim);font-weight:600;padding:8px 8px;border-bottom:1px solid var(--border)}
+  td{padding:9px 8px;border-bottom:1px solid var(--hair);color:var(--muted);vertical-align:top}
+  td.area{color:var(--fg)}
+  .num{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;font-family:var(--mono);font-size:11px;font-weight:600;color:#fff;flex-shrink:0}
+  .sev{font-family:var(--mono);font-size:10px;font-weight:600;padding:2px 7px;border-radius:5px;white-space:nowrap}
+  .src{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+  .matrix{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 14px 6px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin:10px 2px 0;font-size:12px;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .sw{width:11px;height:11px;border-radius:50%}
+  .risk{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:13px 15px;margin-bottom:10px}
+  .risk .rh{display:flex;align-items:center;gap:9px;margin-bottom:6px}
+  .risk h4{font-size:14px;font-weight:600;margin:0;flex:1}
+  .risk .kv{font-size:12.5px;color:var(--muted);margin:3px 0}
+  .risk .kv b{color:var(--fg);font-weight:600}
+  ol.steps{margin:0;padding-left:20px;font-size:13.5px}
+  ol.steps li{margin-bottom:8px;color:var(--muted)}
+  ol.steps b{color:var(--fg);font-weight:600}
+  footer{margin-top:34px;font-family:var(--mono);font-size:11px;color:var(--dim);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  @media(max-width:640px){body{padding:20px 13px 40px}h1{font-size:23px}.src{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">Complexity &amp; hidden-risk map</p>
+  <h1>Where this system is <span class="it">most likely to blow up</span></h1>
+  <p class="sub">Source-anchored complexity audit of eSpace Dev Hub across three lenses — caveats, cost/capacity, and architecture dependencies. Rated by likelihood × impact × visibility.</p>
+
+  <h2>Top concentrations</h2>
+  <div class="top3">
+    <div class="tc">
+      <div class="rank">01 · most dangerous</div>
+      <h3>5-SPOF serial request path</h3>
+      <p>Vercel → Mongo route → Cloudflare tunnel → one container → corporate VPN → Crealogix GitLab. Any link down blanks all integration data, and 3 of 5 links are owned by others. The code deliberately won't fall back.</p>
+    </div>
+    <div class="tc">
+      <div class="rank">02</div>
+      <h3>AI cost × serverless cliff</h3>
+      <p>CODE_RUBRIC "grade-all" fires one Claude call per PR over a 1000-PR year, streamed through a 10s/60s function cap, with no shared rate limiter and a per-device cache that re-spends tokens.</p>
+    </div>
+    <div class="tc">
+      <div class="rank">03</div>
+      <h3>Client-only persistence + silent loss</h3>
+      <p>Snapshots, tier verdicts and locks live in localStorage; cross-user isolation rides on a manual allowlist; heavy-author data is truncated at provider ceilings with no error surfaced.</p>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div>
+      <h2>Complexity heat map</h2>
+      <table>
+        <thead><tr><th>#</th><th>Area</th><th>Type</th><th>L</th><th>I</th><th>Vis.</th><th>Source</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div>
+      <h2>Likelihood × impact</h2>
+      <div class="matrix">
+        <svg viewBox="0 0 560 430" style="display:block;width:100%;height:auto;font-family:var(--sans)" role="img" aria-label="Risk matrix: risks plotted by likelihood and impact">
+          <g>
+            <rect x="90" y="20" width="140" height="120" fill="#E1F5EE"/><rect x="230" y="20" width="140" height="120" fill="#FAEEDA"/><rect x="370" y="20" width="140" height="120" fill="#FCEBEB"/>
+            <rect x="90" y="140" width="140" height="120" fill="#E1F5EE"/><rect x="230" y="140" width="140" height="120" fill="#FAEEDA"/><rect x="370" y="140" width="140" height="120" fill="#FAC775"/>
+            <rect x="90" y="260" width="140" height="120" fill="#EAF3DE"/><rect x="230" y="260" width="140" height="120" fill="#E1F5EE"/><rect x="370" y="260" width="140" height="120" fill="#FAEEDA"/>
+          </g>
+          <g stroke="var(--border)" stroke-width="1" fill="none">
+            <rect x="90" y="20" width="420" height="360"/>
+            <line x1="230" y1="20" x2="230" y2="380"/><line x1="370" y1="20" x2="370" y2="380"/>
+            <line x1="90" y1="140" x2="510" y2="140"/><line x1="90" y1="260" x2="510" y2="260"/>
+          </g>
+          <text x="55" y="84" text-anchor="middle" font-size="12" fill="var(--muted)" transform="rotate(-90 55 84)">High</text>
+          <text x="55" y="204" text-anchor="middle" font-size="12" fill="var(--muted)" transform="rotate(-90 55 204)">Med</text>
+          <text x="55" y="324" text-anchor="middle" font-size="12" fill="var(--muted)" transform="rotate(-90 55 324)">Low</text>
+          <text x="28" y="204" text-anchor="middle" font-size="13" font-weight="500" fill="var(--fg)" transform="rotate(-90 28 204)">Likelihood</text>
+          <text x="160" y="402" text-anchor="middle" font-size="12" fill="var(--muted)">Low</text>
+          <text x="300" y="402" text-anchor="middle" font-size="12" fill="var(--muted)">Med</text>
+          <text x="440" y="402" text-anchor="middle" font-size="12" fill="var(--muted)">High</text>
+          <text x="300" y="421" text-anchor="middle" font-size="13" font-weight="500" fill="var(--fg)">Impact</text>
+          <g font-size="13" font-weight="600" text-anchor="middle">
+            <circle cx="440" cy="80" r="15" fill="#A32D2D"/><text x="440" y="85" fill="#fff">1</text>
+            <circle cx="278" cy="68" r="14" fill="#BA7517"/><text x="278" y="73" fill="#fff">2</text>
+            <circle cx="322" cy="100" r="14" fill="#BA7517"/><text x="322" y="105" fill="#fff">3</text>
+            <circle cx="420" cy="175" r="14" fill="#BA7517"/><text x="420" y="180" fill="#fff">4</text>
+            <circle cx="462" cy="178" r="14" fill="#BA7517"/><text x="462" y="183" fill="#fff">5</text>
+            <circle cx="440" cy="225" r="14" fill="#BA7517"/><text x="440" y="230" fill="#fff">6</text>
+            <circle cx="445" cy="320" r="14" fill="#854F0B"/><text x="445" y="325" fill="#fff">7</text>
+            <circle cx="420" cy="245" r="14" fill="#BA7517"/><text x="420" y="250" fill="#fff">8</text>
+            <circle cx="278" cy="200" r="13" fill="#5F5E5A"/><text x="278" y="205" fill="#fff">9</text>
+            <circle cx="322" cy="220" r="13" fill="#5F5E5A"/><text x="322" y="225" fill="#fff">10</text>
+            <circle cx="468" cy="320" r="14" fill="#854F0B"/><text x="468" y="325" fill="#fff">11</text>
+            <circle cx="300" cy="178" r="13" fill="#5F5E5A"/><text x="300" y="183" fill="#fff">12</text>
+          </g>
+        </svg>
+        <div class="legend">
+          <span><span class="sw" style="background:var(--crit)"></span>critical</span>
+          <span><span class="sw" style="background:var(--high)"></span>high</span>
+          <span><span class="sw" style="background:var(--med)"></span>medium</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Hidden risk summary</h2>
+  <div id="risks"></div>
+
+  <h2>Recommended next steps</h2>
+  <ol class="steps">
+    <li><b>Prototype a degraded mode</b> for the companion path (cached last-good + a clear "backend offline" state) — kills the worst blow-up point.</li>
+    <li><b>Instrument AI cost</b> (calls/day, tokens/call) and add a per-user grade-all ceiling before a rubric user with 1000 PRs runs one.</li>
+    <li><b>Fix the doc drift</b> in CLAUDE.md Rule 4 (tokens now live encrypted in Mongo, not "never leave the browser") and add an allowlist regression test.</li>
+    <li><b>Provision Redis</b> (already reserved) the moment a second API instance is on the table — there is currently zero cross-process rate limiting.</li>
+  </ol>
+
+  <footer>
+    <span>eSpace Dev Hub · complexity-mapper · 3-lens extraction → synthesis</span>
+    <span id="stamp"></span>
+  </footer>
+</div>
+
+<script>
+const SEV = { crit:{c:"var(--crit)",bg:"var(--crit-bg)"}, high:{c:"var(--high)",bg:"var(--high-bg)"}, med:{c:"var(--med)",bg:"var(--med-bg)"} };
+const DOT = { crit:"#A32D2D", high:"#BA7517", med:"#5F5E5A" };
+const ROWS = [
+  {n:1,sev:"crit",area:"Prod request path: 5 SPOFs in series",type:"Dependency",l:"H",i:"H",vis:"Visible",src:"[...path].ts:131-190"},
+  {n:2,sev:"high",area:"CODE_RUBRIC grade-all = 1 Claude call / PR",type:"Cost",l:"H",i:"M",vis:"Hidden",src:"use-graded-prs.js:262"},
+  {n:3,sev:"high",area:"No shared rate limiter + GitHub 30/min + N+1",type:"Cost / Dep",l:"H",i:"M",vis:"Hidden",src:"docker-compose.yml:172"},
+  {n:4,sev:"high",area:"Vercel 10s/60s truncates classify/grade streams",type:"Impl.",l:"M",i:"H",vis:"Visible",src:"[...path].ts:48-58"},
+  {n:5,sev:"high",area:"CF tunnel + single companion container/host",type:"Dependency",l:"M",i:"H",vis:"Visible",src:"docker-compose.yml:45-170"},
+  {n:6,sev:"high",area:"Crealogix VPN + hardcoded GitLab IP",type:"Dependency",l:"M",i:"H",vis:"Hidden",src:"docker-compose.yml:105"},
+  {n:7,sev:"high",area:"INTEGRATION_TOKEN_KEY loss = bricks all tokens",type:"Operational",l:"L",i:"H",vis:"Hidden",src:"proxy.ts:294-298"},
+  {n:8,sev:"high",area:"No-auth dev Mongo + plaintext .env.local secrets",type:"Operational",l:"M",i:"H",vis:"Hidden",src:"docker-compose.yml:32-35"},
+  {n:9,sev:"med",area:"Silent upstream truncation (1000-result caps)",type:"Impl.",l:"M",i:"M",vis:"Hidden",src:"github.js:67"},
+  {n:10,sev:"med",area:"No server persistence (snapshots/tiers/locks)",type:"Operational",l:"M",i:"M",vis:"Hidden",src:"goal-tier-store.js:1"},
+  {n:11,sev:"high",area:"Shared-browser cross-user leak (manual allowlist)",type:"Operational",l:"L",i:"H",vis:"Hidden",src:"clear-user-storage.js:47"},
+  {n:12,sev:"med",area:"AI grading: proxies + truncation + lenient default",type:"Impl.",l:"M",i:"M",vis:"Hidden",src:"controller.ts:41-79"}
+];
+const RISKS = [
+  {sev:"crit",name:"Serial-SPOF backend with out-of-control links",trigger:"Host sleeps, tunnel drops, IT migrates the GitLab host, or a Vercel plan cap hits.",ev:"[...path].ts:162-184 refuses to fall back to the bundled API when a companion is set; RUN_LOCALLY.md:102.",threat:"The “dashboard is always available” assumption.",conf:"High",action:"Redesign — degraded-mode fallback + tunnel health check + alerting."},
+  {sev:"high",name:"Rubric grading cost blowup",trigger:"Any author with hundreds of PRs activates a CODE_RUBRIC / SCORECARD goal.",ev:"use-graded-prs.js:262-368 grades year-to-date, one call/PR, max_tokens 2048, no prompt caching.",threat:"The unstated AI-cost model.",conf:"High",action:"Prototype a cost ceiling + incremental grading + server-side cache."},
+  {sev:"high",name:"INTEGRATION_TOKEN_KEY is an irreversible bricking key",trigger:"Key rotated or lost on the companion host.",ev:"Tokens encrypted-at-rest in Mongo, decrypted only with this key (proxy.ts:294-298).",threat:"Continuity of every provider integration.",conf:"High",action:"Investigate key backup / rotation procedure."},
+  {sev:"high",name:"Cross-user data leak on shared browsers",trigger:"A new user-scoped localStorage key added without updating the wipe allowlist.",ev:"clear-user-storage.js:47-62 — allowlist-driven wipe on auth transition.",threat:"Per-user data isolation.",conf:"High",action:"Add a test asserting every espace-devhub: key is allowlisted."},
+  {sev:"med",name:"Doc drift — the privacy contract is stale",trigger:"Reading CLAUDE.md Rule 4 as current truth.",ev:"Rule 4 says tokens “never leave the browser”, but they now live encrypted in Mongo, decrypted server-side.",threat:"The advertised privacy posture.",conf:"High",action:"Update CLAUDE.md Rule 4 to match reality."},
+  {sev:"med",name:"Lenient / truncated AI verdicts",trigger:"Long PRs or comment threads (>12k/4k chars), or a model parse hiccup.",ev:"controller.ts:41-42 truncates; :72-79 treats absence-of-evidence as pass; :503-515 defaults to not_achieved.",threat:"Trust in the achievement-tier grade.",conf:"High",action:"Surface “graded on truncated evidence” and chunk long inputs."}
+];
+
+const rowsEl = document.getElementById("rows");
+ROWS.forEach(r=>{
+  const s=SEV[r.sev];
+  const tr=document.createElement("tr");
+  tr.innerHTML=`<td><span class="num" style="background:${DOT[r.sev]}">${r.n}</span></td>`+
+    `<td class="area">${r.area}</td><td>${r.type}</td>`+
+    `<td><span class="sev" style="color:${s.c};background:${s.bg}">${r.l}</span></td>`+
+    `<td><span class="sev" style="color:${s.c};background:${s.bg}">${r.i}</span></td>`+
+    `<td>${r.vis}</td><td class="src">${r.src}</td>`;
+  rowsEl.appendChild(tr);
+});
+
+const risksEl = document.getElementById("risks");
+RISKS.forEach(r=>{
+  const s=SEV[r.sev];
+  const d=document.createElement("div"); d.className="risk";
+  d.innerHTML=`<div class="rh"><h4>${r.name}</h4><span class="sev" style="color:${s.c};background:${s.bg}">${r.sev.toUpperCase()} · ${r.conf} conf</span></div>`+
+    `<div class="kv"><b>Trigger:</b> ${r.trigger}</div>`+
+    `<div class="kv"><b>Evidence:</b> <span class="src" style="font-size:12px;color:var(--muted)">${r.ev}</span></div>`+
+    `<div class="kv"><b>Threatens:</b> ${r.threat}</div>`+
+    `<div class="kv"><b>Recommended action:</b> ${r.action}</div>`;
+  risksEl.appendChild(d);
+});
+
+document.getElementById("stamp").textContent = "generated " + new Date().toISOString().slice(0,10);
+</script>
+</body>
+</html>

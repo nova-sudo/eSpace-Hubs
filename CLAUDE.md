@@ -8,10 +8,12 @@
 
 - **Next.js 16** App Router, JSX (no TS).
 - **Tailwind v4** CSS-variables-first. Tokens in `src/app/globals.css`.
-- **next/font** for Inter Tight (display / sans) + JetBrains Mono (mono / labels).
+- **Fonts (Nothing UI):** Doto (dot-matrix display / big numerals), Hanken Grotesk
+  (display + sans/body), Space Mono (mono / labels). Loaded via Google Fonts
+  `@import` in `globals.css` (`--font-dot`, `--font-display`, `--font-sans`, `--font-mono`).
 - **SWR** for all remote data. No React Query.
 - **Recharts** for the snapshot trend chart only; other charts are hand-rolled SVG
-  (sparkline, dither fields, bars) to keep the HexaCore aesthetic crisp.
+  (sparkline, dither fields, bars) to keep the Nothing UI aesthetic crisp.
 - **Framer Motion** reserved for interaction polish — not required for correctness.
 - **sonner** for toasts.
 
@@ -249,8 +251,9 @@ accent — that's deliberate, since `--accent-on` may one day diverge from white
 - [ ] If it touches localStorage, did you broadcast via a change event so
       sibling tabs/hooks stay in sync?
 - [ ] Did you keep the API proxy dumb?
-- [ ] Did you match the HexaCore aesthetic (mono labels, serif italic accent
-      word, dither textures, hairline borders, 4px radii)?
+- [ ] Did you match the Nothing UI aesthetic (mono labels, dot-matrix Doto
+      titles/accent word, dot-grid textures, dashed hairlines, 8px radii,
+      light + dark via the `--*` tokens in globals.css)?
 
 ## Running it
 

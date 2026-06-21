@@ -5,22 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>eSpace Dev Hub — Architecture</title>
   <style>
+    @import url("https://fonts.googleapis.com/css2?family=Doto:wght@400;500;700;900&family=Space+Mono:wght@400;700&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap");
     :root {
-      --bg: #f8f8f7;
-      --fg: #0b0b0c;
-      --muted: #6f6f6f;
-      --dim: #9a9a9a;
-      --accent: #3826ff;
-      --accent-dim: rgba(56, 38, 255, 0.08);
+      --bg: #efede7;
+      --fg: #0b0b0e;
+      --muted: rgba(11,11,14,0.56);
+      --dim: rgba(11,11,14,0.38);
+      --accent: #1d4ed8;
+      --accent-dim: rgba(29, 78, 216, 0.10);
       --card: #ffffff;
-      --border: #e5e5e5;
+      --dotfont: "Doto", "Space Mono", monospace;
+      --border: rgba(15,15,18,0.13);
       --border-strong: #d4d4d4;
       --good: #16a34a;
       --bad: #b91c1c;
       --warn: #c47b00;
-      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter,
+      --font-sans: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Inter,
         system-ui, sans-serif;
-      --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+      --font-mono: "Space Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
         "Liberation Mono", monospace;
     }
     * { box-sizing: border-box; }
@@ -50,7 +52,7 @@
       margin: 0 0 12px;
       line-height: 1.05;
     }
-    h1 em { color: var(--accent); font-style: italic; }
+    h1 em { color: var(--accent); font-style: normal; font-family: var(--dotfont); }
     .lede { max-width: 760px; color: var(--muted); font-size: 15px; margin: 0; }
     nav.docs {
       display: flex; gap: 4px; margin: 24px 0 0;
@@ -211,17 +213,17 @@
           </marker>
           <marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5"
             markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="#3826ff"/>
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#1d4ed8"/>
           </marker>
           <pattern id="grain" x="0" y="0" width="4" height="4" patternUnits="userSpaceOnUse">
-            <circle cx="1" cy="1" r="0.4" fill="#3826ff" fill-opacity="0.06"/>
+            <circle cx="1" cy="1" r="0.4" fill="#1d4ed8" fill-opacity="0.06"/>
           </pattern>
         </defs>
 
         <!-- BROWSER tier -->
         <g>
-          <rect x="40" y="30" width="280" height="120" rx="8" fill="#ffffff" stroke="#3826ff" stroke-width="1.5"/>
-          <text x="180" y="58" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#3826ff" letter-spacing="0.5">CLIENT · BROWSER</text>
+          <rect x="40" y="30" width="280" height="120" rx="8" fill="#ffffff" stroke="#1d4ed8" stroke-width="1.5"/>
+          <text x="180" y="58" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#1d4ed8" letter-spacing="0.5">CLIENT · BROWSER</text>
           <text x="180" y="86" text-anchor="middle" font-family="system-ui,sans-serif" font-size="16" font-weight="600" fill="#0b0b0c">Next.js 16 (apps/web)</text>
           <text x="180" y="108" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="#6f6f6f">App Router · Turbopack · :3000</text>
           <text x="180" y="128" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#9a9a9a">Tailwind · Radix · SWR · Recharts</text>
@@ -246,8 +248,8 @@
         </g>
 
         <!-- Cookie arrow -->
-        <line x1="320" y1="78" x2="410" y2="78" stroke="#3826ff" stroke-width="2" marker-end="url(#arrow-accent)"/>
-        <text x="365" y="70" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#3826ff">signed cookie</text>
+        <line x1="320" y1="78" x2="410" y2="78" stroke="#1d4ed8" stroke-width="2" marker-end="url(#arrow-accent)"/>
+        <text x="365" y="70" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#1d4ed8">signed cookie</text>
         <text x="365" y="93" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9.5" fill="#6f6f6f">JSON over fetch</text>
 
         <!-- Mongo arrow -->
@@ -368,7 +370,7 @@
         </text>
       </svg>
       <div class="legend">
-        <span><span class="swatch" style="background:#ffffff;border-color:#3826ff;"></span>Client</span>
+        <span><span class="swatch" style="background:#ffffff;border-color:#1d4ed8;"></span>Client</span>
         <span><span class="swatch" style="background:#ffffff;border-color:#16a34a;"></span>API service</span>
         <span><span class="swatch" style="background:#ffffff;border-color:#6f3fb8;"></span>Mongo</span>
         <span><span class="swatch" style="background:#ffffff;border-color:#c47b00;"></span>External provider</span>

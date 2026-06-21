@@ -3,7 +3,7 @@
 > PO + UX plan. Lenses: `ecc-claude-product-team-agile-product-owner`,
 > `ui-ux-pro-max` (a11y rules), `design-taste-frontend` (hygiene only — it's a
 > landing/portfolio skill, this is a dashboard, so its layout rules don't apply).
-> Design language stays HexaCore (mono labels, hairline borders, 4px radii,
+> Design language stays Nothing UI (mono labels, hairline borders, 4px radii,
 > cobalt accent).
 
 ## Objective

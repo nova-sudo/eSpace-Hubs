@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>eSpace Dev Hub — Project Map (editable)</title>
+<style>
+  @import url("https://fonts.googleapis.com/css2?family=Doto:wght@400;500;700;900&family=Space+Mono:wght@400;700&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap");
+  /* Nothing UI — warm-white/black, dot-matrix Doto titles, cobalt accent. */
+  :root {
+    --bg:#efede7; --surface:#ffffff; --surface-alt:#f7f5ef; --fg:#0b0b0e; --muted:rgba(11,11,14,0.56); --dim:rgba(11,11,14,0.38);
+    --border:rgba(15,15,18,0.13); --hair:rgba(15,15,18,0.07); --accent:#1d4ed8; --accent-dim:rgba(29,78,216,0.10);
+    --good:#0f8a5b; --bad:#cf2b2b; --warn:#b4690e;
+    --mono:"Space Mono",ui-monospace,Menlo,Consolas,monospace;
+    --sans:"Hanken Grotesk",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+    --dotfont:"Doto","Space Mono",monospace;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#050505; --surface:#101010; --surface-alt:#161616; --fg:#f5f5f5; --muted:rgba(245,245,245,0.55); --dim:rgba(245,245,245,0.34);
+    --border:rgba(255,255,255,0.10); --hair:rgba(255,255,255,0.06); --accent:#4d7cff; --accent-dim:rgba(77,124,255,0.18);
+    --good:#3fcf8e; --bad:#ff5a5a; --warn:#ffb24d;
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased;padding:28px 22px 52px}
+  .wrap{max-width:1100px;margin:0 auto}
+  h1{font-family:var(--dotfont);font-size:24px;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin:0 0 4px}
+  h1 .it{font-family:var(--dotfont);font-style:normal;font-weight:500}
+  .sub{color:var(--muted);font-size:14px;margin:0 0 22px}
+  input,select{font-family:inherit;font-size:13px;color:var(--fg);background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:0 9px;height:32px;outline:none}
+  input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+  button{font-family:inherit;font-size:13px;color:var(--fg);background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:7px 12px;cursor:pointer;transition:background .12s}
+  button:hover{background:var(--surface-alt)}
+  button:active{transform:scale(.98)}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+  .pill{font-size:12px;background:var(--surface-alt);color:var(--muted);padding:3px 10px;border-radius:7px;font-family:var(--mono)}
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:22px}
+  .metric{background:var(--surface-alt);border-radius:8px;padding:13px 15px}
+  .metric .lbl{font-size:12px;color:var(--muted)}
+  .metric .val{font-size:24px;font-weight:600;margin-top:2px}
+  .sec{display:flex;align-items:center;justify-content:space-between;margin:0 0 10px}
+  .sec h2{font-size:16px;font-weight:600;margin:0}
+  .apps{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:14px 15px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-family:var(--mono);background:var(--surface-alt);color:var(--muted);padding:3px 5px 3px 9px;border-radius:6px}
+  .chip button{border:none;background:transparent;padding:0 2px;color:var(--dim);font-size:14px;line-height:1;height:auto}
+  .chip button:hover{color:var(--bad);background:transparent}
+  .lbl-row{font-size:12px;color:var(--dim);margin:10px 0 6px}
+  .pkgs{display:flex;flex-direction:column;gap:10px}
+  .pkg{background:var(--surface-alt);border-radius:8px;padding:11px 13px;display:flex;align-items:center;gap:10px}
+  .iconbtn{border:none;background:transparent;color:var(--dim);cursor:pointer;font-size:16px;padding:2px 5px}
+  .iconbtn:hover{color:var(--bad);background:transparent}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px;padding-top:16px;border-top:1px solid var(--hair)}
+  .status{font-size:12px;color:var(--dim)}
+  footer{margin-top:24px;font-family:var(--mono);font-size:11px;color:var(--dim)}
+  @media(max-width:640px){body{padding:18px 12px 40px}.apps{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div>
+      <h1>Project map — <span class="it">editable</span></h1>
+      <p class="sub">eSpace Dev Hub monorepo · npm workspaces. Edit inline, then download the updated <span style="font-family:var(--mono)">project-map.yml</span>.</p>
+    </div>
+    <span class="status" id="status">no changes yet</span>
+  </div>
+
+  <div class="metrics">
+    <div class="metric"><div class="lbl">apps</div><div class="val" id="m-apps">0</div></div>
+    <div class="metric"><div class="lbl">packages</div><div class="val" id="m-pkgs">0</div></div>
+    <div class="metric"><div class="lbl">distinct stack</div><div class="val" id="m-stack">0</div></div>
+    <div class="metric"><div class="lbl">repo type</div><div class="val" style="font-size:16px;padding-top:5px">monorepo</div></div>
+  </div>
+
+  <div class="sec"><h2>Apps</h2><button id="add-app">+ add app</button></div>
+  <div class="apps" id="apps"></div>
+
+  <div class="sec" style="margin-top:26px"><h2>Packages</h2></div>
+  <div class="pkgs" id="pkgs"></div>
+
+  <div class="actions">
+    <button id="download" style="border-color:var(--accent);color:var(--accent)">↓ download project-map.yml</button>
+    <button id="copy">copy yaml</button>
+    <button id="reset">reset</button>
+  </div>
+
+  <footer>eSpace Dev Hub · project-mapper · self-contained editor</footer>
+</div>
+
+<script>
+const PLAT = {
+  web:{bg:"#E6F1FB",fg:"#0C447C"}, server:{bg:"#E1F5EE",fg:"#085041"},
+  desktop:{bg:"#EEEDFE",fg:"#3C3489"}, cli:{bg:"#F1EFE8",fg:"#444441"}, mobile:{bg:"#FAECE7",fg:"#712B13"}
+};
+const SEED = {
+  apps:[
+    {name:"web", path:"apps/web", platform:"web", stack:["next.js","react","tailwind","swr","radix-ui","recharts","framer-motion","typescript"], skills:["nextjs-app-router","react-patterns","tailwind-v4","typescript-modern"]},
+    {name:"api", path:"apps/api", platform:"server", stack:["express","mongodb","typescript","zod","pino","@anthropic-ai/sdk","@anthropic-ai/bedrock-sdk"], skills:["typescript-modern"]},
+    {name:"desktop", path:"apps/desktop", platform:"desktop", stack:["electron","vite","react","typescript"], skills:["react-patterns","vite-patterns","typescript-modern"]}
+  ],
+  packages:[
+    {name:"@espace-devhub/shared", path:"packages/shared", role:"Domain types + pure utils shared by web & api"},
+    {name:"@espace-devhub/api-contracts", path:"packages/api-contracts", role:"OpenAPI spec + typed HTTP client"}
+  ]
+};
+let data = JSON.parse(JSON.stringify(SEED));
+const $ = (s,el=document)=>el.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function dirty(){ const s=$("#status"); s.textContent="unsaved changes"; s.style.color="var(--warn)"; }
+
+function chip(t,kind){return `<span class="chip" data-val="${esc(t)}">${esc(t)}<button data-rm="${kind}" aria-label="remove ${esc(t)}">&times;</button></span>`;}
+function chipRow(label,items,kind){
+  return `<div class="lbl-row">${label}</div><div class="chips" data-chips="${kind}">${items.map(t=>chip(t,kind)).join("")}<input data-add="${kind}" placeholder="+ add" style="width:78px;height:26px;font-size:12px;font-family:var(--mono)"/></div>`;
+}
+function platOpts(sel){return Object.keys(PLAT).map(p=>`<option value="${p}"${p===sel?" selected":""}>${p}</option>`).join("");}
+
+function renderApps(){
+  const w=$("#apps"); w.innerHTML="";
+  data.apps.forEach((a,i)=>{
+    const c=PLAT[a.platform]||PLAT.cli;
+    const card=document.createElement("div"); card.className="card"; card.dataset.i=i;
+    card.innerHTML=`
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <input data-f="name" value="${esc(a.name)}" style="flex:1;height:34px;font-size:15px;font-weight:600" aria-label="name"/>
+        <select data-f="platform" style="width:108px;height:34px;background:${c.bg};color:${c.fg}">${platOpts(a.platform)}</select>
+        <button data-del class="iconbtn" aria-label="remove app" title="remove app">&#128465;</button>
+      </div>
+      <input data-f="path" value="${esc(a.path)}" style="width:100%;height:30px;font-size:12px;font-family:var(--mono);color:var(--muted)" aria-label="path"/>
+      ${chipRow("stack",a.stack,"stack")}
+      ${chipRow("matched skills",a.skills,"skills")}`;
+    w.appendChild(card);
+  });
+  metrics();
+}
+function renderPkgs(){
+  const w=$("#pkgs"); w.innerHTML="";
+  data.packages.forEach((p,i)=>{
+    const row=document.createElement("div"); row.className="pkg"; row.dataset.i=i;
+    row.innerHTML=`
+      <div style="flex:1;min-width:0">
+        <input data-f="name" value="${esc(p.name)}" style="width:100%;height:30px;font-size:13px;font-family:var(--mono);font-weight:600" aria-label="package name"/>
+        <input data-f="role" value="${esc(p.role)}" style="width:100%;height:28px;font-size:12px;color:var(--muted);margin-top:3px" aria-label="role"/>
+      </div>
+      <span style="font-size:11px;font-family:var(--mono);color:var(--dim);white-space:nowrap">${esc(p.path)}</span>`;
+    w.appendChild(row);
+  });
+}
+function metrics(){
+  $("#m-apps").textContent=data.apps.length;
+  $("#m-pkgs").textContent=data.packages.length;
+  const s=new Set(); data.apps.forEach(a=>a.stack.forEach(x=>s.add(x)));
+  $("#m-stack").textContent=s.size;
+}
+
+$("#apps").addEventListener("input",e=>{
+  const card=e.target.closest("[data-i]"); if(!card)return;
+  const a=data.apps[+card.dataset.i],f=e.target.dataset.f;
+  if(f){a[f]=e.target.value; if(f==="platform"){const c=PLAT[a.platform]||PLAT.cli;e.target.style.background=c.bg;e.target.style.color=c.fg;} dirty();}
+});
+$("#apps").addEventListener("keydown",e=>{
+  if(e.key!=="Enter"||!e.target.dataset.add)return; e.preventDefault();
+  const v=e.target.value.trim(); if(!v)return;
+  const card=e.target.closest("[data-i]"),a=data.apps[+card.dataset.i],k=e.target.dataset.add;
+  if(!a[k].includes(v)){a[k].push(v);renderApps();dirty();}
+});
+$("#apps").addEventListener("click",e=>{
+  const card=e.target.closest("[data-i]"); if(!card)return;
+  const a=data.apps[+card.dataset.i];
+  if(e.target.closest("[data-del]")){data.apps.splice(+card.dataset.i,1);renderApps();dirty();return;}
+  const rm=e.target.closest("[data-rm]");
+  if(rm){const k=rm.dataset.rm,v=rm.closest(".chip").dataset.val;a[k]=a[k].filter(x=>x!==v);renderApps();dirty();}
+});
+$("#pkgs").addEventListener("input",e=>{
+  const row=e.target.closest("[data-i]"); if(!row)return;
+  const f=e.target.dataset.f; if(f){data.packages[+row.dataset.i][f]=e.target.value;dirty();}
+});
+$("#add-app").addEventListener("click",()=>{data.apps.push({name:"new-app",path:"apps/new-app",platform:"server",stack:[],skills:[]});renderApps();dirty();});
+$("#reset").addEventListener("click",()=>{data=JSON.parse(JSON.stringify(SEED));renderApps();renderPkgs();const s=$("#status");s.textContent="reset to scanned values";s.style.color="var(--dim)";});
+
+function toYaml(){
+  const L=["# Project profile — apps & packages (edited via maps/project-map.html)","apps:"];
+  data.apps.forEach(a=>{
+    L.push(`  - name: "${a.name}"`,`    path: "${a.path}"`,`    platform: ${a.platform}`,"    stack:");
+    a.stack.forEach(s=>L.push(`      - "${s}"`));
+    L.push("    skills:"); a.skills.forEach(s=>L.push(`      - ${s}`));
+  });
+  L.push("packages:","  shared:");
+  data.packages.forEach(p=>L.push(`    - name: "${p.name}"`,`      path: "${p.path}"`,`      role: "${p.role}"`));
+  return L.join("\n");
+}
+$("#copy").addEventListener("click",async()=>{
+  try{await navigator.clipboard.writeText(toYaml());const s=$("#status");s.textContent="copied yaml";s.style.color="var(--good)";}
+  catch(e){const s=$("#status");s.textContent="copy blocked — use download";s.style.color="var(--bad)";}
+});
+$("#download").addEventListener("click",()=>{
+  const blob=new Blob([toYaml()],{type:"text/yaml"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="project-map.yml";a.click();
+  URL.revokeObjectURL(a.href);
+  const s=$("#status");s.textContent="downloaded project-map.yml";s.style.color="var(--good)";
+});
+
+renderApps(); renderPkgs();
+</script>
+</body>
+</html>
