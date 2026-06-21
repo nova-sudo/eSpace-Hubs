@@ -104,8 +104,8 @@ function EmptyState({ title, body, ctaHref, ctaLabel }) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-card/40 px-6 py-16 text-center">
       <div
-        className="text-[20px] font-semibold text-fg"
-        style={{ fontFamily: "var(--font-display)", letterSpacing: "-0.4px" }}
+        className="text-[22px] font-semibold uppercase text-fg"
+        style={{ fontFamily: "var(--font-dot)", letterSpacing: "0.5px" }}
       >
         {title}
       </div>

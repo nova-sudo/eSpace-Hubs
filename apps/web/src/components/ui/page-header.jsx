@@ -1,5 +1,19 @@
 import { MonoLabel } from "./mono-label";
 
+/** Eyebrow: accent dot + mono crumb — the Nothing UI section marker. */
+function Eyebrow({ children }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        aria-hidden="true"
+        className="inline-block h-1.5 w-1.5 rounded-full"
+        style={{ background: "var(--accent)" }}
+      />
+      <MonoLabel>{children}</MonoLabel>
+    </div>
+  );
+}
+
 /**
  * Editorial page header used by secondary screens (evidence, snapshots, settings).
  * The title renders in the dot-matrix display face (Doto); `italicWord` becomes
@@ -11,7 +25,7 @@ export function PageHeader({ crumb, title, italicWord, subtitle, right }) {
   return (
     <div className="mb-7 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-6">
       <div>
-        {crumb ? <MonoLabel>{crumb}</MonoLabel> : null}
+        {crumb ? <Eyebrow>{crumb}</Eyebrow> : null}
         <h1
           className="mt-2 font-semibold"
           style={{

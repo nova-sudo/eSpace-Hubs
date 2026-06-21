@@ -91,11 +91,11 @@ function GroupBlock({ group, fillHref, week }) {
     <section className="flex flex-col gap-2.5">
       <div className="flex items-baseline gap-2.5 border-b border-border pb-1.5">
         <span
-          className="font-semibold"
+          className="font-semibold uppercase"
           style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 15,
-            letterSpacing: "-0.2px",
+            fontFamily: "var(--font-dot)",
+            fontSize: 16,
+            letterSpacing: "0.5px",
           }}
         >
           {group.l1.title}
@@ -141,8 +141,8 @@ function AllClear({ total }) {
   return (
     <div className="flex flex-col items-center gap-1.5 rounded-md border border-dashed border-border bg-card/40 px-6 py-10 text-center">
       <div
-        className="text-[15px] font-semibold text-fg"
-        style={{ fontFamily: "var(--font-display)" }}
+        className="text-[18px] font-semibold uppercase text-fg"
+        style={{ fontFamily: "var(--font-dot)", letterSpacing: "0.5px" }}
       >
         Everything&rsquo;s up to date
       </div>
