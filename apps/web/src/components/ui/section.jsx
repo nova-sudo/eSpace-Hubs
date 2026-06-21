@@ -12,10 +12,10 @@ export function Section({ num, title, children, right, className }) {
             <span
               className="text-accent"
               style={{
-                fontFamily: "var(--font-serif)",
-                fontStyle: "italic",
+                fontFamily: "var(--font-dot)",
+                fontWeight: 700,
                 fontSize: 22,
-                fontWeight: 500,
+                letterSpacing: "0.5px",
               }}
             >
               {num}

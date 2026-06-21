@@ -1,12 +1,12 @@
 import { cn } from "@/lib/cn";
 
 const TONES = {
-  default: "bg-[rgba(0,0,0,0.06)] text-fg",
+  default: "bg-[color-mix(in_srgb,var(--fg)_7%,transparent)] text-fg",
   accent: "bg-accent-dim text-accent",
   solid: "bg-accent text-accent-on",
-  warn: "bg-[rgba(234,88,12,0.12)] text-[#b45309]",
-  ok: "bg-[rgba(4,120,87,0.12)] text-good",
-  muted: "bg-[rgba(0,0,0,0.04)] text-muted-fg",
+  warn: "bg-[color-mix(in_srgb,var(--warn)_14%,transparent)] text-warn",
+  ok: "bg-[color-mix(in_srgb,var(--good)_14%,transparent)] text-good",
+  muted: "bg-[color-mix(in_srgb,var(--fg)_5%,transparent)] text-muted-fg",
 };
 
 /**

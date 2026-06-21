@@ -10,11 +10,12 @@ export function Stat({ label, value, unit, delta, deltaInvert, sub }) {
       <MonoLabel>{label}</MonoLabel>
       <div className="mt-1.5 flex items-baseline gap-2">
         <span
-          className="font-semibold leading-none"
+          className="leading-none"
           style={{
-            fontFamily: "var(--font-display)",
+            fontFamily: "var(--font-dot)",
+            fontWeight: 900,
             fontSize: 44,
-            letterSpacing: "-1.4px",
+            letterSpacing: "0.5px",
           }}
         >
           {value}
