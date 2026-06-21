@@ -61,25 +61,19 @@ export function AnalystActivator() {
         )
       }
       aria-label="Open AI Analyst"
-      className="group relative inline-flex items-center gap-2 rounded-full border-0 px-3.5 py-1.5 transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-[0_4px_14px_rgba(56,38,255,0.28)]"
+      className="group relative inline-flex items-center gap-2.5 rounded-[var(--radius-sub)] border-0 px-3.5 py-2 transition-[transform,filter] hover:-translate-y-px hover:brightness-110"
       style={{
         background: "var(--accent)",
         color: "var(--accent-on)",
       }}
     >
-      <span
-        aria-hidden="true"
-        className="grid h-5 w-5 place-items-center rounded-full"
-        style={{ background: "rgba(255,255,255,0.22)" }}
-      >
-        <SparkleGlyph />
-      </span>
+      <DotGlyph />
       <span
         className="font-bold uppercase"
         style={{
           fontFamily: "var(--font-mono)",
           fontSize: 10.5,
-          letterSpacing: "0.6px",
+          letterSpacing: "0.8px",
         }}
       >
         {label}
@@ -89,13 +83,26 @@ export function AnalystActivator() {
   );
 }
 
-function SparkleGlyph() {
+/** 2×2 dot-matrix glyph — the Nothing mark, on the accent button. */
+function DotGlyph() {
+  const on = { background: "var(--accent-on)", borderRadius: "50%" };
+  const off = { background: "rgba(255,255,255,0.45)", borderRadius: "50%" };
   return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 2l1.8 5.4L19 9l-5.2 1.6L12 16l-1.8-5.4L5 9l5.2-1.6L12 2z"
-        fill="currentColor"
-      />
-    </svg>
+    <span
+      aria-hidden="true"
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(2, 1fr)",
+        gridTemplateRows: "repeat(2, 1fr)",
+        gap: 2,
+        width: 12,
+        height: 12,
+      }}
+    >
+      <i style={on} />
+      <i style={off} />
+      <i style={off} />
+      <i style={on} />
+    </span>
   );
 }

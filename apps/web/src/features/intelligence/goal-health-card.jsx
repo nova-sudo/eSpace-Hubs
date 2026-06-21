@@ -286,23 +286,21 @@ function FillStrip({ fill, cadence }) {
   const ordered = windows.slice().reverse();
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2.5">
       <div className="flex items-center gap-1">
         {ordered.map((solid, i) => (
           <span
             key={i}
-            className={cn(
-              "inline-block h-[7px] w-[7px] rounded-full",
-              solid ? "bg-accent" : "bg-[rgba(0,0,0,0.10)]",
-            )}
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ background: solid ? "var(--accent)" : "var(--dot-dim)" }}
           />
         ))}
       </div>
       <span
-        className="text-[10px] tabular-nums text-muted-fg"
-        style={{ fontFamily: "var(--font-mono)" }}
+        className="uppercase tabular-nums text-muted-fg"
+        style={{ fontFamily: "var(--font-dot)", fontWeight: 700, fontSize: 13, letterSpacing: "1px" }}
       >
-        {filled} / {total} {noun}
+        {filled}/{total} {noun}
       </span>
     </div>
   );

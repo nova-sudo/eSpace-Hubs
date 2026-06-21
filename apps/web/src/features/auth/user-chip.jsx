@@ -99,12 +99,25 @@ export function UserChip() {
             aria-label={`Account menu for ${displayName}`}
           >
             <div
-              className="grid h-6 w-6 place-items-center rounded-full bg-accent font-bold text-accent-on"
-              style={{ fontSize: 11 }}
+              className="grid h-6 w-6 place-items-center rounded-full font-bold"
+              style={{
+                fontSize: 9,
+                fontFamily: "var(--font-mono)",
+                color: "var(--muted-fg)",
+                background: "var(--panel-2)",
+                border: "1px solid var(--border-strong)",
+                backgroundImage: "radial-gradient(var(--dot) 1px, transparent 1px)",
+                backgroundSize: "4px 4px",
+              }}
             >
               {initials}
             </div>
-            <div className="text-[12px] font-semibold">{displayName}</div>
+            <div
+              className="text-[11px] uppercase tracking-[0.3px]"
+              style={{ fontFamily: "var(--font-mono)", color: "var(--muted-fg)" }}
+            >
+              {displayName}
+            </div>
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
