@@ -17,6 +17,18 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
+      <head>
+        {/* Nothing UI fonts. Loaded via <link> (not a CSS @import) because the
+            @import in globals.css lands after Tailwind's expansion and the
+            browser drops any @import that isn't at the top of the stylesheet —
+            which is why Doto/Hanken/Space Mono weren't rendering. */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Doto:wght@400;500;700;900&family=Space+Mono:wght@400;700&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body>
         {/* No-flash theme: apply the saved dark/light choice before hydration
             so the first paint matches. "system" leaves the attribute off and

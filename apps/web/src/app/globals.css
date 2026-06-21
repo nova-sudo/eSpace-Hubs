@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
-/* Nothing UI fonts — Doto (dot-matrix display), Hanken Grotesk (sans/display),
-   Space Mono (mono/labels). Self-host for production if preferred. */
-@import url("https://fonts.googleapis.com/css2?family=Doto:wght@400;500;700;900&family=Space+Mono:wght@400;700&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap");
+/* Nothing UI fonts (Doto / Hanken Grotesk / Space Mono) are loaded via a
+   <link> in app/layout.jsx <head> — a CSS @import here is dropped by the
+   browser because it isn't at the top of the stylesheet after Tailwind
+   expands. */
 
 /* ─────────────────────────────────────────────────────────────
    eSpace DevHub — "Nothing UI" tokens.

@@ -30,15 +30,11 @@ import { useAvailableHubs } from "./use-available-hubs";
 import { HubContext } from "./hub-context";
 
 function themeStyle(hub) {
-  // Hub theme overrides — only the CSS variables that change per hub.
-  // Everything else inherits from the base palette in globals.css.
+  // Nothing UI is a SINGLE cobalt accent, theme-aware (light/dark) from
+  // globals.css. We deliberately do NOT override --accent per hub anymore —
+  // the old per-hub accents (Dev green, QA orange) fought the cobalt design and
+  // couldn't dark-switch. `--primary` is kept for any non-accent hub references.
   return {
-    // The active hub's accent drives the `var(--accent)` reference
-    // throughout the app — chips, CTA buttons, nav highlights.
-    "--accent": hub.theme.accent,
-    "--accent-on": "#ffffff",
-    "--accent-dim": hub.theme.accentSurface,
-    // Some components reference --primary; keep it in sync.
     "--primary": hub.theme.primary,
   };
 }
