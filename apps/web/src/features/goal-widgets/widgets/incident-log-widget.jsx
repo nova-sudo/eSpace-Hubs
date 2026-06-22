@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { WidgetShell } from "../widget-shell";
+import { Select } from "@/components/ui";
 import { useGoalInputs } from "@/features/goal-inputs";
 import { fullDate } from "@/lib/date";
 
@@ -149,31 +150,19 @@ export function IncidentLogWidget({
             numeric input; link is optional. Same min-w-0 chain as the
             date-log widget so the tile never overflows on narrow grids. */}
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <select
+          <Select
+            tone={variant === "light" ? "inverse" : "default"}
+            size="sm"
             value={severity}
             onChange={(e) => setSeverity(e.target.value)}
-            className="rounded-[var(--radius-sub)] bg-transparent px-2 py-1.5 outline-none"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              color: variant === "light" ? "#ffffff" : "var(--fg)",
-              border:
-                variant === "light"
-                  ? "1px solid rgba(255,255,255,0.25)"
-                  : "1px solid var(--border)",
-              background:
-                variant === "light"
-                  ? "rgba(255,255,255,0.08)"
-                  : "var(--card-alt)",
-            }}
             aria-label="Severity"
           >
             {SEVERITY_LEVELS.map((s) => (
-              <option key={s} value={s} style={{ color: "#000" }}>
+              <option key={s} value={s}>
                 {s}
               </option>
             ))}
-          </select>
+          </Select>
           <input
             type="number"
             min={0}
@@ -188,7 +177,7 @@ export function IncidentLogWidget({
               border:
                 variant === "light"
                   ? "1px solid rgba(255,255,255,0.22)"
-                  : "1px solid var(--border)",
+                  : "1px solid var(--border-strong)",
             }}
             aria-label={
               isCountMode ? "Duration (optional, minutes)" : "Downtime (minutes)"
@@ -206,7 +195,7 @@ export function IncidentLogWidget({
               border:
                 variant === "light"
                   ? "1px solid rgba(255,255,255,0.22)"
-                  : "1px solid var(--border)",
+                  : "1px solid var(--border-strong)",
             }}
           />
           <button

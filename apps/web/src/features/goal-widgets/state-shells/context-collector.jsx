@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Select } from "@/components/ui";
 import { WidgetShell } from "../widget-shell";
 import { useGoalContext } from "@/features/goal-context";
 
@@ -323,14 +324,16 @@ function QuestionField({ question: q, value, onChange, onBlur, variant }) {
           style={{ ...inputStyle, resize: "vertical" }}
         />
       ) : q.kind === "select" ? (
-        <select
+        <Select
           value={typeof value === "string" ? value : ""}
           onChange={(e) => {
             onChange(e.target.value);
             // Selects commit immediately — no blur needed.
             setTimeout(onBlur, 0);
           }}
-          style={inputStyle}
+          tone={variant === "light" ? "inverse" : "default"}
+          size="sm"
+          className="w-full"
         >
           <option value="">—</option>
           {(q.options || []).map((opt) => (
@@ -338,7 +341,7 @@ function QuestionField({ question: q, value, onChange, onBlur, variant }) {
               {opt}
             </option>
           ))}
-        </select>
+        </Select>
       ) : null}
     </label>
   );

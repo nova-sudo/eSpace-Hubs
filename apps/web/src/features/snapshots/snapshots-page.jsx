@@ -8,6 +8,7 @@ import {
   MonoLabel,
   PageHeader,
   Section,
+  Select,
   Stat,
 } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -311,11 +312,11 @@ function CompareSelector({ snapshots, selected, compareWeek, setCompareWeek }) {
       <span className="uppercase tracking-[0.5px] text-muted-fg">
         Compare to
       </span>
-      <select
+      <Select
+        tone="default"
+        size="sm"
         value={compareWeek || ""}
         onChange={(e) => setCompareWeek(e.target.value || null)}
-        className="cursor-pointer rounded-[var(--radius-sub)] border border-border bg-card px-2 py-1"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
       >
         <option value="">— none —</option>
         {candidates.map((s) => (
@@ -323,7 +324,7 @@ function CompareSelector({ snapshots, selected, compareWeek, setCompareWeek }) {
             {s.week} · {fullDate(s.capturedAt)}
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   );
 }

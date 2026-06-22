@@ -38,6 +38,7 @@ import {
   MonoLabel,
   PageHeader,
   Pill as UiPill,
+  Select,
 } from "@/components/ui";
 import { CAPABILITIES } from "@espace-devhub/shared/capabilities";
 import { HUB_ORDER } from "@espace-devhub/shared/hubs";
@@ -658,20 +659,21 @@ function UserEditor({ user, isSelf, onUpdate }) {
     >
       <div className="grid grid-cols-2 gap-5">
         <Field label="Display name">
-          <input
+          <Input
             type="text"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             disabled={saving}
-            style={inputStyle}
+            mono
           />
         </Field>
         <Field label="Status">
-          <select
+          <Select
+            tone="default"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
             disabled={saving}
-            style={inputStyle}
+            className="w-full"
           >
             {ALL_STATUSES.map((s) => (
               <option key={s} value={s} disabled={isSelf && s === "disabled"}>
@@ -679,7 +681,7 @@ function UserEditor({ user, isSelf, onUpdate }) {
                 {isSelf && s === "disabled" ? " (can't disable yourself)" : ""}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
       </div>
 
@@ -739,11 +741,12 @@ function UserEditor({ user, isSelf, onUpdate }) {
         </div>
 
         <Field label="Primary hub">
-          <select
+          <Select
+            tone="default"
             value={primaryHub ?? ""}
             onChange={(e) => setPrimaryHub(e.target.value || null)}
             disabled={saving}
-            style={inputStyle}
+            className="w-full"
           >
             <option value="">(not set)</option>
             {allowedHubs.map((h) => (
@@ -751,7 +754,7 @@ function UserEditor({ user, isSelf, onUpdate }) {
                 {h}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
 
         {/* Engagement — which client/project this user belongs to.
@@ -760,15 +763,16 @@ function UserEditor({ user, isSelf, onUpdate }) {
             Crealogix's Jira, etc.). Add a new value here in lockstep
             with the API's ALL_ENGAGEMENTS enum. */}
         <Field label="Engagement">
-          <select
+          <Select
+            tone="default"
             value={engagement}
             onChange={(e) => setEngagement(e.target.value)}
             disabled={saving}
-            style={inputStyle}
+            className="w-full"
           >
             <option value="espace">eSpace</option>
             <option value="crealogix">Crealogix</option>
-          </select>
+          </Select>
         </Field>
       </div>
 
@@ -924,16 +928,6 @@ function StatusPill({ status }) {
     </span>
   );
 }
-
-const inputStyle = {
-  fontFamily: "var(--font-mono)",
-  fontSize: 12.5,
-  padding: "8px 12px",
-  background: "var(--card)",
-  border: "1px solid var(--border-strong)",
-  borderRadius: "var(--radius-sub)",
-  outline: "none",
-};
 
 /**
  * Invite-user dialog. Lightweight modal — backdrop blocks pointer

@@ -10,7 +10,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import { Button, Field, Input, MonoLabel } from "@/components/ui";
+import { Button, Field, Input, MonoLabel, Select } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import {
   addL1,
@@ -492,33 +492,35 @@ function L2Form({ l1Id, l2 }) {
 
 function PrioritySelect({ value, onChange }) {
   return (
-    <select
+    <Select
+      tone="default"
       value={value || ""}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded-[var(--radius-sub)] border border-border bg-card px-3 py-2.5 text-[13px] text-fg outline-none focus:border-accent"
+      className="w-full"
     >
       {GOAL_PRIORITIES.map((p) => (
         <option key={p.value} value={p.value}>
           {p.label}
         </option>
       ))}
-    </select>
+    </Select>
   );
 }
 
 function CategorySelect({ value, onChange }) {
   return (
-    <select
+    <Select
+      tone="default"
       value={value || ""}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded-[var(--radius-sub)] border border-border bg-card px-3 py-2.5 text-[13px] text-fg outline-none focus:border-accent"
+      className="w-full"
     >
       {GOAL_CATEGORIES.map((c) => (
         <option key={c.value} value={c.value}>
           {c.label}
         </option>
       ))}
-    </select>
+    </Select>
   );
 }
 

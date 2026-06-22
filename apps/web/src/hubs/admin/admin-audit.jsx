@@ -42,6 +42,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiGet } from "@/lib/api-client";
+import { Input, Select } from "@/components/ui";
 
 const PAGE_SIZE = 50;
 
@@ -236,24 +237,26 @@ function FilterBar({ filters, setFilters, users }) {
     >
       <div className="flex flex-col gap-1.5">
         <FilterLabel>Action</FilterLabel>
-        <input
+        <Input
           type="text"
+          mono
           placeholder="e.g. user.update"
           value={filters.action}
           onChange={(e) =>
             setFilters((p) => ({ ...p, action: e.target.value }))
           }
-          style={{ ...inputStyle, width: 200 }}
+          className="w-[200px]"
         />
       </div>
       <div className="flex flex-col gap-1.5">
         <FilterLabel>Actor</FilterLabel>
-        <select
+        <Select
+          tone="default"
           value={filters.actorUserId}
           onChange={(e) =>
             setFilters((p) => ({ ...p, actorUserId: e.target.value }))
           }
-          style={{ ...inputStyle, minWidth: 200 }}
+          style={{ minWidth: 200 }}
         >
           <option value="">(any user)</option>
           {users.map((u) => (
@@ -261,18 +264,19 @@ function FilterBar({ filters, setFilters, users }) {
               {u.displayName} — {u.email}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className="flex flex-col gap-1.5">
         <FilterLabel>Target type</FilterLabel>
-        <input
+        <Input
           type="text"
+          mono
           placeholder="e.g. user / hub / integration"
           value={filters.targetType}
           onChange={(e) =>
             setFilters((p) => ({ ...p, targetType: e.target.value }))
           }
-          style={{ ...inputStyle, width: 200 }}
+          className="w-[200px]"
         />
       </div>
       {(filters.action || filters.actorUserId || filters.targetType) ? (
@@ -450,16 +454,6 @@ function FilterLabel({ children }) {
     </span>
   );
 }
-
-const inputStyle = {
-  fontFamily: "var(--font-mono)",
-  fontSize: 12,
-  padding: "8px 10px",
-  background: "var(--card)",
-  border: "1px solid var(--border-strong)",
-  borderRadius: "var(--radius-sub, 3px)",
-  outline: "none",
-};
 
 function formatTs(iso) {
   const d = new Date(iso);

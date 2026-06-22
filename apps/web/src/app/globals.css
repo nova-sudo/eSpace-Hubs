@@ -175,6 +175,23 @@ textarea:focus-visible {
   outline-offset: 0;
 }
 
+/* Baseline for native form controls so anything not yet using the UI
+   primitives still reads in the Nothing language (mono + ink tokens) and
+   never falls back to the browser serif / stock-blue. Low specificity, so
+   the Select/Input primitives' classes + inline styles always win. */
+select {
+  font-family: var(--font-mono);
+  color: var(--fg);
+}
+/* Native date/time picker affordance: clickable and visible in both themes
+   (the glyph follows color-scheme, which is set per [data-theme]). */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
+
 html,
 body {
   background: var(--bg);

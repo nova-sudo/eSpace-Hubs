@@ -24,7 +24,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { BentoTile, MonoLabel } from "@/components/ui";
+import { BentoTile, MonoLabel, Select } from "@/components/ui";
 import { useHubLink, useQaHubConfig } from "@/features/hubs";
 import { useIntegrations } from "@/features/integrations";
 import {
@@ -251,26 +251,19 @@ function JobPicker({ jobs, selected, onSelect }) {
     );
   }
   return (
-    <select
+    <Select
+      tone="default"
+      size="sm"
       value={selected ?? ""}
       onChange={(e) => onSelect(e.target.value)}
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 11.5,
-        padding: "4px 8px",
-        background: "var(--card)",
-        border: "1px solid var(--border-strong)",
-        borderRadius: "var(--radius-sub, 3px)",
-        outline: "none",
-        maxWidth: "100%",
-      }}
+      className="max-w-full"
     >
       {jobs.map((j) => (
         <option key={j.name} value={j.name}>
           {j.name}
         </option>
       ))}
-    </select>
+    </Select>
   );
 }
 

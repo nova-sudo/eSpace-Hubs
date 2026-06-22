@@ -89,7 +89,7 @@ export function DateLogWidget({ spec, goal, variant = "light", className, onRetr
               border:
                 variant === "light"
                   ? "1px solid rgba(255,255,255,0.25)"
-                  : "1px solid var(--border)",
+                  : "1px solid var(--border-strong)",
               colorScheme: variant === "light" ? "dark" : "light",
             }}
           />
@@ -105,7 +105,7 @@ export function DateLogWidget({ spec, goal, variant = "light", className, onRetr
               border:
                 variant === "light"
                   ? "1px solid rgba(255,255,255,0.22)"
-                  : "1px solid var(--border)",
+                  : "1px solid var(--border-strong)",
             }}
           />
           <button

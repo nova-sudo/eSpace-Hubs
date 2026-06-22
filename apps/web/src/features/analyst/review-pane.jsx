@@ -22,6 +22,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { Select, Checkbox } from "@/components/ui";
 import {
   SPEC_VARIANTS,
   ALL_SPEC_KINDS,
@@ -783,25 +784,19 @@ function RepoPicker({ value, options, onChange }) {
         Repo scope
       </span>
       {hasOptions ? (
-        <select
+        <Select
+          tone="inverse"
+          size="sm"
           value={value || ""}
           onChange={(e) => onChange(e.target.value || null)}
-          className="cursor-pointer bg-transparent outline-none"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            color: "rgba(255,255,255,0.95)",
-          }}
         >
-          <option value="" style={{ color: "#000" }}>
-            All repos
-          </option>
+          <option value="">All repos</option>
           {allOptions.map((slug) => (
-            <option key={slug} value={slug} style={{ color: "#000" }}>
+            <option key={slug} value={slug}>
               {slug}
             </option>
           ))}
-        </select>
+        </Select>
       ) : (
         <input
           type="text"
@@ -876,25 +871,19 @@ function JobPicker({ value, options, onChange }) {
         Job scope
       </span>
       {hasOptions ? (
-        <select
+        <Select
+          tone="inverse"
+          size="sm"
           value={value || ""}
           onChange={(e) => onChange(e.target.value || null)}
-          className="cursor-pointer bg-transparent outline-none"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            color: "rgba(255,255,255,0.95)",
-          }}
         >
-          <option value="" style={{ color: "#000" }}>
-            (pick a job)
-          </option>
+          <option value="">(pick a job)</option>
           {allOptions.map((slug) => (
-            <option key={slug} value={slug} style={{ color: "#000" }}>
+            <option key={slug} value={slug}>
               {slug}
             </option>
           ))}
-        </select>
+        </Select>
       ) : (
         <input
           type="text"
@@ -1183,25 +1172,18 @@ function ComponentEditorRow({
         </button>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        <select
+        <Select
+          tone="inverse"
+          size="sm"
           value={component.widget}
           onChange={(e) => setWidget(e.target.value)}
-          className="cursor-pointer bg-transparent outline-none"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            color: "rgba(255,255,255,0.95)",
-            border: "1px solid rgba(255,255,255,0.18)",
-            borderRadius: "var(--radius-sub)",
-            padding: "2px 6px",
-          }}
         >
           {SCORECARD_COMPONENT_WIDGETS.map((k) => (
-            <option key={k} value={k} style={{ color: "#000" }}>
+            <option key={k} value={k}>
               {SPEC_KIND_META[k]?.label || k}
             </option>
           ))}
-        </select>
+        </Select>
         <label
           className="flex items-center gap-1"
           style={{
@@ -1219,12 +1201,16 @@ function ComponentEditorRow({
             onChange={(e) =>
               onPatch({ weight: Number(e.target.value) || 0 })
             }
-            className="w-12 bg-transparent text-right outline-none"
+            className="w-12 text-right outline-none"
             style={{
-              border: "1px solid rgba(255,255,255,0.18)",
+              fontFamily: "var(--font-mono)",
+              fontSize: 10.5,
+              border: "1px solid rgba(255,255,255,0.22)",
               borderRadius: "var(--radius-sub)",
               padding: "2px 4px",
-              color: "rgba(255,255,255,0.95)",
+              color: "#ffffff",
+              background: "rgba(255,255,255,0.06)",
+              colorScheme: "dark",
             }}
           />
         </label>
@@ -1237,23 +1223,16 @@ function ComponentEditorRow({
           }}
         >
           target
-          <select
+          <Select
+            tone="inverse"
+            size="sm"
             value={target?.op || ">="}
             onChange={(e) => setTarget(e.target.value, target?.value ?? "")}
-            className="cursor-pointer bg-transparent outline-none"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10.5,
-              color: "rgba(255,255,255,0.95)",
-              border: "1px solid rgba(255,255,255,0.18)",
-              borderRadius: "var(--radius-sub)",
-              padding: "1px 4px",
-            }}
           >
-            <option value=">=" style={{ color: "#000" }}>≥</option>
-            <option value="<=" style={{ color: "#000" }}>≤</option>
-            <option value="=" style={{ color: "#000" }}>=</option>
-          </select>
+            <option value=">=">≥</option>
+            <option value="<=">≤</option>
+            <option value="=">=</option>
+          </Select>
           <input
             type="number"
             value={target?.value ?? ""}
@@ -1261,12 +1240,16 @@ function ComponentEditorRow({
               setTarget(target?.op || ">=", e.target.value)
             }
             placeholder="value"
-            className="w-16 bg-transparent text-right outline-none"
+            className="w-16 text-right outline-none"
             style={{
-              border: "1px solid rgba(255,255,255,0.18)",
+              fontFamily: "var(--font-mono)",
+              fontSize: 10.5,
+              border: "1px solid rgba(255,255,255,0.22)",
               borderRadius: "var(--radius-sub)",
               padding: "2px 4px",
-              color: "rgba(255,255,255,0.95)",
+              color: "#ffffff",
+              background: "rgba(255,255,255,0.06)",
+              colorScheme: "dark",
             }}
           />
         </label>
@@ -1381,10 +1364,9 @@ function RubricCriteriaEditor({
         }}
         title="Grade each PR against its FIRST review-round comments only — the rubric judges code quality at the moment of first review, not after iterative fixes."
       >
-        <input
-          type="checkbox"
+        <Checkbox
           checked={firstReviewOnly}
-          onChange={(e) => onToggleFirstReviewOnly(e.target.checked)}
+          onChange={() => onToggleFirstReviewOnly(!firstReviewOnly)}
         />
         <span>Grade first-review state only</span>
       </label>
@@ -1470,28 +1452,24 @@ function FieldDropdown({ label, value, onChange, options }) {
       >
         {label}
       </span>
-      <select
+      <Select
+        tone="bare"
+        size="sm"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="cursor-pointer bg-transparent outline-none"
         style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10.5,
           color: "rgba(255,255,255,0.95)",
+          colorScheme: "dark",
+          paddingLeft: 0,
         }}
       >
         {options.map((opt) => (
-          <option
-            key={opt.value}
-            value={opt.value}
-            disabled={opt.disabled}
-            style={{ color: "#000" }}
-          >
+          <option key={opt.value} value={opt.value} disabled={opt.disabled}>
             {opt.label}
             {opt.disabled ? " (incompatible)" : ""}
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   );
 }

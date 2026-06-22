@@ -15,6 +15,7 @@
 
 import { useMemo } from "react";
 import { useGoalInputs } from "@/features/goal-inputs";
+import { Select, Checkbox } from "@/components/ui";
 import { ItemEvidence } from "./_milestone-evidence.jsx";
 
 function hasValue(v, kind) {
@@ -41,10 +42,11 @@ export function ComposedFields({ goalId, fields, periodKey = null, variant = "li
   const evidence = record.evidence && typeof record.evidence === "object" ? record.evidence : {};
 
   const isLight = variant === "light";
+  const tone = isLight ? "inverse" : "default";
   const muted = isLight ? "rgba(255,255,255,0.68)" : "var(--muted-fg)";
   const fg = isLight ? "#ffffff" : "var(--fg)";
   const fieldBg = isLight ? "rgba(255,255,255,0.10)" : "var(--bg)";
-  const fieldBorder = isLight ? "1px solid rgba(255,255,255,0.22)" : "1px solid var(--border)";
+  const fieldBorder = isLight ? "1px solid rgba(255,255,255,0.22)" : "1px solid var(--border-strong)";
 
   function write(nextValues, nextEvidence) {
     const payload = { values: nextValues, evidence: nextEvidence };
@@ -82,11 +84,9 @@ export function ComposedFields({ goalId, fields, periodKey = null, variant = "li
     switch (f.kind) {
       case "checkbox":
         return (
-          <input
-            type="checkbox"
+          <Checkbox
             checked={v === true}
             onChange={() => setValue(f.id, v !== true)}
-            className="h-3.5 w-3.5 shrink-0"
           />
         );
       case "counter": {
@@ -130,16 +130,22 @@ export function ComposedFields({ goalId, fields, periodKey = null, variant = "li
         );
       case "date":
         return (
-          <input type="date" value={typeof v === "string" ? v : ""} onChange={(e) => setValue(f.id, e.target.value)} style={{ ...inputStyle, width: 150 }} />
+          <input type="date" value={typeof v === "string" ? v : ""} onChange={(e) => setValue(f.id, e.target.value)} style={{ ...inputStyle, width: 150, colorScheme: isLight ? "dark" : "light" }} />
         );
       case "select":
         return (
-          <select value={typeof v === "string" ? v : ""} onChange={(e) => setValue(f.id, e.target.value)} style={{ ...inputStyle, width: "auto", minWidth: 120 }}>
+          <Select
+            tone={tone}
+            size="sm"
+            value={typeof v === "string" ? v : ""}
+            onChange={(e) => setValue(f.id, e.target.value)}
+            style={{ minWidth: 120 }}
+          >
             <option value="">—</option>
             {(f.options || []).map((opt) => (
               <option key={opt} value={opt}>{opt}</option>
             ))}
-          </select>
+          </Select>
         );
       case "link":
         return (

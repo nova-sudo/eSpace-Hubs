@@ -14,6 +14,7 @@ export { MonoLabel } from "./mono-label";
 export { PageHeader } from "./page-header";
 export { Pill } from "./pill";
 export { Section } from "./section";
+export { Select } from "./select";
 export { Sparkline } from "./sparkline";
 export { LineSpark } from "./line-spark";
 export { StarGlyph } from "./star-glyph";

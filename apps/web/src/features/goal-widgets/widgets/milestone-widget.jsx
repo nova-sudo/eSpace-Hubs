@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Checkbox } from "@/components/ui";
 import { WidgetShell } from "../widget-shell";
 import { useGoalInputs } from "@/features/goal-inputs";
 import { useGoalContext, resolveMilestoneItems } from "@/features/goal-context";
@@ -144,12 +145,7 @@ export function MilestoneWidget({ spec, goal, variant = "light", className, onRe
           {items.map((it) => (
             <li key={it.id} className="group flex flex-col gap-0.5">
               <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={!!it.done}
-                  onChange={() => toggle(it.id)}
-                  className="h-3.5 w-3.5"
-                />
+                <Checkbox checked={!!it.done} onChange={() => toggle(it.id)} />
                 <span
                   className="flex-1 truncate"
                   style={{

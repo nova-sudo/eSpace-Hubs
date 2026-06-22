@@ -29,6 +29,7 @@
 
 import { useMemo, useState } from "react";
 import { Minus, Plus, Check } from "lucide-react";
+import { Select, Input } from "@/components/ui";
 import { useGoalInputs } from "@/features/goal-inputs";
 import { useGoalContext, resolveMilestoneItems } from "@/features/goal-context";
 import { midWeekTs } from "@/lib/date";
@@ -451,18 +452,19 @@ export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel,
         className="flex flex-wrap items-center gap-1.5"
         style={{ fontFamily: "var(--font-mono)" }}
       >
-        <select
+        <Select
           value={severity}
           onChange={(ev) => setSeverity(ev.target.value)}
-          className="h-7 rounded-md border border-border bg-bg px-1.5 text-[11px]"
+          tone="default"
+          size="sm"
         >
           {SEVERITIES.map((s) => (
             <option key={s.id} value={s.id}>
               {s.id}
             </option>
           ))}
-        </select>
-        <input
+        </Select>
+        <Input
           type="number"
           min={0}
           value={downtime}
@@ -473,14 +475,14 @@ export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel,
               ? "Duration (optional, minutes)"
               : "Downtime (minutes)"
           }
-          className="h-7 w-16 rounded-md border border-border bg-bg px-1.5 text-[11px]"
+          className="h-7 w-16 px-1.5 text-[11px]"
         />
-        <input
+        <Input
           type="url"
           value={link}
           onChange={(ev) => setLink(ev.target.value)}
           placeholder="link (optional)"
-          className="h-7 min-w-0 flex-1 rounded-md border border-border bg-bg px-1.5 text-[11px]"
+          className="h-7 min-w-0 flex-1 px-1.5 text-[11px]"
         />
         <button
           type="button"
@@ -650,12 +652,11 @@ function NumberField({ value, onChange, label }) {
       >
         {label}
       </span>
-      <input
+      <Input
         type="number"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-7 w-16 rounded-md border border-border bg-bg px-1.5 text-[12px]"
-        style={{ fontFamily: "var(--font-mono)" }}
+        className="h-7 w-16 px-1.5 text-[12px]"
       />
     </label>
   );

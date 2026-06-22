@@ -206,7 +206,7 @@ function NumberField({ label, value, onChange, variant }) {
         border:
           variant === "light"
             ? "1px solid rgba(255,255,255,0.22)"
-            : "1px solid var(--border)",
+            : "1px solid var(--border-strong)",
       }}
     />
   );

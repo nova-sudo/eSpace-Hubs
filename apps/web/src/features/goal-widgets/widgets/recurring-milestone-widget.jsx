@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Checkbox } from "@/components/ui";
 import { WidgetShell } from "../widget-shell";
 import { useGoalInputs } from "@/features/goal-inputs";
 import { useGoalContext, resolveMilestoneItems } from "@/features/goal-context";
@@ -175,12 +176,9 @@ export function RecurringMilestoneWidget({
           {items.map((it) => (
             <li key={it.id} className="group flex min-w-0 flex-col gap-0.5">
               <div className="flex min-w-0 items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={!!it.done}
-                  onChange={() => toggle(it.id)}
-                  className="h-3.5 w-3.5 shrink-0"
-                />
+                <span className="shrink-0">
+                  <Checkbox checked={!!it.done} onChange={() => toggle(it.id)} />
+                </span>
                 <span
                   className="min-w-0 flex-1 truncate"
                   style={{
