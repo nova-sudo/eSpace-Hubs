@@ -60,21 +60,27 @@ export function AnalystChatMode() {
   }
 
   return (
-    <div className="flex min-h-0 w-full max-w-[820px] flex-1 flex-col self-center">
+    <div className="mx-auto flex min-h-0 w-full max-w-[760px] flex-1 flex-col self-center">
       <div
         className="mb-2 flex items-center justify-between"
         style={{
           fontFamily: "var(--font-mono)",
           fontSize: 10,
-          color: "rgba(255,255,255,0.6)",
+          color: "var(--muted-fg)",
         }}
       >
         <span className="uppercase tracking-[0.5px]">Secondary · chat</span>
         <button
           type="button"
           onClick={() => clearMessages()}
-          className="rounded-[var(--radius-sub)] px-2 py-1 uppercase transition-colors hover:bg-[rgba(255,255,255,0.14)]"
-          style={{ color: "rgba(255,255,255,0.8)" }}
+          className="uppercase transition-colors"
+          style={{
+            fontFamily: "var(--font-mono)",
+            border: "1px solid var(--border)",
+            borderRadius: 5,
+            padding: "6px 11px",
+            color: "var(--muted-fg)",
+          }}
         >
           Clear thread
         </button>
@@ -105,21 +111,25 @@ function ChatBubble({ role, content }) {
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className="max-w-[75%] rounded-[var(--radius-tile)] px-4 py-3 text-[14px] leading-[1.55]"
-        style={
-          isUser
+        className="max-w-[74%]"
+        style={{
+          borderRadius: 10,
+          padding: "13px 16px",
+          fontFamily: "var(--font-sans)",
+          fontSize: 14,
+          lineHeight: 1.55,
+          whiteSpace: "pre-wrap",
+          ...(isUser
             ? {
-                background: "var(--card-alt)",
-                color: "var(--fg)",
-                whiteSpace: "pre-wrap",
+                background: "var(--bubble-user)",
+                color: "#fff",
               }
             : {
-                background: "rgba(255,255,255,0.10)",
-                color: "rgba(255,255,255,0.95)",
-                border: "1px solid rgba(255,255,255,0.18)",
-                whiteSpace: "pre-wrap",
-              }
-        }
+                background: "var(--bubble-ai)",
+                border: "1px solid var(--border)",
+                color: "var(--fg)",
+              }),
+        }}
       >
         {content}
       </div>
@@ -131,31 +141,20 @@ function TypingBubble() {
   return (
     <div className="flex justify-start">
       <div
-        className="flex items-center gap-1 rounded-[var(--radius-tile)] px-4 py-3"
         style={{
-          background: "rgba(255,255,255,0.10)",
-          border: "1px solid rgba(255,255,255,0.18)",
+          background: "var(--bubble-ai)",
+          border: "1px solid var(--border)",
+          borderRadius: 10,
+          padding: "13px 16px",
         }}
       >
-        <Dot delay={0} />
-        <Dot delay={120} />
-        <Dot delay={240} />
+        <span className="glyph-typing" style={{ display: "inline-flex", gap: 5 }}>
+          <i />
+          <i />
+          <i />
+        </span>
       </div>
     </div>
-  );
-}
-
-function Dot({ delay }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="block h-1.5 w-1.5 rounded-full"
-      style={{
-        background: "rgba(255,255,255,0.75)",
-        animation: "analystChatDot 1s ease-in-out infinite",
-        animationDelay: `${delay}ms`,
-      }}
-    />
   );
 }
 
@@ -172,10 +171,12 @@ const ChatComposer = forwardRef(function ChatComposer(
       }}
     >
       <div
-        className="flex items-end gap-2 rounded-[var(--radius-tile)] px-3 py-2.5"
+        className="flex items-end gap-2"
         style={{
-          background: "rgba(255,255,255,0.10)",
-          border: "1px solid rgba(255,255,255,0.22)",
+          border: "1px solid var(--border-strong)",
+          borderRadius: 10,
+          background: "var(--card)",
+          padding: "11px 13px",
         }}
       >
         <textarea
@@ -185,8 +186,8 @@ const ChatComposer = forwardRef(function ChatComposer(
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
-          className="min-h-[24px] max-h-[180px] flex-1 resize-none bg-transparent text-[14px] leading-[1.5] outline-none"
-          style={{ color: "#ffffff", fontFamily: "var(--font-sans)" }}
+          className="min-h-[24px] max-h-[180px] flex-1 resize-none bg-transparent text-[14px] leading-[1.5] outline-none placeholder:text-[var(--dim-fg)]"
+          style={{ color: "var(--fg)", fontFamily: "var(--font-sans)" }}
         />
         <button
           type="submit"
@@ -194,8 +195,8 @@ const ChatComposer = forwardRef(function ChatComposer(
           aria-label="Send message"
           className="inline-flex items-center gap-1 rounded-[var(--radius-sub)] px-3 py-2 uppercase transition-opacity disabled:opacity-45"
           style={{
-            background: "#ffffff",
-            color: "var(--accent)",
+            background: "var(--accent)",
+            color: "var(--accent-on)",
             fontFamily: "var(--font-mono)",
             fontSize: 10.5,
             fontWeight: 700,
@@ -205,12 +206,6 @@ const ChatComposer = forwardRef(function ChatComposer(
           Send ↵
         </button>
       </div>
-      <style>{`
-        @keyframes analystChatDot {
-          0%, 80%, 100% { opacity: 0.35; transform: translateY(0); }
-          40% { opacity: 1; transform: translateY(-2px); }
-        }
-      `}</style>
     </form>
   );
 });

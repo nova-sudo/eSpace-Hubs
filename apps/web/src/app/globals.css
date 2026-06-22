@@ -46,6 +46,13 @@
   --dot-dim: rgba(0, 0, 0, 0.14);  /* faint dot-field texture */
   --accent-dot: rgba(29, 78, 216, 0.30);
 
+  /* Analyst (GLYPH) workspace surfaces — follow the theme. */
+  --head-bg: #f6f4ee;
+  --field: #faf9f5;
+  --chip-track: rgba(15, 15, 18, 0.05);
+  --bubble-ai: #ffffff;
+  --bubble-user: #0b0b0e;
+
   /* Radii — deliberately small; Nothing is crisp, not rounded */
   --radius-tile: 8px;
   --radius-sub: 6px;
@@ -80,6 +87,11 @@
   --dot: #ffffff;
   --dot-dim: rgba(255, 255, 255, 0.16);
   --accent-dot: rgba(77, 124, 255, 0.35);
+  --head-bg: #0a0a0a;
+  --field: #161616;
+  --chip-track: rgba(255, 255, 255, 0.06);
+  --bubble-ai: rgba(255, 255, 255, 0.07);
+  --bubble-user: #1a1a1a;
   color-scheme: dark;
 }
 
@@ -106,9 +118,75 @@
     --dot: #ffffff;
     --dot-dim: rgba(255, 255, 255, 0.16);
     --accent-dot: rgba(77, 124, 255, 0.35);
+    --head-bg: #0a0a0a;
+    --field: #161616;
+    --chip-track: rgba(255, 255, 255, 0.06);
+    --bubble-ai: rgba(255, 255, 255, 0.07);
+    --bubble-user: #1a1a1a;
     color-scheme: dark;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Analyst "GLYPH" instrument — the rail is ALWAYS the dark machine
+   (constants, not theme-mapped); the workspace beside it follows the
+   theme via the tokens above. Glyph dot colors + keyframes power
+   <GlyphMatrix>; the helper classes drive the streaming caret + chat
+   typing dots. See features/analyst.
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --glyph-rail-bg: #070709;
+  --glyph-rail-line: rgba(255, 255, 255, 0.10);
+  --glyph-rail-fg: #ffffff;
+  --glyph-rail-muted: rgba(255, 255, 255, 0.55);
+  --glyph-on: #557cff;
+  --glyph-mid: rgba(255, 255, 255, 0.42);
+  --glyph-off: rgba(255, 255, 255, 0.09);
+  --glyph-idle: rgba(255, 255, 255, 0.60);
+  --glyph-thinking: #557cff;
+  --glyph-review: #ffb24d;
+  --glyph-live: #3fcf8e;
+  --glyph-talk: #557cff;
+}
+
+@keyframes glyphBreathe {
+  0%, 100% { opacity: 0.82; }
+  50%      { opacity: 1; }
+}
+@keyframes glyphScan {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(1100%); }
+}
+@keyframes glyphCursor {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+@keyframes glyphDot {
+  0%, 80%, 100% { opacity: 0.35; transform: translateY(0); }
+  40%           { opacity: 1; transform: translateY(-2px); }
+}
+
+/* Streaming caret used in the Analysis log */
+.glyph-cursor {
+  display: inline-block;
+  width: 6px;
+  height: 12px;
+  margin-left: 2px;
+  background: var(--accent);
+  vertical-align: middle;
+  animation: glyphCursor 0.8s steps(2) infinite;
+}
+/* Typing indicator dots used in Chat */
+.glyph-typing i {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted-fg);
+  animation: glyphDot 1s ease-in-out infinite;
+}
+.glyph-typing i:nth-child(2) { animation-delay: 0.12s; }
+.glyph-typing i:nth-child(3) { animation-delay: 0.24s; }
 
 /* Map design tokens → Tailwind v4 theme so Tailwind utilities (bg-card, text-accent) work. */
 @theme inline {

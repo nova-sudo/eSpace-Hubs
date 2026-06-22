@@ -317,10 +317,12 @@ function BulkStrip({
 }) {
   return (
     <div
-      className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-tile)] px-4 py-3"
+      className="flex flex-wrap items-center justify-between gap-3"
       style={{
-        background: "rgba(255,255,255,0.08)",
-        border: "1px solid rgba(255,255,255,0.18)",
+        background: "var(--card)",
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        padding: "16px 20px",
       }}
     >
       <div className="flex items-baseline gap-3">
@@ -328,9 +330,11 @@ function BulkStrip({
           className="font-black"
           style={{
             fontFamily: "var(--font-dot)",
-            fontSize: 34,
+            fontWeight: 900,
+            fontSize: 38,
             lineHeight: 0.8,
             letterSpacing: "0.5px",
+            color: "var(--fg)",
           }}
         >
           {pendingCount}
@@ -340,7 +344,7 @@ function BulkStrip({
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 10.5,
-            color: "rgba(255,255,255,0.75)",
+            color: "var(--muted-fg)",
           }}
         >
           to review
@@ -354,7 +358,7 @@ function BulkStrip({
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 11,
-            color: "#fca5a5",
+            color: "var(--bad)",
           }}
           title={bulkError}
         >
@@ -367,13 +371,14 @@ function BulkStrip({
           type="button"
           onClick={onDiscardAll}
           disabled={pendingCount === 0}
-          className="rounded-[var(--radius-sub)] px-3 py-1.5 uppercase transition-colors hover:bg-[rgba(255,255,255,0.14)]"
+          className="rounded-[var(--radius-sub)] px-3 py-1.5 uppercase transition-colors hover:opacity-90"
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 10,
             letterSpacing: "0.5px",
-            color: "rgba(255,255,255,0.9)",
-            border: "1px solid rgba(255,255,255,0.2)",
+            color: "var(--fg)",
+            background: "transparent",
+            border: "1px solid var(--border-strong)",
             opacity: pendingCount === 0 ? 0.4 : 1,
           }}
         >
@@ -388,8 +393,8 @@ function BulkStrip({
             fontFamily: "var(--font-mono)",
             fontSize: 10.5,
             letterSpacing: "0.5px",
-            background: "#ffffff",
-            color: "var(--accent)",
+            background: "var(--accent)",
+            color: "var(--accent-on)",
             opacity: pendingCount === 0 ? 0.4 : 1,
           }}
         >
@@ -442,14 +447,16 @@ function PendingCard({
 
   return (
     <div
-      className="flex flex-col gap-2 rounded-[var(--radius-tile)] px-3.5 py-3"
+      className="flex flex-col gap-2"
       style={{
         background: isUntrackable
-          ? "rgba(255,193,87,0.08)"
-          : "rgba(255,255,255,0.06)",
+          ? "color-mix(in srgb, var(--warn) 10%, transparent)"
+          : "var(--card)",
         border: isUntrackable
-          ? "1px solid rgba(255,193,87,0.3)"
-          : "1px solid rgba(255,255,255,0.14)",
+          ? "1px solid color-mix(in srgb, var(--warn) 32%, transparent)"
+          : "1px solid var(--border)",
+        borderRadius: 9,
+        padding: "14px 16px",
       }}
     >
       {/* Header: goal title + parent breadcrumb */}
@@ -460,7 +467,7 @@ function PendingCard({
             style={{
               fontFamily: "var(--font-mono)",
               fontSize: 9.5,
-              color: "rgba(255,255,255,0.6)",
+              color: "var(--dim-fg)",
             }}
             title={`Parent L1: ${meta.parentL1}`}
           >
@@ -471,9 +478,10 @@ function PendingCard({
           className="font-semibold"
           style={{
             fontFamily: "var(--font-sans)",
+            fontWeight: 600,
             fontSize: 14,
             lineHeight: 1.3,
-            color: "#fff",
+            color: "var(--fg)",
           }}
           title={meta?.title || spec.title}
         >
@@ -488,7 +496,7 @@ function PendingCard({
             fontFamily: "var(--font-mono)",
             fontSize: 10.5,
             lineHeight: 1.55,
-            color: "rgba(255,255,255,0.78)",
+            color: "var(--muted-fg)",
           }}
         >
           {spec.reasoning}
@@ -525,7 +533,7 @@ function PendingCard({
         ) : null}
         {spec.delegated ? <Chip tone="warn">delegated</Chip> : null}
         {isUntrackable ? <Chip tone="warn">untrackable</Chip> : null}
-        {currentRepo ? <Chip>repo · {currentRepo}</Chip> : null}
+        {currentRepo ? <Chip tone="repo">repo · {currentRepo}</Chip> : null}
         {currentJob ? <Chip>job · {currentJob}</Chip> : null}
         {!isUntrackable &&
         widgetMeta?.variant !== spec.kind &&
@@ -580,8 +588,8 @@ function PendingCard({
         <div
           className="flex flex-col gap-1.5 rounded-[var(--radius-sub)] px-2.5 py-2"
           style={{
-            background: "rgba(255,193,87,0.10)",
-            border: "1px solid rgba(255,193,87,0.28)",
+            background: "color-mix(in srgb, var(--warn) 10%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--warn) 32%, transparent)",
           }}
         >
           <div
@@ -589,7 +597,7 @@ function PendingCard({
             style={{
               fontFamily: "var(--font-mono)",
               fontSize: 9.5,
-              color: "#fde68a",
+              color: "var(--warn)",
             }}
           >
             Marked untrackable
@@ -597,10 +605,10 @@ function PendingCard({
           <div
             className="italic"
             style={{
-              fontFamily: "var(--font-mono)",
+              fontFamily: "var(--font-sans)",
               fontSize: 10.5,
               lineHeight: 1.5,
-              color: "rgba(255,255,255,0.85)",
+              color: "var(--muted-fg)",
             }}
           >
             “{spec.untrackable.reason}”
@@ -617,7 +625,7 @@ function PendingCard({
               fontFamily: "var(--font-mono)",
               fontSize: 9,
               letterSpacing: "0.5px",
-              color: "rgba(255,255,255,0.7)",
+              color: "var(--dim-fg)",
             }}
           >
             unflag · make trackable
@@ -627,8 +635,8 @@ function PendingCard({
         <div
           className="flex flex-col gap-1.5 rounded-[var(--radius-sub)] px-2.5 py-2"
           style={{
-            background: "rgba(255,193,87,0.06)",
-            border: "1px dashed rgba(255,193,87,0.28)",
+            background: "color-mix(in srgb, var(--warn) 8%, transparent)",
+            border: "1px dashed color-mix(in srgb, var(--warn) 32%, transparent)",
           }}
         >
           <label
@@ -636,7 +644,7 @@ function PendingCard({
             style={{
               fontFamily: "var(--font-mono)",
               fontSize: 9,
-              color: "rgba(255,255,255,0.6)",
+              color: "var(--dim-fg)",
             }}
           >
             Reason
@@ -646,12 +654,14 @@ function PendingCard({
             onChange={(e) => setUntrackableDraft(e.target.value)}
             placeholder="e.g. needs a quarterly survey we haven't set up yet"
             rows={2}
-            className="w-full rounded-[var(--radius-sub)] bg-transparent p-1.5 outline-none"
+            className="w-full p-1.5 outline-none"
             style={{
               fontFamily: "var(--font-mono)",
               fontSize: 11,
-              color: "rgba(255,255,255,0.95)",
-              border: "1px solid rgba(255,255,255,0.18)",
+              color: "var(--fg)",
+              background: "var(--field)",
+              border: "1px solid var(--border-strong)",
+              borderRadius: "var(--radius-sub)",
               resize: "vertical",
             }}
           />
@@ -667,7 +677,7 @@ function PendingCard({
                 fontFamily: "var(--font-mono)",
                 fontSize: 9,
                 letterSpacing: "0.5px",
-                color: "rgba(255,255,255,0.7)",
+                color: "var(--dim-fg)",
               }}
             >
               cancel
@@ -686,8 +696,8 @@ function PendingCard({
                 fontFamily: "var(--font-mono)",
                 fontSize: 9.5,
                 letterSpacing: "0.4px",
-                background: "rgba(255,255,255,0.92)",
-                color: "var(--accent)",
+                background: "var(--accent)",
+                color: "var(--accent-on)",
                 opacity: untrackableDraft.trim() ? 1 : 0.4,
               }}
             >
@@ -708,7 +718,7 @@ function PendingCard({
               fontFamily: "var(--font-mono)",
               fontSize: 9,
               letterSpacing: "0.5px",
-              color: "rgba(255,255,255,0.55)",
+              color: "var(--dim-fg)",
             }}
             title="Mark this goal as not currently trackable, with a reason"
           >
@@ -718,13 +728,14 @@ function PendingCard({
         <button
           type="button"
           onClick={onSkip}
-          className="rounded-[var(--radius-sub)] px-2.5 py-1 uppercase transition-colors hover:bg-[rgba(255,255,255,0.14)]"
+          className="rounded-[var(--radius-sub)] px-2.5 py-1 uppercase transition-colors hover:opacity-90"
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 9.5,
             letterSpacing: "0.4px",
-            color: "rgba(255,255,255,0.7)",
-            border: "1px solid rgba(255,255,255,0.18)",
+            color: "var(--muted-fg)",
+            background: "transparent",
+            border: "1px solid var(--border-strong)",
           }}
         >
           Skip
@@ -737,8 +748,8 @@ function PendingCard({
             fontFamily: "var(--font-mono)",
             fontSize: 9.5,
             letterSpacing: "0.4px",
-            background: "rgba(255,255,255,0.92)",
-            color: "var(--accent)",
+            background: "var(--accent)",
+            color: "var(--accent-on)",
           }}
         >
           Save
@@ -769,8 +780,8 @@ function RepoPicker({ value, options, onChange }) {
     <div
       className="flex flex-wrap items-center gap-2 rounded-[var(--radius-sub)] px-2.5 py-1.5"
       style={{
-        background: "rgba(255,255,255,0.05)",
-        border: "1px solid rgba(255,255,255,0.14)",
+        background: "var(--panel-2)",
+        border: "1px solid var(--border)",
       }}
     >
       <span
@@ -778,14 +789,14 @@ function RepoPicker({ value, options, onChange }) {
         style={{
           fontFamily: "var(--font-mono)",
           fontSize: 9,
-          color: "rgba(255,255,255,0.55)",
+          color: "var(--dim-fg)",
         }}
       >
         Repo scope
       </span>
       {hasOptions ? (
         <Select
-          tone="inverse"
+          tone="default"
           size="sm"
           value={value || ""}
           onChange={(e) => onChange(e.target.value || null)}
@@ -803,11 +814,15 @@ function RepoPicker({ value, options, onChange }) {
           value={value || ""}
           onChange={(e) => onChange(e.target.value.trim() || null)}
           placeholder="owner/name (leave empty for all)"
-          className="flex-1 bg-transparent outline-none"
+          className="flex-1 outline-none"
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 10.5,
-            color: "rgba(255,255,255,0.95)",
+            color: "var(--fg)",
+            background: "var(--field)",
+            border: "1px solid var(--border-strong)",
+            borderRadius: "var(--radius-sub)",
+            padding: "2px 6px",
             minWidth: 200,
           }}
         />
@@ -821,7 +836,7 @@ function RepoPicker({ value, options, onChange }) {
             fontFamily: "var(--font-mono)",
             fontSize: 9,
             letterSpacing: "0.5px",
-            color: "rgba(255,255,255,0.55)",
+            color: "var(--dim-fg)",
           }}
           title="Drop the repo filter — count merges across every connected repo."
         >
@@ -856,8 +871,8 @@ function JobPicker({ value, options, onChange }) {
     <div
       className="flex flex-wrap items-center gap-2 rounded-[var(--radius-sub)] px-2.5 py-1.5"
       style={{
-        background: "rgba(255,255,255,0.05)",
-        border: "1px solid rgba(255,255,255,0.14)",
+        background: "var(--panel-2)",
+        border: "1px solid var(--border)",
       }}
     >
       <span
@@ -865,14 +880,14 @@ function JobPicker({ value, options, onChange }) {
         style={{
           fontFamily: "var(--font-mono)",
           fontSize: 9,
-          color: "rgba(255,255,255,0.55)",
+          color: "var(--dim-fg)",
         }}
       >
         Job scope
       </span>
       {hasOptions ? (
         <Select
-          tone="inverse"
+          tone="default"
           size="sm"
           value={value || ""}
           onChange={(e) => onChange(e.target.value || null)}
@@ -890,11 +905,15 @@ function JobPicker({ value, options, onChange }) {
           value={value || ""}
           onChange={(e) => onChange(e.target.value.trim() || null)}
           placeholder="job-name"
-          className="flex-1 bg-transparent outline-none"
+          className="flex-1 outline-none"
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 10.5,
-            color: "rgba(255,255,255,0.95)",
+            color: "var(--fg)",
+            background: "var(--field)",
+            border: "1px solid var(--border-strong)",
+            borderRadius: "var(--radius-sub)",
+            padding: "2px 6px",
             minWidth: 200,
           }}
         />
@@ -908,7 +927,7 @@ function JobPicker({ value, options, onChange }) {
             fontFamily: "var(--font-mono)",
             fontSize: 9,
             letterSpacing: "0.5px",
-            color: "rgba(255,255,255,0.55)",
+            color: "var(--dim-fg)",
           }}
           title="Drop the job filter — widget will show 'needs scope' until you pick a job."
         >
@@ -992,8 +1011,8 @@ function ScorecardEditor({ scorecard, repoOptions = [], onChange }) {
     <div
       className="flex flex-col gap-2 rounded-[var(--radius-sub)] px-2.5 py-2"
       style={{
-        background: "rgba(255,255,255,0.05)",
-        border: "1px solid rgba(255,255,255,0.14)",
+        background: "var(--panel-2)",
+        border: "1px solid var(--border)",
       }}
     >
       <div className="flex items-center justify-between">
@@ -1002,7 +1021,7 @@ function ScorecardEditor({ scorecard, repoOptions = [], onChange }) {
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 9,
-            color: "rgba(255,255,255,0.55)",
+            color: "var(--dim-fg)",
           }}
         >
           Scorecard components ({components.length}/{SCORECARD_MAX_COMPONENTS})
@@ -1016,7 +1035,7 @@ function ScorecardEditor({ scorecard, repoOptions = [], onChange }) {
             fontFamily: "var(--font-mono)",
             fontSize: 9.5,
             letterSpacing: "0.5px",
-            color: "rgba(255,255,255,0.85)",
+            color: "var(--accent)",
             cursor:
               components.length >= SCORECARD_MAX_COMPONENTS
                 ? "not-allowed"
@@ -1118,8 +1137,8 @@ function ComponentEditorRow({
     <div
       className="flex flex-col gap-1.5 rounded-[var(--radius-sub)] px-2 py-1.5"
       style={{
-        background: "rgba(255,255,255,0.04)",
-        border: "1px solid rgba(255,255,255,0.10)",
+        background: "var(--card)",
+        border: "1px solid var(--border)",
       }}
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -1128,7 +1147,7 @@ function ComponentEditorRow({
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 9,
-            color: "rgba(255,255,255,0.55)",
+            color: "var(--dim-fg)",
           }}
         >
           #{index + 1}
@@ -1144,8 +1163,8 @@ function ComponentEditorRow({
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 11,
-            color: "rgba(255,255,255,0.95)",
-            borderBottom: "1px dashed rgba(255,255,255,0.18)",
+            color: "var(--fg)",
+            borderBottom: "1px dashed var(--border-strong)",
             paddingBottom: 1,
             minWidth: 120,
           }}
@@ -1159,7 +1178,7 @@ function ComponentEditorRow({
             fontFamily: "var(--font-mono)",
             fontSize: 9,
             letterSpacing: "0.5px",
-            color: "rgba(255,255,255,0.6)",
+            color: "var(--muted-fg)",
             cursor: canRemove ? "pointer" : "not-allowed",
           }}
           title={
@@ -1173,7 +1192,7 @@ function ComponentEditorRow({
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         <Select
-          tone="inverse"
+          tone="default"
           size="sm"
           value={component.widget}
           onChange={(e) => setWidget(e.target.value)}
@@ -1189,7 +1208,7 @@ function ComponentEditorRow({
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 10,
-            color: "rgba(255,255,255,0.7)",
+            color: "var(--muted-fg)",
           }}
         >
           weight
@@ -1205,12 +1224,11 @@ function ComponentEditorRow({
             style={{
               fontFamily: "var(--font-mono)",
               fontSize: 10.5,
-              border: "1px solid rgba(255,255,255,0.22)",
+              border: "1px solid var(--border-strong)",
               borderRadius: "var(--radius-sub)",
               padding: "2px 4px",
-              color: "#ffffff",
-              background: "rgba(255,255,255,0.06)",
-              colorScheme: "dark",
+              color: "var(--fg)",
+              background: "var(--field)",
             }}
           />
         </label>
@@ -1219,12 +1237,12 @@ function ComponentEditorRow({
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 10,
-            color: "rgba(255,255,255,0.7)",
+            color: "var(--muted-fg)",
           }}
         >
           target
           <Select
-            tone="inverse"
+            tone="default"
             size="sm"
             value={target?.op || ">="}
             onChange={(e) => setTarget(e.target.value, target?.value ?? "")}
@@ -1244,12 +1262,11 @@ function ComponentEditorRow({
             style={{
               fontFamily: "var(--font-mono)",
               fontSize: 10.5,
-              border: "1px solid rgba(255,255,255,0.22)",
+              border: "1px solid var(--border-strong)",
               borderRadius: "var(--radius-sub)",
               padding: "2px 4px",
-              color: "#ffffff",
-              background: "rgba(255,255,255,0.06)",
-              colorScheme: "dark",
+              color: "var(--fg)",
+              background: "var(--field)",
             }}
           />
         </label>
@@ -1322,13 +1339,16 @@ function RubricCriteriaEditor({
 }) {
   const text = (criteria || []).join("\n");
   return (
-    <div className="flex flex-col gap-1.5 border-t border-white/10 pt-1.5">
+    <div
+      className="flex flex-col gap-1.5 pt-1.5"
+      style={{ borderTop: "1px solid var(--border)" }}
+    >
       <span
         className="uppercase tracking-[0.5px]"
         style={{
           fontFamily: "var(--font-mono)",
           fontSize: 9,
-          color: "rgba(255,255,255,0.55)",
+          color: "var(--dim-fg)",
         }}
       >
         Rubric criteria — one per line
@@ -1344,12 +1364,13 @@ function RubricCriteriaEditor({
           onPatchCriteria(items);
         }}
         placeholder="meaningful tests&#10;no any types&#10;all branches handled"
-        className="w-full bg-transparent outline-none"
+        className="w-full outline-none"
         style={{
           fontFamily: "var(--font-mono)",
           fontSize: 10.5,
-          color: "rgba(255,255,255,0.95)",
-          border: "1px solid rgba(255,255,255,0.18)",
+          color: "var(--fg)",
+          background: "var(--field)",
+          border: "1px solid var(--border-strong)",
           borderRadius: "var(--radius-sub)",
           padding: "4px 6px",
           resize: "vertical",
@@ -1360,7 +1381,7 @@ function RubricCriteriaEditor({
         style={{
           fontFamily: "var(--font-mono)",
           fontSize: 10,
-          color: "rgba(255,255,255,0.78)",
+          color: "var(--muted-fg)",
         }}
         title="Grade each PR against its FIRST review-round comments only — the rubric judges code quality at the moment of first review, not after iterative fixes."
       >
@@ -1436,10 +1457,11 @@ function defaultManualFor(widget) {
 function FieldDropdown({ label, value, onChange, options }) {
   return (
     <label
-      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1"
+      className="inline-flex items-center gap-1.5 px-2.5 py-1"
       style={{
-        background: "rgba(255,255,255,0.1)",
-        border: "1px solid rgba(255,255,255,0.18)",
+        background: "var(--field)",
+        border: "1px solid var(--border-strong)",
+        borderRadius: 5,
       }}
     >
       <span
@@ -1447,21 +1469,17 @@ function FieldDropdown({ label, value, onChange, options }) {
         style={{
           fontFamily: "var(--font-mono)",
           fontSize: 9,
-          color: "rgba(255,255,255,0.55)",
+          color: "var(--dim-fg)",
         }}
       >
         {label}
       </span>
       <Select
-        tone="bare"
+        tone="default"
         size="sm"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        style={{
-          color: "rgba(255,255,255,0.95)",
-          colorScheme: "dark",
-          paddingLeft: 0,
-        }}
+        style={{ paddingLeft: 0 }}
       >
         {options.map((opt) => (
           <option key={opt.value} value={opt.value} disabled={opt.disabled}>
@@ -1477,19 +1495,24 @@ function FieldDropdown({ label, value, onChange, options }) {
 function Chip({ children, tone }) {
   const style =
     tone === "warn"
-      ? { background: "rgba(255,193,87,0.22)", color: "#fde68a" }
+      ? {
+          background: "color-mix(in srgb, var(--warn) 18%, transparent)",
+          color: "var(--warn)",
+        }
       : tone === "danger"
-        ? { background: "rgba(239,68,68,0.22)", color: "#fecaca" }
-        : {
-            background: "rgba(255,255,255,0.14)",
-            color: "rgba(255,255,255,0.85)",
-          };
+        ? {
+            background: "color-mix(in srgb, var(--bad) 18%, transparent)",
+            color: "var(--bad)",
+          }
+        : tone === "repo"
+          ? { background: "var(--accent-dim)", color: "var(--accent)" }
+          : { background: "var(--panel-2)", color: "var(--muted-fg)" };
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full px-2 py-[2px] font-semibold uppercase"
       style={{
         fontFamily: "var(--font-mono)",
-        fontSize: 9.5,
+        fontSize: 9,
         letterSpacing: "0.4px",
         ...style,
       }}
@@ -1504,8 +1527,8 @@ function FailedStrip({ failed, goalsById, onRetry }) {
     <div
       className="mt-2 flex flex-col gap-2 rounded-[var(--radius-tile)] px-3.5 py-3"
       style={{
-        background: "rgba(239,68,68,0.10)",
-        border: "1px solid rgba(239,68,68,0.32)",
+        background: "color-mix(in srgb, var(--bad) 8%, transparent)",
+        border: "1px dashed color-mix(in srgb, var(--bad) 32%, transparent)",
       }}
     >
       <div
@@ -1513,7 +1536,7 @@ function FailedStrip({ failed, goalsById, onRetry }) {
         style={{
           fontFamily: "var(--font-mono)",
           fontSize: 10,
-          color: "#fecaca",
+          color: "var(--bad)",
         }}
       >
         Failed to classify ({failed.length})
@@ -1526,7 +1549,12 @@ function FailedStrip({ failed, goalsById, onRetry }) {
           <div className="min-w-0 flex-1">
             <div
               className="truncate font-semibold"
-              style={{ fontFamily: "var(--font-sans)", fontSize: 13, color: "#fff" }}
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontWeight: 600,
+                fontSize: 13,
+                color: "var(--fg)",
+              }}
             >
               {goalsById.get(f.goalId)?.title || f.goalId}
             </div>
@@ -1535,7 +1563,7 @@ function FailedStrip({ failed, goalsById, onRetry }) {
               style={{
                 fontFamily: "var(--font-mono)",
                 fontSize: 10,
-                color: "rgba(255,255,255,0.72)",
+                color: "var(--muted-fg)",
               }}
               title={f.error}
             >
@@ -1545,16 +1573,17 @@ function FailedStrip({ failed, goalsById, onRetry }) {
           <button
             type="button"
             onClick={() => onRetry?.(f.goalId)}
-            className="rounded-[var(--radius-sub)] px-2.5 py-1 uppercase transition-colors hover:bg-[rgba(255,255,255,0.14)]"
+            className="rounded-[var(--radius-sub)] px-2.5 py-1 uppercase transition-colors hover:opacity-90"
             style={{
               fontFamily: "var(--font-mono)",
               fontSize: 9.5,
               letterSpacing: "0.4px",
-              color: "rgba(255,255,255,0.9)",
-              border: "1px solid rgba(255,255,255,0.2)",
+              color: "var(--fg)",
+              background: "transparent",
+              border: "1px solid var(--border-strong)",
             }}
           >
-            Retry
+            Retry ↻
           </button>
         </div>
       ))}
@@ -1569,8 +1598,8 @@ function EmptyPlaceholder({ onSwitchToGrid }) {
       style={{
         fontFamily: "var(--font-mono)",
         fontSize: 11,
-        color: "rgba(255,255,255,0.7)",
-        border: "1px dashed rgba(255,255,255,0.2)",
+        color: "var(--muted-fg)",
+        border: "1px dashed var(--border)",
       }}
     >
       Nothing pending review.
@@ -1582,8 +1611,8 @@ function EmptyPlaceholder({ onSwitchToGrid }) {
           fontFamily: "var(--font-mono)",
           fontSize: 10,
           letterSpacing: "0.5px",
-          background: "#ffffff",
-          color: "var(--accent)",
+          background: "var(--accent)",
+          color: "var(--accent-on)",
         }}
       >
         Go to widgets →

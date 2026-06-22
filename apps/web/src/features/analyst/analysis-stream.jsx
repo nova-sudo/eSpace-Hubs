@@ -109,10 +109,12 @@ function SummaryStrip({ summary, phase, error, startedAt, onSwitchToGrid }) {
 
   return (
     <div
-      className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-tile)] px-4 py-3"
+      className="flex flex-wrap items-center justify-between gap-3"
       style={{
-        background: "rgba(255,255,255,0.08)",
-        border: "1px solid rgba(255,255,255,0.18)",
+        background: "var(--card)",
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        padding: "16px 20px",
       }}
     >
       <div className="flex items-baseline gap-3">
@@ -120,13 +122,14 @@ function SummaryStrip({ summary, phase, error, startedAt, onSwitchToGrid }) {
           className="font-black"
           style={{
             fontFamily: "var(--font-dot)",
-            fontSize: 34,
+            fontWeight: 900,
+            fontSize: 38,
             lineHeight: 0.8,
-            letterSpacing: "0.5px",
+            color: "var(--fg)",
           }}
         >
           {summary.classified}
-          <span style={{ color: "rgba(255,255,255,0.6)" }}>
+          <span style={{ color: "var(--dim-fg)" }}>
             {summary.totalGoals > 0 ? ` / ${summary.totalGoals}` : ""}
           </span>
         </span>
@@ -135,7 +138,7 @@ function SummaryStrip({ summary, phase, error, startedAt, onSwitchToGrid }) {
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 10.5,
-            color: "rgba(255,255,255,0.75)",
+            color: "var(--muted-fg)",
           }}
         >
           {phase === "running" ? "analyzing goals" : phase === "complete" ? "complete" : phase === "error" ? "error" : "idle"}
@@ -149,7 +152,7 @@ function SummaryStrip({ summary, phase, error, startedAt, onSwitchToGrid }) {
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 11,
-            color: "#fca5a5",
+            color: "var(--bad)",
           }}
           title={error}
         >
@@ -160,13 +163,15 @@ function SummaryStrip({ summary, phase, error, startedAt, onSwitchToGrid }) {
         <button
           type="button"
           onClick={onSwitchToGrid}
-          className="rounded-[var(--radius-sub)] px-3 py-1.5 font-bold uppercase transition-colors"
+          className="font-bold uppercase transition-colors"
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 10.5,
             letterSpacing: "0.4px",
-            background: "#ffffff",
-            color: "var(--accent)",
+            background: "var(--accent)",
+            color: "var(--accent-on)",
+            borderRadius: 6,
+            padding: "9px 15px",
           }}
         >
           View widgets →
@@ -181,10 +186,12 @@ function GoalBlock({ block }) {
 
   return (
     <div
-      className="flex flex-col gap-2 rounded-[var(--radius-tile)] px-3 py-2.5"
+      className="flex flex-col gap-2"
       style={{
-        background: "rgba(255,255,255,0.06)",
-        border: "1px solid rgba(255,255,255,0.14)",
+        background: "var(--card)",
+        border: "1px solid var(--border)",
+        borderRadius: 9,
+        padding: "13px 15px",
         animation: "analystBlockIn 220ms ease-out",
       }}
     >
@@ -196,7 +203,7 @@ function GoalBlock({ block }) {
               style={{
                 fontFamily: "var(--font-mono)",
                 fontSize: 9.5,
-                color: "rgba(255,255,255,0.6)",
+                color: "var(--dim-fg)",
               }}
               title={`Parent L1: ${block.parentL1}`}
             >
@@ -207,9 +214,10 @@ function GoalBlock({ block }) {
             className="font-semibold"
             style={{
               fontFamily: "var(--font-sans)",
+              fontWeight: 600,
               fontSize: 14,
               lineHeight: 1.3,
-              color: "#fff",
+              color: "var(--fg)",
             }}
             title={block.title}
           >
@@ -224,7 +232,7 @@ function GoalBlock({ block }) {
             fontFamily: "var(--font-mono)",
             fontSize: 10.5,
             lineHeight: 1.55,
-            color: "rgba(255,255,255,0.82)",
+            color: "var(--muted-fg)",
             maxHeight: block.state === "classified" ? 120 : undefined,
             overflowY: block.state === "classified" ? "auto" : undefined,
           }}
@@ -232,7 +240,7 @@ function GoalBlock({ block }) {
           {block.state === "reasoning" ? (
             <>
               {block.reasoning}
-              <Cursor />
+              <i className="glyph-cursor" />
             </>
           ) : (
             stripJsonFences(block.reasoning)
@@ -245,17 +253,17 @@ function GoalBlock({ block }) {
             fontFamily: "var(--font-mono)",
             fontSize: 10,
             lineHeight: 1.5,
-            color: "rgba(255,255,255,0.72)",
-            background: "rgba(255,255,255,0.05)",
+            color: "var(--muted-fg)",
+            background: "var(--panel-2)",
             padding: "8px 10px",
-            borderRadius: 3,
+            borderRadius: 5,
           }}
         >
           <strong
             className="uppercase tracking-[0.5px]"
-            style={{ fontSize: 9, color: "rgba(255,255,255,0.55)" }}
+            style={{ fontSize: 9, color: "var(--dim-fg)" }}
           >
-            why:
+            why ·
           </strong>{" "}
           {block.spec.reasoning}
         </div>
@@ -265,7 +273,7 @@ function GoalBlock({ block }) {
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 10.5,
-            color: "#fca5a5",
+            color: "var(--bad)",
           }}
         >
           failed: {block.error}
@@ -276,10 +284,6 @@ function GoalBlock({ block }) {
           from { opacity: 0; transform: translateY(6px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-        @keyframes analystCursor {
-          0%, 49% { opacity: 1; }
-          50%, 100% { opacity: 0; }
-        }
       `}</style>
     </div>
   );
@@ -288,27 +292,37 @@ function GoalBlock({ block }) {
 function StatusChip({ state, widgetLabel }) {
   if (state === "classified") {
     return (
-      <Chip style={{ background: "rgba(0,196,138,0.22)", color: "#bbf7d0" }}>
+      <Chip
+        style={{
+          color: "var(--good)",
+          background: "color-mix(in srgb, var(--good) 18%, transparent)",
+        }}
+      >
         ✓ {widgetLabel || "classified"}
       </Chip>
     );
   }
   if (state === "failed") {
     return (
-      <Chip style={{ background: "rgba(239,68,68,0.22)", color: "#fecaca" }}>
+      <Chip
+        style={{
+          color: "var(--bad)",
+          background: "color-mix(in srgb, var(--bad) 18%, transparent)",
+        }}
+      >
         failed
       </Chip>
     );
   }
   if (state === "reading") {
     return (
-      <Chip style={{ background: "rgba(255,255,255,0.14)", color: "rgba(255,255,255,0.85)" }}>
+      <Chip style={{ color: "var(--muted-fg)", background: "var(--panel-2)" }}>
         reading…
       </Chip>
     );
   }
   return (
-    <Chip style={{ background: "rgba(255,255,255,0.14)", color: "rgba(255,255,255,0.85)" }}>
+    <Chip style={{ color: "var(--muted-fg)", background: "var(--panel-2)" }}>
       classifying…
     </Chip>
   );
@@ -317,33 +331,17 @@ function StatusChip({ state, widgetLabel }) {
 function Chip({ children, style }) {
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full px-2 py-[2px] font-semibold uppercase"
+      className="inline-flex items-center gap-1 rounded-full px-2 py-[2px] uppercase"
       style={{
         fontFamily: "var(--font-mono)",
-        fontSize: 9.5,
+        fontSize: 9,
+        fontWeight: 700,
         letterSpacing: "0.4px",
         ...style,
       }}
     >
       {children}
     </span>
-  );
-}
-
-function Cursor() {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        display: "inline-block",
-        width: 6,
-        height: 12,
-        marginLeft: 2,
-        background: "currentColor",
-        verticalAlign: "middle",
-        animation: "analystCursor 0.8s steps(2) infinite",
-      }}
-    />
   );
 }
 
@@ -354,8 +352,8 @@ function EmptyPlaceholder() {
       style={{
         fontFamily: "var(--font-mono)",
         fontSize: 11,
-        color: "rgba(255,255,255,0.6)",
-        border: "1px dashed rgba(255,255,255,0.2)",
+        color: "var(--dim-fg)",
+        border: "1px dashed var(--border)",
       }}
     >
       Warming up the analyst — hang tight.
