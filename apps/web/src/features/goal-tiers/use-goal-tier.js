@@ -140,54 +140,83 @@ function buildCurrentData(spec, entries, reading) {
       ].join(". ");
     }
     // The generative widget — serialize its declarative field schema +
-    // captured values + per-field evidence into one model-readable line, so
-    // a goal that invented its own inputs is graded on real, structured data.
+    // captured values + per-field evidence. Period-resetting COMPOSED goals
+    // are graded across EVERY submitted period (each is one cycle of the
+    // goal), not just the current calendar period — so a fully-documented Q1
+    // counts even while the current quarter is still empty.
     case SPEC_KINDS.COMPOSED: {
       const fields = Array.isArray(spec.fields) ? spec.fields : [];
       if (fields.length === 0) return readingToText(reading);
-      // Period-aware: grade the CURRENT period's record, not whatever was
-      // edited last (backfilling an old quarter must not skew the grade).
       const curKey = currentPeriodKey(spec.composed?.cadence, Date.now());
-      const matching = list.filter((e) =>
-        curKey == null
-          ? e?.value && e.value.periodKey == null
-          : e?.value?.periodKey === curKey,
-      );
-      const curEntry = matching.length ? matching[matching.length - 1] : null;
-      const rec =
-        curEntry && typeof curEntry.value === "object" ? curEntry.value : {};
-      const vals = rec.values && typeof rec.values === "object" ? rec.values : {};
-      const ev = rec.evidence && typeof rec.evidence === "object" ? rec.evidence : {};
-      const filled = fields.filter((f) => {
-        const v = vals[f.id];
-        return f.kind === "checkbox" ? v === true : v != null && v !== "";
-      }).length;
-      const lines = fields.map((f) => {
-        const v = vals[f.id];
-        const blank = v == null || v === "";
-        const shown = blank
-          ? "—"
-          : f.kind === "checkbox"
-            ? v
-              ? "yes"
-              : "no"
-            : `${v}${f.unit ? ` ${f.unit}` : ""}`;
-        const proof = ev[f.id] ? ` [evidence: ${ev[f.id]}]` : "";
-        return `${f.label}: ${shown}${proof}`;
-      });
-      // Period-resetting COMPOSED also needs the cross-period picture so tiers
-      // like "every quarter fully done" can be judged — mirror the recurring-
-      // milestone streak (a period is complete when every required field is set).
-      const span = curKey == null ? null : composedPeriodSummary(list, fields);
-      return [
-        `composed widget — ${filled}/${fields.length} field(s) captured${curKey ? ` this period (${curKey})` : ""}`,
-        lines.join("; "),
-        span
-          ? `across periods: ${span.completeCount} of ${span.total} fully complete; current streak of complete periods: ${span.streak}`
-          : null,
-      ]
-        .filter(Boolean)
-        .join(". ");
+
+      // Latest record per period (entries are ts-ascending → last write wins).
+      const byPeriod = new Map();
+      for (const e of list) {
+        const v = e?.value;
+        if (!v || typeof v !== "object") continue;
+        byPeriod.set(v.periodKey ?? "__single__", v);
+      }
+      if (byPeriod.size === 0) return readingToText(reading);
+
+      const required = fields.filter((f) => !f.optional);
+      const recComplete = (rec) => {
+        const vals = rec?.values && typeof rec.values === "object" ? rec.values : {};
+        return (
+          required.length > 0 &&
+          required.every((f) => {
+            const v = vals[f.id];
+            return f.kind === "checkbox" ? v === true : v != null && v !== "";
+          })
+        );
+      };
+      const renderPeriod = (pk, rec) => {
+        const vals = rec?.values && typeof rec.values === "object" ? rec.values : {};
+        const ev = rec?.evidence && typeof rec.evidence === "object" ? rec.evidence : {};
+        const filled = fields.filter((f) => {
+          const v = vals[f.id];
+          return f.kind === "checkbox" ? v === true : v != null && v !== "";
+        }).length;
+        const lines = fields.map((f) => {
+          const v = vals[f.id];
+          const blank = v == null || v === "";
+          const shown = blank
+            ? "—"
+            : f.kind === "checkbox"
+              ? v
+                ? "yes"
+                : "no"
+              : `${v}${f.unit ? ` ${f.unit}` : ""}`;
+          const proof = ev[f.id] ? ` [evidence: ${ev[f.id]}]` : "";
+          return `${f.label}: ${shown}${proof}`;
+        });
+        const tag =
+          pk === "__single__" ? "record" : `${pk}${pk === curKey ? " (current period)" : ""}`;
+        return `• ${tag} — ${filled}/${fields.length} fields, ${
+          recComplete(rec) ? "COMPLETE" : "incomplete"
+        }: ${lines.join("; ")}`;
+      };
+
+      // Newest period first; cap to bound the prompt for high-frequency
+      // cadences (weekly/daily). Quarterly/monthly fit comfortably.
+      const CAP = 8;
+      const keys = [...byPeriod.keys()].sort().reverse();
+      const blocks = keys.slice(0, CAP).map((pk) => renderPeriod(pk, byPeriod.get(pk)));
+      const completeCount = keys.filter((pk) => recComplete(byPeriod.get(pk))).length;
+      let streak = 0;
+      for (const pk of keys) {
+        if (recComplete(byPeriod.get(pk))) streak += 1;
+        else break;
+      }
+
+      const head =
+        `composed widget — ${byPeriod.size} period(s) submitted, ${completeCount} fully complete; ` +
+        `streak of consecutive complete periods (newest back): ${streak}. ` +
+        `Judge the achievement tier across ALL submitted periods below. Tiers that describe ` +
+        `a single cycle (e.g. "achieved") are met when the most recent SUBMITTED period satisfies ` +
+        `them — ignore not-yet-started future periods. Tiers that say "every period" require ALL ` +
+        `submitted periods to satisfy them.` +
+        (keys.length > CAP ? ` Showing the ${CAP} most recent of ${keys.length} periods.` : "");
+      return [head, ...blocks].join("\n");
     }
     case SPEC_KINDS.COUNTER: {
       const sum = list.reduce((s, e) => s + (Number(e?.value) || 0), 0);
@@ -294,50 +323,6 @@ function recurringMilestoneSummary(entries) {
     total: rows.length,
     completeCount: rows.filter((r) => r.complete).length,
     firstIncomplete: rows.find((r) => !r.complete) || null,
-    streak,
-  };
-}
-
-/**
- * Cross-period completion summary for a period-resetting COMPOSED widget —
- * the generative analogue of `recurringMilestoneSummary`. A period is COMPLETE
- * when every required (non-optional) field carries a value. Returns per-period
- * complete-count + the streak of consecutive complete periods (newest back),
- * so the grader can judge "every quarter fully done" style tiers.
- */
-function composedPeriodSummary(entries, fields) {
-  const list = Array.isArray(entries) ? entries : [];
-  const required = (Array.isArray(fields) ? fields : []).filter((f) => !f.optional);
-  if (required.length === 0) return null;
-
-  const byPeriod = new Map();
-  for (const e of list) {
-    const pk = e?.value?.periodKey;
-    if (!pk) continue;
-    byPeriod.set(pk, e); // ts-ascending → later write wins = current state
-  }
-  if (byPeriod.size === 0) return null;
-
-  const complete = (rec) => {
-    const vals = rec?.values && typeof rec.values === "object" ? rec.values : {};
-    return required.every((f) => {
-      const v = vals[f.id];
-      return f.kind === "checkbox" ? v === true : v != null && v !== "";
-    });
-  };
-
-  const rows = [...byPeriod.keys()]
-    .sort()
-    .map((pk) => ({ pk, complete: complete(byPeriod.get(pk).value) }));
-
-  let streak = 0;
-  for (let i = rows.length - 1; i >= 0; i -= 1) {
-    if (rows[i].complete) streak += 1;
-    else break;
-  }
-  return {
-    total: rows.length,
-    completeCount: rows.filter((r) => r.complete).length,
     streak,
   };
 }
