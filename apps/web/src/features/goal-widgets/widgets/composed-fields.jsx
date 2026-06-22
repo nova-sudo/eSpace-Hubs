@@ -23,7 +23,7 @@ function hasValue(v, kind) {
   return v != null && v !== "";
 }
 
-export function ComposedFields({ goalId, fields, periodKey = null, variant = "light", showHeadline = true }) {
+export function ComposedFields({ goalId, fields, periodKey = null, writeTs = null, variant = "light", showHeadline = true }) {
   const { entries, append } = useGoalInputs(goalId);
   const list = Array.isArray(fields) ? fields : [];
 
@@ -51,7 +51,11 @@ export function ComposedFields({ goalId, fields, periodKey = null, variant = "li
   function write(nextValues, nextEvidence) {
     const payload = { values: nextValues, evidence: nextEvidence };
     if (periodKey != null) payload.periodKey = periodKey;
-    append(payload);
+    // Stamp the entry inside the period being filled (writeTs = period midpoint
+    // when backfilling a past window from the stepper). Without this, append
+    // defaults to Date.now() and a backfilled quarter lands in the CURRENT
+    // window — so the stepper never marks that past period filled.
+    append(payload, undefined, writeTs ?? undefined);
   }
   function setValue(id, v) {
     write({ ...values, [id]: v }, evidence);

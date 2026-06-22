@@ -24,6 +24,7 @@ import { useGoalInputs, buildCycleWindows } from "@/features/goal-inputs";
 import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
 import { SPEC_KINDS } from "@/features/goal-specs";
 import { isLocked, setLock, useGoalLocks } from "@/features/goal-locks";
+import { useGoalTier } from "@/features/goal-tiers";
 import { ComposedFields } from "./widgets/composed-fields.jsx";
 
 const STATE_LABEL = {
@@ -103,6 +104,18 @@ export function CadenceStepper({ spec, variant = "light" }) {
   // Subscribe to lock changes so "nothing to report" settles re-render the cells.
   useGoalLocks();
 
+  // Force a re-grade when the user finishes filling a window. Filling already
+  // appends live, so the deterministic/AI grade re-runs on its own when the
+  // cache key busts — but an AI call can be stale (or never fired if the
+  // provider was down), so the explicit "Save & grade" button forces it.
+  const { regrade, hasTiers } = useGoalTier(goalId, spec);
+  function saveAndGrade() {
+    // Qualitative widgets (spec.tiers) re-run the AI grader; numeric/tierScale
+    // widgets re-grade deterministically off the data change on close.
+    if (spec?.tiers) regrade?.();
+    setSelectedKey(null);
+  }
+
   const data = useMemo(
     () => buildCycleWindows({ entries, cadence, now: Date.now() }),
     [entries, cadence],
@@ -174,10 +187,38 @@ export function CadenceStepper({ spec, variant = "light" }) {
           >
             close
           </button>
+          {/* Primary action — commit + re-grade. Highlighted (accent) so it
+              reads as the affirmative step after filling the period. */}
+          <button
+            type="button"
+            onClick={saveAndGrade}
+            className="uppercase transition-[filter] hover:brightness-110"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 9.5,
+              fontWeight: 700,
+              letterSpacing: "0.5px",
+              color: "var(--accent-on)",
+              background: "var(--accent)",
+              border: "1px solid var(--accent)",
+              borderRadius: "var(--radius-sub)",
+              padding: "4px 10px",
+              cursor: "pointer",
+            }}
+            title={hasTiers ? "Save this period and re-grade the goal" : "Save this period"}
+          >
+            {hasTiers ? "Save & grade" : "Save"}
+          </button>
         </div>
       </div>
       {isComposed ? (
-        <ComposedFields goalId={goalId} fields={spec.fields} periodKey={selected.key} variant="dark" />
+        <ComposedFields
+          goalId={goalId}
+          fields={spec.fields}
+          periodKey={selected.key}
+          writeTs={Math.floor((selected.start + selected.end) / 2)}
+          variant="dark"
+        />
       ) : (
         <GoalManualEditor
           widget={spec.widget}
