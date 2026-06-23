@@ -11,7 +11,8 @@ import { ReviewPane } from "./review-pane";
 import { useClassifyGoals, flattenGoalsForClassification } from "./use-classify-goals";
 import { AnalystChatMode } from "./analyst-chat-mode";
 import { AI_PROVIDERS, useAiProvider } from "./use-ai-provider";
-import { GlyphMatrix, glyphStateFor } from "./glyph-matrix";
+import { GlyphAgent } from "./glyph-agent";
+import { glyphMood } from "./glyph-moods";
 import { useGoals } from "@/features/goals";
 
 gsap.registerPlugin(useGSAP);
@@ -127,7 +128,11 @@ export function AnalystPage() {
     start(subset);
   }
 
-  const glyphState = glyphStateFor({ mode, phase, hasSpecs });
+  // Map the classify lifecycle → the glyphMood phase vocabulary, then derive
+  // the analyst's emotion for the GLYPH face.
+  const classifyPhase =
+    phase === "running" ? "running" : phase === "complete" ? "done" : "idle";
+  const mood = glyphMood({ mode, phase: classifyPhase });
   const total = items.length + unclassifiedGoals.length;
   const providerLabel =
     AI_PROVIDERS.find((p) => p.id === provider)?.label || "—";
@@ -168,7 +173,7 @@ export function AnalystPage() {
         style={{ gridTemplateColumns: "300px minmax(0, 1fr)" }}
       >
         <AnalystRail
-          glyphState={glyphState}
+          mood={mood}
           classified={`${items.length}/${total || 0}`}
           providerLabel={providerLabel}
           lastRun={lastAnalyzedAt > 0 ? relativeTs(lastAnalyzedAt) : "—"}
@@ -223,20 +228,25 @@ export function AnalystPage() {
 
 /* ─── Instrument rail (always the dark machine) ─────────────────────────── */
 
-const GLYPH_META = {
+// Per-mood label + status colour for the rail's caption + pulse. Mirrors the
+// GlyphAgent's eight emotions so the text matches the face.
+const MOOD_META = {
   idle: { word: "IDLE", color: "var(--glyph-idle)", cap: "IDLE", sub: "ready to analyze" },
-  thinking: { word: "THINKING", color: "var(--glyph-thinking)", cap: "SCAN", sub: "reading your goals" },
-  review: { word: "REVIEW", color: "var(--glyph-review)", cap: "VET", sub: "awaiting your call" },
-  live: { word: "LIVE", color: "var(--glyph-live)", cap: "LIVE", sub: "widgets tracking" },
-  talk: { word: "LISTENING", color: "var(--glyph-talk)", cap: "TALK", sub: "ask anything" },
+  scan: { word: "READING", color: "var(--glyph-thinking)", cap: "READING", sub: "scanning your goals" },
+  think: { word: "THINKING", color: "var(--glyph-thinking)", cap: "THINKING", sub: "matching signals" },
+  aha: { word: "FOUND", color: "var(--glyph-live)", cap: "FOUND", sub: "a signal matched" },
+  working: { word: "BUILDING", color: "var(--glyph-thinking)", cap: "BUILDING", sub: "assembling the widget" },
+  happy: { word: "ON PACE", color: "var(--glyph-live)", cap: "ON PACE", sub: "widgets live" },
+  concern: { word: "FLAGGED", color: "var(--glyph-review)", cap: "REVIEW", sub: "awaiting your call" },
+  confused: { word: "NO DATA", color: "var(--glyph-review)", cap: "NO DATA", sub: "needs your input" },
 };
 
-function AnalystRail({ glyphState, classified, providerLabel, lastRun, reviewCount, liveCount }) {
-  const meta = GLYPH_META[glyphState] || GLYPH_META.idle;
+function AnalystRail({ mood, classified, providerLabel, lastRun, reviewCount, liveCount }) {
+  const meta = MOOD_META[mood] || MOOD_META.idle;
   const sub =
-    glyphState === "review"
+    mood === "concern"
       ? `${reviewCount} awaiting your call`
-      : glyphState === "live"
+      : mood === "idle" && liveCount > 0
         ? `${liveCount} widget${liveCount === 1 ? "" : "s"} tracking`
         : meta.sub;
   const stats = [
@@ -352,9 +362,9 @@ function AnalystRail({ glyphState, classified, providerLabel, lastRun, reviewCou
         </span>
       </div>
 
-      {/* the dot-matrix display */}
-      <div className="glyph-reveal relative self-center" style={{ margin: "10px 0" }}>
-        <GlyphMatrix state={glyphState} />
+      {/* the emotive dot-matrix face */}
+      <div className="glyph-reveal relative self-center" style={{ margin: "6px 0" }}>
+        <GlyphAgent emotion={mood} accent="#557CFF" size={196} showCaption={false} />
       </div>
 
       {/* caption */}

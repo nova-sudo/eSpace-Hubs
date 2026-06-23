@@ -130,8 +130,9 @@
 /* ─────────────────────────────────────────────────────────────
    Analyst "GLYPH" instrument — the rail is ALWAYS the dark machine
    (constants, not theme-mapped); the workspace beside it follows the
-   theme via the tokens above. Glyph dot colors + keyframes power
-   <GlyphMatrix>; the helper classes drive the streaming caret + chat
+   theme via the tokens above. The emotive face is canvas-drawn in
+   <GlyphAgent>; these tokens + the .glyph-cursor / .glyph-typing helper
+   classes drive the rail accents, the streaming caret, and the chat
    typing dots. See features/analyst.
    ───────────────────────────────────────────────────────────── */
 :root {
