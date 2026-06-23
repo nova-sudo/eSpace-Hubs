@@ -14,6 +14,7 @@ export { ItemEvidence } from "./item-evidence";
 export { MonoLabel } from "./mono-label";
 export { PageHeader } from "./page-header";
 export { Pill } from "./pill";
+export { Reveal } from "./reveal";
 export { Section } from "./section";
 export { Select } from "./select";
 export { Sparkline } from "./sparkline";

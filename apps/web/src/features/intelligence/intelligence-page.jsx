@@ -18,7 +18,7 @@
  */
 
 import Link from "next/link";
-import { Button, Loader, PageHeader } from "@/components/ui";
+import { Button, Loader, PageHeader, Reveal } from "@/components/ui";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
 import { useHubLink } from "@/features/hubs";
 import { StatusNarrative } from "./status-narrative";
@@ -83,7 +83,7 @@ export function IntelligencePage() {
           ctaLabel="Review goals"
         />
       ) : (
-        <div className="flex flex-col gap-6">
+        <Reveal stagger className="flex flex-col gap-6">
           <StatusNarrative summary={summary} queue={queue} />
           <ActionQueue
             queue={queue}
@@ -94,7 +94,7 @@ export function IntelligencePage() {
             <UnclassifiedNote count={unclassifiedGoals.length} />
           ) : null}
           <GoalHealthGrid groups={groups} fillHref={fillHref} />
-        </div>
+        </Reveal>
       )}
     </main>
   );

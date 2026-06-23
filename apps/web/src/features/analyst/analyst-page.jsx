@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { gsap } from "gsap";
+import { useGSAP } from "@gsap/react";
 import { GoalWidgetsGrid, useGoalWidgetItems } from "@/features/goal-widgets";
 import { clearSpecs, removeSpec } from "@/features/goal-specs";
 import { useAnalyst, ANALYST_MODES } from "./analyst-provider";
@@ -11,6 +13,8 @@ import { AnalystChatMode } from "./analyst-chat-mode";
 import { AI_PROVIDERS, useAiProvider } from "./use-ai-provider";
 import { GlyphMatrix, glyphStateFor } from "./glyph-matrix";
 import { useGoals } from "@/features/goals";
+
+gsap.registerPlugin(useGSAP);
 
 /**
  * Full-viewport analyst — the "GLYPH" instrument. Swipes in from the right at
@@ -240,8 +244,80 @@ function AnalystRail({ glyphState, classified, providerLabel, lastRun, reviewCou
     { label: "Provider", value: providerLabel, color: "var(--glyph-on)" },
     { label: "Last run", value: lastRun, color: "rgba(255,255,255,0.75)" },
   ];
+  const railRef = useRef(null);
+  const reduce =
+    typeof window !== "undefined" &&
+    window.matchMedia &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Entrance: the rail's pieces drop in, then the engine pulse breathes forever.
+  useGSAP(
+    () => {
+      if (reduce) return;
+      gsap.from(".glyph-reveal", {
+        y: 16,
+        opacity: 0,
+        duration: 0.7,
+        ease: "power3.out",
+        stagger: 0.08,
+      });
+      gsap.to(".glyph-pulse", {
+        scale: 1.45,
+        opacity: 0.5,
+        boxShadow: "0 0 0 4px rgba(85,124,255,0.25)",
+        duration: 0.9,
+        ease: "sine.inOut",
+        repeat: -1,
+        yoyo: true,
+      });
+    },
+    { scope: railRef },
+  );
+
+  // On state change, the big Doto caption scrambles in — the engine "re-locking".
+  useGSAP(
+    () => {
+      const el = railRef.current?.querySelector(".glyph-caption");
+      if (!el) return;
+      const target = meta.cap;
+      if (reduce) {
+        el.textContent = target;
+        return;
+      }
+      const charset = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789#%/<>";
+      const proxy = { p: 0 };
+      gsap.to(proxy, {
+        p: 1,
+        duration: 0.55,
+        ease: "power2.out",
+        onUpdate: () => {
+          const n = target.length;
+          const lit = Math.floor(proxy.p * n);
+          let s = "";
+          for (let i = 0; i < n; i++) {
+            s +=
+              i < lit
+                ? target[i]
+                : charset[Math.floor(Math.random() * charset.length)];
+          }
+          el.textContent = s;
+        },
+        onComplete: () => {
+          el.textContent = target;
+        },
+      });
+      gsap.fromTo(
+        el,
+        { scale: 1.3, filter: "blur(5px)" },
+        { scale: 1, filter: "blur(0px)", duration: 0.55, ease: "power3.out" },
+      );
+    },
+    { scope: railRef, dependencies: [meta.cap] },
+  );
+
   return (
     <aside
+      ref={railRef}
       className="relative flex flex-col justify-between overflow-hidden"
       style={{
         background: "var(--glyph-rail-bg)",
@@ -260,7 +336,7 @@ function AnalystRail({ glyphState, classified, providerLabel, lastRun, reviewCou
       />
 
       {/* top: engine label + pulse */}
-      <div className="relative flex items-center justify-between">
+      <div className="glyph-reveal relative flex items-center justify-between">
         <span
           className="uppercase"
           style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "1.5px", color: "rgba(255,255,255,0.5)" }}
@@ -271,20 +347,20 @@ function AnalystRail({ glyphState, classified, providerLabel, lastRun, reviewCou
           className="inline-flex items-center gap-1.5 uppercase"
           style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.5px", color: meta.color }}
         >
-          <i style={{ width: 6, height: 6, borderRadius: "50%", background: meta.color }} />
+          <i className="glyph-pulse" style={{ width: 6, height: 6, borderRadius: "50%", background: meta.color }} />
           {meta.word}
         </span>
       </div>
 
       {/* the dot-matrix display */}
-      <div className="relative self-center" style={{ margin: "10px 0" }}>
+      <div className="glyph-reveal relative self-center" style={{ margin: "10px 0" }}>
         <GlyphMatrix state={glyphState} />
       </div>
 
       {/* caption */}
-      <div className="relative text-center" style={{ marginBottom: 4 }}>
+      <div className="glyph-reveal relative text-center" style={{ marginBottom: 4 }}>
         <div
-          className="uppercase"
+          className="glyph-caption uppercase"
           style={{ fontFamily: "var(--font-dot)", fontWeight: 900, fontSize: 24, letterSpacing: "3px", color: "#fff" }}
         >
           {meta.cap}
@@ -298,7 +374,7 @@ function AnalystRail({ glyphState, classified, providerLabel, lastRun, reviewCou
 
       {/* stats */}
       <div
-        className="relative flex flex-col"
+        className="glyph-reveal relative flex flex-col"
         style={{ gap: 1, borderTop: "1px solid rgba(255,255,255,0.12)", paddingTop: 14 }}
       >
         {stats.map((s) => (
