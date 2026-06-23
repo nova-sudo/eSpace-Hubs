@@ -802,6 +802,19 @@ function seedDefaultScorecard() {
   };
 }
 
+/**
+ * Fallback fields for a COMPOSED spec the model chose but left without a
+ * usable `fields` array. A minimal documented-record schema — what was done
+ * plus an evidence link — so the goal lands as a usable (if generic) widget
+ * the user can edit or re-analyze, instead of hard-failing validation.
+ */
+function seedDefaultComposedFields() {
+  return [
+    { id: "summary", kind: "text", label: "What was done this period" },
+    { id: "evidence", kind: "link", label: "Evidence / doc link", optional: true },
+  ];
+}
+
 export function buildUserPrompt(goal: GoalForClassification): string {
   const lines = [
     `Goal ID: ${goal.id}`,
@@ -1044,6 +1057,10 @@ export function specEventFromBuffer(
     delegated: obj.delegated ?? null,
     untrackable: obj.untrackable ?? null,
     scorecard: obj.scorecard ?? null,
+    // COMPOSED owns its data through fields[] + the cadence/prompt frame —
+    // forward both so a COMPOSED spec the model emits actually validates.
+    fields: obj.fields ?? null,
+    composed: obj.composed ?? null,
     tiers: obj.tiers ?? null,
     // W1: numeric ladder for deterministic grading (null for qualitative).
     tierScale: obj.tierScale ?? null,
@@ -1055,6 +1072,19 @@ export function specEventFromBuffer(
     candidate.source = null;
     candidate.manual = null;
     candidate.kind = "auto"; // 2 auto-seeded components → auto.
+  }
+  // COMPOSED safety net: the model picked the generative widget but didn't
+  // emit a usable `fields` array. Rather than hard-fail the whole goal, seed
+  // a minimal documented-record schema the user can flesh out / re-analyze —
+  // same spirit as the SCORECARD fallback above.
+  if (
+    candidate.widget === "COMPOSED" &&
+    !(Array.isArray(candidate.fields) && candidate.fields.length > 0)
+  ) {
+    candidate.fields = seedDefaultComposedFields();
+    candidate.source = null;
+    candidate.manual = null;
+    candidate.kind = "manual";
   }
   const result = validateSpec(candidate);
   if (!result.ok) {
