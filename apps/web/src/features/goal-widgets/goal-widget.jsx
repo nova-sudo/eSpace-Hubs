@@ -44,6 +44,12 @@ import { reclassifyOneGoal } from "@/features/analyst";
 export function GoalWidget({ spec, goal, variant = "light", className, onRetry }) {
   // User override — force the collector to re-open even after answers exist.
   const [forceEditContext, setForceEditContext] = useState(false);
+  // Pins the ContextCollector mounted while a re-analyze it owns is in flight.
+  // Persisting answers flips contextComplete → true mid-await, which would
+  // otherwise unmount the collector before its busy/error/onSaved sequence
+  // completes — keeping it mounted closes that race for the multi-step wizard
+  // and any stray blur.
+  const [reanalyzing, setReanalyzing] = useState(false);
 
   const contextComplete = useIsContextComplete(spec);
 
@@ -83,7 +89,7 @@ export function GoalWidget({ spec, goal, variant = "light", className, onRetry }
   // ── State B ── Context required and not yet satisfied. Show collector.
   const needsContext =
     spec.context?.required &&
-    (forceEditContext || !contextComplete);
+    (forceEditContext || !contextComplete || reanalyzing);
   if (needsContext) {
     return (
       <ContextCollector
@@ -111,7 +117,12 @@ export function GoalWidget({ spec, goal, variant = "light", className, onRetry }
         // collector via the rejected promise so the inline banner
         // shows what went wrong.
         onReclassify={async (pairs) => {
-          await runReclassify(spec, goal, pairs);
+          setReanalyzing(true);
+          try {
+            await runReclassify(spec, goal, pairs);
+          } finally {
+            setReanalyzing(false);
+          }
         }}
       />
     );

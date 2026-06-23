@@ -20,8 +20,47 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAiProvider } from "./use-ai-provider";
 import { useGoals } from "@/features/goals";
-import { markAnalyzedAt, saveSpec } from "@/features/goal-specs";
+import { markAnalyzedAt, saveSpec, readValidSpecs } from "@/features/goal-specs";
+import { readContextFor } from "@/features/goal-context";
 import { ANALYSIS } from "./ai/analysis-events";
+
+/**
+ * Attach each goal's SAVED context answers (Q→A pairs) to the classify
+ * payload. Without this, re-analyzing from the analyst page (Re-analyze all /
+ * Analyze remaining / per-goal retry) drops the user's definitions, regressing
+ * a context-fitted widget back to a generic one. Goals with no spec or no
+ * saved answers (e.g. a first-ever run) are sent unchanged.
+ */
+function withContextAnswers(list) {
+  let specs;
+  try {
+    specs = readValidSpecs();
+  } catch {
+    return list; // store not hydrated yet — send goals as-is
+  }
+  return list.map((g) => {
+    const spec = specs[g.id];
+    const questions = spec?.context?.questions || [];
+    if (!questions.length) return g;
+    const answers = readContextFor(g.id) || {};
+    const pairs = [];
+    for (const q of questions) {
+      const raw = answers[q.id];
+      let answer = "";
+      if (q.kind === "list" || q.kind === "resource_link") {
+        answer = Array.isArray(raw)
+          ? raw.map((s) => String(s).trim()).filter(Boolean).join("\n")
+          : "";
+      } else if (q.kind === "number") {
+        answer = typeof raw === "number" && !Number.isNaN(raw) ? String(raw) : "";
+      } else {
+        answer = typeof raw === "string" ? raw.trim() : "";
+      }
+      if (answer) pairs.push({ prompt: q.prompt, answer });
+    }
+    return pairs.length ? { ...g, contextAnswers: pairs } : g;
+  });
+}
 
 /**
  * Pending-spec buffer.
@@ -354,7 +393,7 @@ export function useClassifyGoals() {
             "Content-Type": "application/json",
             "x-ai-provider": provider,
           },
-          body: JSON.stringify({ goals: list, provider }),
+          body: JSON.stringify({ goals: withContextAnswers(list), provider }),
           signal: ctrl.signal,
         });
         if (!res.ok) {

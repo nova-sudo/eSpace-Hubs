@@ -96,6 +96,14 @@ export function ContextCollector({
     }
   }
 
+  // When a reclassify path is wired, keep every answer in the local `draft`
+  // and persist (setAnswers) ONLY after the classifier resolves. Persisting
+  // early — on blur or on a select change — flips useIsContextComplete → true,
+  // which makes GoalWidget unmount this collector before the re-analyze can
+  // run (the reported "answers ignored" bug). Without a reclassify path (the
+  // Review pane) we keep the original save-on-blur behaviour.
+  const persistOnBlur = onReclassify ? undefined : commit;
+
   return (
     <WidgetShell
       spec={spec}
@@ -111,7 +119,10 @@ export function ContextCollector({
           e.preventDefault();
           // Wizard: advance to the next question until the last, then submit.
           if (!onLastStep) {
-            commit(); // persist what's typed so far
+            // Persist progress between steps only when we're NOT going to
+            // re-analyze — on the reclassify path the draft is the source of
+            // truth and persisting early would unmount the collector.
+            if (!onReclassify) commit();
             setStep(activeStep + 1);
             return;
           }
@@ -149,7 +160,7 @@ export function ContextCollector({
               question={questions[activeStep]}
               value={draft[questions[activeStep].id]}
               onChange={(v) => update(questions[activeStep].id, v)}
-              onBlur={commit}
+              onBlur={persistOnBlur}
               variant={variant}
             />
           ) : null}
@@ -328,8 +339,10 @@ function QuestionField({ question: q, value, onChange, onBlur, variant }) {
           value={typeof value === "string" ? value : ""}
           onChange={(e) => {
             onChange(e.target.value);
-            // Selects commit immediately — no blur needed.
-            setTimeout(onBlur, 0);
+            // Selects commit immediately — but only when save-on-blur is
+            // active (no reclassify path). On the reclassify path onBlur is
+            // undefined so the draft holds the value until re-analyze runs.
+            if (onBlur) setTimeout(onBlur, 0);
           }}
           tone={variant === "light" ? "inverse" : "default"}
           size="sm"
