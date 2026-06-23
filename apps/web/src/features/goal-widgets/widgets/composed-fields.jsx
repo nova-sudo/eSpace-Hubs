@@ -15,8 +15,7 @@
 
 import { useMemo } from "react";
 import { useGoalInputs } from "@/features/goal-inputs";
-import { Select, Checkbox } from "@/components/ui";
-import { ItemEvidence } from "./_milestone-evidence.jsx";
+import { Select, Checkbox, ItemEvidence } from "@/components/ui";
 
 function hasValue(v, kind) {
   if (kind === "checkbox") return v === true;

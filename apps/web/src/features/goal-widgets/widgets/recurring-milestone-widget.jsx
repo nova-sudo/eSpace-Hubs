@@ -1,11 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Checkbox } from "@/components/ui";
+import { Checkbox, ItemEvidence } from "@/components/ui";
 import { WidgetShell } from "../widget-shell";
 import { useGoalInputs } from "@/features/goal-inputs";
 import { useGoalContext, resolveMilestoneItems } from "@/features/goal-context";
-import { ItemEvidence } from "./_milestone-evidence.jsx";
 
 /**
  * Recurring milestone — a milestone checklist that RESETS each

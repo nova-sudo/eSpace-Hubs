@@ -1,18 +1,19 @@
 "use client";
 
 /**
- * Optional per-item evidence for a milestone checklist item.
+ * Optional inline evidence for a checklist item / period — a short note, a
+ * link, or a measured value attached to a milestone item or a filled period.
  *
- * The gap this closes: a milestone item could only carry a binary tick, but
+ * The gap this closes: a checklist item could only carry a binary tick, but
  * achievement-tier criteria routinely demand *documented* proof ("scenario
- * documented, measured RTO/RPO, findings"). There was nowhere to put that
- * proof, so the grader judged a bare boolean and defaulted skeptical. This
- * lets each item carry a short note, a link, or a measured value — which
- * `useGoalTier` folds into the grader's `currentData`, so the verdict is based
- * on real evidence instead of the honor system.
+ * documented, measured RTO/RPO, findings"). With nowhere to put that proof the
+ * grader judged a bare boolean and defaulted skeptical. The grader folds
+ * `item.evidence` into its currentData, so the verdict rests on real evidence.
  *
- * Evidence is a plain string on the item (`item.evidence`) — backward
- * compatible (absent on old entries), stored in the same goal-inputs entry.
+ * Lives in components/ui (not a feature) so both the dashboard widgets and the
+ * cadence-stepper / check-in editors can render it without a cross-feature
+ * import cycle. Evidence is a plain string (`item.evidence`), backward
+ * compatible (absent on old entries).
  */
 
 import { useState } from "react";
@@ -30,7 +31,7 @@ export function ItemEvidence({ value, onSave, variant = "light" }) {
   const fieldBg = isLight ? "rgba(255,255,255,0.10)" : "var(--bg)";
   const fieldBorder = isLight
     ? "1px solid rgba(255,255,255,0.22)"
-    : "1px solid var(--border)";
+    : "1px solid var(--border-strong)";
 
   function commit() {
     onSave((draft || "").trim());

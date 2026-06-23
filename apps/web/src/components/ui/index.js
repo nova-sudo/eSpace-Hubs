@@ -10,6 +10,7 @@ export { Delta } from "./delta";
 export { DitherField, DitherDisc, DitherBars } from "./dither-field";
 export { Field, Input } from "./input";
 export { Grain } from "./grain";
+export { ItemEvidence } from "./item-evidence";
 export { MonoLabel } from "./mono-label";
 export { PageHeader } from "./page-header";
 export { Pill } from "./pill";

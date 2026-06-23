@@ -29,7 +29,7 @@
 
 import { useMemo, useState } from "react";
 import { Minus, Plus, Check } from "lucide-react";
-import { Select, Input } from "@/components/ui";
+import { Select, Input, ItemEvidence } from "@/components/ui";
 import { useGoalInputs } from "@/features/goal-inputs";
 import { useGoalContext, resolveMilestoneItems } from "@/features/goal-context";
 import { midWeekTs } from "@/lib/date";
@@ -133,14 +133,19 @@ export function MilestoneEditor({ goal, spec, weekStart, weekEnd, activeLabel, w
     });
   }, [entries, weekEnd, spec, contextAnswers]);
 
-  const toggle = (id) => {
+  const write = (next) => {
     const ts = writeTs ?? midWeekTs(activeLabel);
     if (ts == null) return;
-    const next = items.map((it) =>
-      it.id === id ? { ...it, done: !it.done } : it,
-    );
     append({ items: next }, undefined, ts);
   };
+  const toggle = (id) =>
+    write(items.map((it) => (it.id === id ? { ...it, done: !it.done } : it)));
+  const setEvidence = (id, text) =>
+    write(
+      items.map((it) =>
+        it.id === id ? { ...it, evidence: text || undefined } : it,
+      ),
+    );
 
   const done = items.filter((i) => i.done).length;
   const total = items.length;
@@ -156,22 +161,30 @@ export function MilestoneEditor({ goal, spec, weekStart, weekEnd, activeLabel, w
           <span className="opacity-60">latest snapshot ≤ week-end</span>
         )}
       </div>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-col gap-1.5">
         {items.map((it) => (
-          <button
-            key={it.id}
-            type="button"
-            onClick={() => toggle(it.id)}
-            className={cn(
-              "flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] transition-colors",
-              it.done
-                ? "bg-accent-dim text-fg"
-                : "text-muted-fg hover:bg-accent-dim/40",
-            )}
-          >
-            {it.done && <Check size={11} />}
-            {it.label}
-          </button>
+          <div key={it.id} className="flex flex-col gap-0.5">
+            <button
+              type="button"
+              onClick={() => toggle(it.id)}
+              className={cn(
+                "flex w-fit items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] transition-colors",
+                it.done
+                  ? "bg-accent-dim text-fg"
+                  : "text-muted-fg hover:bg-accent-dim/40",
+              )}
+            >
+              {it.done && <Check size={11} />}
+              {it.label}
+            </button>
+            <div className="pl-1">
+              <ItemEvidence
+                value={it.evidence}
+                variant="dark"
+                onSave={(t) => setEvidence(it.id, t)}
+              />
+            </div>
+          </div>
         ))}
       </div>
     </div>
@@ -540,14 +553,19 @@ export function RecurringMilestoneEditor({ goal, spec, activeLabel, writeTs }) {
   const total = items.length;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
-  const toggle = (id) => {
+  const write = (next) => {
     const ts = writeTs ?? midWeekTs(activeLabel);
     if (ts == null) return;
-    const next = items.map((it) =>
-      it.id === id ? { ...it, done: !it.done } : it,
-    );
     append({ periodKey: activePeriodKey, items: next }, undefined, ts);
   };
+  const toggle = (id) =>
+    write(items.map((it) => (it.id === id ? { ...it, done: !it.done } : it)));
+  const setEvidence = (id, text) =>
+    write(
+      items.map((it) =>
+        it.id === id ? { ...it, evidence: text || undefined } : it,
+      ),
+    );
 
   return (
     <div className="flex w-full flex-col gap-1.5">
@@ -560,7 +578,7 @@ export function RecurringMilestoneEditor({ goal, spec, activeLabel, writeTs }) {
         </span>
         <span className="opacity-70">{activePeriodKey}</span>
       </div>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-col gap-1.5">
         {items.length === 0 ? (
           <span
             className="text-[10px] text-muted-fg/70"
@@ -570,20 +588,28 @@ export function RecurringMilestoneEditor({ goal, spec, activeLabel, writeTs }) {
           </span>
         ) : (
           items.map((it) => (
-            <button
-              key={it.id}
-              type="button"
-              onClick={() => toggle(it.id)}
-              className={cn(
-                "flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] transition-colors",
-                it.done
-                  ? "bg-accent-dim text-fg"
-                  : "text-muted-fg hover:bg-accent-dim/40",
-              )}
-            >
-              {it.done && <Check size={11} />}
-              {it.label}
-            </button>
+            <div key={it.id} className="flex flex-col gap-0.5">
+              <button
+                type="button"
+                onClick={() => toggle(it.id)}
+                className={cn(
+                  "flex w-fit items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] transition-colors",
+                  it.done
+                    ? "bg-accent-dim text-fg"
+                    : "text-muted-fg hover:bg-accent-dim/40",
+                )}
+              >
+                {it.done && <Check size={11} />}
+                {it.label}
+              </button>
+              <div className="pl-1">
+                <ItemEvidence
+                  value={it.evidence}
+                  variant="dark"
+                  onSave={(t) => setEvidence(it.id, t)}
+                />
+              </div>
+            </div>
           ))
         )}
       </div>
