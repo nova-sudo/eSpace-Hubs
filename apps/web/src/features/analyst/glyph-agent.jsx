@@ -160,6 +160,9 @@ export function GlyphAgent({
   const subRef = useRef(null);
   const stateRef = useRef({ emotion, caption, sub });
   stateRef.current = { emotion, caption, sub };
+  // Cross-fade bookkeeping so a prop-driven emotion change morphs (not snaps).
+  const shownRef = useRef(null);
+  const transRef = useRef({ prev: null, at: 0 });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -188,6 +191,17 @@ export function GlyphAgent({
       let curName, prev = null, bf = 1, cap, sb;
       if (em && em !== "story") {
         curName = em; const L = HOLD_LABELS[em] || ["", ""]; cap = L[0]; sb = L[1];
+        // Detect a prop-driven change and cross-fade from the prior face.
+        if (em !== shownRef.current) {
+          transRef.current = { prev: shownRef.current, at: t };
+          shownRef.current = em;
+        }
+        const tr = transRef.current;
+        if (tr.prev && tr.prev !== em && !reduce) {
+          const local = t - tr.at, BL = 0.45;
+          if (local < BL) { bf = ease(local / BL); prev = tr.prev; }
+          else tr.prev = null;
+        }
       } else {
         const total = STORY.reduce((a, s) => a + s[1], 0); const tt = t % total;
         let acc = 0, idx = 0; for (let i = 0; i < STORY.length; i++) { if (tt < acc + STORY[i][1]) { idx = i; break; } acc += STORY[i][1]; }

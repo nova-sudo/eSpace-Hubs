@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
 import { GoalWidgetsGrid, useGoalWidgetItems } from "@/features/goal-widgets";
@@ -16,6 +16,58 @@ import { glyphMood } from "./glyph-moods";
 import { useGoals } from "@/features/goals";
 
 gsap.registerPlugin(useGSAP);
+
+// Each steady section cycles its own little set of expressions, so the GLYPH
+// face has a distinct personality everywhere — not only during analysis.
+// Widgets reads proud/content, Review scrutinises, Chat listens. Active
+// analysis stays phase-driven (it mirrors real classifier work).
+const SECTION_LOOPS = {
+  widgetsFull: ["happy", "idle", "aha", "working", "happy", "idle"],
+  widgetsEmpty: ["idle", "scan", "idle", "confused"],
+  review: ["concern", "think", "concern", "confused"],
+  chat: ["scan", "think", "aha", "idle"],
+};
+
+/**
+ * The GLYPH face emotion. Analysis → phase-driven (real work). Every other
+ * section rotates through its own expression loop on a timer so the face stays
+ * alive and varied. prefers-reduced-motion holds the first expression.
+ */
+function useSectionMood({ mode, phase, hasSpecs }) {
+  const loopKey =
+    mode === ANALYST_MODES.REVIEW
+      ? "review"
+      : mode === ANALYST_MODES.CHAT
+        ? "chat"
+        : mode === ANALYST_MODES.WIDGETS
+          ? hasSpecs
+            ? "widgetsFull"
+            : "widgetsEmpty"
+          : null; // analysis → phase-driven below
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    setIdx(0);
+    if (!loopKey) return undefined;
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) return undefined;
+    const loop = SECTION_LOOPS[loopKey];
+    const id = setInterval(
+      () => setIdx((i) => (i + 1) % loop.length),
+      3200,
+    );
+    return () => clearInterval(id);
+  }, [loopKey]);
+
+  if (mode === ANALYST_MODES.ANALYSIS) {
+    const classifyPhase =
+      phase === "running" ? "running" : phase === "complete" ? "done" : "idle";
+    return glyphMood({ mode, phase: classifyPhase });
+  }
+  return loopKey ? SECTION_LOOPS[loopKey][idx] : "idle";
+}
 
 /**
  * Full-viewport analyst — the "GLYPH" instrument. Swipes in from the right at
@@ -128,11 +180,9 @@ export function AnalystPage() {
     start(subset);
   }
 
-  // Map the classify lifecycle → the glyphMood phase vocabulary, then derive
-  // the analyst's emotion for the GLYPH face.
-  const classifyPhase =
-    phase === "running" ? "running" : phase === "complete" ? "done" : "idle";
-  const mood = glyphMood({ mode, phase: classifyPhase });
+  // Emotion for the GLYPH face — phase-driven during analysis, a per-section
+  // rotation everywhere else (see useSectionMood).
+  const mood = useSectionMood({ mode, phase, hasSpecs });
   const total = items.length + unclassifiedGoals.length;
   const providerLabel =
     AI_PROVIDERS.find((p) => p.id === provider)?.label || "—";
