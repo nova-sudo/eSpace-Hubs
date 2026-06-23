@@ -26,10 +26,23 @@ export const SPEC_KINDS: Readonly<{
   readonly INCIDENT_LOG: "INCIDENT_LOG";
   readonly RECURRING_MILESTONE: "RECURRING_MILESTONE";
   readonly SCORECARD: "SCORECARD";
+  readonly COMPOSED: "COMPOSED";
 }>;
 
 export type SpecKind = (typeof SPEC_KINDS)[keyof typeof SPEC_KINDS];
 export const ALL_SPEC_KINDS: readonly SpecKind[];
+
+export const COMPOSED_FIELD_KINDS: readonly [
+  "checkbox",
+  "counter",
+  "scale",
+  "number",
+  "text",
+  "date",
+  "select",
+  "link",
+];
+export type ComposedFieldKind = (typeof COMPOSED_FIELD_KINDS)[number];
 
 export const SOURCE_METRICS: Readonly<{
   readonly MERGED_COUNT: "merged_count";
@@ -213,6 +226,30 @@ export interface SpecScorecard {
   aggregate: ScorecardAggregate;
 }
 
+/**
+ * One declarative field of a COMPOSED (generative) widget. The classifier
+ * invents the combination from the bounded `ComposedFieldKind` vocabulary, so
+ * the generated widget is always renderable AND gradeable. `options` is
+ * required for `kind: "select"`; `target` is an optional numeric bar for
+ * counter/number fields.
+ */
+export interface SpecField {
+  id: string;
+  kind: ComposedFieldKind;
+  label: string;
+  unit?: string;
+  help?: string;
+  optional?: boolean;
+  options?: string[];
+  target?: { op: TargetOp; value: number };
+}
+
+/** The cadence + prompt frame around a COMPOSED widget's fields. */
+export interface SpecComposed {
+  cadence?: ManualCadence;
+  prompt?: string;
+}
+
 export interface ValidatedSpec {
   schemaVersion: number;
   goalId: string;
@@ -227,6 +264,10 @@ export interface ValidatedSpec {
   untrackable: SpecUntrackable | null;
   /** Phase E: only set when widget === "SCORECARD". */
   scorecard: SpecScorecard | null;
+  /** Generative widget: the field schema + cadence/prompt frame. Only set
+   *  when widget === "COMPOSED" (null otherwise). */
+  fields?: SpecField[] | null;
+  composed?: SpecComposed | null;
   /**
    * Phase G: AI-gradeable achievement tiers distilled from the goal's
    * rubric. null when the goal has no gradeable tiers.

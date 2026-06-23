@@ -24,6 +24,13 @@ export interface BuildSpecInput {
   delegated?: unknown;
   untrackable?: unknown;
   scorecard?: unknown;
+  /** Generative COMPOSED widget: field schema + cadence/prompt frame. */
+  fields?: unknown;
+  composed?: unknown;
+  /** Achievement-tier criteria + numeric tier ladder. */
+  tiers?: unknown;
+  tierScale?: unknown;
+  firstReviewOnly?: unknown;
   classifiedAt?: number;
 }
 

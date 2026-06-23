@@ -47,6 +47,8 @@ export const SPEC_RESPONSE_SCHEMA = {
       "delegated",
       "untrackable",
       "scorecard",
+      "fields",
+      "composed",
       "firstReviewOnly",
       "tiers",
     ],
@@ -80,6 +82,7 @@ export const SPEC_RESPONSE_SCHEMA = {
           "INCIDENT_LOG",
           "RECURRING_MILESTONE",
           "SCORECARD",
+          "COMPOSED",
         ],
         description: "Widget kind from the catalogue.",
       },
@@ -357,6 +360,85 @@ export const SPEC_RESPONSE_SCHEMA = {
           "weighted-averaged into the tile's headline. Each component " +
           "is itself a (widget, kind, source, manual) tuple — its " +
           "validation runs server-side via the shared validator.",
+      },
+      fields: {
+        type: ["array", "null"],
+        description:
+          "REQUIRED (non-empty, 1-10 items) when widget is COMPOSED; MUST " +
+          "be null otherwise. Declares the per-period inputs the generated " +
+          "widget renders — one field per distinct thing the goal asks to " +
+          "document (e.g. a DR drill: a checkbox 'drill executed', a select " +
+          "'scenario', numbers 'RTO'/'RPO', a link 'findings doc'). Each " +
+          "field is a bounded primitive so it always renders + grades.",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["id", "kind", "label", "unit", "help", "optional", "options", "target"],
+          properties: {
+            id: {
+              type: ["string", "null"],
+              description: "Stable slug (e.g. 'rto_min'); null to auto-id.",
+            },
+            kind: {
+              type: "string",
+              enum: [
+                "checkbox",
+                "counter",
+                "scale",
+                "number",
+                "text",
+                "date",
+                "select",
+                "link",
+              ],
+            },
+            label: { type: "string" },
+            unit: { type: ["string", "null"] },
+            help: { type: ["string", "null"] },
+            optional: { type: ["boolean", "null"] },
+            options: {
+              type: ["array", "null"],
+              items: { type: "string" },
+              description: "Required non-empty when kind is 'select'.",
+            },
+            target: {
+              type: ["object", "null"],
+              additionalProperties: false,
+              required: ["op", "value"],
+              properties: {
+                op: { type: "string", enum: ["<=", ">=", "="] },
+                value: { type: "number" },
+              },
+              description: "Optional numeric target for counter/number fields.",
+            },
+          },
+        },
+      },
+      composed: {
+        type: ["object", "null"],
+        additionalProperties: false,
+        required: ["cadence", "prompt"],
+        properties: {
+          cadence: {
+            type: "string",
+            enum: [
+              "daily",
+              "weekly",
+              "biweekly",
+              "monthly",
+              "quarterly",
+              "per-incident",
+              "milestone",
+              "continuous",
+            ],
+            description: "How the COMPOSED widget resets/buckets each period.",
+          },
+          prompt: { type: ["string", "null"] },
+        },
+        description:
+          "Frame for a COMPOSED widget: the reset cadence + a one-line " +
+          "instruction shown above the fields. REQUIRED when widget is " +
+          "COMPOSED; MUST be null otherwise.",
       },
       tiers: {
         type: ["object", "null"],

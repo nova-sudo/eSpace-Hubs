@@ -5,6 +5,7 @@
 export {
   SPEC_KINDS,
   ALL_SPEC_KINDS,
+  COMPOSED_FIELD_KINDS,
   SOURCE_METRICS,
   ALL_SOURCE_METRICS,
   SPEC_VARIANTS,
@@ -23,6 +24,9 @@ export {
 
 export type {
   SpecKind,
+  ComposedFieldKind,
+  SpecField,
+  SpecComposed,
   SourceMetric,
   SpecVariant,
   SourceProvider,
