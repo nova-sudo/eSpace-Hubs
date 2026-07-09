@@ -104,7 +104,7 @@ services:
     # fetch failed` while a `curl` from the host succeeds.
     extra_hosts:
       host.docker.internal: host-gateway
-      # git.bcn.crealogix.net: 192.168.104.31
+      git.bcn.crealogix.net: 192.168.104.31
       # jira.bcn.crealogix.net: 10.x.x.x
       # jenkins.bcn.crealogix.net: 10.x.x.x
     depends_on:
@@ -124,6 +124,44 @@ services:
     # need the extra_hosts mapping above; flip to host networking
     # only when the container can resolve but can't reach the IP.
     # network_mode: "host"
+
+  web:
+    # Full-stack local parity with the Coolify split deploy: the Next.js
+    # frontend as a container forwarding /api/v1/* to the `api` service
+    # (API_ORIGIN) instead of the in-process catch-all. Profile-gated so a
+    # plain `docker compose up -d` (mongo + api) is unchanged. Bring the
+    # whole stack up with:
+    #   docker compose --profile full up -d --build
+    profiles: ["full"]
+    container_name: espace-devhub-web
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # NEXT_PUBLIC_* are inlined into the client bundle at BUILD time.
+        # These mirror the Coolify "build variables"; override via a root
+        # .env file next to this compose file.
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+        NEXT_PUBLIC_AUTH_REQUIRED: ${NEXT_PUBLIC_AUTH_REQUIRED:-false}
+        NEXT_PUBLIC_JIRA_URL: ${NEXT_PUBLIC_JIRA_URL:-}
+        NEXT_PUBLIC_GITLAB_URL: ${NEXT_PUBLIC_GITLAB_URL:-}
+        NEXT_PUBLIC_JENKINS_URL: ${NEXT_PUBLIC_JENKINS_URL:-}
+        NEXT_PUBLIC_GITHUB_CLIENT_ID: ${NEXT_PUBLIC_GITHUB_CLIENT_ID:-}
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      # Split mode: the next.config rewrite forwards /api/v1/* here, and
+      # the server-side GitHub OAuth exchange fetches INTERNAL_API_URL.
+      # `api` resolves via Compose's service-name DNS.
+      API_ORIGIN: http://api:4000
+      INTERNAL_API_URL: http://api:4000
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
 
   tunnel:
     # Optional Cloudflare Tunnel sidecar. Activate with --profile tunnel.
