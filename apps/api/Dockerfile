@@ -29,25 +29,30 @@ WORKDIR /repo
 # `npm ci` can hoist correctly.
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
-COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
 
-# Install everything (the api's `dependencies` include typescript +
-# @types/* from PR #95 so this is the same install Vercel uses).
-RUN npm ci
+# Install ONLY the api + shared subtree — NOT the apps/web frontend. The
+# api image has no use for Next/React/GSAP/etc., and installing the whole
+# monorepo tree spikes memory enough to OOM small build hosts (e.g. a
+# modest Coolify server). `npm ci --workspace` does NOT reduce the
+# install (ci always materialises the full lockfile), so instead we drop
+# apps/web from the workspaces list and use `npm install` — which honours
+# the reduced set. Dep versions still resolve from package-lock.json.
+# ci would reject the package.json↔lock mismatch, hence install.
+RUN node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json'));p.workspaces=(p.workspaces||[]).filter(w=>w!=='apps/web');fs.writeFileSync('package.json',JSON.stringify(p,null,2))" \
+    && npm install --omit=dev --no-audit --no-fund
 
 # Copy only what the api build needs. We deliberately skip apps/web/src
 # so editing the frontend doesn't bust the api image's cache.
 COPY packages/shared packages/shared
 COPY apps/api apps/api
 
-# Compile TS → dist/. Same step the Vercel build runs.
+# Compile TS → dist/. Same step the Vercel build runs. typescript is a
+# regular (non-dev) dependency of apps/api, so it survived --omit=dev.
 RUN npm run build --workspace=@espace-devhub/api
 
-# Trim devDeps to keep the runtime image small. apps/api currently
-# has only `pino-pretty` + `tsx` in devDependencies — neither is
-# needed in production.
-RUN npm prune --omit=dev --workspaces
+# No prune step needed — the install above was already --omit=dev, so the
+# tree carries no devDependencies to trim.
 
 # ─── runtime stage ─────────────────────────────────────────────────
 FROM node:20-alpine
