@@ -174,6 +174,13 @@ Acceptance criteria:
 
 ## Phase 2 - Compact daily dashboard
 
+> **Status: shipped (commit b55cae5), then removed.** P2.1 and P2.2 were
+> built as described below, but the compact/presentation toggle was later
+> pulled out entirely — `features/dashboard/use-dashboard-view.js` and
+> `features/dashboard/compact-dashboard.jsx` no longer exist, and
+> `DashboardPage` always renders the presentation `ScrollShell`. Kept here
+> for history; do not treat P2.1/P2.2 as open work.
+
 Target: 3 to 5 days.
 
 Purpose:

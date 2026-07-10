@@ -15,7 +15,7 @@ import { useHubLink } from "@/features/hubs";
  *   4. → Generate evidence
  *
  * All steps are derived from real app state — no independent checkboxes.
- * Sits at the top of the Evidence page and the compact dashboard.
+ * Sits at the top of the Evidence page.
  */
 export function ReviewPrepChecklist() {
   const { isConnected } = useIntegrations();

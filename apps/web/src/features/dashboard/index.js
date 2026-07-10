@@ -1,5 +1,4 @@
 export { DashboardPage } from "./dashboard-page";
-export { useDashboardView, setDashboardView } from "./use-dashboard-view";
 export { GoalsTabPage } from "./goals-tab-page";
 export {
   ScrollShell,

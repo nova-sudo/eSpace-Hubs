@@ -62,6 +62,12 @@ This spec covers the first sprint from `docs/app-improvement-execution-plan.md`:
 
 ### P2 - Daily scanning
 
+> **Since removed:** both items below shipped as described, but the compact
+> view mode was later pulled out entirely (`use-dashboard-view.js` and
+> `compact-dashboard.jsx` are deleted; `DashboardPage` always renders
+> presentation mode now). The evidence paths no longer exist — left here as
+> a historical record, not a pointer to live code.
+
 - [x] Add dashboard `presentation` / `compact` view-mode preference.  
   Evidence: `features/dashboard/use-dashboard-view.js` — `useSyncExternalStore`
   + localStorage, `useDashboardView()` hook exported from barrel.
@@ -80,7 +86,8 @@ This spec covers the first sprint from `docs/app-improvement-execution-plan.md`:
 - [x] Add review-prep checklist.  
   Evidence: `features/evidence/review-prep-checklist.jsx` — state-derived strip
   (code host ✓/✗, Jira ✓/✗, snapshot this week ✓/✗, → Generate evidence link).
-  Added to evidence page header and compact dashboard.
+  Added to the evidence page header (and, at the time, the now-removed
+  compact dashboard).
 - [x] Add snapshot/evidence provenance.  
   Evidence: `tiles/snapshots-tile.jsx` — shows "⚠ Partial data — {gaps}" when
   `snapshot.partial === true`. Provenance fields (`partial`, `gaps`) already

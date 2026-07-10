@@ -7,16 +7,8 @@ import {
   GlanceSection,
   TrendSection,
 } from "./sections";
-import { CompactDashboard } from "./compact-dashboard";
-import { useDashboardView } from "./use-dashboard-view";
 
 export function DashboardPage() {
-  const { mode } = useDashboardView();
-
-  if (mode === "compact") {
-    return <CompactDashboard />;
-  }
-
   return (
     <ScrollShell>
       <OverviewSection />
