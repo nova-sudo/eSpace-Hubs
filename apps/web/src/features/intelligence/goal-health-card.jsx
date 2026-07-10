@@ -21,11 +21,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Pill } from "@/components/ui";
-import { SPEC_KIND_META } from "@/features/goal-specs";
+import { SPEC_KIND_META, specCadence } from "@/features/goal-specs";
 import { cadenceWindowLabel } from "@/features/goal-inputs";
 import { GoalTierBadge } from "@/features/goal-tiers";
 import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
-import { currentWindowKey, setLock } from "@/features/goal-locks";
+import {
+  currentWindowKey,
+  reopenCurrentWindow,
+  setLock,
+} from "@/features/goal-locks";
 import { GOAL_READINESS, readinessLabel } from "@/features/goal-widgets";
 import { useHubLink } from "@/features/hubs";
 import { cn } from "@/lib/cn";
@@ -46,7 +50,9 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
   const meta = statusDisplay(health);
   const kindLabel = SPEC_KIND_META[spec?.widget]?.label ?? "Goal";
   const fill = health.fill;
-  const cadence = spec?.manual?.cadence ?? null;
+  // manual.cadence OR composed.cadence — must match what deriveGoalHealth
+  // bucketed on, so the strip label and lock key agree with the status.
+  const cadence = specCadence(spec);
   const windowKey = currentWindowKey(cadence);
 
   // G1 — a not-ready goal can't be filled or graded. Show a setup affordance
@@ -139,7 +145,7 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
           {!needsSetup && health.status === HEALTH.LOCKED ? (
             <button
               type="button"
-              onClick={() => setLock(goal?.id, windowKey, false)}
+              onClick={() => reopenCurrentWindow(goal?.id, windowKey)}
               className="text-[10px] uppercase tracking-[0.4px] text-muted-fg/70 hover:text-fg"
               style={{ fontFamily: "var(--font-mono)" }}
             >

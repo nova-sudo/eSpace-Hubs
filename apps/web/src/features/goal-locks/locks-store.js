@@ -78,6 +78,30 @@ export function toggleLock(goalId, windowKey) {
   setLock(goalId, windowKey, !isLocked(goalId, windowKey));
 }
 
+/**
+ * isLocked, with a one-way migration fallback to the legacy "all" bucket.
+ *
+ * Before COMPOSED goals resolved their own cadence (they used to fall
+ * through to `currentWindowKey(undefined)` → "all"), a "nothing to report"
+ * lock on a composed goal was written under `<goalId>::all`. Once cadence
+ * resolution was fixed, `windowKey` became a real per-window key (e.g.
+ * "2026-07") that never matches that old entry — silently un-finalizing
+ * every composed goal a user had already settled. Falling back to "all"
+ * when the real key isn't locked keeps those pre-fix locks honored.
+ */
+export function isCurrentWindowLocked(goalId, windowKey) {
+  if (isLocked(goalId, windowKey)) return true;
+  if (windowKey !== "all" && isLocked(goalId, "all")) return true;
+  return false;
+}
+
+/** Reopen the current window — clears both the real key and any legacy
+ * "all" leftover, so a stale pre-migration lock can't keep re-settling it. */
+export function reopenCurrentWindow(goalId, windowKey) {
+  setLock(goalId, windowKey, false);
+  if (windowKey !== "all") setLock(goalId, "all", false);
+}
+
 /* ─────────────────── useSyncExternalStore plumbing ─────────────────── */
 
 export function subscribeLocks(cb) {

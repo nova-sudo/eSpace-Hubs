@@ -28,7 +28,12 @@
  *                 target defined, in which case presence === on pace).
  */
 
-import { SPEC_KINDS, SPEC_KIND_META, SPEC_VARIANTS } from "@/features/goal-specs";
+import {
+  SPEC_KINDS,
+  SPEC_KIND_META,
+  SPEC_VARIANTS,
+  specCadence,
+} from "@/features/goal-specs";
 import { computeCompliance, fillStats } from "@/features/goal-inputs";
 import { goalReadiness, GOAL_READINESS } from "@/features/goal-widgets";
 
@@ -117,7 +122,10 @@ export function deriveGoalHealth({
     return { status: HEALTH.AUTO, needsFill: false, fill: null, compliance: null };
   }
 
-  const cadence = spec.manual?.cadence ?? null;
+  // COMPOSED keeps its cadence at `composed.cadence` — specCadence resolves
+  // both homes, so a monthly composed goal buckets on months, not the
+  // weekly fallback (which mislabeled it stale/overdue after 2+ weeks).
+  const cadence = specCadence(spec);
   const target = spec.manual?.target ?? null;
   const fill = fillStats(entries, cadence);
 

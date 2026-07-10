@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { WidgetShell, TargetChip } from "../widget-shell";
 import { useDataSource } from "../data-sources/use-data-source";
 import { useGoalInputs } from "@/features/goal-inputs";
 import { useGoalContext } from "@/features/goal-context";
 import { useGradedPrs } from "@/features/grading";
+import { publishGoalLiveReading } from "@/features/goal-tiers";
 import {
   componentScore,
   aggregateScore,
@@ -97,6 +98,44 @@ export function ScorecardWidget({
 
   const score = aggregateScore(scoredEntries, aggregate);
   const { pass, total } = passingCount(scoredEntries);
+
+  // Close the spec ↔ data ↔ grader loop: publish the composite reading the
+  // tile displays so useGoalTier grades against it (and re-grades when a
+  // component's value changes). The component data lives only here — SWR
+  // sources, sub-goal inputs, rubric verdicts — so the widget is the one
+  // place that can emit it. Serialized so the effect only fires on real
+  // changes, not on every render's fresh row identities; held back while
+  // any component is still loading so half-empty readings don't churn the
+  // grading cache key.
+  const goalId = goal?.id ?? null;
+  const liveJson = useMemo(() => {
+    if (!goalId) return null;
+    if (rows.some((r) => r?.isLoading)) return null;
+    const comps = components.map((c, i) => ({
+      label:
+        c?.label?.trim() ||
+        c?.widget?.replace(/_/g, " ").toLowerCase() ||
+        `component ${i + 1}`,
+      value: extractValue(c, rows[i]?.data) ?? null,
+      unit: isPercentMetric(c?.widget) ? "%" : "",
+      target: c?.source?.target || c?.manual?.target || null,
+      score: scoredEntries[i]?.score ?? null,
+      weight: Number.isFinite(c?.weight) ? c.weight : null,
+    }));
+    const hasAny = score != null || comps.some((c) => c.value != null);
+    return JSON.stringify(
+      hasAny
+        ? { widget: "SCORECARD", aggregate, score, pass, total, components: comps }
+        : null,
+    );
+    // rows/scoredEntries are rebuilt per render; the JSON string is the
+    // stable identity the publish effect keys on.
+  }, [goalId, rows, components, scoredEntries, score, pass, total, aggregate]);
+
+  useEffect(() => {
+    if (!goalId || liveJson == null) return;
+    publishGoalLiveReading(goalId, JSON.parse(liveJson));
+  }, [goalId, liveJson]);
 
   // #3: clicking a component row opens a modal with the FULL widget
   // body — criteria editor + Grade button for CODE_RUBRIC, full
@@ -610,10 +649,16 @@ function useComponentData(component, parentGoal, index) {
 
   // MANUAL: synthesise a data shape from the input entries so
   // `extractValue` can read it uniformly with the AUTO branches.
+  //
+  // isLoading follows the inputs store's hydration flag, not a hardcoded
+  // false: before the goal-inputs GET resolves, `entries` reads as [] —
+  // indistinguishable from "genuinely empty" — so a caller publishing this
+  // row's data (the tier grader's live-reading feed) would otherwise
+  // overwrite a real reading with a fabricated zero on first mount.
   const entries = inputs.entries || [];
   return {
     data: synthesizeManualData(component.widget, entries),
-    isLoading: false,
+    isLoading: !inputs.fetched,
     error: null,
   };
 }

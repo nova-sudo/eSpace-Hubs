@@ -53,7 +53,9 @@ export function IntelligencePage() {
         right={
           <div className="flex gap-2">
             <Link href={link("/evidence")}>
-              <Button variant="ghost">Compile review →</Button>
+              <Button variant="ghost" size="lg">
+                Compile review →
+              </Button>
             </Link>
             <Link href={fillHref}>
               <Button size="lg">Track goals →</Button>

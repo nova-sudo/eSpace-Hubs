@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useSnapshots } from "@/features/snapshots";
 import { useGoalInputs, getInputsState, currentPeriodKey } from "@/features/goal-inputs";
-import { useGoalContext } from "@/features/goal-context";
+import { useGoalContext, useIsContextComplete } from "@/features/goal-context";
 import { SPEC_KINDS } from "@/features/goal-specs";
 import { getAiProvider } from "@/features/analyst";
 import {
@@ -26,6 +26,12 @@ import {
   setGoalTierVerdict,
   subscribeGoalTiers,
 } from "./goal-tier-store";
+import {
+  getGoalLiveReadingsServerSnapshot,
+  getGoalLiveReadingsSnapshot,
+  readGoalLiveReading,
+  subscribeGoalLiveReadings,
+} from "./live-readings-store";
 import { gradeNumericTier, numericReadingFor } from "./grade-numeric";
 
 /** Shown when there's no usable reading yet — deferred, not "not achieved". */
@@ -35,6 +41,34 @@ const AWAITING_VERDICT = Object.freeze({
   reasoning: "Awaiting data — fill the check-in or connect the source.",
   confidence: "low",
 });
+
+/**
+ * Shown while the goal still needs setup (context questions unanswered,
+ * untrackable, or delegated). A not-ready goal can't be filled, so grading it
+ * against whatever stale entries exist produced verdicts like "over achieved"
+ * under a "define before tracking" form. Deferred until the user finishes
+ * setup — the same readiness gate the widget resolver and check-in obey.
+ */
+const SETUP_VERDICT = Object.freeze({
+  tier: null,
+  awaiting: true,
+  pendingSetup: true,
+  reasoning: "Setup incomplete — finish defining this goal before it's graded.",
+  confidence: "low",
+});
+
+/**
+ * Readiness predicate, inlined rather than imported from
+ * `@/features/goal-widgets` (goalReadiness): goal-widgets' barrel imports
+ * this feature for the ladder/badge, so importing back would close an
+ * ES-module cycle. Keep in sync with `goal-widgets/readiness.js`.
+ */
+function specNeedsSetup(spec, contextComplete) {
+  if (!spec) return false; // no spec → hasTiers is false anyway
+  if (spec.untrackable) return true;
+  if (spec.delegated?.delegated) return true;
+  return !!(spec.context?.required && !contextComplete);
+}
 
 function todayStamp() {
   return new Date().toISOString().slice(0, 10);
@@ -81,12 +115,18 @@ function readingToText(reading) {
  * recurring-milestone / incident / scorecard widgets). AUTO widgets fall
  * back to the snapshot reading (captureGoalReadings populates those).
  */
-function buildCurrentData(spec, entries, reading) {
+function buildCurrentData(spec, entries, reading, liveReading) {
   const widget = spec?.widget;
   const list = Array.isArray(entries) ? entries : [];
   const latest = list.length ? list[list.length - 1] : null;
 
   switch (widget) {
+    // Composite widget — its component values (SWR sources, sub-goal inputs,
+    // rubric verdicts) only exist inside the mounted widget, which publishes
+    // them as a live reading. Grade on that; the snapshot reading is the
+    // fallback for devices where the widget hasn't rendered yet.
+    case SPEC_KINDS.SCORECARD:
+      return liveScorecardToText(liveReading) || readingToText(reading);
     // One-time checklist — the latest entry IS the whole picture.
     case SPEC_KINDS.MILESTONE: {
       const items = Array.isArray(latest?.value?.items) ? latest.value.items : [];
@@ -257,6 +297,38 @@ function buildCurrentData(spec, entries, reading) {
 }
 
 /**
+ * Serialize a SCORECARD's published live reading into grader-friendly prose:
+ * the composite score plus one line per component (value, target, score,
+ * weight). Empty string when nothing was published yet.
+ */
+function liveScorecardToText(live) {
+  if (!live || typeof live !== "object") return "";
+  const bits = [];
+  if (Number.isFinite(live.score)) {
+    bits.push(
+      `composite score: ${live.score}%${live.aggregate ? ` (${live.aggregate})` : ""}`,
+    );
+  }
+  if (Number.isFinite(live.pass) && Number.isFinite(live.total) && live.total > 0) {
+    bits.push(`${live.pass}/${live.total} components on target`);
+  }
+  const comps = Array.isArray(live.components) ? live.components : [];
+  const lines = comps.map((c) => {
+    const parts = [
+      `${c?.label || "component"}: ${c?.value == null ? "no data" : `${c.value}${c.unit || ""}`}`,
+    ];
+    if (c?.target && c.target.value != null) {
+      parts.push(`target ${c.target.op || ">="} ${c.target.value}`);
+    }
+    if (c?.score != null) parts.push(`score ${c.score}%`);
+    if (Number.isFinite(c?.weight)) parts.push(`weight ${c.weight}`);
+    return parts.join(", ");
+  });
+  if (lines.length) bits.push(`components — ${lines.join("; ")}`);
+  return bits.length ? `scorecard (live) — ${bits.join("; ")}` : "";
+}
+
+/**
  * Render the evidence a user attached to checklist items as a compact
  * "label: proof" string for the grader. Empty when no item carries evidence.
  * This is what lets the grader credit "documented" criteria against real
@@ -346,8 +418,12 @@ function contextToText(spec, answers) {
 }
 
 export function useGoalTier(goalId, spec) {
-  // Re-render when a verdict lands in the store.
-  useSyncExternalStore(
+  // Re-render when a verdict lands in the store. Captured (not discarded):
+  // the grading effect below depends on it, so a verdict landing under a
+  // STALE key (the in-flight call's key changed again before it resolved)
+  // re-fires the effect instead of wedging in "loading" forever — the
+  // in-flight guard in gradeGoalTier() had silently dropped that retry.
+  const tiersTick = useSyncExternalStore(
     subscribeGoalTiers,
     getGoalTiersSnapshot,
     getGoalTiersServerSnapshot,
@@ -357,35 +433,79 @@ export function useGoalTier(goalId, spec) {
   // useGoalInputs subscribes to the inputs store tick, so this re-reads on
   // hydration — used below to defer grading until the live data is loaded.
   const inputsHydrated = getInputsState().fetched;
+  const isScorecard = spec?.widget === SPEC_KINDS.SCORECARD;
   const tiers = spec?.tiers || null;
-  const tierScale = spec?.tierScale || null;
+  // The classifier's contract is to never emit tierScale for SCORECARD (it's
+  // graded qualitatively — the AI reads the composite + component readings
+  // as prose). Enforced here too, defensively: liveReading.score is a "%
+  // of targets attained" composite (always higher-is-better, 0-100), but
+  // tierScale.direction/units describe an arbitrary metric — if a
+  // misbehaving classifier response ever slipped a tierScale onto a
+  // SCORECARD spec, gradeNumericTier would compare the composite against
+  // the wrong-unit thresholds (or flip pass/fail under direction:"lower").
+  const tierScale = isScorecard ? null : spec?.tierScale || null;
 
   const snapReading = useMemo(
     () => latestReadingFor(snapshots, goalId),
     [snapshots, goalId],
   );
 
+  // Live reading published by the widget itself (SCORECARD) — fresher than
+  // any snapshot, and the only view of component data the hook can't
+  // recompute. Subscribing means a component change re-derives the cache
+  // key below, which is what re-triggers grading.
+  //
+  // Gated on isScorecard: the store is never cleared when a goal is
+  // reclassified to a different widget kind (nothing but a mounted
+  // ScorecardWidget ever calls publishGoalLiveReading), so an unguarded
+  // read would let a stale composite score hijack a differently-typed
+  // widget's grading — e.g. a leftover 85% "achieving" a COUNTER goal's
+  // "role model" tier against zero real entries.
+  const liveTick = useSyncExternalStore(
+    subscribeGoalLiveReadings,
+    getGoalLiveReadingsSnapshot,
+    getGoalLiveReadingsServerSnapshot,
+  );
+  const liveReading = useMemo(
+    () => (isScorecard ? readGoalLiveReading(goalId) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isScorecard, goalId, liveTick],
+  );
+
   // W1: the single numeric reading the widget is graded on, when a numeric
   // ladder (tierScale) exists. Null for qualitative widgets / no data yet.
-  const reading = useMemo(
-    () => (tierScale ? numericReadingFor(spec, entries, snapReading) : null),
-    [tierScale, spec, entries, snapReading],
-  );
+  // A published live score outranks the (possibly stale) snapshot reading.
+  const reading = useMemo(() => {
+    if (!tierScale) return null;
+    if (liveReading && Number.isFinite(liveReading.score)) {
+      return { value: liveReading.score, unit: "%" };
+    }
+    return numericReadingFor(spec, entries, snapReading);
+  }, [tierScale, spec, entries, snapReading, liveReading]);
   const hasAnyData =
-    (Array.isArray(entries) && entries.length > 0) || snapReading != null;
+    (Array.isArray(entries) && entries.length > 0) ||
+    snapReading != null ||
+    liveReading != null;
 
   // The user's own definitions (context answers) — fed into the AI grader
   // so it judges qualitative goals against the user's truth, not a guess.
   const { answers: contextAnswers } = useGoalContext(goalId);
 
+  // Readiness gate — a goal still in "define before tracking" (or flagged
+  // untrackable / delegated) is not graded at all: the criteria may be about
+  // to change (saving answers can re-scope the goal or swap the widget), and
+  // any existing entries predate the user's definitions.
+  const contextComplete = useIsContextComplete(spec);
+  const needsSetup = specNeedsSetup(spec, contextComplete);
+
   // Prose summary the AI grader sees (qualitative fallback path only).
   const currentData = useMemo(() => {
-    const base = buildCurrentData(spec, entries, snapReading);
+    const base = buildCurrentData(spec, entries, snapReading, liveReading);
     const ctx = contextToText(spec, contextAnswers);
     return ctx
       ? `${base}\n\nUser's definitions (authoritative):\n${ctx}`
       : base;
-  }, [spec, entries, snapReading, contextAnswers]);
+  }, [spec, entries, snapReading, liveReading, contextAnswers]);
 
   // Cache key busts on a new day OR any change to what the verdict depends
   // on: tiers, live data, the numeric ladder, and the numeric value.
@@ -406,6 +526,7 @@ export function useGoalTier(goalId, spec) {
     if (!goalId || !key) return;
     if (!tiers && !tierScale) return;
     if (!inputsHydrated) return;
+    if (needsSetup) return; // not ready — don't grade (and don't spend an AI call)
 
     // 1. Deterministic numeric grade — compare reading to thresholds, no AI.
     //    Instant, free, always consistent with the displayed number.
@@ -435,11 +556,21 @@ export function useGoalTier(goalId, spec) {
     } else {
       setGoalTierVerdict(goalId, AWAITING_VERDICT, key);
     }
+    // tiersTick: re-check after ANY verdict lands (including one that
+    // resolved under a now-stale key) so a dropped retry isn't permanent —
+    // gradeGoalTier's own freshness check makes the extra re-checks cheap
+    // no-ops when the stored verdict already matches `key`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [goalId, key, inputsHydrated]);
+  }, [goalId, key, inputsHydrated, needsSetup, tiersTick]);
 
   const stored = readGoalTier(goalId);
-  const verdict = stored && stored.key === key ? stored : null;
+  // A not-ready goal reports "pending setup" regardless of any cached verdict
+  // (which may predate the current definitions being edited).
+  const verdict = needsSetup
+    ? SETUP_VERDICT
+    : stored && stored.key === key
+      ? stored
+      : null;
 
   return {
     hasTiers: !!(tiers || tierScale),

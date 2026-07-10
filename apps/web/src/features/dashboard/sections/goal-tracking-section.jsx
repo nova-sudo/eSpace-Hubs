@@ -2,11 +2,7 @@
 
 import { useState } from "react";
 import { Section } from "../scroll-shell";
-import {
-  GoalWidgetsGrid,
-  WeeklyCompareCard,
-  useGoalWidgetItems,
-} from "@/features/goal-widgets";
+import { GoalWidgetsGrid, useGoalWidgetItems } from "@/features/goal-widgets";
 import { useAnalyst, ANALYST_MODES } from "@/features/analyst";
 import { removeSpec } from "@/features/goal-specs";
 import { Button, Loading } from "@/components/ui";
@@ -99,11 +95,6 @@ export function GoalTrackingSection() {
                 index={idx + 1}
               />
             ))}
-            {/* Compare-weeks table at the bottom — collapsed by default.
-                One row per goal × last 12 weekly snapshots, so users can
-                see the trajectory that produced each L1 shelf's
-                compliance number. */}
-            <WeeklyCompareCard groups={annotatedGroups} />
           </div>
         </div>
       )}

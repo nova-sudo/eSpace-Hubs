@@ -216,6 +216,17 @@ export function normalizeCadence(raw) {
   return CADENCE_SYNONYMS[key] ?? null;
 }
 
+/**
+ * The cadence a spec buckets on, wherever the spec keeps it. MANUAL-family
+ * widgets carry it at `manual.cadence`; COMPOSED carries it at
+ * `composed.cadence` (it has no `manual` block). Callers that bucket or
+ * label windows must use this instead of reading `manual.cadence` directly,
+ * or COMPOSED goals silently fall back to weekly.
+ */
+export function specCadence(spec) {
+  return spec?.manual?.cadence ?? spec?.composed?.cadence ?? null;
+}
+
 export const TARGET_OPS = Object.freeze(["<=", ">=", "="]);
 
 export const CONTEXT_QUESTION_KINDS = Object.freeze([

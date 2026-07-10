@@ -15,6 +15,7 @@ export {
   SOURCE_WINDOWS,
   MANUAL_CADENCES,
   normalizeCadence,
+  specCadence,
   TARGET_OPS,
   CONTEXT_QUESTION_KINDS,
   DELEGATED_JUDGES,

@@ -22,7 +22,7 @@
 import { useMemo, useState } from "react";
 import { useGoalInputs, buildCycleWindows } from "@/features/goal-inputs";
 import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
-import { SPEC_KINDS } from "@/features/goal-specs";
+import { SPEC_KINDS, specCadence } from "@/features/goal-specs";
 import { isLocked, setLock, useGoalLocks } from "@/features/goal-locks";
 import { useGoalTier } from "@/features/goal-tiers";
 import { ComposedFields } from "./widgets/composed-fields.jsx";
@@ -92,7 +92,7 @@ function cellVisual(state, p) {
 export function CadenceStepper({ spec, variant = "light" }) {
   const goalId = spec?.goalId;
   const { entries } = useGoalInputs(goalId);
-  const cadence = spec?.manual?.cadence ?? spec?.composed?.cadence ?? null;
+  const cadence = specCadence(spec);
   // Inline-fillable: the shared check-in editors, plus COMPOSED (which fills
   // per-period via its own <ComposedFields> body).
   const isComposed = spec?.widget === SPEC_KINDS.COMPOSED;

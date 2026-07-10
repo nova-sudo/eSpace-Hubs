@@ -23,6 +23,7 @@ export {
   SPEC_KIND_META,
   SPEC_SCHEMA_VERSION,
   SPEC_VARIANTS,
+  specCadence,
   TARGET_OPS,
 } from "./types.js";
 

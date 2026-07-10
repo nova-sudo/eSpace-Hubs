@@ -44,6 +44,9 @@ export function GoalTierBadge({ goalId, spec }) {
       </span>
     ) : null;
   }
+  // Goal still needs setup — the surfaces that render this badge already
+  // carry their own "Needs setup" affordance, so a second chip is noise.
+  if (verdict.pendingSetup) return null;
   // W1: no usable reading yet — defer, don't show a misleading tier.
   if (verdict.awaiting) {
     return (

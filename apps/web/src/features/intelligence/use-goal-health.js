@@ -24,8 +24,13 @@ import {
   useAllGoalInputs,
 } from "@/features/goal-inputs";
 import { useSnapshots } from "@/features/snapshots";
-import { isLocked, currentWindowKey, useGoalLocks } from "@/features/goal-locks";
+import {
+  isCurrentWindowLocked,
+  currentWindowKey,
+  useGoalLocks,
+} from "@/features/goal-locks";
 import { isContextComplete, useAllGoalContext } from "@/features/goal-context";
+import { specCadence } from "@/features/goal-specs";
 import {
   computeTrend,
   deriveGoalHealth,
@@ -78,9 +83,9 @@ export function useGoalHealth(groupedItems) {
       const cards = [];
       for (const { goal, spec } of group.items) {
         const entries = readGoalEntries(goal.id);
-        const lockedCurrentWindow = isLocked(
+        const lockedCurrentWindow = isCurrentWindowLocked(
           goal.id,
-          currentWindowKey(spec?.manual?.cadence),
+          currentWindowKey(specCadence(spec)),
         );
         const health = deriveGoalHealth({
           spec,

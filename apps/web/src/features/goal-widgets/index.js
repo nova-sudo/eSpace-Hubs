@@ -18,10 +18,6 @@ export { WidgetErrorBoundary } from "./widget-error-boundary";
 export { registerWidget, resolveWidget, listWidgets, missingWidgetKinds } from "./registry";
 export { useDataSource, windowToDays } from "./data-sources/use-data-source";
 export { useGoalWidgetItems } from "./use-goal-widget-items";
-export {
-  WeeklyCompareCard,
-  WeeklyCompareTable,
-} from "./weekly-compare-table";
 export { ComplianceLine } from "./compliance-line";
 export {
   goalReadiness,

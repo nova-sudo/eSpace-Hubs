@@ -6,7 +6,9 @@
 
 export {
   isLocked,
+  isCurrentWindowLocked,
   readLocks,
+  reopenCurrentWindow,
   setLock,
   toggleLock,
   LOCKS_STORAGE_KEY,

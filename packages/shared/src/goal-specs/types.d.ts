@@ -97,6 +97,9 @@ export type ManualCadence = (typeof MANUAL_CADENCES)[number];
 
 export function normalizeCadence(raw: unknown): ManualCadence | null;
 
+/** The cadence a spec buckets on — `manual.cadence`, else `composed.cadence`. */
+export function specCadence(spec: unknown): ManualCadence | null;
+
 export const TARGET_OPS: readonly ["<=", ">=", "="];
 export type TargetOp = (typeof TARGET_OPS)[number];
 

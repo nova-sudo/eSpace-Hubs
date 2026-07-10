@@ -38,6 +38,7 @@ export {
   TARGET_OPS,
   buildSpec,
   isSpec,
+  specCadence,
   validateSpec,
 } from "@espace-devhub/shared/goal-specs";
 
