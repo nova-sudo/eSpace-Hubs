@@ -272,33 +272,51 @@ function TrendArrow({ trend }) {
   );
 }
 
+// Cap the DOT rendering (not the ratio) — a weekly/daily goal's full cycle
+// is 52/365 windows, way too many for this compact card. The number always
+// reflects the true full-cycle count; only the visual strip is trimmed to
+// the most recent DOT_CAP windows.
+const DOT_CAP = 12;
+
 /**
- * "N of last M windows filled" bar — one dot per window, oldest→newest
- * (left→right), solid when that window had at least one entry. Shows the
- * actual fill PATTERN (gaps visible), not just a count. The unit noun is
- * cadence-aware so a monthly goal reads "/ 4 months", not "/ 4 weeks".
+ * "N of Y cycle windows filled" bar — one dot per (recent) window, oldest→
+ * newest (left→right), solid when that window had at least one entry. Shows
+ * the actual fill PATTERN (gaps visible), not just a count. Cycle-anchored
+ * (buildCycleWindows) — the SAME full-year window set the Goals-page cadence
+ * stepper shows, so the ratio here always matches what that page reports.
+ * The unit noun is cadence-aware so a monthly goal reads "/ 12 months", not
+ * "/ 12 weeks".
  */
 function FillStrip({ fill, cadence }) {
-  if (!fill) return null;
-  const windows = Array.isArray(fill.windows)
-    ? fill.windows
-    : new Array(fill.recentWindows || 4).fill(false);
-  const total = windows.length;
-  const filled = windows.filter(Boolean).length;
+  // total:0 covers non-bucketing cadences (fill is a minimal stand-in there,
+  // carrying only lastEntryTs for the footer) — no window concept to render.
+  if (!fill || !fill.total) return null;
+  const windows = Array.isArray(fill.windows) ? fill.windows : [];
+  const total = fill.total ?? windows.length;
+  const filled = fill.filledCount ?? windows.filter((w) => w?.filled).length;
   const noun = cadenceWindowLabel(cadence)[1]; // plural: weeks / months / …
 
-  // windows[] is newest→oldest ([0] = current). Render oldest→newest so the
-  // most-recent window sits on the right, nearest the label.
-  const ordered = windows.slice().reverse();
+  // windows[] is the FULL cycle year, oldest→newest, current-window through
+  // year-end included as "future" entries — so slicing the array's TAIL
+  // would show unstarted future periods for any cadence with >DOT_CAP total
+  // windows (weekly/biweekly/daily), not recent activity. Center the visible
+  // slice on currentIndex instead. Falls back to the tail if currentIndex is
+  // ever unavailable (shouldn't happen once a real cycle is built, but keeps
+  // this from rendering nothing on a malformed input).
+  const idx = Number.isInteger(fill.currentIndex) ? fill.currentIndex : windows.length - 1;
+  const visible =
+    windows.length > DOT_CAP
+      ? windows.slice(Math.max(0, idx - DOT_CAP + 1), idx + 1)
+      : windows;
 
   return (
     <div className="flex items-center gap-2.5">
       <div className="flex items-center gap-1">
-        {ordered.map((solid, i) => (
+        {visible.map((w, i) => (
           <span
-            key={i}
+            key={w?.key ?? i}
             className="inline-block h-2 w-2 rounded-full"
-            style={{ background: solid ? "var(--accent)" : "var(--dot-dim)" }}
+            style={{ background: w?.filled ? "var(--accent)" : "var(--dot-dim)" }}
           />
         ))}
       </div>

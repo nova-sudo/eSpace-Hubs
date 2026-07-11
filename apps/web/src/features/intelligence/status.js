@@ -34,7 +34,7 @@ import {
   SPEC_VARIANTS,
   specCadence,
 } from "@/features/goal-specs";
-import { computeCompliance, fillStats } from "@/features/goal-inputs";
+import { computeCompliance, buildCycleWindows } from "@/features/goal-inputs";
 import { goalReadiness, GOAL_READINESS } from "@/features/goal-widgets";
 
 export const HEALTH = Object.freeze({
@@ -59,13 +59,6 @@ export const NEEDS_ATTENTION = Object.freeze(
   new Set([HEALTH.NO_DATA, HEALTH.STALE]),
 );
 
-// Cadences that don't bucket into recurring windows — a milestone is
-// one-time, continuous is always-on, per-incident is event-driven. For
-// these, "filled this week" is meaningless: presence of any data = tracked.
-const NON_BUCKETING = Object.freeze(
-  new Set(["milestone", "continuous", "per-incident"]),
-);
-
 // Target-attainment ("behind") is only meaningful for widgets whose entry
 // value is a NUMBER. Checklist / composite / incident / before-after store
 // objects — feeding those to computeCompliance coerces them to NaN and
@@ -83,7 +76,17 @@ const NUMERIC_MANUAL_KINDS = Object.freeze(
  * @returns {{
  *   status: string,
  *   needsFill: boolean,
- *   fill: object | null,        // fillStats() output (null for AUTO/unclassified)
+ *   fill: object | null,        // { hasData, filledCurrentWindow, windows, total,
+ *                                //   filledCount, currentIndex, lastEntryTs }.
+ *                                // Non-pip cadences: cycle-anchored (buildCycleWindows),
+ *                                // windows/total/filledCount/currentIndex are real.
+ *                                // Non-bucketing cadences (milestone/continuous/
+ *                                // per-incident) with data: a DEGENERATE non-null
+ *                                // shape — windows:[], total:0, currentIndex:-1 —
+ *                                // carrying only lastEntryTs for the footer; check
+ *                                // `total` before treating `windows` as real (see
+ *                                // FillStrip's `!fill.total` guard). null for
+ *                                // AUTO/unclassified/no-data.
  *   compliance: object | null,  // computeCompliance() output when a target exists
  * }}
  */
@@ -127,31 +130,72 @@ export function deriveGoalHealth({
   // weekly fallback (which mislabeled it stale/overdue after 2+ weeks).
   const cadence = specCadence(spec);
   const target = spec.manual?.target ?? null;
-  const fill = fillStats(entries, cadence);
+  const list = Array.isArray(entries) ? entries : [];
+  const hasData = list.length > 0;
+  const lastEntryTs = hasData ? list[list.length - 1].ts : null;
 
-  if (!fill.hasData) {
+  if (!hasData) {
     // User finalised this window ("nothing to report") → settled, not owed.
     if (lockedCurrentWindow) {
-      return { status: HEALTH.LOCKED, needsFill: false, fill, compliance: null };
+      return { status: HEALTH.LOCKED, needsFill: false, fill: null, compliance: null };
     }
-    return { status: HEALTH.NO_DATA, needsFill: true, fill, compliance: null };
+    return { status: HEALTH.NO_DATA, needsFill: true, fill: null, compliance: null };
   }
 
-  // One-time / event-driven goals: any data means it's being tracked.
-  // We don't nag for a "current window" fill that doesn't exist.
-  if (NON_BUCKETING.has(cadence)) {
-    return { status: HEALTH.ON_PACE, needsFill: false, fill, compliance: null };
+  // Cycle-anchored windows — the SAME model the Goals-page cadence stepper
+  // uses (buildCycleWindows), so the two surfaces never disagree about which
+  // periods are filled/owed. Previously this read a SEPARATE rolling-last-4
+  // model (fillStats) that showed a fixed "X/4" regardless of cadence — a
+  // meaningless denominator for anything but quarterly (4 quarters = a year)
+  // and one that dropped real history older than 4 periods from the count.
+  // "pip" mode covers non-bucketing cadences (milestone/continuous/
+  // per-incident) and a missing/malformed cadence — any data at all means
+  // tracked, same as before. There's no real "window" concept for those, but
+  // the footer's "last logged" line still needs lastEntryTs, so `fill` stays
+  // a minimal object rather than null (FillStrip no-ops on total:0).
+  const cycle = buildCycleWindows({ entries: list, cadence, now: Date.now() });
+  if (cycle.mode === "pip") {
+    return {
+      status: HEALTH.ON_PACE,
+      needsFill: false,
+      fill: {
+        hasData: true,
+        filledCurrentWindow: true,
+        windows: [],
+        total: 0,
+        filledCount: 0,
+        currentIndex: -1,
+        lastEntryTs,
+      },
+      compliance: null,
+    };
   }
 
-  if (!fill.filledCurrentWindow) {
+  const currentWindow = cycle.currentIndex >= 0 ? cycle.windows[cycle.currentIndex] : null;
+  const filledCurrentWindow = currentWindow?.filled === true;
+  const fill = {
+    hasData: true,
+    filledCurrentWindow,
+    windows: cycle.windows, // oldest→newest window objects, unlike the old boolean[]
+    total: cycle.total,
+    filledCount: cycle.filledCount,
+    currentIndex: cycle.currentIndex,
+    lastEntryTs,
+  };
+
+  if (!filledCurrentWindow) {
     // A lock settles the current window even when it's empty.
     if (lockedCurrentWindow) {
       return { status: HEALTH.LOCKED, needsFill: false, fill, compliance: null };
     }
-    // How many consecutive recent windows (including the current one) are
+    // How many consecutive windows, walking back from the current one, are
     // empty? Two or more = the user has skipped a whole period, not just
-    // "haven't gotten to this week yet" → escalate to overdue.
-    const missedWindows = leadingEmpty(fill.windows);
+    // "haven't gotten to this week yet" → escalate to overdue. Bounded by
+    // the cycle year: a goal that's truly been stale since December briefly
+    // under-counts in the first period of January (there's nothing before
+    // it to walk back through yet) — self-corrects within a period or two
+    // as the new cycle accumulates owed windows.
+    const missedWindows = leadingEmptyFromCycle(cycle.windows, cycle.currentIndex);
     return {
       status: HEALTH.STALE,
       needsFill: true,
@@ -176,13 +220,19 @@ export function deriveGoalHealth({
   return { status: HEALTH.ON_PACE, needsFill: false, fill, compliance };
 }
 
-/** Count leading empty windows (newest→oldest) — how long it's gone dark. */
-function leadingEmpty(windows) {
-  if (!Array.isArray(windows)) return 0;
-  let n = 0;
-  for (const filled of windows) {
-    if (filled) break;
-    n += 1;
+/**
+ * Count consecutive empty windows walking BACKWARD from the current one
+ * (inclusive), stopping at the first filled window (or cycle start) — how
+ * long the goal's been gone dark, without over-counting past a real fill.
+ */
+function leadingEmptyFromCycle(windows, currentIndex) {
+  if (!Array.isArray(windows) || currentIndex < 0) return 0;
+  const current = windows[currentIndex];
+  if (!current || current.filled) return 0;
+  let n = 1;
+  for (let i = currentIndex - 1; i >= 0; i -= 1) {
+    if (windows[i]?.state === "owed") n += 1;
+    else break;
   }
   return n;
 }

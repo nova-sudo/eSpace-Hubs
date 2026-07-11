@@ -1,12 +1,14 @@
 /**
- * Cycle-anchored cadence windows — the model behind the cadence stepper.
+ * Cycle-anchored cadence windows — the model behind the cadence stepper AND
+ * the Goal Intelligence Hub's fill status (deriveGoalHealth in
+ * features/intelligence/status.js), so both surfaces agree on which periods
+ * are filled/owed instead of computing it two different ways.
  *
- * Unlike `fillStats` (which buckets "windows since the first entry"), this
- * enumerates the FIXED set of windows that tile a review cycle: a quarterly
- * goal has exactly 4 windows (Q1–Q4), a monthly goal has 12, etc. Each window
- * is tagged filled / owed / current / future from the entry timestamps and
- * `now`. Non-bucketing cadences (milestone / continuous / per-incident) and
- * cadence-less goals collapse to a single completion "pip".
+ * This enumerates the FIXED set of windows that tile a review cycle: a
+ * quarterly goal has exactly 4 windows (Q1–Q4), a monthly goal has 12, etc.
+ * Each window is tagged filled / owed / current / future from the entry
+ * timestamps and `now`. Non-bucketing cadences (milestone / continuous /
+ * per-incident) and cadence-less goals collapse to a single completion "pip".
  *
  * Pure — no React, no IO. The component passes `entries`, the cadence, and
  * `now` (Date.now() from the client). v1 anchors the cycle to the calendar
@@ -125,13 +127,21 @@ export function buildCycleWindows({
   const windows = raw.map((w, i) => {
     const filled = entryFilled(list, w.start, w.end);
     if (filled) filledCount += 1;
+    // "Is this chronologically the window containing `now`" is a POSITIONAL
+    // fact, independent of whether it's been filled — compute it on its own
+    // so currentIndex is never lost. (Bug fixed here: state's priority order
+    // gives "filled" precedence over "current" for display purposes, which
+    // used to ALSO suppress currentIndex whenever the current window already
+    // had an entry — the single most common case — silently breaking every
+    // consumer that located "today's window" via currentIndex.)
+    const isCurrentPeriod = w.start <= now && now < w.end;
     let state;
     if (filled) state = "filled";
     else if (locks?.has(w.key)) state = "settled";
     else if (w.end <= now) state = "owed";
-    else if (w.start <= now && now < w.end) state = "current";
+    else if (isCurrentPeriod) state = "current";
     else state = "future";
-    if (state === "current") currentIndex = i;
+    if (isCurrentPeriod) currentIndex = i;
     return { ...w, filled, state };
   });
 
