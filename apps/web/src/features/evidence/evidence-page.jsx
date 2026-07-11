@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -26,19 +25,28 @@ import { ReviewPrepChecklist } from "./review-prep-checklist";
 import { useGoalReadings } from "./goal-readings";
 import { toggleEvidence, useEvidenceCandidates, useStarredEvidence } from "./use-evidence";
 import { downloadMarkdown, rangeToLabel, renderMarkdown } from "./markdown-export";
+import { useReceiptsFeed } from "./use-receipts-feed";
+import { coverageByL1 } from "./receipt-goal-link";
+import { ReceiptsFeed } from "./receipts/receipts-feed";
+import { TallySidebar } from "./receipts/tally-sidebar";
 
 export function EvidencePage() {
   const { me } = useIntegrations();
   const searchParams = useSearchParams();
   const [format, setFormat] = useState("markdown");
   const [range, setRange] = useState("90d");
+  // "feed" = the receipts timeline (primary); "compile" = the document builder.
+  const [view, setView] = useState("feed");
   const link = useHubLink();
 
-  // Deep-link from the dashboard Export tile: `/evidence?print=1` opens this
-  // page with the browser print dialog auto-triggered on first render. We
-  // delay a beat so the document preview has time to mount and SWR has a
-  // chance to fill in the metric numbers (otherwise the PDF shows dashes).
+  // Deep-link from the dashboard Export tile / command palette: `?print=1` (or
+  // `?view=compile`) opens the document builder directly, and print=1 also
+  // fires the browser print once the document has mounted. We delay a beat so
+  // SWR can fill in the metric numbers (otherwise the PDF shows dashes).
   useEffect(() => {
+    const wantsCompile =
+      searchParams?.get("print") === "1" || searchParams?.get("view") === "compile";
+    if (wantsCompile) setView("compile");
     if (searchParams?.get("print") !== "1") return;
     const t = setTimeout(() => window.print(), 900);
     return () => clearTimeout(t);
@@ -81,6 +89,8 @@ export function EvidencePage() {
   );
 
   const goalReadings = useGoalReadings(days);
+  const feed = useReceiptsFeed(days);
+  const coverage = useMemo(() => coverageByL1(goalReadings), [goalReadings]);
 
   const starred = useStarredEvidence();
   const candidates = useEvidenceCandidates();
@@ -123,6 +133,37 @@ export function EvidencePage() {
     toast.success(`Starred top ${top.length} items`);
   }
 
+  // ── Feed view (primary): "everything you shipped" receipts timeline ──
+  if (view === "feed") {
+    return (
+      <main className="relative z-[2] px-10 pb-14 pt-9">
+        <div className="mb-6 no-print">
+          <ReviewPrepChecklist />
+        </div>
+        <PageHeader
+          crumb="Evidence · receipts"
+          title="Everything you shipped."
+          italicWord="."
+          right={
+            <div className="flex items-center gap-2">
+              <RangeToggle range={range} setRange={setRange} />
+            </div>
+          }
+        />
+        <div className="grid grid-cols-[minmax(0,1fr)_300px] items-start gap-[26px]">
+          <ReceiptsFeed groups={feed.groups} loading={feed.loading} />
+          <TallySidebar
+            rangeLabel={range}
+            tally={feed.tally}
+            coverage={coverage}
+            onCompile={() => setView("compile")}
+          />
+        </div>
+      </main>
+    );
+  }
+
+  // ── Compile view: the document builder (reached via "Compile into review →") ──
   return (
     <main className="relative z-[2] px-10 pb-14 pt-9">
       <div className="mb-6 no-print">
@@ -135,9 +176,9 @@ export function EvidencePage() {
         subtitle="Turn scattered receipts into one reviewable document. You pick what to include; the data speaks for itself."
         right={
           <div className="flex gap-2 no-print">
-            <Link href={link("")}>
-              <Button variant="ghost">← Dashboard</Button>
-            </Link>
+            <Button variant="ghost" onClick={() => setView("feed")}>
+              ← Receipts
+            </Button>
             <Button size="lg" onClick={handleExport}>
               Export {format === "markdown" ? ".md" : ".pdf"}
             </Button>
@@ -192,6 +233,30 @@ export function EvidencePage() {
         </div>
       </div>
     </main>
+  );
+}
+
+/** Compact 30d / 90d range toggle for the feed header. */
+function RangeToggle({ range, setRange }) {
+  return (
+    <div className="flex overflow-hidden rounded-[var(--radius-sub)] border border-border">
+      {["30d", "90d"].map((r) => (
+        <button
+          key={r}
+          type="button"
+          onClick={() => setRange(r)}
+          className="px-3 py-1.5 uppercase tracking-[0.6px] transition-colors"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            color: range === r ? "var(--accent-on)" : "var(--muted-fg)",
+            background: range === r ? "var(--accent)" : "transparent",
+          }}
+        >
+          {r}
+        </button>
+      ))}
+    </div>
   );
 }
 
