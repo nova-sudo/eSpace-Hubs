@@ -5,6 +5,7 @@ const TONES = {
   accent: "bg-accent-dim text-accent",
   solid: "bg-accent text-accent-on",
   warn: "bg-[color-mix(in_srgb,var(--warn)_14%,transparent)] text-warn",
+  bad: "bg-[color-mix(in_srgb,var(--bad)_14%,transparent)] text-bad",
   ok: "bg-[color-mix(in_srgb,var(--good)_14%,transparent)] text-good",
   muted: "bg-[color-mix(in_srgb,var(--fg)_5%,transparent)] text-muted-fg",
 };

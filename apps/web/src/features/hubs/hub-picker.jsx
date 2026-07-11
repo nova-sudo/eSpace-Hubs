@@ -108,7 +108,7 @@ function HubCard({ hub, isPrimary, onClick }) {
       onClick={onClick}
       className="group relative flex flex-col items-start gap-3 overflow-hidden rounded-lg border-2 p-5 text-left transition-all hover:-translate-y-0.5"
       style={{
-        background: "#ffffff",
+        background: "var(--card)",
         borderColor: hub.theme.accent,
         boxShadow: `0 1px 0 0 ${hub.theme.accentSurface}, 0 0 0 0 ${hub.theme.accentSurface}`,
       }}

@@ -7,24 +7,25 @@ import { useEffect, useState } from "react";
  * no-flash script in app/layout.jsx reads on first paint, and applies the
  * `data-theme` attribute live so the switch is instant.
  *
- * Three values are persisted: "light" / "dark" / "system". Clicking flips
- * to the opposite of whatever is currently *resolved* (an explicit choice),
- * so the first click always lands you in the mode the icon promises.
+ * Dark ("Nothing UI" pure-black) is the default: only an explicit "light"
+ * choice paints light; anything else (unset / legacy "system") resolves to
+ * dark, matching the no-flash script in app/layout.jsx. Clicking flips to the
+ * opposite of whatever is currently *resolved*, so the first click always
+ * lands you in the mode the icon promises.
  */
 const KEY = "espace-theme";
 
 function applyTheme(mode) {
-  const root = document.documentElement;
-  if (mode === "light" || mode === "dark") root.setAttribute("data-theme", mode);
-  else root.removeAttribute("data-theme");
+  // Always pin an explicit attribute so dark is the effective default even
+  // when the OS is light — the app is dark-first now, not system-following.
+  document.documentElement.setAttribute(
+    "data-theme",
+    mode === "light" ? "light" : "dark",
+  );
 }
 
 function resolve(mode) {
-  if (mode === "light" || mode === "dark") return mode;
-  return typeof window !== "undefined" &&
-    window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
+  return mode === "light" ? "light" : "dark";
 }
 
 export function ThemeToggle() {
@@ -39,7 +40,7 @@ export function ThemeToggle() {
     } catch {
       /* private mode / blocked storage — fall back to system */
     }
-    setMode(saved || "system");
+    setMode(saved || "dark");
   }, []);
 
   // Reserve the slot before mount to avoid a layout shift in the header.

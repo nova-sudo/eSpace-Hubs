@@ -30,13 +30,14 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body>
-        {/* No-flash theme: apply the saved dark/light choice before hydration
-            so the first paint matches. "system" leaves the attribute off and
-            prefers-color-scheme decides (handled in globals.css). */}
+        {/* No-flash theme: apply the theme before hydration so the first paint
+            matches. Dark ("Nothing UI" pure-black) is the DEFAULT — an unset or
+            "system" preference resolves to dark; only an explicit "light"
+            opt-out paints light. Keeps the header toggle fully functional. */}
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{var t=localStorage.getItem('espace-theme');if(t&&t!=='system')document.documentElement.setAttribute('data-theme',t);}catch(e){}",
+              "try{var t=localStorage.getItem('espace-theme');document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark');}catch(e){document.documentElement.setAttribute('data-theme','dark');}",
           }}
         />
         {/* SessionProvider kicks off the initial /auth/me lookup so
@@ -69,7 +70,7 @@ export default function RootLayout({ children }) {
           {children}
         </SessionProvider>
         <Toaster
-          theme="system"
+          theme="dark"
           richColors
           closeButton
           toastOptions={{

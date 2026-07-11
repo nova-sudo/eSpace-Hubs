@@ -28,11 +28,29 @@ function generate() {
   return _cached;
 }
 
-export function Grain({ opacity = 0.5, blend = "multiply" }) {
+/**
+ * @param {number}  opacity
+ * @param {"multiply"|"screen"} [blend]  Force a blend mode. When omitted the
+ *        grain follows the theme: `multiply` darkens paper on the light canvas,
+ *        `screen` lifts speckle on the pure-black dark canvas (a `multiply`
+ *        grain is invisible on #050505). Tracks live theme toggles.
+ */
+export function Grain({ opacity = 0.5, blend }) {
   const [url, setUrl] = useState("");
+  const [autoBlend, setAutoBlend] = useState("screen");
+
   useEffect(() => {
     setUrl(generate());
+    const root = document.documentElement;
+    const resolve = () =>
+      setAutoBlend(root.getAttribute("data-theme") === "light" ? "multiply" : "screen");
+    resolve();
+    // Theme flips flip the attribute directly (no React re-render), so watch it.
+    const obs = new MutationObserver(resolve);
+    obs.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => obs.disconnect();
   }, []);
+
   if (!url) return null;
   return (
     <div
@@ -41,7 +59,7 @@ export function Grain({ opacity = 0.5, blend = "multiply" }) {
       style={{
         backgroundImage: `url(${url})`,
         backgroundSize: "180px 180px",
-        mixBlendMode: blend,
+        mixBlendMode: blend ?? autoBlend,
         opacity,
       }}
     />
