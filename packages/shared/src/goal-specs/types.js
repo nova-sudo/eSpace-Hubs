@@ -315,4 +315,25 @@ export const SPEC_KIND_META = Object.freeze({
   },
 });
 
+/**
+ * Widget kinds whose editor keeps a SINGLE running record (latest-wins),
+ * not one entry per cadence period. A MILESTONE is one checklist; a
+ * BEFORE_AFTER is one measurement pair. They have no genuine per-period
+ * state even if the classifier assigns them a bucketing cadence, so any
+ * surface that tiles a goal into per-period windows (the cadence stepper's
+ * fillable cells, the Intelligence Hub's fill/staleness math) must treat
+ * these as non-bucketing — otherwise a "backfill this period" affordance
+ * writes into a window the latest-wins read can never surface, and the
+ * edit silently does nothing. RECURRING_MILESTONE and COMPOSED are the
+ * genuinely per-period manual kinds and are deliberately NOT here.
+ */
+export const SINGLE_RECORD_WIDGET_KINDS = Object.freeze(
+  new Set([SPEC_KINDS.MILESTONE, SPEC_KINDS.BEFORE_AFTER]),
+);
+
+/** True when a widget kind keeps one latest-wins record, not per-period entries. */
+export function isSingleRecordWidget(widget) {
+  return SINGLE_RECORD_WIDGET_KINDS.has(widget);
+}
+
 export const SPEC_SCHEMA_VERSION = 1;

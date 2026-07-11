@@ -22,7 +22,7 @@
 import { useMemo, useState } from "react";
 import { useGoalInputs, buildCycleWindows } from "@/features/goal-inputs";
 import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
-import { SPEC_KINDS, specCadence } from "@/features/goal-specs";
+import { SPEC_KINDS, specCadence, isSingleRecordWidget } from "@/features/goal-specs";
 import { isLocked, setLock, useGoalLocks } from "@/features/goal-locks";
 import { useGoalTier } from "@/features/goal-tiers";
 import { ComposedFields } from "./widgets/composed-fields.jsx";
@@ -92,7 +92,14 @@ function cellVisual(state, p) {
 export function CadenceStepper({ spec, variant = "light" }) {
   const goalId = spec?.goalId;
   const { entries } = useGoalInputs(goalId);
-  const cadence = specCadence(spec);
+  // Single-record kinds (MILESTONE / BEFORE_AFTER) render as one completion pip
+  // by forcing a null cadence into buildCycleWindows — no per-window cells, so
+  // no shadowed-backfill toggle. A one-time checklist / measurement pair has no
+  // per-period state; its editor keeps a single latest-wins record that a
+  // backfill write into a past window can never surface (the reported bug). The
+  // Intelligence Hub's deriveGoalHealth applies the identical treatment so both
+  // surfaces agree. RECURRING_MILESTONE / COMPOSED are genuinely per-period.
+  const cadence = isSingleRecordWidget(spec?.widget) ? null : specCadence(spec);
   // Inline-fillable: the shared check-in editors, plus COMPOSED (which fills
   // per-period via its own <ComposedFields> body).
   const isComposed = spec?.widget === SPEC_KINDS.COMPOSED;

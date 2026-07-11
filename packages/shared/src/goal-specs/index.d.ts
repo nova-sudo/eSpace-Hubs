@@ -20,6 +20,8 @@ export {
   CONTEXT_QUESTION_KINDS,
   DELEGATED_JUDGES,
   SPEC_KIND_META,
+  SINGLE_RECORD_WIDGET_KINDS,
+  isSingleRecordWidget,
   SPEC_SCHEMA_VERSION,
 } from "./types.js";
 

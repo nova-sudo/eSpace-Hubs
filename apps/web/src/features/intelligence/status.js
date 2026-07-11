@@ -33,6 +33,7 @@ import {
   SPEC_KIND_META,
   SPEC_VARIANTS,
   specCadence,
+  isSingleRecordWidget,
 } from "@/features/goal-specs";
 import { computeCompliance, buildCycleWindows } from "@/features/goal-inputs";
 import { goalReadiness, GOAL_READINESS } from "@/features/goal-widgets";
@@ -128,7 +129,15 @@ export function deriveGoalHealth({
   // COMPOSED keeps its cadence at `composed.cadence` — specCadence resolves
   // both homes, so a monthly composed goal buckets on months, not the
   // weekly fallback (which mislabeled it stale/overdue after 2+ weeks).
-  const cadence = specCadence(spec);
+  //
+  // Single-record kinds (MILESTONE / BEFORE_AFTER) are forced non-bucketing
+  // (null cadence → pip mode below → ON_PACE once they have data): a one-time
+  // checklist / measurement pair has no "this quarter" to be behind on, and
+  // the Goals-page cadence stepper renders them the same way. Without this a
+  // one-time milestone with a classifier-assigned quarterly cadence would read
+  // "X/4 quarters" and flip to STALE/overdue for not being touched "this
+  // period" — nagging the user to re-do a goal that's done.
+  const cadence = isSingleRecordWidget(spec.widget) ? null : specCadence(spec);
   const target = spec.manual?.target ?? null;
   const list = Array.isArray(entries) ? entries : [];
   const hasData = list.length > 0;

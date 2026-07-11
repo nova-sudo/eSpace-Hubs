@@ -122,6 +122,10 @@ export interface SpecKindMeta {
 }
 export const SPEC_KIND_META: Readonly<Record<SpecKind, SpecKindMeta>>;
 
+/** Widget kinds whose editor keeps one latest-wins record, not per-period entries. */
+export const SINGLE_RECORD_WIDGET_KINDS: ReadonlySet<SpecKind>;
+export function isSingleRecordWidget(widget: unknown): boolean;
+
 export const SPEC_SCHEMA_VERSION: 1;
 
 // ─── result shapes ───────────────────────────────────────────────────
