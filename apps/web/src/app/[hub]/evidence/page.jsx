@@ -1,9 +1,9 @@
 import { AppShell } from "@/components/shell/app-shell";
 import { EvidencePage } from "@/features/evidence";
 
-// Evidence page reads `?print=1` via `useSearchParams` to auto-trigger the
-// browser print dialog when deep-linked from the dashboard Export tile.
-// That means the route cannot be statically prerendered.
+// Evidence page reads `?view=compile` / `?print=1` via `useSearchParams` to
+// deep-link straight into the document builder (where you export a real .pdf
+// or .md). That means the route cannot be statically prerendered.
 export const dynamic = "force-dynamic";
 
 export default function Page() {

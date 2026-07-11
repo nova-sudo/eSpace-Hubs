@@ -19,7 +19,6 @@
 
 import { useMemo } from "react";
 import {
-  countMrComments,
   fmtDurationHours,
   medianTurnaroundDays,
   mergedWithin,
@@ -141,7 +140,10 @@ export function useReceiptsFeed(days = 90) {
       current.items.push(r);
     }
 
-    const reviewCount = countMrComments(events || []);
+    // Count from the cutoff-filtered receipts (not countMrComments over the
+    // raw event set, whose fetch window is up to ~24h wider) so the tally
+    // never exceeds the number of REVIEW / TICKET cards actually shown.
+    const reviewCount = receipts.filter((r) => r.kind === TYPE.REVIEW).length;
     const ticketCount = receipts.filter((r) => r.kind === TYPE.TICKET).length;
     const tally = [
       { label: "Merged PRs", value: String(mergedInRange.length) },

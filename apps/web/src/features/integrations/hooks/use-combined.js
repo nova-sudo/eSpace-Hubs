@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useGitlabMergedSince } from "./use-gitlab-merged";
 import { useGitlabEventsSince } from "./use-gitlab-events";
 import { useGithubMergedSince } from "./use-github-merged";
@@ -21,8 +22,13 @@ export function useCombinedMergedSince(since) {
   const gl = useGitlabMergedSince(since);
   const gh = useGithubMergedSince(since);
 
-  const data =
-    gl.data || gh.data ? [...(gl.data || []), ...(gh.data || [])] : undefined;
+  // Memoize the merged array on the source refs so `data` stays
+  // reference-stable across renders — otherwise every consumer's useMemo
+  // keyed on `data` re-runs on each render (SWR's own data refs are stable).
+  const data = useMemo(
+    () => (gl.data || gh.data ? [...(gl.data || []), ...(gh.data || [])] : undefined),
+    [gl.data, gh.data],
+  );
   return {
     data,
     isLoading: gl.isLoading || gh.isLoading,
@@ -41,14 +47,13 @@ export function useCombinedEventsSince(since) {
   // `use-github-pr-events.js` for the contract + dedup discussion.
   const ghPr = useGithubPrEventsSince(since);
 
-  const data =
-    gl.data || gh.data || ghPr.data
-      ? [
-          ...(gl.data || []),
-          ...(gh.data || []),
-          ...(ghPr.data || []),
-        ]
-      : undefined;
+  const data = useMemo(
+    () =>
+      gl.data || gh.data || ghPr.data
+        ? [...(gl.data || []), ...(gh.data || []), ...(ghPr.data || [])]
+        : undefined,
+    [gl.data, gh.data, ghPr.data],
+  );
   return {
     data,
     isLoading: gl.isLoading || gh.isLoading || ghPr.isLoading,

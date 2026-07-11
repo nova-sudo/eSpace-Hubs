@@ -72,12 +72,21 @@ export function FocusHero({ card, week }) {
   const canInline = isInlineFillable(spec?.widget) && !!week;
 
   // Fill strip — cycle windows from deriveGoalHealth (oldest→newest objects),
-  // capped to the most recent 8. total===0 = a single-record/pip kind → no strip.
+  // capped to the 8 windows ENDING at the current one. total===0 = a
+  // single-record/pip kind → no strip. Center on currentIndex (not the array
+  // tail): buildCycleWindows enumerates the whole calendar year, so the tail is
+  // unstarted FUTURE windows — slicing it would show empty dots for periods
+  // that haven't happened yet (same pitfall FillStrip in goal-health-card.jsx
+  // guards against).
   const fill = health?.fill;
-  const stripWindows =
-    fill && fill.total > 0 && Array.isArray(fill.windows)
-      ? fill.windows.slice(-8)
-      : [];
+  const STRIP_CAP = 8;
+  const stripWindows = (() => {
+    if (!fill || !fill.total || !Array.isArray(fill.windows)) return [];
+    const idx = Number.isInteger(fill.currentIndex)
+      ? fill.currentIndex
+      : fill.windows.length - 1;
+    return fill.windows.slice(Math.max(0, idx - STRIP_CAP + 1), idx + 1);
+  })();
   const noun = cadenceWindowLabel(cadence)[1];
 
   return (

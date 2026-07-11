@@ -136,12 +136,13 @@ export function buildCommands(ctx) {
   });
 
   cmds.push({
-    id: "action:open-evidence-print",
+    id: "action:open-evidence-compile",
     category: "Actions",
-    label: "Open evidence in print mode",
-    sub: "browser print → save as PDF",
-    keywords: ["pdf", "print", "export"],
-    run: () => router.push(link ? link("/evidence?print=1") : "/evidence?print=1"),
+    label: "Compile evidence review",
+    sub: "open the builder → export .pdf / .md",
+    keywords: ["pdf", "export", "compile", "review", "evidence"],
+    run: () =>
+      router.push(link ? link("/evidence?view=compile") : "/evidence?view=compile"),
   });
 
   // ── AI provider switcher ───────────────────────────────────────────

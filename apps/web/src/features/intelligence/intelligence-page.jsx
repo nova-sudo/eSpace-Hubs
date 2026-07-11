@@ -96,7 +96,10 @@ export function IntelligencePage() {
       ) : (
         <Reveal stagger className="flex flex-col gap-[30px]">
           {hero ? (
-            <FocusHero card={hero} week={week} />
+            // key by goal id → when the top priority changes (e.g. after you
+            // fill the current hero), React remounts the hero and its inline
+            // editor doesn't carry an open/expanded state onto the next goal.
+            <FocusHero key={hero.goal.id} card={hero} week={week} />
           ) : (
             <AllCaughtUp total={summary.total} />
           )}

@@ -93,9 +93,13 @@ const s = StyleSheet.create({
   },
 });
 
+// No wrap={false} on Section/groups — a long list (PRs, tickets, a big L1
+// table) can exceed a full page, and a non-wrapping node taller than a page is
+// CLIPPED by react-pdf (silent data loss). Sections flow across pages; only the
+// atomic units (one item, one table row) stay unbreakable via wrap={false}.
 function Section({ n, title, children }) {
   return (
-    <View wrap={false}>
+    <View>
       <Text style={s.sectionHead}>
         {n} · {title}
       </Text>
@@ -108,7 +112,7 @@ function ItemList({ items }) {
   return (
     <View>
       {items.map((it) => (
-        <View key={it.id}>
+        <View key={it.id} wrap={false}>
           <View style={s.item}>
             <Text style={s.itemRef}>{it.ref}</Text>
             <Text style={s.itemBody}>{it.title}</Text>
@@ -121,7 +125,12 @@ function ItemList({ items }) {
   );
 }
 
-/** Group goalReadings L1 → its L2s, mirroring renderMarkdown's grouping. */
+/**
+ * Group goalReadings L1 → its L2s, mirroring renderMarkdown's grouping. Keeps
+ * L1s with NO classified L2 children (rows: []) so the PDF shows them too —
+ * the markdown + on-screen preview both render those L1s, and dropping them
+ * here would silently diverge the three renderings.
+ */
 function goalGroups(goalReadings) {
   const groups = [];
   let active = null;
@@ -137,7 +146,7 @@ function goalGroups(goalReadings) {
       active.rows.push(r);
     }
   }
-  return groups.filter((g) => g.rows.length > 0);
+  return groups;
 }
 
 export function EvidencePdfDocument({
@@ -210,30 +219,38 @@ export function EvidencePdfDocument({
           <View>
             <Text style={s.sectionHead}>06 · Performance goals</Text>
             {groups.map((g, gi) => (
-              <View key={gi} wrap={false}>
-                <Text style={s.l1Head}>
-                  {g.l1?.title || "(untitled)"}
-                  {g.weightage > 0 ? `  (${g.weightage}% weight)` : ""}
-                </Text>
-                {g.reading ? (
-                  <Text style={s.l1Reading}>
-                    {g.reading.value} — {g.reading.statusLabel}
+              <View key={gi}>
+                <View wrap={false}>
+                  <Text style={s.l1Head}>
+                    {g.l1?.title || "(untitled)"}
+                    {g.weightage > 0 ? `  (${g.weightage}% weight)` : ""}
                   </Text>
-                ) : null}
-                <View style={[s.tRow, s.tHead]}>
-                  <Text style={[s.tCellGoal, s.tHeadCell]}>Goal</Text>
-                  <Text style={[s.tCellExp, s.tHeadCell]}>Expected</Text>
-                  <Text style={[s.tCellAch, s.tHeadCell]}>Achieved</Text>
-                  <Text style={[s.tCellStat, s.tHeadCell]}>Status</Text>
+                  {g.reading ? (
+                    <Text style={s.l1Reading}>
+                      {g.reading.value} — {g.reading.statusLabel}
+                    </Text>
+                  ) : null}
                 </View>
-                {g.rows.map((r, ri) => (
-                  <View key={ri} style={s.tRow}>
-                    <Text style={s.tCellGoal}>{r.goal?.title || "(untitled)"}</Text>
-                    <Text style={s.tCellExp}>{formatExpected(r.spec)}</Text>
-                    <Text style={s.tCellAch}>{r.reading?.value || "—"}</Text>
-                    <Text style={s.tCellStat}>{r.reading?.statusLabel || "—"}</Text>
+                {g.rows.length === 0 ? (
+                  <Text style={s.l1Reading}>No L2s classified yet for this L1.</Text>
+                ) : (
+                  <View>
+                    <View style={[s.tRow, s.tHead]} wrap={false}>
+                      <Text style={[s.tCellGoal, s.tHeadCell]}>Goal</Text>
+                      <Text style={[s.tCellExp, s.tHeadCell]}>Expected</Text>
+                      <Text style={[s.tCellAch, s.tHeadCell]}>Achieved</Text>
+                      <Text style={[s.tCellStat, s.tHeadCell]}>Status</Text>
+                    </View>
+                    {g.rows.map((r, ri) => (
+                      <View key={ri} style={s.tRow} wrap={false}>
+                        <Text style={s.tCellGoal}>{r.goal?.title || "(untitled)"}</Text>
+                        <Text style={s.tCellExp}>{formatExpected(r.spec)}</Text>
+                        <Text style={s.tCellAch}>{r.reading?.value || "—"}</Text>
+                        <Text style={s.tCellStat}>{r.reading?.statusLabel || "—"}</Text>
+                      </View>
+                    ))}
                   </View>
-                ))}
+                )}
               </View>
             ))}
           </View>

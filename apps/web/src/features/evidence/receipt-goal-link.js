@@ -35,19 +35,26 @@ export function knownProjectsFrom(tickets) {
   return set;
 }
 
+// Global clone of JIRA_KEY_RE so we can scan EVERY key-shaped token in a
+// fragment, not just the first — a title like "Upgrade AES-256 for PAY-1234"
+// has two matches and the real key is the second one.
+const JIRA_KEY_RE_G = new RegExp(JIRA_KEY_RE.source, "g");
+
 /**
- * First VALID Jira key across the given text fragments, or null.
- * @param {Set<string>|null} known  real project prefixes; a match whose prefix
- *        isn't in this set is rejected (guards against AES-256 / SHA-256 etc.).
+ * First VALID Jira key across the given text fragments, or null. Scans ALL
+ * key-shaped tokens in each fragment and returns the first whose project
+ * prefix is a real project — so a false-positive token (AES-256) preceding a
+ * real key (PAY-1234) in the same string doesn't shadow it.
+ * @param {Set<string>|null} known  real project prefixes.
  */
 export function jiraKeyFrom(known, ...fragments) {
   if (!known || known.size === 0) return null;
   for (const frag of fragments) {
     if (typeof frag !== "string" || !frag) continue;
-    const m = frag.match(JIRA_KEY_RE);
-    if (!m) continue;
-    const key = m[0];
-    if (known.has(key.split("-")[0])) return key;
+    for (const m of frag.matchAll(JIRA_KEY_RE_G)) {
+      const key = m[0];
+      if (known.has(key.split("-")[0])) return key;
+    }
   }
   return null;
 }

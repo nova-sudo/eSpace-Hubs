@@ -85,8 +85,8 @@ export function ExportTile() {
   }
 
   function handlePdf() {
-    toast("Opening the evidence page — use your browser's print dialog to save as PDF.");
-    router.push(link("/evidence?print=1"));
+    toast("Opening the evidence builder — export a PDF from there.");
+    router.push(link("/evidence?view=compile"));
   }
 
   return (
