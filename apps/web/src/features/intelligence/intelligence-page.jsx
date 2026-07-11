@@ -1,28 +1,26 @@
 "use client";
 
 /**
- * Goal Intelligence Hub — the app's home surface (Dev hub).
+ * Goal Intelligence Hub — the app's home surface (Dev hub), "Focus" layout.
  *
- * Replaces the old performance bento. Where that page showed raw
- * integration metrics, this one shows what those metrics MEAN for the
- * user's goals: where they stand, what needs filling, what's on pace.
- *
- * Composition (top → bottom):
- *   1. StatusNarrative   — one-line "where you stand" (rule-based in
- *                          Sprint 1; AI-driven in Sprint 2, same slot)
- *   2. ActionQueue       — the do-next list, only when something's due
- *   3. GoalHealthGrid    — every classified goal as a health card
+ * One thing at a time. Instead of a wall of health cards, the page leads with
+ * a single hero for the most-slipping goal (queue[0]), a short "also needs
+ * attention" list (queue[1..]), and the full health board tucked behind a
+ * disclosure. When nothing needs the user, a calm "all caught up" hero.
  *
  * Data comes from two shared-domain hooks only (useGoalWidgetItems +
  * useGoalHealth) — no product-surface imports, no integration tiles.
+ * `queue` is severity-sorted, so queue[0] IS the top priority.
  */
 
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Button, Loader, PageHeader, Reveal } from "@/components/ui";
+import { Button, Loader, Reveal } from "@/components/ui";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
 import { useHubLink } from "@/features/hubs";
-import { StatusNarrative } from "./status-narrative";
-import { ActionQueue } from "./action-queue";
+import { resolveCompletedWorkWeek } from "@/lib/date";
+import { FocusHero } from "./focus-hero";
+import { AlsoNeedsAttention } from "./also-needs-attention";
 import { GoalHealthGrid } from "./goal-health-grid";
 import { useGoalHealth } from "./use-goal-health";
 
@@ -37,32 +35,43 @@ export function IntelligencePage() {
   const { ready: inputsReady, groups, queue, summary } = useGoalHealth(groupedItems);
 
   const link = useHubLink();
-  // Filling now lives on the Goals page (per-widget cadence stepper); the
-  // standalone check-in page is retired.
   const fillHref = link("/goals");
+  // The week inline "Log it now" writes against — same completed work week the
+  // grid + check-in default to. Resolved once per mount.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const week = useMemo(() => resolveCompletedWorkWeek(), []);
+  const [showBoard, setShowBoard] = useState(false);
 
   const loading = !itemsReady || !inputsReady;
+  const hero = queue?.[0] || null;
+  const rest = queue?.slice(1) || [];
+  const needCount = queue?.length ?? 0;
 
   return (
-    <main className="relative z-[2] px-10 pb-14 pt-9">
-      <PageHeader
-        crumb="Goal intelligence"
-        title="Where you stand."
-        italicWord="stand"
-        subtitle="Your goals, the data you've logged, and what needs you next — in one place."
-        right={
-          <div className="flex gap-2">
-            <Link href={link("/evidence")}>
-              <Button variant="ghost" size="lg">
-                Compile review →
-              </Button>
-            </Link>
-            <Link href={fillHref}>
-              <Button size="lg">Track goals →</Button>
-            </Link>
-          </div>
-        }
-      />
+    <main className="relative z-[2] mx-auto max-w-[760px] px-10 pb-16 pt-9">
+      {/* Centered Focus header (IntelB): mono crumb + Doto title, accent dot. */}
+      <div className="mb-[26px] text-center">
+        <div
+          className="uppercase tracking-[2px] text-muted-fg"
+          style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
+        >
+          {hasSpecs && !loading
+            ? `Start here · ${needCount} of ${summary.total} need you`
+            : "Goal intelligence"}
+        </div>
+        <h1
+          className="mt-3 uppercase text-fg"
+          style={{
+            fontFamily: "var(--font-dot)",
+            fontWeight: 900,
+            fontSize: 34,
+            lineHeight: 0.95,
+            letterSpacing: "1px",
+          }}
+        >
+          One thing at a time<span style={{ color: "var(--accent)" }}>.</span>
+        </h1>
+      </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-24">
@@ -85,20 +94,69 @@ export function IntelligencePage() {
           ctaLabel="Review goals"
         />
       ) : (
-        <Reveal stagger className="flex flex-col gap-6">
-          <StatusNarrative summary={summary} queue={queue} />
-          <ActionQueue
-            queue={queue}
-            fillHref={fillHref}
-            snapshotHref={link("/snapshots")}
-          />
+        <Reveal stagger className="flex flex-col gap-[30px]">
+          {hero ? (
+            <FocusHero card={hero} week={week} />
+          ) : (
+            <AllCaughtUp total={summary.total} />
+          )}
+
+          {rest.length > 0 ? (
+            <AlsoNeedsAttention
+              rest={rest}
+              totalAttention={needCount}
+              seeAllHref={fillHref}
+            />
+          ) : null}
+
           {unclassifiedGoals.length > 0 ? (
             <UnclassifiedNote count={unclassifiedGoals.length} />
           ) : null}
-          <GoalHealthGrid groups={groups} fillHref={fillHref} />
+
+          {/* Full health board — tucked away so the page stays calm. */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowBoard((v) => !v)}
+              className="flex w-full items-center justify-between border-t border-border pt-3 uppercase tracking-[1px] text-muted-fg transition-colors hover:text-fg"
+              style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
+            >
+              <span>Full board · {summary.total} goals</span>
+              <span>{showBoard ? "Hide ▴" : "Show ▾"}</span>
+            </button>
+            {showBoard ? (
+              <div className="mt-5">
+                <GoalHealthGrid groups={groups} fillHref={fillHref} />
+              </div>
+            ) : null}
+          </div>
         </Reveal>
       )}
     </main>
+  );
+}
+
+/** Shown when the attention queue is empty — everything's on pace. */
+function AllCaughtUp({ total }) {
+  return (
+    <div
+      className="relative overflow-hidden rounded-[16px] p-[30px] text-center"
+      style={{
+        border: "1px solid var(--border)",
+        background: "linear-gradient(180deg, color-mix(in srgb, var(--good) 8%, transparent), transparent)",
+      }}
+    >
+      <div
+        className="text-[28px] font-semibold uppercase text-fg"
+        style={{ fontFamily: "var(--font-dot)", letterSpacing: "1px" }}
+      >
+        All caught up<span style={{ color: "var(--good)" }}>.</span>
+      </div>
+      <div className="mx-auto mt-2 max-w-[380px] text-[13.5px] leading-[1.5] text-muted-fg">
+        All {total} tracked goals are on pace or auto-tracked. Nothing needs you
+        right now.
+      </div>
+    </div>
   );
 }
 

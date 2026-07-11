@@ -94,7 +94,9 @@ export function useGoalHealth(groupedItems) {
           contextComplete: isContextComplete(spec),
         });
         const trend = computeTrend(snapshots, goal.id, spec);
-        const card = { goal, spec, health, trend };
+        // Carry the L1 parent so the Focus hero + attention rows can show
+        // "<kind> · <L1>" without re-deriving the grouping downstream.
+        const card = { goal, spec, health, trend, l1: group.l1 };
         cards.push(card);
 
         summary.total += 1;

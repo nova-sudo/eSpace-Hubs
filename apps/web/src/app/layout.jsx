@@ -16,7 +16,10 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    // suppressHydrationWarning: the no-flash script below sets data-theme on
+    // the client before hydration, so the <html> attribute intentionally
+    // differs from the SSR markup (which has none). Scoped to this one element.
+    <html lang="en" suppressHydrationWarning>
       <head>
         {/* Nothing UI fonts. Loaded via <link> (not a CSS @import) because the
             @import in globals.css lands after Tailwind's expansion and the
