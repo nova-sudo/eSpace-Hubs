@@ -11,17 +11,8 @@ export function renderMarkdown({
   level,
   rangeLabel,
   narrative,
-  metrics,
-  starred,
   goalReadings,
-  include = {
-    narrative: true,
-    metrics: true,
-    prs: true,
-    tickets: true,
-    reviews: true,
-    goals: true,
-  },
+  include = { narrative: true, goals: true },
 }) {
   const lines = [];
   lines.push(`# ${name ?? "—"} — ${level ?? "Performance review"}`);
@@ -34,48 +25,10 @@ export function renderMarkdown({
     lines.push("");
   }
 
-  if (include.metrics && metrics) {
-    lines.push("## 02 · Headline metrics");
-    for (const [label, value, sub] of metrics) {
-      lines.push(`- **${label}:** ${value}${sub ? ` _(${sub})_` : ""}`);
-    }
-    lines.push("");
-  }
-
-  const prs = starred.filter((s) => s.kind === "merged-pr");
-  if (include.prs && prs.length) {
-    lines.push(`## 03 · Merged pull requests · ${prs.length}`);
-    for (const p of prs) {
-      lines.push(`- \`${p.ref}\` — ${p.title} _(${p.date})_`);
-      if (p.impact) lines.push(`  - → ${p.impact}`);
-    }
-    lines.push("");
-  }
-
-  const tickets = starred.filter((s) => s.kind === "ticket");
-  if (include.tickets && tickets.length) {
-    lines.push(`## 04 · Closed tickets · ${tickets.length}`);
-    for (const t of tickets) {
-      lines.push(`- \`${t.ref}\` — ${t.title} _(${t.date})_`);
-      if (t.impact) lines.push(`  - → ${t.impact}`);
-    }
-    lines.push("");
-  }
-
-  const reviews = starred.filter((s) => s.kind === "review");
-  if (include.reviews && reviews.length) {
-    lines.push(`## 05 · Notable reviews given · ${reviews.length}`);
-    for (const r of reviews) {
-      lines.push(`- \`${r.ref}\` — ${r.title} _(${r.date})_`);
-      if (r.impact) lines.push(`  - → ${r.impact}`);
-    }
-    lines.push("");
-  }
-
   if (include.goals && Array.isArray(goalReadings) && goalReadings.length > 0) {
     const l1s = goalReadings.filter((r) => r.level === "L1").length;
     const l2s = goalReadings.filter((r) => r.level === "L2").length;
-    lines.push(`## 06 · Performance goals · ${l1s} L1 · ${l2s} L2`);
+    lines.push(`## 02 · Performance goals · ${l1s} L1 · ${l2s} L2`);
     // Group L1 → its L2s. Each L1 gets its own Expected/Achieved table
     // for that L1's children. Reads more like a structured perf-review
     // packet than a list of bullets — the markdown table headers become
@@ -127,7 +80,7 @@ export function renderMarkdown({
       month: "short",
       day: "numeric",
       year: "numeric",
-    })} · Source: Jira + GitLab + GitHub_`,
+    })} · Source: your logged goal evidence_`,
   );
 
   return lines.join("\n");

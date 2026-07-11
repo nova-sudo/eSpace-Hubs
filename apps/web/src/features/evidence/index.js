@@ -6,4 +6,3 @@ export {
   downloadMarkdown,
   rangeToLabel,
 } from "./markdown-export";
-export { generateReviewParagraph } from "./auto-paragraph";

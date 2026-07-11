@@ -14,11 +14,7 @@ const RANGES = [
 ];
 
 const SECTION_TOGGLES = [
-  ["narrative", "Narrative"],
-  ["metrics", "Metrics"],
-  ["prs", "Pull requests"],
-  ["tickets", "Tickets"],
-  ["reviews", "Reviews given"],
+  ["narrative", "Summary narrative"],
   ["goals", "Goal readings"],
 ];
 

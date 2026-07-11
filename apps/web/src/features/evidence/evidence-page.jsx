@@ -4,31 +4,17 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Button, PageHeader } from "@/components/ui";
-import {
-  avgReviewerComments,
-  countMrComments,
-  linkagePct,
-  medianTurnaroundDays,
-  mergedWithin,
-  useCombinedEventsSince,
-  useCombinedMergedSince,
-  useIntegrations,
-} from "@/features/integrations";
-import { fmtDurationHours } from "@/features/integrations";
+import { useIntegrations } from "@/features/integrations";
 import { useHubLink } from "@/features/hubs";
-import { isoDaysAgo } from "@/lib/date";
+import { readInputs, useAllGoalInputs } from "@/features/goal-inputs";
 import { ConfigPanel } from "./config-panel";
 import { DocumentPreview } from "./document-preview";
-import { EvidencePicker } from "./evidence-picker";
-import { ParagraphCard } from "./paragraph-card";
 import { ReviewPrepChecklist } from "./review-prep-checklist";
 import { useGoalReadings } from "./goal-readings";
-import { toggleEvidence, useEvidenceCandidates, useStarredEvidence } from "./use-evidence";
+import { buildGoalEvidenceGroups } from "./goal-evidence";
+import { GoalEvidenceBoard } from "./goal-evidence-board";
+import { EvidenceSummary } from "./evidence-summary";
 import { downloadMarkdown, rangeToLabel, renderMarkdown } from "./markdown-export";
-import { useReceiptsFeed } from "./use-receipts-feed";
-import { coverageByL1 } from "./receipt-goal-link";
-import { ReceiptsFeed } from "./receipts/receipts-feed";
-import { TallySidebar } from "./receipts/tally-sidebar";
 import { generateEvidencePdf } from "./pdf/generate-pdf";
 
 export function EvidencePage() {
@@ -36,71 +22,39 @@ export function EvidencePage() {
   const searchParams = useSearchParams();
   const [format, setFormat] = useState("markdown");
   const [range, setRange] = useState("90d");
-  // "feed" = the receipts timeline (primary); "compile" = the document builder.
-  const [view, setView] = useState("feed");
+  // "board" = the goal evidence board (primary); "compile" = the document builder.
+  const [view, setView] = useState("board");
   const link = useHubLink();
 
-  // Deep-link from the dashboard Export tile / command palette: `?print=1` /
-  // `?view=compile` opens the document builder directly (real PDF export now
-  // lives on the Export button; no auto-print dialog).
+  // Deep-link (`?view=compile` / legacy `?print=1`) opens the builder directly.
   useEffect(() => {
     if (searchParams?.get("print") === "1" || searchParams?.get("view") === "compile") {
       setView("compile");
     }
   }, [searchParams]);
-  const [level, setLevel] = useState("L1 → L2");
-  // Narrative starts EMPTY. We previously seeded it with sample prose
-  // about a fictional payments-platform reliability push, which would
-  // ship into a real user's exported review packet if they didn't
-  // notice and clear it — confusing at best, embarrassing at worst.
-  // The DocumentPreview's textarea already shows a placeholder so the
-  // empty-input state isn't blank-and-confusing.
-  const [narrative, setNarrative] = useState("");
-  const [include, setInclude] = useState({
-    narrative: true,
-    metrics: true,
-    prs: true,
-    tickets: true,
-    reviews: true,
-    goals: true,
-  });
 
-  const { data: merged } = useCombinedMergedSince(isoDaysAgo(90));
-  const { data: events } = useCombinedEventsSince(isoDaysAgo(90));
+  const [level, setLevel] = useState("L1 → L2");
+  const [narrative, setNarrative] = useState("");
+  // Goal-oriented review: only the summary narrative + the per-goal readings.
+  // (The old integration sections — metrics, PRs, tickets, reviews — are gone;
+  // GitHub/Jira aren't tracked anymore.)
+  const [include, setInclude] = useState({ narrative: true, goals: true });
 
   const days = range === "30d" ? 30 : range === "90d" ? 90 : 90;
-  const mergedInRange = useMemo(
-    () => mergedWithin(merged || [], days),
-    [merged, days],
-  );
 
-  const metrics = useMemo(
-    () => [
-      ["Merged PRs", mergedInRange.length, `last ${days}d`],
-      ["Review turnaround", fmtDurationHours(medianTurnaroundDays(mergedInRange)), "median"],
-      ["Rounds / MR", (avgReviewerComments(mergedInRange) ?? 0).toFixed(1), "reviewer comments", true],
-      ["Jira linkage", `${linkagePct(mergedInRange)?.pct ?? 0}%`, "MRs with ticket key"],
-      ["Reviews given", countMrComments(events || []), "comments on MRs", false],
-    ],
-    [mergedInRange, events, days],
-  );
-
+  // Goal-oriented data: per-goal readings + the check-in entries the user
+  // logged against each goal. useAllGoalInputs subscribes the inputs store so
+  // the memo re-reads readInputs() on hydration/change.
   const goalReadings = useGoalReadings(days);
-  const feed = useReceiptsFeed(days);
-  const coverage = useMemo(() => coverageByL1(goalReadings), [goalReadings]);
-
-  const starred = useStarredEvidence();
-  const candidates = useEvidenceCandidates();
-  const allPickerItems = useMemo(
-    () => [...starred, ...candidates],
-    [starred, candidates],
-  );
-  const starredIds = useMemo(
-    () => new Set(starred.map((s) => s.id)),
-    [starred],
+  const inputsTick = useAllGoalInputs();
+  const evidence = useMemo(
+    () => buildGoalEvidenceGroups(goalReadings, readInputs(), days),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [goalReadings, days, inputsTick],
   );
 
   const rangeLabel = rangeToLabel(range);
+  const loading = goalReadings.length === 0 && evidence.groups.length === 0;
 
   async function handleExport() {
     const props = {
@@ -109,8 +63,6 @@ export function EvidencePage() {
       level,
       rangeLabel,
       narrative,
-      metrics,
-      starred,
       goalReadings,
       include,
     };
@@ -128,37 +80,28 @@ export function EvidencePage() {
     toast.success("Markdown downloaded");
   }
 
-  function handleAutoPick() {
-    const top = candidates.slice(0, 10);
-    top.forEach((c) => {
-      if (!starredIds.has(c.id)) toggleEvidence(c);
-    });
-    toast.success(`Starred top ${top.length} items`);
-  }
-
-  // ── Feed view (primary): "everything you shipped" receipts timeline ──
-  if (view === "feed") {
+  // ── Board view (primary): goal evidence, grouped by L1 ──
+  if (view === "board") {
     return (
       <main className="relative z-[2] px-10 pb-14 pt-9">
         <div className="mb-6 no-print">
           <ReviewPrepChecklist />
         </div>
         <PageHeader
-          crumb="Evidence · receipts"
-          title="Everything you shipped."
+          crumb="Evidence · goals"
+          title="Proof for your review."
           italicWord="."
-          right={
-            <div className="flex items-center gap-2">
-              <RangeToggle range={range} setRange={setRange} />
-            </div>
-          }
+          right={<RangeToggle range={range} setRange={setRange} />}
         />
         <div className="grid grid-cols-[minmax(0,1fr)_300px] items-start gap-[26px]">
-          <ReceiptsFeed groups={feed.groups} loading={feed.loading} />
-          <TallySidebar
+          <GoalEvidenceBoard
+            groups={evidence.groups}
+            loading={loading}
+            goalsHref={link("/goals")}
+          />
+          <EvidenceSummary
             rangeLabel={range}
-            tally={feed.tally}
-            coverage={coverage}
+            summary={evidence.summary}
             onCompile={() => setView("compile")}
           />
         </div>
@@ -166,21 +109,21 @@ export function EvidencePage() {
     );
   }
 
-  // ── Compile view: the document builder (reached via "Compile into review →") ──
+  // ── Compile view: the goals-only document builder ──
   return (
     <main className="relative z-[2] px-10 pb-14 pt-9">
       <div className="mb-6 no-print">
         <ReviewPrepChecklist />
       </div>
       <PageHeader
-        crumb={`Evidence · ${days}-day performance bundle`}
+        crumb={`Evidence · ${days}-day goal review`}
         title="Make the case."
         italicWord="case"
-        subtitle="Turn scattered receipts into one reviewable document. You pick what to include; the data speaks for itself."
+        subtitle="Compile your goals — what each was set up to achieve, where it landed, and the evidence you logged — into one reviewable document."
         right={
           <div className="flex gap-2 no-print">
-            <Button variant="ghost" onClick={() => setView("feed")}>
-              ← Receipts
+            <Button variant="ghost" onClick={() => setView("board")}>
+              ← Goals
             </Button>
             <Button size="lg" onClick={handleExport}>
               Export {format === "markdown" ? ".md" : ".pdf"}
@@ -205,13 +148,6 @@ export function EvidencePage() {
         </div>
 
         <div className="flex min-w-0 flex-col gap-[18px]">
-          <MetricsRow metrics={metrics} />
-          <ParagraphCard
-            metrics={metrics}
-            rangeLabel={rangeLabel}
-            level={level}
-            starred={starred}
-          />
           <DocumentPreview
             format={format}
             range={range}
@@ -219,27 +155,16 @@ export function EvidencePage() {
             narrative={narrative}
             setNarrative={setNarrative}
             include={include}
-            starred={starred}
-            metrics={metrics}
             goalReadings={goalReadings}
             rangeLabel={rangeLabel}
           />
-
-          <div className="no-print">
-            <EvidencePicker
-              items={allPickerItems}
-              starredIds={starredIds}
-              onToggle={toggleEvidence}
-              onAutoPick={handleAutoPick}
-            />
-          </div>
         </div>
       </div>
     </main>
   );
 }
 
-/** Compact 30d / 90d range toggle for the feed header. */
+/** Compact 30d / 90d range toggle for the board header. */
 function RangeToggle({ range, setRange }) {
   return (
     <div className="flex overflow-hidden rounded-[var(--radius-sub)] border border-border">
@@ -258,49 +183,6 @@ function RangeToggle({ range, setRange }) {
         >
           {r}
         </button>
-      ))}
-    </div>
-  );
-}
-
-/**
- * Five-up headline metric tiles — big Doto numerals over a label + mono
- * sub. Mirrors the reference's metrics strip above the auto-narrative.
- * Reads the same `metrics` tuples [label, value, sub, good] the rest of
- * the page uses.
- */
-function MetricsRow({ metrics }) {
-  return (
-    <div className="grid grid-cols-5 gap-3 no-print">
-      {metrics.map(([label, value, sub, good]) => (
-        <div
-          key={label}
-          className="rounded-[9px] border border-border bg-card px-[13px] py-[14px]"
-        >
-          <div
-            className="text-fg"
-            style={{
-              fontFamily: "var(--font-dot)",
-              fontWeight: 900,
-              fontSize: 30,
-              lineHeight: 0.85,
-            }}
-          >
-            {value}
-          </div>
-          <div className="mt-[9px] text-[11px] font-semibold text-fg">{label}</div>
-          <div
-            className="mt-[3px] uppercase"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9,
-              letterSpacing: "0.5px",
-              color: good ? "var(--good)" : "var(--dim-fg)",
-            }}
-          >
-            {sub}
-          </div>
-        </div>
       ))}
     </div>
   );

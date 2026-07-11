@@ -18,26 +18,18 @@ export function DocumentPreview({
   narrative,
   setNarrative,
   include,
-  starred,
-  metrics,
   goalReadings,
   rangeLabel,
 }) {
   const { me } = useIntegrations();
-  const prs = starred.filter((s) => s.kind === "merged-pr");
-  const tickets = starred.filter((s) => s.kind === "ticket");
-  const reviews = starred.filter((s) => s.kind === "review");
 
   const filename = `performance-review-${range}.${format === "markdown" ? "md" : "pdf"}`;
 
   // Count the sections actually rendered into the preview — drives the
-  // Doto "N sections" tally in the preview header.
+  // Doto "N sections" tally in the preview header. Goal-oriented: summary
+  // narrative + per-goal readings.
   const sectionCount =
     (include.narrative ? 1 : 0) +
-    (include.metrics && metrics ? 1 : 0) +
-    (include.prs && prs.length > 0 ? 1 : 0) +
-    (include.tickets && tickets.length > 0 ? 1 : 0) +
-    (include.reviews && reviews.length > 0 ? 1 : 0) +
     (include.goals && goalReadings && goalReadings.length > 0 ? 1 : 0);
 
   return (
@@ -103,7 +95,7 @@ export function DocumentPreview({
               value={narrative}
               onChange={(e) => setNarrative(e.target.value)}
               rows={5}
-              placeholder="A few sentences on what this window meant — what shipped, what shifted, what's next. Numbers come from the receipts below; this is the throughline."
+              placeholder="A few sentences on what this window meant for your goals — what moved, what stalled, what's next. The per-goal readings below are the receipts; this is the throughline."
               className="w-full rounded-[var(--radius-sub)] border border-dashed border-border-strong bg-card-alt p-2.5 text-fg outline-none placeholder:text-dim-fg focus:border-accent"
               style={{
                 fontFamily: "var(--font-sans)",
@@ -121,52 +113,9 @@ export function DocumentPreview({
           </DocSection>
         ) : null}
 
-        {include.metrics && metrics ? (
-          <DocSection title="02 / Headline metrics" rangeLabel={rangeLabel}>
-            <div className="mt-1.5 grid grid-cols-4 gap-3.5">
-              {metrics.map(([label, value, sub, good]) => (
-                <MetricBox key={label} label={label} value={value} sub={sub} good={good} />
-              ))}
-            </div>
-          </DocSection>
-        ) : null}
-
-        {include.prs && prs.length > 0 ? (
-          <DocSection
-            title={`03 / Merged pull requests · ${prs.length}`}
-            rangeLabel="starred as evidence"
-          >
-            {prs.map((p) => (
-              <EvidenceRow key={p.id} item={p} />
-            ))}
-          </DocSection>
-        ) : null}
-
-        {include.tickets && tickets.length > 0 ? (
-          <DocSection
-            title={`04 / Closed tickets · ${tickets.length}`}
-            rangeLabel="starred as evidence"
-          >
-            {tickets.map((t) => (
-              <EvidenceRow key={t.id} item={t} />
-            ))}
-          </DocSection>
-        ) : null}
-
-        {include.reviews && reviews.length > 0 ? (
-          <DocSection
-            title={`05 / Notable reviews given · ${reviews.length}`}
-            rangeLabel="starred as evidence"
-          >
-            {reviews.map((r) => (
-              <EvidenceRow key={r.id} item={r} />
-            ))}
-          </DocSection>
-        ) : null}
-
         {include.goals && goalReadings && goalReadings.length > 0 ? (
           <DocSection
-            title={`06 / Performance goals · ${countL1(goalReadings)} L1 · ${countL2(goalReadings)} L2`}
+            title={`02 / Performance goals · ${countL1(goalReadings)} L1 · ${countL2(goalReadings)} L2`}
             rangeLabel="ai-classified · live"
           >
             <GoalReadingsBlock readings={goalReadings} />
@@ -185,7 +134,7 @@ export function DocumentPreview({
               year: "numeric",
             })}
           </span>
-          <span>Source: Jira + GitLab + GitHub</span>
+          <span>Source: your logged goal evidence</span>
         </div>
       </div>
     </Card>
@@ -215,40 +164,6 @@ function DocSection({ title, rangeLabel, children }) {
         </span>
       </div>
       {children}
-    </div>
-  );
-}
-
-function MetricBox({ label, value, sub, good }) {
-  return (
-    <div>
-      <div
-        className="mb-1 uppercase tracking-[0.5px] text-muted-fg"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-      >
-        {label}
-      </div>
-      <div
-        className="leading-none"
-        style={{
-          fontFamily: "var(--font-dot)",
-          fontWeight: 900,
-          fontSize: 26,
-          letterSpacing: "0.5px",
-        }}
-      >
-        {value}
-      </div>
-      <div
-        className="mt-1"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          color: good ? "var(--good)" : "var(--muted-fg)",
-        }}
-      >
-        {sub}
-      </div>
     </div>
   );
 }
@@ -424,32 +339,3 @@ function countL2(readings) {
   return readings.filter((r) => r.level === "L2").length;
 }
 
-function EvidenceRow({ item }) {
-  return (
-    <div className="border-b border-border border-dashed py-2.5">
-      <div className="mb-0.5 flex items-baseline gap-2.5">
-        <span
-          className="min-w-[70px] font-bold text-accent"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-        >
-          {item.ref}
-        </span>
-        <span className="flex-1 text-[13px] font-medium">{item.title}</span>
-        <span
-          className="text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-        >
-          {item.date}
-        </span>
-      </div>
-      {item.impact ? (
-        <div
-          className="ml-[80px] text-[12px] leading-[1.45] text-muted-fg"
-          style={{ textWrap: "pretty" }}
-        >
-          → {item.impact}
-        </div>
-      ) : null}
-    </div>
-  );
-}
