@@ -30,6 +30,7 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "@react-pdf/renderer": "^4.5.1",
     "@tailwindcss/postcss": "^4",
     "@types/express": "^4.17.23",
     "@types/node": "^22.18.10",

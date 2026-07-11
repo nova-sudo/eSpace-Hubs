@@ -2,6 +2,7 @@
 
 import { Card, DitherField } from "@/components/ui";
 import { useIntegrations } from "@/features/integrations";
+import { formatExpected } from "./format-expected";
 
 const STATUS_PILL_COLORS = {
   ok: { bg: "color-mix(in srgb, var(--good) 14%, transparent)", fg: "var(--good)" },
@@ -395,37 +396,6 @@ function GoalReadingsBlock({ readings }) {
       ))}
     </div>
   );
-}
-
-/**
- * Concise human-readable "Expected" label for the spec — what the goal
- * was set up to achieve. Drawn from the manual cadence + target, or the
- * source target for auto widgets. Fall back to the widget kind name
- * when a goal has no formal target (delegated, free-text, etc.).
- */
-function formatExpected(spec) {
-  if (!spec) return "—";
-  if (spec.delegated?.delegated) {
-    return `Judged by ${spec.delegated.judge || "manager"}`;
-  }
-  const target = spec.manual?.target || spec.source?.target;
-  const cadence = spec.manual?.cadence;
-  const unit = spec.manual?.unit;
-  if (target && target.value != null) {
-    const cadenceSuffix = cadence ? ` / ${cadence}` : "";
-    const unitSuffix = unit ? ` ${unit}` : "";
-    return `${target.op} ${target.value}${unitSuffix}${cadenceSuffix}`;
-  }
-  // No numeric target — describe the cadence intent if we have one.
-  if (cadence === "milestone") return "Hit listed milestones";
-  if (cadence === "continuous") return "Continuous reflection";
-  if (cadence === "per-incident") return "Per-incident capture";
-  if (cadence) return `Logged ${cadence}`;
-  // Auto widget without a target (TICKET_CYCLE, CODE_RUBRIC w/o target)
-  if (spec.source?.metric) {
-    return `Tracked via ${spec.source.metric.replace(/_/g, " ")}`;
-  }
-  return "Tracked";
 }
 
 function StatusPill({ tone, label }) {

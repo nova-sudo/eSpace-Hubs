@@ -1,7 +1,9 @@
 /**
  * Pure rendering — builds the Markdown string for the evidence export.
- * Separated from UI so it can be unit-tested and reused for PDF (print route).
+ * Separated from UI so it can be unit-tested and reused for PDF.
  */
+
+import { formatExpected } from "./format-expected";
 
 export function renderMarkdown({
   name,
@@ -129,34 +131,6 @@ export function renderMarkdown({
   );
 
   return lines.join("\n");
-}
-
-/**
- * Concise "Expected" string for a spec — mirrors the React render in
- * `document-preview.jsx` so the markdown table reads identically to
- * what the user sees on screen.
- */
-function formatExpected(spec) {
-  if (!spec) return "—";
-  if (spec.delegated?.delegated) {
-    return `Judged by ${spec.delegated.judge || "manager"}`;
-  }
-  const target = spec.manual?.target || spec.source?.target;
-  const cadence = spec.manual?.cadence;
-  const unit = spec.manual?.unit;
-  if (target && target.value != null) {
-    const cadenceSuffix = cadence ? ` / ${cadence}` : "";
-    const unitSuffix = unit ? ` ${unit}` : "";
-    return `${target.op} ${target.value}${unitSuffix}${cadenceSuffix}`;
-  }
-  if (cadence === "milestone") return "Hit listed milestones";
-  if (cadence === "continuous") return "Continuous reflection";
-  if (cadence === "per-incident") return "Per-incident capture";
-  if (cadence) return `Logged ${cadence}`;
-  if (spec.source?.metric) {
-    return `Tracked via ${spec.source.metric.replace(/_/g, " ")}`;
-  }
-  return "Tracked";
 }
 
 /**

@@ -29,6 +29,7 @@ import { useReceiptsFeed } from "./use-receipts-feed";
 import { coverageByL1 } from "./receipt-goal-link";
 import { ReceiptsFeed } from "./receipts/receipts-feed";
 import { TallySidebar } from "./receipts/tally-sidebar";
+import { generateEvidencePdf } from "./pdf/generate-pdf";
 
 export function EvidencePage() {
   const { me } = useIntegrations();
@@ -39,17 +40,13 @@ export function EvidencePage() {
   const [view, setView] = useState("feed");
   const link = useHubLink();
 
-  // Deep-link from the dashboard Export tile / command palette: `?print=1` (or
-  // `?view=compile`) opens the document builder directly, and print=1 also
-  // fires the browser print once the document has mounted. We delay a beat so
-  // SWR can fill in the metric numbers (otherwise the PDF shows dashes).
+  // Deep-link from the dashboard Export tile / command palette: `?print=1` /
+  // `?view=compile` opens the document builder directly (real PDF export now
+  // lives on the Export button; no auto-print dialog).
   useEffect(() => {
-    const wantsCompile =
-      searchParams?.get("print") === "1" || searchParams?.get("view") === "compile";
-    if (wantsCompile) setView("compile");
-    if (searchParams?.get("print") !== "1") return;
-    const t = setTimeout(() => window.print(), 900);
-    return () => clearTimeout(t);
+    if (searchParams?.get("print") === "1" || searchParams?.get("view") === "compile") {
+      setView("compile");
+    }
   }, [searchParams]);
   const [level, setLevel] = useState("L1 → L2");
   // Narrative starts EMPTY. We previously seeded it with sample prose
@@ -105,12 +102,8 @@ export function EvidencePage() {
 
   const rangeLabel = rangeToLabel(range);
 
-  function handleExport() {
-    if (format === "pdf") {
-      window.print();
-      return;
-    }
-    const md = renderMarkdown({
+  async function handleExport() {
+    const props = {
       name: me?.name,
       team: me?.team,
       level,
@@ -120,8 +113,18 @@ export function EvidencePage() {
       starred,
       goalReadings,
       include,
-    });
-    downloadMarkdown(`performance-review-${range}.md`, md);
+    };
+    if (format === "pdf") {
+      const t = toast.loading("Generating PDF…");
+      try {
+        await generateEvidencePdf(props, `performance-review-${range}.pdf`);
+        toast.success("PDF downloaded", { id: t });
+      } catch (err) {
+        toast.error(`PDF export failed: ${err?.message || err}`, { id: t });
+      }
+      return;
+    }
+    downloadMarkdown(`performance-review-${range}.md`, renderMarkdown(props));
     toast.success("Markdown downloaded");
   }
 
