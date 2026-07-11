@@ -12,25 +12,43 @@ import { DAY_MS } from "@/lib/date";
 
 const LINK_RE = /https?:\/\/\S+/;
 
-/** Coarse tone → status bucket for the summary counts. */
+/**
+ * Coarse reading tone → summary bucket. Note the reading `accent` tone is
+ * overloaded in goal-readings.js — it means "tracked / tracking / in progress"
+ * for healthy states, NOT "drifting" — so it buckets as `inProgress`, never a
+ * scary drift count that would contradict the goal cards' own "tracked" pill.
+ */
 const TONE_BUCKET = {
   ok: "onTrack",
-  accent: "drifting",
+  accent: "inProgress",
   warn: "behind",
   muted: "awaiting",
 };
 
-function isLink(s) {
-  return typeof s === "string" && LINK_RE.test(s);
+/** Extract the first URL in a string, or null. */
+function urlIn(s) {
+  if (typeof s !== "string") return null;
+  const m = s.match(LINK_RE);
+  return m ? m[0] : null;
+}
+
+/** Distinct calendar days (UTC) among the timestamps — collapses the many
+ *  micro-edit rows the accumulating widgets append in one sitting into one. */
+function distinctDays(tsList) {
+  const days = new Set();
+  for (const ts of tsList) days.add(new Date(ts).toISOString().slice(0, 10));
+  return days.size;
 }
 
 /**
  * Pull the concrete evidence a user logged against one goal within the window:
  * check-in notes, per-checklist-item evidence (milestone / recurring), per-field
- * evidence + text values (composed), and free-text reflections. Newest first,
- * de-duped, capped.
+ * evidence (composed), incident post-mortem links, and free-text reflections.
+ * Newest first, de-duped, capped. Each item carries the display `text` and, when
+ * it contains a URL, the extracted `url` (the href — NOT the whole prefixed
+ * "label: url" string, which would resolve as a broken relative link).
  *
- * @returns {Array<{ text: string, link: boolean, ts: number }>}
+ * @returns {Array<{ text: string, url: string|null, ts: number }>}
  */
 export function extractEvidenceItems(entries, cutoff, cap = 5) {
   const list = Array.isArray(entries) ? entries : [];
@@ -40,7 +58,7 @@ export function extractEvidenceItems(entries, cutoff, cap = 5) {
     const t = typeof text === "string" ? text.trim() : "";
     if (!t || seen.has(t)) return;
     seen.add(t);
-    out.push({ text: t, link: isLink(t), ts });
+    out.push({ text: t, url: urlIn(t), ts });
   };
 
   for (const e of list) {
@@ -55,12 +73,14 @@ export function extractEvidenceItems(entries, cutoff, cap = 5) {
           if (it?.evidence) add(`${it.label}: ${it.evidence}`, ts);
         }
       }
-      // composed widget — per-field evidence + text field values
+      // composed widget — per-field evidence
       if (v.evidence && typeof v.evidence === "object") {
         for (const proof of Object.values(v.evidence)) {
           if (proof) add(String(proof), ts);
         }
       }
+      // incident-log — the post-mortem link is the evidence
+      if (v.link) add(String(v.link), ts);
     } else if (typeof v === "string") {
       add(v, ts); // free-text reflection
     }
@@ -80,7 +100,7 @@ export function buildGoalEvidenceGroups(readings, allInputs, days, now = Date.no
   const cutoff = now - days * DAY_MS;
   const groups = [];
   let active = null;
-  const summary = { total: 0, onTrack: 0, drifting: 0, behind: 0, awaiting: 0 };
+  const summary = { total: 0, onTrack: 0, inProgress: 0, behind: 0, awaiting: 0 };
 
   const ensureGroup = (l1) => {
     if (active && active.l1?.id === l1?.id) return active;
@@ -96,14 +116,19 @@ export function buildGoalEvidenceGroups(readings, allInputs, days, now = Date.no
     } else if (r.level === "L2") {
       const g = ensureGroup(r.parentL1);
       const entries = allInputs?.[r.goal.id] || [];
-      const inWindow = entries.filter((e) => typeof e?.ts === "number" && e.ts >= cutoff);
+      const inWindowTs = entries
+        .filter((e) => typeof e?.ts === "number" && e.ts >= cutoff)
+        .map((e) => e.ts);
       const lastTs = entries.length ? entries[entries.length - 1].ts : null;
       g.goals.push({
         goal: r.goal,
         spec: r.spec,
         reading: r.reading || null,
         evidence: extractEvidenceItems(entries, cutoff),
-        entryCount: inWindow.length,
+        // Distinct check-in DAYS, not raw rows — accumulating widgets
+        // (composed / milestone / recurring) append a row per micro-edit, so
+        // a raw count reads "12 check-ins" for one sitting.
+        checkinDays: distinctDays(inWindowTs),
         lastTs,
       });
       summary.total += 1;

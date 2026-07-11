@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button, PageHeader } from "@/components/ui";
 import { useIntegrations } from "@/features/integrations";
 import { useHubLink } from "@/features/hubs";
+import { useGoalWidgetItems } from "@/features/goal-widgets";
 import { readInputs, useAllGoalInputs } from "@/features/goal-inputs";
 import { ConfigPanel } from "./config-panel";
 import { DocumentPreview } from "./document-preview";
@@ -45,6 +46,7 @@ export function EvidencePage() {
   // Goal-oriented data: per-goal readings + the check-in entries the user
   // logged against each goal. useAllGoalInputs subscribes the inputs store so
   // the memo re-reads readInputs() on hydration/change.
+  const { ready } = useGoalWidgetItems();
   const goalReadings = useGoalReadings(days);
   const inputsTick = useAllGoalInputs();
   const evidence = useMemo(
@@ -54,7 +56,10 @@ export function EvidencePage() {
   );
 
   const rangeLabel = rangeToLabel(range);
-  const loading = goalReadings.length === 0 && evidence.groups.length === 0;
+  // Real hydration signal (goals + specs loaded), NOT emptiness — otherwise a
+  // user with zero classified goals sees a permanent spinner and never the
+  // "set up your goals" empty state.
+  const loading = !ready;
 
   async function handleExport() {
     const props = {

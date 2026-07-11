@@ -91,7 +91,7 @@ export function GoalEvidenceBoard({ groups, loading, goalsHref }) {
 }
 
 function GoalEvidenceCard({ row }) {
-  const { goal, spec, reading, evidence, entryCount, lastTs } = row;
+  const { goal, spec, reading, evidence, checkinDays, lastTs } = row;
   const kindLabel = SPEC_KIND_META[spec?.widget]?.label ?? "Goal";
   const tone = TONE_PILL[reading?.statusTone] || "muted";
   const logged = relAgo(lastTs);
@@ -129,18 +129,24 @@ function GoalEvidenceCard({ row }) {
           {evidence.map((ev, i) => (
             <li key={i} className="flex items-start gap-2 text-[11.5px] leading-[1.4]">
               <span className="mt-[5px] h-1 w-1 shrink-0 rounded-full" style={{ background: "var(--accent)" }} />
-              {ev.link ? (
-                <a
-                  href={ev.text}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="min-w-0 truncate text-accent hover:underline"
-                >
-                  {ev.text}
-                </a>
-              ) : (
-                <span className="min-w-0 text-fg/85">{ev.text}</span>
-              )}
+              {/* Display the full text, but link to the EXTRACTED url (not the
+                  "label: url" text, which would resolve as a broken relative link). */}
+              <span className="min-w-0 text-fg/85">
+                {ev.text}
+                {ev.url ? (
+                  <>
+                    {" "}
+                    <a
+                      href={ev.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-accent hover:underline"
+                    >
+                      ↗
+                    </a>
+                  </>
+                ) : null}
+              </span>
             </li>
           ))}
         </ul>
@@ -150,8 +156,8 @@ function GoalEvidenceCard({ row }) {
         className="mt-2.5 flex items-center gap-2 uppercase tracking-[0.4px] text-dim-fg"
         style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}
       >
-        {entryCount > 0
-          ? `${entryCount} check-in${entryCount === 1 ? "" : "s"} this period`
+        {checkinDays > 0
+          ? `logged on ${checkinDays} day${checkinDays === 1 ? "" : "s"} this period`
           : "no check-ins this period"}
         {logged ? <span>· last logged {logged}</span> : null}
       </div>

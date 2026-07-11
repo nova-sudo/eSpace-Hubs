@@ -4,25 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { BentoTile } from "@/components/ui";
-import {
-  avgReviewerComments,
-  countMrComments,
-  fmtDurationHours,
-  linkagePct,
-  medianTurnaroundDays,
-  mergedWithin,
-  useCombinedEventsSince,
-  useCombinedMergedSince,
-  useIntegrations,
-} from "@/features/integrations";
+import { useIntegrations } from "@/features/integrations";
 import {
   downloadMarkdown,
   rangeToLabel,
   renderMarkdown,
-  useStarredEvidence,
+  useGoalReadings,
 } from "@/features/evidence";
 import { useHubLink } from "@/features/hubs";
-import { isoDaysAgo } from "@/lib/date";
 
 /**
  * Evidence bundle tile (compact-strip variant).
@@ -40,28 +29,7 @@ export function ExportTile() {
   const router = useRouter();
   const link = useHubLink();
   const { me } = useIntegrations();
-  const { data: merged } = useCombinedMergedSince(isoDaysAgo(90));
-  const { data: events } = useCombinedEventsSince(isoDaysAgo(90));
-  const starred = useStarredEvidence();
-
-  function buildMetrics() {
-    const mergedInRange = mergedWithin(merged || [], 90);
-    return [
-      ["Merged PRs", mergedInRange.length, "last 90d"],
-      [
-        "Review turnaround",
-        fmtDurationHours(medianTurnaroundDays(mergedInRange)),
-        "median",
-      ],
-      [
-        "Rounds / MR",
-        (avgReviewerComments(mergedInRange) ?? 0).toFixed(1),
-        "reviewer comments",
-      ],
-      ["Jira linkage", `${linkagePct(mergedInRange)?.pct ?? 0}%`, "MRs with ticket key"],
-      ["Reviews given", countMrComments(events || []), "comments on MRs"],
-    ];
-  }
+  const goalReadings = useGoalReadings(90);
 
   function handleMarkdown() {
     const md = renderMarkdown({
@@ -70,15 +38,8 @@ export function ExportTile() {
       level: "L1 → L2",
       rangeLabel: rangeToLabel("90d"),
       narrative: "",
-      metrics: buildMetrics(),
-      starred,
-      include: {
-        narrative: false,
-        metrics: true,
-        prs: true,
-        tickets: true,
-        reviews: true,
-      },
+      goalReadings,
+      include: { narrative: false, goals: true },
     });
     downloadMarkdown(`performance-review-90d.md`, md);
     toast.success("Markdown downloaded");
@@ -110,7 +71,7 @@ export function ExportTile() {
           className="text-[rgba(255,255,255,0.85)]"
           style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
         >
-          tickets · MRs · reviews · SLA · on-call
+goals · readings · logged evidence
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <ExportButton onClick={handleMarkdown} label=".md" />

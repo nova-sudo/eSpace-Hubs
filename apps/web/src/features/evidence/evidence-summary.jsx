@@ -8,7 +8,7 @@
 
 const ROWS = [
   { key: "onTrack", label: "On track", color: "var(--good)" },
-  { key: "drifting", label: "Drifting", color: "var(--accent)" },
+  { key: "inProgress", label: "In progress", color: "var(--accent)" },
   { key: "behind", label: "Behind", color: "var(--warn)" },
   { key: "awaiting", label: "Awaiting data", color: "var(--muted-fg)" },
 ];

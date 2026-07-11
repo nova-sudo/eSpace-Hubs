@@ -3,9 +3,8 @@
  *
  * A first-class, headless PDF — no browser print dialog, reproducible output.
  * Binds to the SAME props as renderMarkdown / DocumentPreview so the three
- * renderings stay in lockstep (shared formatExpected). Sections mirror the
- * markdown: masthead, 01 Summary, 02 Headline metrics, 03 Merged PRs,
- * 04 Closed tickets, 05 Reviews given, 06 Performance goals, footer.
+ * renderings stay in lockstep (shared formatExpected). Goal-oriented sections
+ * mirror the markdown: masthead, 01 Summary, 02 Performance goals, footer.
  *
  * This is a LIGHT "paper" document regardless of the app's on-screen theme —
  * white ground, dark ink, cobalt accent — which is what fixes the old
