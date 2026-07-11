@@ -18,7 +18,7 @@
  *   - markdown-export consumes the readings; document-preview renders them
  */
 
-import { useMemo } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import {
   avgReviewerComments,
   countMrComments,
@@ -41,6 +41,12 @@ import {
 } from "@/features/goal-inputs";
 import { goalCompliance, useSnapshots } from "@/features/snapshots";
 import { readContextFor, useAllGoalContext } from "@/features/goal-context";
+import {
+  readGoalLiveReading,
+  subscribeGoalLiveReadings,
+  getGoalLiveReadingsSnapshot,
+  getGoalLiveReadingsServerSnapshot,
+} from "@/features/goal-tiers";
 import { isoDaysAgo } from "@/lib/date";
 import { rubricHash, readVerdict } from "@/features/grading";
 
@@ -76,6 +82,15 @@ export function useGoalReadings(days = 90) {
   // hydration on session establishment.
   const inputsTick = useAllGoalInputs();
   const contextTick = useAllGoalContext();
+  // Widgets publish their live reading to the goal-tiers live-readings store
+  // (scorecard / CI-CD / rubric). Subscribe so the memo re-reads when a goal's
+  // reading lands — this is what lets Evidence show the SAME value the Goals
+  // tile showed, instead of a "tracked on dashboard" placeholder.
+  const liveTick = useSyncExternalStore(
+    subscribeGoalLiveReadings,
+    getGoalLiveReadingsSnapshot,
+    getGoalLiveReadingsServerSnapshot,
+  );
 
   return useMemo(() => {
     const out = [];
@@ -102,7 +117,7 @@ export function useGoalReadings(days = 90) {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [goals, specs, merged, events, jira, snapshots, days, inputsTick, contextTick]);
+  }, [goals, specs, merged, events, jira, snapshots, days, inputsTick, contextTick, liveTick]);
 }
 
 function pushReading(out, goal, level, ctx) {
@@ -221,6 +236,8 @@ export function summarizeGoal(spec, goal, ctx) {
     // when available; otherwise show component count + a hint.
     case SPEC_KINDS.SCORECARD:
       return readScorecard(spec, ctx);
+    case SPEC_KINDS.COMPOSED:
+      return readComposed(spec, goal, ctx);
     default:
       return { value: "—", statusTone: TONES.MUTED, statusLabel: "unknown" };
   }
@@ -275,6 +292,10 @@ function readTicketCycle(_spec, { tickets }) {
 }
 
 function readCodeRubric(spec, goal, _ctx) {
+  // Prefer the pass-rate the mounted rubric widget published (it graded the
+  // live PR list) — the same "% pass · P/T" the Goals page shows.
+  const live = fromLiveReading(spec);
+  if (live) return live;
   // Grading verdicts are cached per (prId, rubricHash). We don't re-fetch
   // PRs here — we report whatever's already in cache. If the user
   // hasn't pressed "Grade now" yet, this reads as "not graded".
@@ -602,6 +623,8 @@ function readRecurringMilestone(_spec, goal, { allInputs }) {
  * value still appears in exports, just without a numeric headline.
  */
 function readCiCdFromCompliance(spec, ctx) {
+  const live = fromLiveReading(spec);
+  if (live) return live;
   const fromCompliance = readingFromCompliance(spec, ctx);
   if (fromCompliance) return fromCompliance;
   return {
@@ -619,6 +642,10 @@ function readCiCdFromCompliance(spec, ctx) {
  * the export something readable even when no snapshots exist.
  */
 function readScorecard(spec, ctx) {
+  // The mounted scorecard widget publishes its composite {score,pass,total} —
+  // read that (the "96%") instead of punting to "tracked on dashboard".
+  const live = fromLiveReading(spec);
+  if (live) return live;
   const fromCompliance = readingFromCompliance(spec, ctx);
   if (fromCompliance) return fromCompliance;
   const n = Array.isArray(spec?.scorecard?.components)
@@ -631,6 +658,31 @@ function readScorecard(spec, ctx) {
     value: `Scorecard · ${n} component${n === 1 ? "" : "s"}`,
     statusTone: TONES.MUTED,
     statusLabel: "tracked on dashboard",
+  };
+}
+
+/**
+ * COMPOSED — the generative widget. No single scalar; summarize how much of the
+ * current record is filled from the persisted goal-inputs entry (latest-wins),
+ * mirroring the widget's "M of N fields" sense. Pure — data is already in ctx.
+ */
+function readComposed(spec, goal, { allInputs }) {
+  const fields = Array.isArray(spec.fields) ? spec.fields : [];
+  const entries = allInputs[goal.id] || [];
+  if (fields.length === 0 || entries.length === 0) return empty("Not started");
+  const vals = entries[entries.length - 1]?.value?.values;
+  const values = vals && typeof vals === "object" ? vals : {};
+  const required = fields.filter((f) => !f.optional);
+  const base = required.length ? required : fields;
+  const filled = base.filter((f) => {
+    const v = values[f.id];
+    return f.kind === "checkbox" ? v === true : v != null && v !== "";
+  }).length;
+  const pct = base.length ? Math.round((filled / base.length) * 100) : 0;
+  return {
+    value: `${filled} of ${base.length} fields filled · ${pct}%`,
+    statusTone: pct === 100 ? TONES.OK : pct > 0 ? TONES.ACCENT : TONES.MUTED,
+    statusLabel: pct === 100 ? "complete" : pct > 0 ? "in progress" : "not started",
   };
 }
 
@@ -675,4 +727,40 @@ function withTarget(value, target, displayValue, opts = {}) {
 
 function empty(value = "—") {
   return { value, statusTone: TONES.MUTED, statusLabel: "no data" };
+}
+
+/**
+ * Prefer the reading the mounted widget PUBLISHED (persisted in the goal-tiers
+ * live-readings store) — the exact number the Goals page showed — over our
+ * static recompute. This is how Evidence stops drifting for the composite /
+ * live-only widgets it can't recompute headlessly (SCORECARD, CI/CD, rubric).
+ * Guarded on `live.widget === spec.widget` so a stale reading left behind by a
+ * reclassified goal can't hijack a differently-typed goal. Null when there's no
+ * matching published reading (device never opened the Goals page this session).
+ */
+function fromLiveReading(spec) {
+  const live = readGoalLiveReading(spec?.goalId);
+  if (!live || live.widget !== spec?.widget) return null;
+  // SCORECARD publishes {score,pass,total,...} — the tile's own numbers.
+  if (live.widget === SPEC_KINDS.SCORECARD && Number.isFinite(live.score)) {
+    const pct = Math.round(live.score);
+    const onTgt =
+      Number.isFinite(live.pass) && Number.isFinite(live.total)
+        ? ` · ${live.pass}/${live.total} on target`
+        : "";
+    return {
+      value: `${pct}%${onTgt}`,
+      statusTone: pct >= 90 ? TONES.OK : pct >= 75 ? TONES.ACCENT : TONES.WARN,
+      statusLabel: pct >= 90 ? "on target" : pct >= 75 ? "drifting" : "below",
+    };
+  }
+  // CI/CD + rubric widgets publish the normalized {value,statusTone,statusLabel}.
+  if (typeof live.value === "string" && live.statusLabel) {
+    return {
+      value: live.value,
+      statusTone: live.statusTone || TONES.ACCENT,
+      statusLabel: live.statusLabel,
+    };
+  }
+  return null;
 }

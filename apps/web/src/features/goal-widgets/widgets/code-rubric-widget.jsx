@@ -28,6 +28,7 @@ import { ChevronDown } from "lucide-react";
 import { WidgetShell } from "../widget-shell";
 import { useGradedPrs } from "@/features/grading";
 import { weekLabel, weekRangeFromLabel } from "@/lib/date";
+import { usePublishGoalReading } from "../use-publish-reading";
 
 export function CodeRubricWidget({ spec, goal, variant = "light", className, onRetry }) {
   // When the widget is rendered inside the SCORECARD modal (synthetic
@@ -55,6 +56,20 @@ export function CodeRubricWidget({ spec, goal, variant = "light", className, onR
     firstReviewOnly:
       spec?.firstReviewOnly === true ? true : undefined,
   });
+
+  // Publish the graded pass-rate for the Evidence board — the same "N% · P/T
+  // passing" this widget shows (Evidence can't grade the PR list itself).
+  usePublishGoalReading(
+    goal?.id,
+    spec.widget,
+    !isListLoading && !spec?.scopeKey && summary && summary.pct != null && summary.total > 0
+      ? {
+          value: `${summary.pct}% · ${summary.pass}/${summary.total} passing`,
+          statusTone: summary.pct >= 85 ? "ok" : summary.pct >= 60 ? "accent" : "warn",
+          statusLabel: "graded",
+        }
+      : null,
+  );
 
   const [expandedPrId, setExpandedPrId] = useState(null);
   // PR list is COLLAPSED by default — the widget's headline (pass-rate

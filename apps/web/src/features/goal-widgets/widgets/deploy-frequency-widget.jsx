@@ -5,6 +5,7 @@ import { WidgetShell, TargetChip } from "../widget-shell";
 import { useDataSource } from "../data-sources/use-data-source";
 import { evalTarget } from "./merged-count-widget";
 import { NeedsScopeBanner } from "./build-events-shared";
+import { usePublishGoalReading } from "../use-publish-reading";
 
 /**
  * AUTO widget — count of successful CI/CD builds (Jenkins) or
@@ -32,6 +33,18 @@ export function DeployFrequencyWidget({
   const trend = data?.trend || [];
   const target = spec.source?.target;
   const hit = target && count != null ? evalTarget(count, target) : null;
+
+  usePublishGoalReading(
+    goal?.id,
+    spec.widget,
+    !needsScope && !isLoading && !error && count != null
+      ? {
+          value: `${count} deploy${count === 1 ? "" : "s"} · ${windowDays}d`,
+          statusTone: hit === true ? "ok" : hit === false ? "warn" : "accent",
+          statusLabel: hit === true ? "on target" : hit === false ? "below target" : "tracked",
+        }
+      : null,
+  );
 
   return (
     <WidgetShell

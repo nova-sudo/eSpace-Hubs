@@ -4,6 +4,7 @@ import { WidgetShell, TargetChip } from "../widget-shell";
 import { useDataSource } from "../data-sources/use-data-source";
 import { evalTarget } from "./merged-count-widget";
 import { NeedsScopeBanner } from "./build-events-shared";
+import { usePublishGoalReading } from "../use-publish-reading";
 
 /**
  * AUTO widget — % of completed CI builds in window that succeeded.
@@ -35,6 +36,19 @@ export function BuildPassRateWidget({
   const fail = data?.fail ?? 0;
   const target = spec.source?.target;
   const meets = target && pct != null ? evalTarget(pct, target) : null;
+
+  // Publish for the Evidence board (same "N%" it shows here).
+  usePublishGoalReading(
+    goal?.id,
+    spec.widget,
+    !needsScope && !isLoading && !error && pct != null
+      ? {
+          value: `${pct}%`,
+          statusTone: meets === true ? "ok" : meets === false ? "warn" : "accent",
+          statusLabel: meets === true ? "on target" : meets === false ? "below target" : "tracked",
+        }
+      : null,
+  );
 
   return (
     <WidgetShell

@@ -4,6 +4,7 @@ import { WidgetShell, TargetChip } from "../widget-shell";
 import { useDataSource } from "../data-sources/use-data-source";
 import { evalTarget } from "./merged-count-widget";
 import { NeedsScopeBanner } from "./build-events-shared";
+import { usePublishGoalReading } from "../use-publish-reading";
 
 /**
  * AUTO widget — median build duration in MINUTES for successful
@@ -41,6 +42,18 @@ export function LeadTimeWidget({
   const hit =
     target && medianMin != null ? evalTarget(medianMin, target) : null;
   const maxN = Math.max(1, ...histogram.map((b) => b.n));
+
+  usePublishGoalReading(
+    goal?.id,
+    spec.widget,
+    !needsScope && !isLoading && !error && medianMin != null
+      ? {
+          value: `${formatMin(medianMin)} median · n=${n}`,
+          statusTone: hit === true ? "ok" : hit === false ? "warn" : "accent",
+          statusLabel: hit === true ? "on target" : hit === false ? "above target" : "tracked",
+        }
+      : null,
+  );
 
   return (
     <WidgetShell
