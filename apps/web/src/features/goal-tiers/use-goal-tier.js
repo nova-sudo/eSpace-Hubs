@@ -466,11 +466,18 @@ export function useGoalTier(goalId, spec) {
     getGoalLiveReadingsSnapshot,
     getGoalLiveReadingsServerSnapshot,
   );
-  const liveReading = useMemo(
-    () => (isScorecard ? readGoalLiveReading(goalId) : null),
+  const liveReading = useMemo(() => {
+    if (!isScorecard) return null;
+    const live = readGoalLiveReading(goalId);
+    // Match on the widget kind too — the store is never cleared on
+    // reclassification, so a goal that used to be a CI/CD or rubric widget can
+    // still hold a stale foreign-kind reading (no .score) under its id. Without
+    // this guard that reading would inflate hasAnyData below and make the
+    // grader score emptiness instead of returning AWAITING_VERDICT (mirrors
+    // Evidence's fromLiveReading, which guards on live.widget === spec.widget).
+    return live?.widget === SPEC_KINDS.SCORECARD ? live : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isScorecard, goalId, liveTick],
-  );
+  }, [isScorecard, goalId, liveTick]);
 
   // W1: the single numeric reading the widget is graded on, when a numeric
   // ladder (tierScale) exists. Null for qualitative widgets / no data yet.

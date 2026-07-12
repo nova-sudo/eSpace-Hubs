@@ -36,6 +36,7 @@ import { useGoalSpecs, SPEC_KINDS } from "@/features/goal-specs";
 import {
   cadenceWindowLabel,
   computeCompliance,
+  currentPeriodKey,
   readInputs,
   useAllGoalInputs,
 } from "@/features/goal-inputs";
@@ -663,24 +664,40 @@ function readScorecard(spec, ctx) {
 
 /**
  * COMPOSED — the generative widget. No single scalar; summarize how much of the
- * current record is filled from the persisted goal-inputs entry (latest-wins),
- * mirroring the widget's "M of N fields" sense. Pure — data is already in ctx.
+ * current record is filled, mirroring EXACTLY what the ComposedWidget tile shows
+ * so Evidence never diverges from the Goals page:
+ *   - Current-period only: the widget renders currentPeriodKey(cadence, now) and
+ *     filters entries to that period, so a quarterly goal filled last quarter
+ *     but empty this one reads as empty here too — not "100%" from a stale
+ *     prior-period entry. (Cadence-less goals share one running record: null.)
+ *   - Denominator is ALL fields (the tile's "filled/total captured" counts every
+ *     field, optional included) — a required-only base would report a different
+ *     fraction than the widget for any goal with optional fields.
+ * Pure — data is already in ctx.
  */
 function readComposed(spec, goal, { allInputs }) {
   const fields = Array.isArray(spec.fields) ? spec.fields : [];
+  if (fields.length === 0) return empty("Not started");
+
+  const cadence = spec.composed?.cadence || null;
+  const periodKey = currentPeriodKey(cadence, Date.now());
   const entries = allInputs[goal.id] || [];
-  if (fields.length === 0 || entries.length === 0) return empty("Not started");
-  const vals = entries[entries.length - 1]?.value?.values;
+  const matching = entries.filter((e) =>
+    periodKey == null
+      ? e?.value && e.value.periodKey == null
+      : e?.value?.periodKey === periodKey,
+  );
+  const vals = matching[matching.length - 1]?.value?.values;
   const values = vals && typeof vals === "object" ? vals : {};
-  const required = fields.filter((f) => !f.optional);
-  const base = required.length ? required : fields;
-  const filled = base.filter((f) => {
+
+  const filled = fields.filter((f) => {
     const v = values[f.id];
     return f.kind === "checkbox" ? v === true : v != null && v !== "";
   }).length;
-  const pct = base.length ? Math.round((filled / base.length) * 100) : 0;
+  const total = fields.length;
+  const pct = total ? Math.round((filled / total) * 100) : 0;
   return {
-    value: `${filled} of ${base.length} fields filled · ${pct}%`,
+    value: `${filled} of ${total} fields filled · ${pct}%`,
     statusTone: pct === 100 ? TONES.OK : pct > 0 ? TONES.ACCENT : TONES.MUTED,
     statusLabel: pct === 100 ? "complete" : pct > 0 ? "in progress" : "not started",
   };

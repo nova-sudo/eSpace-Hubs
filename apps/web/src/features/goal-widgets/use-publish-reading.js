@@ -22,7 +22,11 @@ export function usePublishGoalReading(goalId, widget, reading) {
   // render's fresh object identity.
   const json = reading && reading.value != null ? JSON.stringify({ widget, ...reading }) : null;
   useEffect(() => {
-    if (!goalId || json == null) return;
-    publishGoalLiveReading(goalId, JSON.parse(json));
+    if (!goalId) return;
+    // Publish null on the has-data → no-data / needs-scope transition so a
+    // stale reading can't linger in the persisted store and drift Evidence
+    // away from what the widget now shows. (The SCORECARD widget clears the
+    // same way via JSON.stringify(null) → "null" → JSON.parse → null.)
+    publishGoalLiveReading(goalId, json == null ? null : JSON.parse(json));
   }, [goalId, json]);
 }
