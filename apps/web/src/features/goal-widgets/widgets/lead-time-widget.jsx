@@ -33,7 +33,7 @@ export function LeadTimeWidget({
   className,
   onRetry,
 }) {
-  const { data, isLoading, error, windowDays } = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel } = useDataSource(spec.source);
   const needsScope = data?.needsScope === true;
   const medianMin = data?.medianMin ?? null;
   const histogram = data?.histogram || [];
@@ -59,7 +59,7 @@ export function LeadTimeWidget({
     <WidgetShell
       spec={spec}
       variant={variant}
-      label={`Lead time · last ${windowDays}d`}
+      label={`Lead time · ${windowLabel}`}
       title={goal?.title || spec.title}
       rightChip={<TargetChip target={target} unit="min" variant={variant} />}
       onRetry={onRetry}

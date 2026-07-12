@@ -27,7 +27,7 @@ export function DeployFrequencyWidget({
   className,
   onRetry,
 }) {
-  const { data, isLoading, error, windowDays } = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel } = useDataSource(spec.source);
   const needsScope = data?.needsScope === true;
   const count = data?.count ?? null;
   const trend = data?.trend || [];
@@ -39,7 +39,7 @@ export function DeployFrequencyWidget({
     spec.widget,
     !needsScope && !isLoading && !error && count != null
       ? {
-          value: `${count} deploy${count === 1 ? "" : "s"} · ${windowDays}d`,
+          value: `${count} deploy${count === 1 ? "" : "s"} · ${windowLabel}`,
           statusTone: hit === true ? "ok" : hit === false ? "warn" : "accent",
           statusLabel: hit === true ? "on target" : hit === false ? "below target" : "tracked",
         }
@@ -50,7 +50,7 @@ export function DeployFrequencyWidget({
     <WidgetShell
       spec={spec}
       variant={variant}
-      label={`Deploys · last ${windowDays}d`}
+      label={`Deploys · ${windowLabel}`}
       title={goal?.title || spec.title}
       rightChip={<TargetChip target={target} variant={variant} />}
       onRetry={onRetry}

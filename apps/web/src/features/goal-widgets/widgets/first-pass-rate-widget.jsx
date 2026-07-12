@@ -29,7 +29,7 @@ export function FirstPassRateWidget({
   className,
   onRetry,
 }) {
-  const { data, isLoading, error, windowDays } = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel } = useDataSource(spec.source);
   const pct = data?.pct ?? null;
   const clean = data?.clean ?? 0;
   const pingPong = data?.pingPong ?? 0;
@@ -40,7 +40,7 @@ export function FirstPassRateWidget({
     <WidgetShell
       spec={spec}
       variant={variant}
-      label={`First-pass rate · ${windowDays}d`}
+      label={`First-pass rate · ${windowLabel}`}
       title={goal?.title || spec.title}
       rightChip={<TargetChip target={target} unit="%" variant={variant} />}
       onRetry={onRetry}

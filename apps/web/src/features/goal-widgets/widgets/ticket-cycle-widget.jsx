@@ -29,7 +29,7 @@ export function TicketCycleWidget({
   className,
   onRetry,
 }) {
-  const { data, isLoading, error, windowDays } = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel } = useDataSource(spec.source);
   const median = data?.median ?? null;
   const histogram = data?.histogram || [];
   const resolvedCount = data?.resolvedCount ?? 0;
@@ -41,7 +41,7 @@ export function TicketCycleWidget({
     <WidgetShell
       spec={spec}
       variant={variant}
-      label={`Ticket cycle · ${windowDays}d`}
+      label={`Ticket cycle · ${windowLabel}`}
       title={goal?.title || spec.title}
       rightChip={<TargetChip target={target} unit="d" variant={variant} />}
       onRetry={onRetry}
@@ -150,7 +150,7 @@ export function TicketCycleWidget({
                   : "var(--muted-fg)",
             }}
           >
-            no resolved tickets in the last {windowDays} days
+            no resolved tickets {windowLabel}
           </div>
         ) : null}
 

@@ -6,7 +6,7 @@ import { evalTarget } from "./merged-count-widget";
 import { ComplianceLine } from "../compliance-line";
 
 export function LinkageWidget({ spec, goal, variant = "light", className, onRetry }) {
-  const { data, isLoading, error, windowDays } = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel } = useDataSource(spec.source);
   const pct = data?.pct ?? null;
   const linked = data?.linked ?? 0;
   const loose = data?.loose ?? 0;
@@ -17,7 +17,7 @@ export function LinkageWidget({ spec, goal, variant = "light", className, onRetr
     <WidgetShell
       spec={spec}
       variant={variant}
-      label={`Jira linkage · ${windowDays}d`}
+      label={`Jira linkage · ${windowLabel}`}
       title={goal?.title || spec.title}
       rightChip={<TargetChip target={target} unit="%" variant={variant} />}
       onRetry={onRetry}

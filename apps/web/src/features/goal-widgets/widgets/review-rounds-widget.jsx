@@ -16,7 +16,7 @@ import { ComplianceLine } from "../compliance-line";
  * source (NOT a constant).
  */
 export function ReviewRoundsWidget({ spec, goal, variant = "light", className, onRetry }) {
-  const { data, isLoading, error, windowDays } = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel } = useDataSource(spec.source);
   const value = data?.value ?? null;
   const target = spec.source?.target;
   const meets = target && value != null ? evalTarget(value, target) : null;
@@ -34,7 +34,7 @@ export function ReviewRoundsWidget({ spec, goal, variant = "light", className, o
     <WidgetShell
       spec={spec}
       variant={variant}
-      label={`Review rounds · ${windowDays}d`}
+      label={`Review rounds · ${windowLabel}`}
       title={goal?.title || spec.title}
       rightChip={<TargetChip target={target} variant={variant} />}
       onRetry={onRetry}

@@ -7,7 +7,7 @@ import { evalTarget } from "./merged-count-widget";
 import { ComplianceLine } from "../compliance-line";
 
 export function TurnaroundWidget({ spec, goal, variant = "light", className, onRetry }) {
-  const { data, isLoading, error, windowDays } = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel } = useDataSource(spec.source);
   const median = data?.median ?? null;
   const histogram = data?.histogram || [];
   const target = spec.source?.target;
@@ -18,7 +18,7 @@ export function TurnaroundWidget({ spec, goal, variant = "light", className, onR
     <WidgetShell
       spec={spec}
       variant={variant}
-      label={`Turnaround · ${windowDays}d`}
+      label={`Turnaround · ${windowLabel}`}
       title={goal?.title || spec.title}
       rightChip={<TargetChip target={target} unit="d" variant={variant} />}
       onRetry={onRetry}

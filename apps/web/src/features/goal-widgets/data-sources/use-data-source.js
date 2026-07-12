@@ -18,7 +18,7 @@
  *   expect based on `spec.source.metric`.
  */
 
-import { isoDaysAgo } from "@/lib/date";
+import { startOfYearIso, startOfYearMs, DAY_MS } from "@/lib/date";
 import {
   useCombinedMergedSince,
   useGitlabMergedSince,
@@ -42,7 +42,12 @@ import {
   SOURCE_METRICS,
 } from "./source-deps";
 
-/** Map a spec window → a day count we can snap isoDaysAgo to. */
+/**
+ * Legacy: map a spec window → a day count. Kept for back-compat with any
+ * caller that still reads it, but useDataSource no longer uses it — every auto
+ * metric is now measured year-to-date (see the hook), because the L2s are
+ * annual goals and a rolling 30/90-day slice clipped the very work they track.
+ */
 export function windowToDays(window) {
   switch (window) {
     case "30d":
@@ -83,10 +88,15 @@ function useMergedByProvider(provider, sinceIso) {
  * ones we don't need so they short-circuit inside useSwrIf.
  */
 export function useDataSource(source) {
-  const days = windowToDays(source?.window);
-  // The isoDaysAgo helper snaps to UTC midnight — stable within a calendar
-  // day, so SWR cache keys don't thrash across renders.
-  const sinceIso = isoDaysAgo(days);
+  // Year-to-date window. The L2s are annual goals, so every auto metric is
+  // measured Jan 1 → today rather than a rolling `spec.source.window` slice
+  // (which left short-window goals reading "—"). `sinceIso` snaps to UTC
+  // midnight of Jan 1 — constant all year, so SWR cache keys never thrash.
+  // `days` is the YTD span (a rate denominator + the client-side merged
+  // filter); `windowLabel` is what widgets render.
+  const sinceIso = startOfYearIso();
+  const days = Math.max(1, Math.ceil((Date.now() - startOfYearMs()) / DAY_MS));
+  const windowLabel = `${new Date().getFullYear()} YTD`;
 
   // We only need Jira for JIRA-based metrics; call conditionally via a
   // separate hook that already handles "skip when not connected".
@@ -115,7 +125,7 @@ export function useDataSource(source) {
     : merged.data;
 
   if (!source || !metric) {
-    return { data: null, isLoading: false, error: null, windowDays: days };
+    return { data: null, isLoading: false, error: null, windowDays: days, windowLabel };
   }
 
   // Compute-on-demand — cheap, and keeps this file pure-ish.
@@ -131,6 +141,7 @@ export function useDataSource(source) {
       isLoading: merged.isLoading,
       error: merged.error,
       windowDays: days,
+      windowLabel,
     };
   }
 
@@ -142,6 +153,7 @@ export function useDataSource(source) {
       isLoading: merged.isLoading,
       error: merged.error,
       windowDays: days,
+      windowLabel,
     };
   }
 
@@ -154,6 +166,7 @@ export function useDataSource(source) {
       isLoading: merged.isLoading,
       error: merged.error,
       windowDays: days,
+      windowLabel,
     };
   }
 
@@ -165,6 +178,7 @@ export function useDataSource(source) {
       isLoading: merged.isLoading,
       error: merged.error,
       windowDays: days,
+      windowLabel,
     };
   }
 
@@ -181,6 +195,7 @@ export function useDataSource(source) {
       isLoading: merged.isLoading,
       error: merged.error,
       windowDays: days,
+      windowLabel,
     };
   }
 
@@ -200,6 +215,7 @@ export function useDataSource(source) {
       isLoading: buildEvents.isLoading,
       error: buildEvents.error,
       windowDays: days,
+      windowLabel,
     };
   }
 
@@ -215,6 +231,7 @@ export function useDataSource(source) {
       isLoading: buildEvents.isLoading,
       error: buildEvents.error,
       windowDays: days,
+      windowLabel,
     };
   }
 
@@ -230,6 +247,7 @@ export function useDataSource(source) {
       isLoading: buildEvents.isLoading,
       error: buildEvents.error,
       windowDays: days,
+      windowLabel,
     };
   }
 
@@ -258,6 +276,7 @@ export function useDataSource(source) {
       isLoading: jira.isLoading,
       error: jira.error,
       windowDays: days,
+      windowLabel,
     };
   }
 
@@ -266,5 +285,6 @@ export function useDataSource(source) {
     isLoading: false,
     error: new Error(`Unknown metric: ${metric}`),
     windowDays: days,
+    windowLabel,
   };
 }
