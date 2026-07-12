@@ -86,10 +86,6 @@ function specNeedsSetup(spec, contextComplete) {
   return !!(spec.context?.required && !contextComplete);
 }
 
-function todayStamp() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function hashStr(s) {
   let h = 0;
   for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) | 0;
@@ -629,8 +625,12 @@ export function useGoalTier(goalId, spec) {
       : base;
   }, [spec, entries, snapReading, liveReading, contextAnswers]);
 
-  // Cache key busts on a new day OR any change to what the verdict depends
-  // on: tiers, live data, the numeric ladder, and the numeric value.
+  // Cache key busts ONLY when what the verdict depends on changes: tiers, the
+  // graded prose, the numeric ladder, and the numeric value. Deliberately NOT
+  // time-based — a verdict is a pure function of this data, so re-grading "once
+  // a day" just spends an AI call to recompute the same answer. It re-grades on
+  // the next data change; the cadence-consistency cap + numeric grades already
+  // recompute live on read, so nothing time-sensitive is lost.
   const key = useMemo(() => {
     if (!tiers && !tierScale) return null;
     const basis =
@@ -641,7 +641,7 @@ export function useGoalTier(goalId, spec) {
       JSON.stringify(tierScale) +
       "|" +
       (reading ? String(reading.value) : "");
-    return `${todayStamp()}:${hashStr(basis)}`;
+    return hashStr(basis);
   }, [tiers, currentData, tierScale, reading]);
 
   useEffect(() => {
