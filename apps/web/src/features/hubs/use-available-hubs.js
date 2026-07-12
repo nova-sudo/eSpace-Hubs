@@ -20,14 +20,21 @@
 import { useSyncExternalStore } from "react";
 import { getHubsState, subscribeHubs } from "./hubs-store";
 
+// useSyncExternalStore compares snapshots by reference (Object.is). A fresh
+// object literal per call makes React think the store changed every render and
+// warns "The result of getServerSnapshot should be cached to avoid an infinite
+// loop." Freeze it once at module scope and return the same reference, so the
+// SSR/hydration phase settles deterministically (mirrors auth/use-session.js).
+const SERVER_SNAPSHOT = Object.freeze({
+  status: "loading",
+  hubs: [],
+  primaryHubId: null,
+  defaultHubId: null,
+  error: null,
+});
+
 function serverSnapshot() {
-  return {
-    status: "loading",
-    hubs: [],
-    primaryHubId: null,
-    defaultHubId: null,
-    error: null,
-  };
+  return SERVER_SNAPSHOT;
 }
 
 export function useAvailableHubs() {
