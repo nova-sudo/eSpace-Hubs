@@ -14,9 +14,16 @@
 
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useSnapshots } from "@/features/snapshots";
-import { useGoalInputs, getInputsState, currentPeriodKey } from "@/features/goal-inputs";
+import {
+  useGoalInputs,
+  getInputsState,
+  currentPeriodKey,
+  buildCycleWindows,
+  cadenceConsistency,
+} from "@/features/goal-inputs";
 import { useGoalContext, useIsContextComplete } from "@/features/goal-context";
-import { SPEC_KINDS } from "@/features/goal-specs";
+import { SPEC_KINDS, specCadence, isSingleRecordWidget } from "@/features/goal-specs";
+import { readLocks, useGoalLocks } from "@/features/goal-locks";
 import { getAiProvider } from "@/features/analyst";
 import {
   gradeGoalTier,
@@ -522,6 +529,26 @@ export function useGoalTier(goalId, spec) {
   // the wrong-unit thresholds (or flip pass/fail under direction:"lower").
   const tierScale = isScorecard ? null : spec?.tierScale || null;
 
+  // Cadence consistency — of the DUE periods (elapsed, not future/in-progress),
+  // how many did the user log or settle? Feeds the deterministic tier cap in the
+  // return so a qualitative cadence goal can't claim a high tier off one strong
+  // period while skipping the rest. Settled ("nothing to report") locks count as
+  // satisfied, so subscribe to the locks tick to recompute when one lands.
+  const lockTick = useGoalLocks();
+  const cadence = isSingleRecordWidget(spec?.widget) ? null : specCadence(spec);
+  const consistency = useMemo(() => {
+    if (!cadence) return null;
+    const prefix = `${goalId}::`;
+    const all = readLocks();
+    const lockedKeys = new Set();
+    for (const k of Object.keys(all)) {
+      if (all[k] && k.startsWith(prefix)) lockedKeys.add(k.slice(prefix.length));
+    }
+    const cycle = buildCycleWindows({ entries, cadence, now: Date.now(), lockedKeys });
+    return cadenceConsistency(cycle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cadence, goalId, entries, lockTick]);
+
   const snapReading = useMemo(
     () => latestReadingFor(snapshots, goalId),
     [snapshots, goalId],
@@ -667,11 +694,26 @@ export function useGoalTier(goalId, spec) {
       ? stored
       : null;
 
+  // Deterministic cadence-consistency cap — qualitative cadence goals only. A
+  // goal filled in one strong period can't read "over achieved" for the year if
+  // it skipped most of its due periods. Applied on read (live off entries/locks),
+  // so it updates the instant a period is filled — no re-grade needed.
+  //
+  // `!tierScale` excludes NUMERIC-ladder goals (COUNTER/SCALE/DATE_LOG): those
+  // still carry a prose `tiers` object, but they're graded deterministically by
+  // gradeNumericTier to be ALWAYS consistent with the number the widget shows —
+  // capping that would make the badge contradict the tile.
+  const cappedVerdict =
+    tiers && !tierScale
+      ? capVerdictByConsistency(verdict, consistency, cadence)
+      : verdict;
+
   return {
     hasTiers: !!(tiers || tierScale),
     tiers,
-    verdict,
-    loading: !!(tiers || tierScale) && !verdict,
+    verdict: cappedVerdict,
+    loading: !!(tiers || tierScale) && !cappedVerdict,
+    consistency,
     regrade: () =>
       gradeGoalTier({
         goalId,
@@ -705,3 +747,55 @@ export const TIER_FIELD = {
   over_achieved: "overAchieved",
   role_model: "roleModel",
 };
+
+/** Human plural for a cadence, used in the cap reasoning note. */
+const CADENCE_NOUN = {
+  monthly: "months",
+  quarterly: "quarters",
+  weekly: "weeks",
+  biweekly: "fortnights",
+  daily: "days",
+};
+
+/**
+ * Balanced cadence-consistency gate — the HIGHEST achievement tier a given
+ * logging ratio (satisfied ÷ due periods) can support. Chosen so a goal filled
+ * in one strong period among many can't over-claim: you need to keep up with
+ * the cadence to earn the top rungs, but a mostly-kept record isn't punished.
+ */
+function consistencyTierCap(ratio) {
+  if (ratio >= 0.8) return "role_model";
+  if (ratio >= 0.6) return "over_achieved";
+  if (ratio >= 0.4) return "achieved";
+  return "not_achieved";
+}
+
+/**
+ * Cap a qualitative tier verdict by cadence consistency. Only BITES when the AI
+ * tier exceeds what the logging ratio supports; needs ≥2 due periods (fewer is
+ * too little to judge consistency on). Awaiting / pending-setup verdicts pass
+ * through untouched (numeric-ladder goals are excluded at the call site via
+ * `!tierScale`). When it caps, it records `cappedFrom` + the consistency figures
+ * and appends a plain-language note to the reasoning so the badge/ladder
+ * explains why the tier was pulled down.
+ */
+function capVerdictByConsistency(verdict, consistency, cadence) {
+  if (!verdict || !verdict.tier || verdict.awaiting || verdict.pendingSetup) {
+    return verdict;
+  }
+  if (!consistency || consistency.due < 2) return verdict;
+  const capTier = consistencyTierCap(consistency.ratio);
+  const vIdx = TIER_ORDER.indexOf(verdict.tier);
+  const cIdx = TIER_ORDER.indexOf(capTier);
+  if (vIdx < 0 || cIdx < 0 || vIdx <= cIdx) return verdict; // at/below the cap already
+  const pct = Math.round(consistency.ratio * 100);
+  const noun = CADENCE_NOUN[cadence] || "periods";
+  const note = `Capped to "${TIER_LABELS[capTier]}" for cadence consistency: only ${consistency.satisfied} of ${consistency.due} due ${noun} logged (${pct}%).`;
+  return {
+    ...verdict,
+    tier: capTier,
+    cappedFrom: verdict.tier,
+    consistency,
+    reasoning: verdict.reasoning ? `${verdict.reasoning} ${note}` : note,
+  };
+}

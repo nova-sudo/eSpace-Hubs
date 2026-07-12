@@ -99,6 +99,35 @@ export function currentPeriodKey(cadence, now) {
   return w ? w.key : null;
 }
 
+/**
+ * Cadence CONSISTENCY over the periods that are DONE. Of the windows that have
+ * elapsed — filled + settled + owed, but NOT the in-progress `current` one and
+ * NOT `future` — what fraction did the user actually satisfy (log or explicitly
+ * settle as "nothing to report")? This is the "did you keep up with the
+ * cadence" signal the tier grader caps on, so a goal filled in one strong month
+ * can't read "over achieved" for the whole year, while a goal whose only
+ * "missing" periods are still upcoming isn't penalised for them.
+ *
+ * Pass a cycle from `buildCycleWindows` (ideally WITH `lockedKeys`, so settled
+ * periods count as satisfied). Returns null for pip mode / no windows / no
+ * elapsed periods yet — too early to judge, grade leniently until then.
+ *
+ * @returns {{ satisfied:number, missed:number, due:number, ratio:number }|null}
+ */
+export function cadenceConsistency(cycle) {
+  if (!cycle || cycle.mode === "pip" || !Array.isArray(cycle.windows)) return null;
+  let satisfied = 0;
+  let missed = 0;
+  for (const w of cycle.windows) {
+    if (w.state === "filled" || w.state === "settled") satisfied += 1;
+    else if (w.state === "owed") missed += 1;
+    // "current" (in progress) and "future" are not yet due-and-done → excluded
+  }
+  const due = satisfied + missed;
+  if (due === 0) return null;
+  return { satisfied, missed, due, ratio: satisfied / due };
+}
+
 export function buildCycleWindows({
   entries,
   cadence,
