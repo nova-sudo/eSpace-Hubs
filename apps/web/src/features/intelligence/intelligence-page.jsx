@@ -19,8 +19,7 @@ import { Button, Loader, Reveal } from "@/components/ui";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
 import { useHubLink } from "@/features/hubs";
 import { resolveCompletedWorkWeek } from "@/lib/date";
-import { FocusHero } from "./focus-hero";
-import { AlsoNeedsAttention } from "./also-needs-attention";
+import { FocusCarousel } from "./focus-carousel";
 import { GoalHealthGrid } from "./goal-health-grid";
 import { useGoalHealth } from "./use-goal-health";
 
@@ -43,8 +42,6 @@ export function IntelligencePage() {
   const [showBoard, setShowBoard] = useState(false);
 
   const loading = !itemsReady || !inputsReady;
-  const hero = queue?.[0] || null;
-  const rest = queue?.slice(1) || [];
   const needCount = queue?.length ?? 0;
 
   return (
@@ -95,22 +92,11 @@ export function IntelligencePage() {
         />
       ) : (
         <Reveal stagger className="flex flex-col gap-[30px]">
-          {hero ? (
-            // key by goal id → when the top priority changes (e.g. after you
-            // fill the current hero), React remounts the hero and its inline
-            // editor doesn't carry an open/expanded state onto the next goal.
-            <FocusHero key={hero.goal.id} card={hero} week={week} />
+          {needCount > 0 ? (
+            <FocusCarousel queue={queue} week={week} />
           ) : (
             <AllCaughtUp total={summary.total} />
           )}
-
-          {rest.length > 0 ? (
-            <AlsoNeedsAttention
-              rest={rest}
-              totalAttention={needCount}
-              seeAllHref={fillHref}
-            />
-          ) : null}
 
           {unclassifiedGoals.length > 0 ? (
             <UnclassifiedNote count={unclassifiedGoals.length} />
