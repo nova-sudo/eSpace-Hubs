@@ -49,6 +49,14 @@ import {
   getGoalLiveReadingsServerSnapshot,
 } from "@/features/goal-tiers";
 import { isoDaysAgo } from "@/lib/date";
+import {
+  inferIncidentMode,
+  filterByPeriod,
+  isDefectEntry,
+  latestDeliverables,
+  summarizeDefects,
+  defectRatePct,
+} from "@/lib/defects";
 import { rubricHash, readVerdict } from "@/features/grading";
 
 /* ──────────────────────────── tones ──────────────────────────── */
@@ -511,83 +519,75 @@ function readFirstPassRate(spec, ctx) {
 }
 
 /**
- * INCIDENT_LOG — per-incident logger. Reads from goal-inputs entries
- * with `{ severity, downtime, link? }` shape.
+ * INCIDENT_LOG — per-incident / defect logger. Reads goal-inputs entries via
+ * the shared lib/defects math the widget + grader also use, so all three agree.
  *
- * Two modes (matches the widget — `inferIncidentMode` mirrors the
- * `inferMode` helper in incident-log-widget.jsx):
- *   - **Duration** (unit = "minutes" / time-words): headline value is
- *     Σ downtime, compared against `≤ N minutes / quarter` budgets.
- *   - **Count** (unit = "defects" / "incidents" / …): headline value
- *     is the entry count, compared against `≤ N defects / quarter`
- *     budgets — the natural reading for defect-control goals.
+ * Two modes (see `inferIncidentMode`):
+ *   - **Duration** (unit = "minutes" / time-words): headline is Σ downtime vs a
+ *     `≤ N minutes / period` SLA budget.
+ *   - **Defect / count** (unit = "defects" / "bugs" / …): show the RATE
+ *     (defects ÷ deliverables) when a deliverables denominator is recorded —
+ *     the "≤X%" defect-control goals are written in — else count vs budget.
+ * All figures are windowed to the current cadence period, matching the tile.
  */
 function readIncidentLog(spec, goal, { allInputs }) {
   const entries = allInputs[goal.id] || [];
-  if (entries.length === 0) return empty("No incidents logged");
-  let totalDowntime = 0;
-  for (const e of entries) {
-    const d = Number(e?.value?.downtime);
-    if (Number.isFinite(d)) totalDowntime += d;
-  }
   const target = spec.manual?.target;
   const unit = spec.manual?.unit || "minutes";
   const period = target?.period || spec.manual?.cadence;
   const periodSuffix = period ? ` / ${period}` : "";
   const isCountMode = inferIncidentMode(unit) === "count";
-  // The headline value is what the target compares against. Count mode
-  // looks at entry count (so "Σ 10 defects · quarter" reads as
-  // "defects in window"); duration mode looks at downtime minutes.
-  const headlineValue = isCountMode ? entries.length : totalDowntime;
-  const summary = isCountMode
-    ? `${entries.length} ${unit}${
-        totalDowntime > 0 ? ` · Σ ${totalDowntime}m downtime` : ""
-      }`
-    : `${entries.length} incidents · Σ ${totalDowntime} ${unit}`;
-  if (!target || target.value == null) {
+  // Window to the current cadence period so the reading matches the widget
+  // (which resets its budget/rate each period).
+  const windowed = filterByPeriod(entries, period);
+  const defects = windowed.filter(isDefectEntry);
+
+  const budgeted = target && target.value != null;
+
+  // Duration mode (SLA downtime budget) — headline is Σ downtime vs budget.
+  if (!isCountMode) {
+    // Defer only when there's genuinely nothing to show. A budgeted goal with
+    // zero in-window incidents is NOT "no data" — it's "0 within budget", a
+    // passing reading that must match the tile + grader (finding: parity).
+    if (defects.length === 0 && !budgeted) return empty("No incidents logged");
+    const totalDowntime = defects.reduce((s, e) => {
+      const d = Number(e?.value?.downtime);
+      return Number.isFinite(d) ? s + d : s;
+    }, 0);
+    const summary = `${defects.length} incidents · Σ ${totalDowntime} ${unit}`;
+    if (!budgeted) {
+      return { value: summary, statusTone: TONES.ACCENT, statusLabel: "tracked" };
+    }
+    return withTarget(totalDowntime, target, `${summary}${periodSuffix}`, {
+      lowerIsBetter: target.op === "<=",
+    });
+  }
+
+  // Defect / count mode — show the RATE when deliverables are recorded (the
+  // "≤X%" the goal is really about), else fall back to count vs budget.
+  // Deliverables is a persistent scalar over ALL entries (never windowed).
+  const deliverables = latestDeliverables(entries);
+  const rate = defectRatePct(defects.length, deliverables);
+  if (defects.length === 0 && deliverables == null) return empty(`No ${unit} logged`);
+
+  if (rate != null) {
+    const s = summarizeDefects(defects);
+    const clean = defects.length === 0;
+    const documented = clean || (s.fullyDocumented && s.preventiveOpen === 0);
     return {
-      value: summary,
-      statusTone: TONES.ACCENT,
-      statusLabel: "tracked",
+      value: `${rate}% defect rate · ${defects.length}/${deliverables}${periodSuffix}`,
+      statusTone: documented ? TONES.OK : TONES.ACCENT,
+      statusLabel: clean ? "no defects" : documented ? "documented" : "tracked",
     };
   }
-  // Target is "≤ N [units] per period" — under = good, over = warn.
-  return withTarget(
-    headlineValue,
-    target,
-    `${summary}${periodSuffix}`,
-    { lowerIsBetter: target.op === "<=" },
-  );
-}
 
-/**
- * Local copy of the widget's `inferMode` — kept here so the evidence
- * resolver doesn't have to depend on the React widget bundle. If the
- * DURATION_UNITS list ever grows, sync both files.
- */
-const INCIDENT_DURATION_UNITS = new Set([
-  "minute",
-  "minutes",
-  "min",
-  "mins",
-  "m",
-  "hour",
-  "hours",
-  "hr",
-  "hrs",
-  "h",
-  "second",
-  "seconds",
-  "sec",
-  "secs",
-  "s",
-]);
-
-function inferIncidentMode(unit) {
-  if (typeof unit !== "string") return "duration";
-  const u = unit.toLowerCase().trim();
-  if (INCIDENT_DURATION_UNITS.has(u)) return "duration";
-  return "count";
+  const summary = `${defects.length} ${unit}`;
+  if (!target || target.value == null) {
+    return { value: summary, statusTone: TONES.ACCENT, statusLabel: "tracked" };
+  }
+  return withTarget(defects.length, target, `${summary}${periodSuffix}`, {
+    lowerIsBetter: target.op === "<=",
+  });
 }
 
 /**

@@ -33,6 +33,15 @@ import {
   subscribeGoalLiveReadings,
 } from "./live-readings-store";
 import { gradeNumericTier, numericReadingFor } from "./grade-numeric";
+import {
+  inferIncidentMode,
+  filterByPeriod,
+  isDefectEntry,
+  latestDeliverables,
+  summarizeDefects,
+  defectRatePct,
+  incidentHasCurrentData,
+} from "@/lib/defects";
 
 /** Shown when there's no usable reading yet — deferred, not "not achieved". */
 const AWAITING_VERDICT = Object.freeze({
@@ -272,14 +281,82 @@ function buildCurrentData(spec, entries, reading, liveReading) {
     case SPEC_KINDS.DATE_LOG:
       return `${list.length} entries logged`;
     case SPEC_KINDS.INCIDENT_LOG: {
-      const incidents = list.filter(
-        (e) => e?.value && typeof e.value === "object",
+      const unit = spec.manual?.unit || "minutes";
+      const target = spec.manual?.target;
+      const period = target?.period || spec.manual?.cadence;
+      const windowed = filterByPeriod(list, period);
+      const defects = windowed.filter(isDefectEntry);
+
+      // Duration mode (SLA downtime budget) — keep the lean downtime summary.
+      if (inferIncidentMode(unit) !== "count") {
+        const downtime = defects.reduce(
+          (s, e) => s + (Number(e.value?.downtime) || 0),
+          0,
+        );
+        const budget = target?.value;
+        return [
+          `${defects.length} incident(s) logged${period ? ` this ${period}` : ""}`,
+          downtime ? `total downtime ${downtime} min` : "no downtime recorded",
+          Number.isFinite(budget)
+            ? `budget ${target.op || "<="} ${budget} ${unit}${period ? ` / ${period}` : ""} — ${downtime <= budget ? "within" : "OVER"} budget`
+            : null,
+        ]
+          .filter(Boolean)
+          .join("; ");
+      }
+
+      // Defect / count mode — emit the RATE, severity split, per-defect
+      // documentation coverage, and preventive-action status, so the grader
+      // can actually judge "≤X% AND documented AND preventive closed" criteria
+      // instead of defaulting to "not achieved" for want of a rate. Deliverables
+      // is a persistent scalar over ALL entries (not windowed) so it can't age
+      // out from under the defects it divides.
+      const deliverables = latestDeliverables(list);
+      const s = summarizeDefects(defects);
+      const rate = defectRatePct(defects.length, deliverables);
+      if (defects.length === 0 && deliverables == null) {
+        // Nothing in the current window and no denominator. This exactly mirrors
+        // !incidentHasCurrentData, so hasAnyData is false and the effect defers
+        // to AWAITING — this string is only the cache-key basis, never graded.
+        return `no ${unit} logged${period ? ` this ${period}` : ""} and no deliverables recorded — nothing to grade yet`;
+      }
+      const lines = [
+        rate != null
+          ? `defect rate: ${defects.length} ${unit} / ${deliverables} deliverables = ${rate}%${period ? ` this ${period}` : ""}`
+          : `${defects.length} ${unit} logged${period ? ` this ${period}` : ""}; deliverables not recorded, so a defect RATE cannot be computed (assume the count is the whole picture)`,
+      ];
+      const budget = target?.value;
+      if (Number.isFinite(budget)) {
+        lines.push(
+          `count vs budget: ${defects.length} of ${target.op || "<="} ${budget} ${unit}${period ? ` / ${period}` : ""}`,
+        );
+      }
+      lines.push(
+        `severity: ${s.major} major/critical (P1/P2), ${s.minor} minor (P3/P4)`,
       );
-      const downtime = incidents.reduce(
-        (s, e) => s + (Number(e.value?.downtime) || 0),
-        0,
+      lines.push(
+        defects.length > 0
+          ? `documentation: ${s.withRca}/${defects.length} have a documented root-cause analysis, ${s.withAction}/${defects.length} have a corrective/preventive action${s.fullyDocumented ? " — every defect is fully documented" : ""}`
+          : "documentation: n/a (no defects this period)",
       );
-      return `${incidents.length} incidents logged${downtime ? `; total downtime ${downtime} min` : ""}`;
+      lines.push(
+        defects.length > 0
+          ? `preventive actions: ${s.preventiveClosed} closed, ${s.preventiveOpen} still open`
+          : "preventive actions: none needed",
+      );
+      const CAP = 10;
+      const detail = defects
+        .slice(-CAP)
+        .reverse()
+        .map((e) => {
+          const v = e.value || {};
+          const rcaText = v.rca || v.link;
+          return `• ${v.severity || "?"}${Number.isFinite(v.downtime) ? ` ${v.downtime}m` : ""} — root cause: ${rcaText ? "yes" : "no"}, action: ${v.action ? "yes" : "no"}, preventive: ${v.preventive || "—"}`;
+        });
+      if (detail.length) {
+        lines.push("per-defect:", ...detail);
+      }
+      return lines.join("\n");
     }
     case SPEC_KINDS.BEFORE_AFTER: {
       const b = Number(latest?.value?.baseline);
@@ -489,10 +566,21 @@ export function useGoalTier(goalId, spec) {
     }
     return numericReadingFor(spec, entries, snapReading);
   }, [tierScale, spec, entries, snapReading, liveReading]);
+  // INCIDENT_LOG grades the CURRENT cadence period (buildCurrentData windows to
+  // it), so "has data" must mean "has a current-period reading" — otherwise at a
+  // period rollover, out-of-window entries keep this true and the grader scores
+  // the empty window (a spurious verdict) instead of deferring, diverging from
+  // Evidence which shows "no data". It shares the exact predicate the reader
+  // uses, and deliberately ignores snap/live: captureGoalReadings has no
+  // INCIDENT_LOG case (snapReading is never legitimately set for it) and
+  // liveReading is scorecard-only, so OR-ing them could only let a stale reading
+  // left by a reclassified goal inflate the gate.
   const hasAnyData =
-    (Array.isArray(entries) && entries.length > 0) ||
-    snapReading != null ||
-    liveReading != null;
+    spec?.widget === SPEC_KINDS.INCIDENT_LOG
+      ? incidentHasCurrentData(spec, entries)
+      : (Array.isArray(entries) && entries.length > 0) ||
+        snapReading != null ||
+        liveReading != null;
 
   // The user's own definitions (context answers) — fed into the AI grader
   // so it judges qualitative goals against the user's truth, not a guess.
