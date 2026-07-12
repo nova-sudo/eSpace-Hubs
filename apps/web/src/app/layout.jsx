@@ -4,6 +4,7 @@ import { SessionProvider } from "@/features/auth";
 import { CompanionApiOriginProvider } from "@/features/companion";
 import { MigrateOnce } from "@/features/migrate";
 import { HubsFetcher } from "@/features/hubs";
+import { JobsToast } from "@/components/shell/jobs-toast";
 
 // Nothing UI fonts (Doto / Hanken Grotesk / Space Mono) load via the Google
 // Fonts @import in globals.css, so no next/font wiring is needed here.
@@ -72,6 +73,10 @@ export default function RootLayout({ children }) {
               on session establishment — no standalone <*Sync /> mounts. */}
           {children}
         </SessionProvider>
+        {/* Headless: keeps a single persistent toast in sync with the
+            in-memory jobs store so background analysis / tier-grading stays
+            visible across navigation. Sibling of <Toaster>, never unmounts. */}
+        <JobsToast />
         <Toaster
           theme="dark"
           richColors

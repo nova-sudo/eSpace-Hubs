@@ -28,6 +28,7 @@
 
 import { ANALYSIS } from "./ai/analysis-events";
 import { getAiProvider } from "./use-ai-provider";
+import { startJob, endJob } from "@/lib/jobs-store";
 
 /**
  * Read a ReadableStream of NDJSON line-by-line. Identical to the
@@ -92,66 +93,74 @@ export async function reclassifyOneGoal({ goal, contextAnswers, signal }) {
   }
   const provider = getAiProvider();
 
-  // Build the request body. The API trims + filters empty Q/A pairs
-  // server-side so we don't repeat that here; we just pass through.
-  const body = {
-    goals: [
-      {
-        id: goal.id,
-        title: goal.title,
-        ...(goal.description ? { description: goal.description } : {}),
-        ...(goal.parentL1Title ? { parentL1Title: goal.parentL1Title } : {}),
-        kind: goal.kind || "L2",
-        ...(Array.isArray(contextAnswers) && contextAnswers.length > 0
-          ? { contextAnswers }
-          : {}),
+  // Surface this single-goal re-analysis in the shell "running jobs" toast so
+  // it stays visible if the user navigates away mid-run.
+  const jobId = `analysis:${goal.id}`;
+  startJob(jobId, { kind: "analysis", label: goal.title || "goal" });
+  try {
+    // Build the request body. The API trims + filters empty Q/A pairs
+    // server-side so we don't repeat that here; we just pass through.
+    const body = {
+      goals: [
+        {
+          id: goal.id,
+          title: goal.title,
+          ...(goal.description ? { description: goal.description } : {}),
+          ...(goal.parentL1Title ? { parentL1Title: goal.parentL1Title } : {}),
+          kind: goal.kind || "L2",
+          ...(Array.isArray(contextAnswers) && contextAnswers.length > 0
+            ? { contextAnswers }
+            : {}),
+        },
+      ],
+      provider,
+    };
+
+    const res = await fetch("/api/v1/ai/classify-goals", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        "x-ai-provider": provider,
       },
-    ],
-    provider,
-  };
-
-  const res = await fetch("/api/v1/ai/classify-goals", {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "x-ai-provider": provider,
-    },
-    body: JSON.stringify(body),
-    signal,
-  });
-  if (!res.ok) {
-    const errBody = await res.json().catch(() => ({}));
-    throw new Error(
-      errBody?.error?.message ||
-        errBody?.error ||
-        `Classifier responded ${res.status}`,
-    );
-  }
-  if (!res.body) {
-    throw new Error("Classifier returned an empty stream.");
-  }
-
-  // Walk the stream until we see GOAL_CLASSIFIED (success) or
-  // GOAL_FAILED (failure) for this goal. We also surface a generic
-  // failure if the stream COMPLETEs without either — should never
-  // happen, but the analyst page handles the same case so we mirror
-  // it here.
-  for await (const evt of readNdjson(res.body)) {
-    if (
-      evt.type === ANALYSIS.GOAL_CLASSIFIED &&
-      evt.payload?.spec?.goalId === goal.id
-    ) {
-      return evt.payload.spec;
-    }
-    if (
-      evt.type === ANALYSIS.GOAL_FAILED &&
-      evt.payload?.goalId === goal.id
-    ) {
+      body: JSON.stringify(body),
+      signal,
+    });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
       throw new Error(
-        evt.payload?.error || "Classifier failed to produce a spec.",
+        errBody?.error?.message ||
+          errBody?.error ||
+          `Classifier responded ${res.status}`,
       );
     }
+    if (!res.body) {
+      throw new Error("Classifier returned an empty stream.");
+    }
+
+    // Walk the stream until we see GOAL_CLASSIFIED (success) or
+    // GOAL_FAILED (failure) for this goal. We also surface a generic
+    // failure if the stream COMPLETEs without either — should never
+    // happen, but the analyst page handles the same case so we mirror
+    // it here.
+    for await (const evt of readNdjson(res.body)) {
+      if (
+        evt.type === ANALYSIS.GOAL_CLASSIFIED &&
+        evt.payload?.spec?.goalId === goal.id
+      ) {
+        return evt.payload.spec;
+      }
+      if (
+        evt.type === ANALYSIS.GOAL_FAILED &&
+        evt.payload?.goalId === goal.id
+      ) {
+        throw new Error(
+          evt.payload?.error || "Classifier failed to produce a spec.",
+        );
+      }
+    }
+    throw new Error("Classifier finished without producing a spec.");
+  } finally {
+    endJob(jobId);
   }
-  throw new Error("Classifier finished without producing a spec.");
 }

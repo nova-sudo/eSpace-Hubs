@@ -17,6 +17,7 @@
  */
 
 import { fetchWithRateLimitRetry } from "@/lib/rate-limit";
+import { startJob, endJob } from "@/lib/jobs-store";
 
 const STORAGE_KEY = "espace-devhub:goal-tiers";
 const CHANGE_EVENT = "goal-tiers:change";
@@ -104,6 +105,10 @@ export async function gradeGoalTier({
     if (inflight.has(goalId)) return;
   }
   inflight.add(goalId);
+  // Surface the grade in the shell "running jobs" toast. The request already
+  // survives navigation (it writes straight into this module store), so this
+  // just makes it visible — and keyed per goal so the toast can count them.
+  startJob(`grading:${goalId}`, { kind: "grading", label: goalTitle || "" });
   try {
     const res = await fetchWithRateLimitRetry(
       "/api/v1/ai/grade-goal-tier",
@@ -139,6 +144,7 @@ export async function gradeGoalTier({
     /* network / abort — keep any prior verdict */
   } finally {
     inflight.delete(goalId);
+    endJob(`grading:${goalId}`);
   }
 }
 
