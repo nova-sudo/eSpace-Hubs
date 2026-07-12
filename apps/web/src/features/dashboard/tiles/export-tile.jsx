@@ -7,10 +7,10 @@ import { BentoTile } from "@/components/ui";
 import { useIntegrations } from "@/features/integrations";
 import {
   downloadMarkdown,
-  rangeToLabel,
   renderMarkdown,
   useGoalReadings,
 } from "@/features/evidence";
+import { yearToDateLabel } from "@/lib/date";
 import { useHubLink } from "@/features/hubs";
 
 /**
@@ -29,19 +29,19 @@ export function ExportTile() {
   const router = useRouter();
   const link = useHubLink();
   const { me } = useIntegrations();
-  const goalReadings = useGoalReadings(90);
+  const goalReadings = useGoalReadings();
 
   function handleMarkdown() {
     const md = renderMarkdown({
       name: me?.name,
       team: me?.team,
       level: "L1 → L2",
-      rangeLabel: rangeToLabel("90d"),
+      rangeLabel: yearToDateLabel(),
       narrative: "",
       goalReadings,
       include: { narrative: false, goals: true },
     });
-    downloadMarkdown(`performance-review-90d.md`, md);
+    downloadMarkdown(`performance-review-ytd.md`, md);
     toast.success("Markdown downloaded");
   }
 
@@ -55,7 +55,7 @@ export function ExportTile() {
       col="span 4"
       row="span 1"
       variant="accent"
-      label="Evidence · 90d bundle"
+      label="Evidence · YTD bundle"
       right={
         <Link
           href={link("/evidence")}

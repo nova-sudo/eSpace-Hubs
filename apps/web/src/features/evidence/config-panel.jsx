@@ -7,12 +7,6 @@ const FORMATS = [
   ["pdf", ".pdf"],
 ];
 
-const RANGES = [
-  ["30d", "30d"],
-  ["90d", "90d"],
-  ["q1", "Q1"],
-];
-
 const SECTION_TOGGLES = [
   ["narrative", "Summary narrative"],
   ["goals", "Goal readings"],
@@ -63,8 +57,6 @@ function Seg({ active, accentFill, onClick, children }) {
 export function ConfigPanel({
   format,
   setFormat,
-  range,
-  setRange,
   level,
   setLevel,
   include,
@@ -95,13 +87,12 @@ export function ConfigPanel({
           ))}
         </div>
 
-        <FieldLabel>Range</FieldLabel>
-        <div className="mb-4 mt-[7px] flex gap-1.5">
-          {RANGES.map(([v, l]) => (
-            <Seg key={v} active={range === v} onClick={() => setRange(v)}>
-              {l}
-            </Seg>
-          ))}
+        <FieldLabel>Window</FieldLabel>
+        <div
+          className="mb-4 mt-[7px] rounded-[5px] border border-border px-3 py-2 uppercase tracking-[0.5px] text-muted-fg"
+          style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
+        >
+          {rangeLabel}
         </div>
 
         <FieldLabel>Level</FieldLabel>

@@ -13,7 +13,6 @@ const STATUS_PILL_COLORS = {
 
 export function DocumentPreview({
   format,
-  range,
   level,
   narrative,
   setNarrative,
@@ -23,7 +22,7 @@ export function DocumentPreview({
 }) {
   const { me } = useIntegrations();
 
-  const filename = `performance-review-${range}.${format === "markdown" ? "md" : "pdf"}`;
+  const filename = `performance-review-ytd.${format === "markdown" ? "md" : "pdf"}`;
 
   // Count the sections actually rendered into the preview — drives the
   // Doto "N sections" tally in the preview header. Goal-oriented: summary

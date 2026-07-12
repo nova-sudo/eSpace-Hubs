@@ -15,6 +15,30 @@ export function isoDaysAgo(days) {
 }
 
 /**
+ * Start of the current year (Jan 1, UTC midnight) as epoch ms.
+ *
+ * The Evidence page tracks L2 *annual* goals, so every reading windows to
+ * year-to-date (Jan 1 → today) rather than a rolling 30/90-day slice. Snapped
+ * to UTC midnight for the same SWR-key-stability reason as isoDaysAgo — the
+ * value is constant for the whole year, so tiles dedupe their fetches.
+ */
+export function startOfYearMs(now = Date.now()) {
+  const d = new Date(now);
+  return Date.UTC(d.getUTCFullYear(), 0, 1);
+}
+
+/** ISO string for the start of the current year (see startOfYearMs). */
+export function startOfYearIso(now = Date.now()) {
+  return new Date(startOfYearMs(now)).toISOString();
+}
+
+/** "2026 YTD · Jan 1 — Jul 12" — the fixed label for the year-to-date window. */
+export function yearToDateLabel(now = new Date()) {
+  const today = now.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${now.getFullYear()} YTD · Jan 1 — ${today}`;
+}
+
+/**
  * Return the most recent Sunday at local midnight as an ISO string.
  *
  * Why Sunday-start: this app is built for an Egypt-based team whose work

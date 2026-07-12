@@ -26,7 +26,6 @@ import {
   firstPassRatePct,
   linkagePct,
   medianTurnaroundDays,
-  mergedWithin,
   useCombinedEventsSince,
   useCombinedMergedSince,
   useJiraTickets,
@@ -48,7 +47,7 @@ import {
   getGoalLiveReadingsSnapshot,
   getGoalLiveReadingsServerSnapshot,
 } from "@/features/goal-tiers";
-import { isoDaysAgo } from "@/lib/date";
+import { startOfYearIso, startOfYearMs } from "@/lib/date";
 import {
   inferIncidentMode,
   filterByPeriod,
@@ -74,14 +73,17 @@ const TONES = Object.freeze({
  * Returns a flat list of `{ goal, spec, reading }` for every classified
  * goal in the user's L1/L2 tree. Goals without a spec yet are skipped.
  *
- * Day window is 90d to match the rest of the evidence page; could be
- * parameterized later if the Date-range chips need to flow through.
+ * Window is year-to-date (Jan 1 → today). The Evidence page tracks the L2
+ * *annual* goals, so a rolling 30/90-day slice would clip the very evidence
+ * the review is about — every source reads from the start of the year.
+ * (A trailing `days` arg from legacy call sites is accepted and ignored.)
  */
-export function useGoalReadings(days = 90) {
+export function useGoalReadings() {
   const { goals } = useGoals();
   const { specs } = useGoalSpecs();
-  const { data: merged } = useCombinedMergedSince(isoDaysAgo(days));
-  const { data: events } = useCombinedEventsSince(isoDaysAgo(days));
+  const since = startOfYearIso();
+  const { data: merged } = useCombinedMergedSince(since);
+  const { data: events } = useCombinedEventsSince(since);
   const { data: jira } = useJiraTickets();
   const { snapshots } = useSnapshots();
   // Subscribe to the API-direct inputs + context stores. The memo below
@@ -104,7 +106,13 @@ export function useGoalReadings(days = 90) {
   return useMemo(() => {
     const out = [];
     const allInputs = readInputs();
-    const mrs = mergedWithin(merged || [], days);
+    // Year-to-date window: keep merges from Jan 1 onward. The combined hook
+    // already fetches since the same cutoff; this client-side filter guards
+    // against providers that page by `updated_after` rather than `merged_at`.
+    const yearStart = startOfYearMs();
+    const mrs = (merged || []).filter(
+      (m) => m.merged_at && new Date(m.merged_at).getTime() >= yearStart,
+    );
     const tickets = Array.isArray(jira?.issues) ? jira.issues : [];
 
     const ctxBase = {
@@ -126,7 +134,7 @@ export function useGoalReadings(days = 90) {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [goals, specs, merged, events, jira, snapshots, days, inputsTick, contextTick, liveTick]);
+  }, [goals, specs, merged, events, jira, snapshots, inputsTick, contextTick, liveTick]);
 }
 
 function pushReading(out, goal, level, ctx) {

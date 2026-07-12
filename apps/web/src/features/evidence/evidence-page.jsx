@@ -15,14 +15,14 @@ import { useGoalReadings } from "./goal-readings";
 import { buildGoalEvidenceGroups } from "./goal-evidence";
 import { GoalEvidenceBoard } from "./goal-evidence-board";
 import { EvidenceSummary } from "./evidence-summary";
-import { downloadMarkdown, rangeToLabel, renderMarkdown } from "./markdown-export";
+import { downloadMarkdown, renderMarkdown } from "./markdown-export";
+import { yearToDateLabel } from "@/lib/date";
 import { generateEvidencePdf } from "./pdf/generate-pdf";
 
 export function EvidencePage() {
   const { me } = useIntegrations();
   const searchParams = useSearchParams();
   const [format, setFormat] = useState("markdown");
-  const [range, setRange] = useState("90d");
   // "board" = the goal evidence board (primary); "compile" = the document builder.
   const [view, setView] = useState("board");
   const link = useHubLink();
@@ -41,21 +41,20 @@ export function EvidencePage() {
   // GitHub/Jira aren't tracked anymore.)
   const [include, setInclude] = useState({ narrative: true, goals: true });
 
-  const days = range === "30d" ? 30 : range === "90d" ? 90 : 90;
-
   // Goal-oriented data: per-goal readings + the check-in entries the user
-  // logged against each goal. useAllGoalInputs subscribes the inputs store so
-  // the memo re-reads readInputs() on hydration/change.
+  // logged against each goal. Windowed to year-to-date (the L2s are annual
+  // goals). useAllGoalInputs subscribes the inputs store so the memo re-reads
+  // readInputs() on hydration/change.
   const { ready } = useGoalWidgetItems();
-  const goalReadings = useGoalReadings(days);
+  const goalReadings = useGoalReadings();
   const inputsTick = useAllGoalInputs();
   const evidence = useMemo(
-    () => buildGoalEvidenceGroups(goalReadings, readInputs(), days),
+    () => buildGoalEvidenceGroups(goalReadings, readInputs()),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [goalReadings, days, inputsTick],
+    [goalReadings, inputsTick],
   );
 
-  const rangeLabel = rangeToLabel(range);
+  const rangeLabel = yearToDateLabel();
   // Real hydration signal (goals + specs loaded), NOT emptiness — otherwise a
   // user with zero classified goals sees a permanent spinner and never the
   // "set up your goals" empty state.
@@ -74,14 +73,14 @@ export function EvidencePage() {
     if (format === "pdf") {
       const t = toast.loading("Generating PDF…");
       try {
-        await generateEvidencePdf(props, `performance-review-${range}.pdf`);
+        await generateEvidencePdf(props, "performance-review-ytd.pdf");
         toast.success("PDF downloaded", { id: t });
       } catch (err) {
         toast.error(`PDF export failed: ${err?.message || err}`, { id: t });
       }
       return;
     }
-    downloadMarkdown(`performance-review-${range}.md`, renderMarkdown(props));
+    downloadMarkdown("performance-review-ytd.md", renderMarkdown(props));
     toast.success("Markdown downloaded");
   }
 
@@ -96,7 +95,14 @@ export function EvidencePage() {
           crumb="Evidence · goals"
           title="Proof for your review."
           italicWord="."
-          right={<RangeToggle range={range} setRange={setRange} />}
+          right={
+            <span
+              className="uppercase tracking-[0.6px] text-muted-fg"
+              style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
+            >
+              {rangeLabel}
+            </span>
+          }
         />
         <div className="grid grid-cols-[minmax(0,1fr)_300px] items-start gap-[26px]">
           <GoalEvidenceBoard
@@ -105,7 +111,7 @@ export function EvidencePage() {
             goalsHref={link("/goals")}
           />
           <EvidenceSummary
-            rangeLabel={range}
+            rangeLabel={rangeLabel}
             summary={evidence.summary}
             onCompile={() => setView("compile")}
           />
@@ -121,7 +127,7 @@ export function EvidencePage() {
         <ReviewPrepChecklist />
       </div>
       <PageHeader
-        crumb={`Evidence · ${days}-day goal review`}
+        crumb="Evidence · year-to-date goal review"
         title="Make the case."
         italicWord="case"
         subtitle="Compile your goals — what each was set up to achieve, where it landed, and the evidence you logged — into one reviewable document."
@@ -142,8 +148,6 @@ export function EvidencePage() {
           <ConfigPanel
             format={format}
             setFormat={setFormat}
-            range={range}
-            setRange={setRange}
             level={level}
             setLevel={setLevel}
             include={include}
@@ -155,7 +159,6 @@ export function EvidencePage() {
         <div className="flex min-w-0 flex-col gap-[18px]">
           <DocumentPreview
             format={format}
-            range={range}
             level={level}
             narrative={narrative}
             setNarrative={setNarrative}
@@ -166,29 +169,5 @@ export function EvidencePage() {
         </div>
       </div>
     </main>
-  );
-}
-
-/** Compact 30d / 90d range toggle for the board header. */
-function RangeToggle({ range, setRange }) {
-  return (
-    <div className="flex overflow-hidden rounded-[var(--radius-sub)] border border-border">
-      {["30d", "90d"].map((r) => (
-        <button
-          key={r}
-          type="button"
-          onClick={() => setRange(r)}
-          className="px-3 py-1.5 uppercase tracking-[0.6px] transition-colors"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            color: range === r ? "var(--accent-on)" : "var(--muted-fg)",
-            background: range === r ? "var(--accent)" : "transparent",
-          }}
-        >
-          {r}
-        </button>
-      ))}
-    </div>
   );
 }

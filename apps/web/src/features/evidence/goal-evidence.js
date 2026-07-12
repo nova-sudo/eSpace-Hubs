@@ -8,7 +8,7 @@
  * per-item / per-field evidence, links).
  */
 
-import { DAY_MS } from "@/lib/date";
+import { startOfYearMs } from "@/lib/date";
 
 const LINK_RE = /https?:\/\/\S+/;
 
@@ -92,12 +92,13 @@ export function extractEvidenceItems(entries, cutoff, cap = 5) {
 
 /**
  * Group per-goal readings into L1 shelves with each L2 goal's logged evidence.
+ * Windowed to year-to-date — the L2s are annual goals, so evidence is counted
+ * from Jan 1 of the current year onward.
  * @param {Array} readings  useGoalReadings() output ({goal,spec,level,parentL1,reading})
  * @param {Object} allInputs  readInputs() → { [goalId]: entries[] }
- * @param {number} days  window
  */
-export function buildGoalEvidenceGroups(readings, allInputs, days, now = Date.now()) {
-  const cutoff = now - days * DAY_MS;
+export function buildGoalEvidenceGroups(readings, allInputs, now = Date.now()) {
+  const cutoff = startOfYearMs(now);
   const groups = [];
   let active = null;
   const summary = { total: 0, onTrack: 0, inProgress: 0, behind: 0, awaiting: 0 };
