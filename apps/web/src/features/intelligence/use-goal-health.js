@@ -17,7 +17,7 @@
  * readGoalEntries() inside a tick-keyed memo. Components stay pure render.
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import {
   getInputsState,
   readGoalEntries,
@@ -27,27 +27,58 @@ import { useSnapshots } from "@/features/snapshots";
 import {
   isCurrentWindowLocked,
   currentWindowKey,
+  readLocks,
   useGoalLocks,
 } from "@/features/goal-locks";
 import { isContextComplete, useAllGoalContext } from "@/features/goal-context";
 import { specCadence } from "@/features/goal-specs";
 import { GOAL_READINESS } from "@/features/goal-widgets";
 import {
+  readCappedGoalTier,
+  hydrateGoalTiers,
+  subscribeGoalTiers,
+  getGoalTiersSnapshot,
+  getGoalTiersServerSnapshot,
+  TIER_ORDER,
+} from "@/features/goal-tiers";
+import {
   computeTrend,
   deriveGoalHealth,
   HEALTH,
-  NEEDS_ATTENTION,
 } from "./status";
 
-// Action-Queue ordering: a not-yet-set-up goal is the most blocking (you can't
-// track it at all until it's defined), then an untouched goal, then a stale
-// one, then one that's filled-but-behind.
-const SEVERITY = Object.freeze({
-  [HEALTH.NEEDS_SETUP]: -1,
-  [HEALTH.NO_DATA]: 0,
-  [HEALTH.STALE]: 1,
-  [HEALTH.BEHIND]: 2,
-});
+/**
+ * Carousel ranking: WORST achievement tier first. A graded goal ranks by its
+ * tier index (not_achieved = 0, the worst); a goal that still needs work but
+ * isn't graded yet (no data / needs-setup) ranks AFTER the graded-failing ones.
+ */
+function carouselRank(card) {
+  const t = card.tier;
+  if (t == null) return TIER_ORDER.length; // ungraded → after not_achieved
+  const i = TIER_ORDER.indexOf(t);
+  return i < 0 ? TIER_ORDER.length : i;
+}
+
+/** The locked ("nothing to report") window keys for one goal, from the map. */
+function lockedKeysFor(allLocks, goalId) {
+  const set = new Set();
+  const prefix = `${goalId}::`;
+  for (const k of Object.keys(allLocks)) {
+    if (allLocks[k] && k.startsWith(prefix)) set.add(k.slice(prefix.length));
+  }
+  return set;
+}
+
+/** Newest snapshot reading for a goal (snapshots are newest-first) — the numeric
+ *  source for AUTO goals when grading a tier inline. */
+function latestSnapReading(snapshots, goalId) {
+  if (!Array.isArray(snapshots)) return null;
+  for (const s of snapshots) {
+    const r = s?.goalReadings?.[goalId];
+    if (r) return r;
+  }
+  return null;
+}
 
 /**
  * @param {Array<{ l1: object, items: Array<{goal,spec}> }>} groupedItems
@@ -65,10 +96,24 @@ export function useGoalHealth(groupedItems) {
   // Context completeness drives the readiness gate. Subscribe + hydrate so a
   // card flips out of "Needs setup" the instant its questions are answered.
   const contextTick = useAllGoalContext();
+  // The carousel now ranks by achievement tier, so re-derive when a verdict
+  // lands (or the consistency cap shifts one).
+  const tiersTick = useSyncExternalStore(
+    subscribeGoalTiers,
+    getGoalTiersSnapshot,
+    getGoalTiersServerSnapshot,
+  );
+  // The Intelligence page can be the first thing loaded (home "/"), with the
+  // full board collapsed — so no tier badge mounts to seed the verdict cache.
+  // Hydrate it here so the carousel has real tiers on first paint.
+  useEffect(() => {
+    hydrateGoalTiers();
+  }, []);
 
   return useMemo(() => {
     const groups = [];
     const queue = [];
+    const allLocks = readLocks();
     const summary = {
       total: 0,
       onPace: 0,
@@ -97,9 +142,26 @@ export function useGoalHealth(groupedItems) {
           contextComplete: isContextComplete(spec),
         });
         const trend = computeTrend(snapshots, goal.id, spec);
-        // Carry the L1 parent so the Focus hero + attention rows can show
-        // "<kind> · <L1>" without re-deriving the grouping downstream.
-        const card = { goal, spec, health, trend, l1: group.l1 };
+        // The DISPLAYED achievement tier (with the consistency cap), read
+        // synchronously — the carousel filters + ranks on it. Force null for
+        // needs-setup / no-data goals: the badge shows "pending setup" /
+        // "awaiting" for those (a stale cached verdict must NOT leak through and
+        // wrongly include an untrackable/delegated goal — matches useGoalTier).
+        const gradeable =
+          health.status !== HEALTH.NEEDS_SETUP &&
+          health.status !== HEALTH.NO_DATA;
+        const tier = gradeable
+          ? readCappedGoalTier(
+              goal.id,
+              spec,
+              entries,
+              lockedKeysFor(allLocks, goal.id),
+              latestSnapReading(snapshots, goal.id),
+            )
+          : null;
+        // Carry the L1 parent + tier so the Focus hero + carousel can show
+        // "<kind> · <L1>" and rank without re-deriving downstream.
+        const card = { goal, spec, health, trend, l1: group.l1, tier };
         cards.push(card);
 
         summary.total += 1;
@@ -111,13 +173,18 @@ export function useGoalHealth(groupedItems) {
         if (health.status === HEALTH.NEEDS_SETUP) summary.setup += 1;
         if (trend?.good === true) summary.improving += 1;
         if (trend?.good === false) summary.slipping += 1;
-        // A goal that still needs SETUP needs the user too — but only the
-        // actionable kind (unanswered setup questions). Untrackable / delegated
-        // goals are intentionally not self-tracked, so they must NOT nag.
+
+        // Carousel = goals that haven't reached "Achieved": graded not_achieved,
+        // plus goals with no data / actionable needs-setup that can't be graded
+        // yet (setup questions unanswered). Goals at Achieved+ — and untrackable
+        // / delegated goals, which are intentionally not self-tracked — stay out.
         const actionableSetup =
           health.status === HEALTH.NEEDS_SETUP &&
           health.readiness === GOAL_READINESS.NEEDS_CONTEXT;
-        if (NEEDS_ATTENTION.has(health.status) || actionableSetup) {
+        const ungradedNeedsWork =
+          tier == null &&
+          (health.status === HEALTH.NO_DATA || actionableSetup);
+        if (tier === "not_achieved" || ungradedNeedsWork) {
           summary.attention += 1;
           queue.push(card);
         }
@@ -126,10 +193,13 @@ export function useGoalHealth(groupedItems) {
     }
 
     queue.sort((a, b) => {
-      const sev =
-        (SEVERITY[a.health.status] ?? 9) - (SEVERITY[b.health.status] ?? 9);
-      if (sev !== 0) return sev;
-      // Same status → the one that's gone dark longer comes first.
+      // Worst tier first.
+      const r = carouselRank(a) - carouselRank(b);
+      if (r !== 0) return r;
+      // Tie-break: heavier (more important) L1 first, then longer-dark.
+      const wa = Number(a.l1?.weightage) || 0;
+      const wb = Number(b.l1?.weightage) || 0;
+      if (wb !== wa) return wb - wa;
       return (b.health.missedWindows ?? 0) - (a.health.missedWindows ?? 0);
     });
 
@@ -144,5 +214,5 @@ export function useGoalHealth(groupedItems) {
     // snapshots identity changes when the snapshot store updates; locksTick
     // bumps when a window is locked/unlocked.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupedItems, inputsTick, snapshots, locksTick, contextTick]);
+  }, [groupedItems, inputsTick, snapshots, locksTick, contextTick, tiersTick]);
 }

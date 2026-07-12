@@ -734,6 +734,48 @@ export function useGoalTier(goalId, spec) {
   };
 }
 
+/**
+ * Read a goal's DISPLAYED achievement tier synchronously (no hook), with the
+ * cadence-consistency cap applied — the same tier the badge shows. For surfaces
+ * that rank/filter many goals by tier outside React's hook rules (the
+ * Intelligence carousel). Pass the goal's entries + its locked window keys (so
+ * the cap matches the badge) + its latest snapshot reading (numeric source for
+ * AUTO goals). Callers should force null for needs-setup / no-data goals — this
+ * helper trusts a cached qualitative verdict and won't re-derive readiness.
+ *
+ * Returns null when there's no usable verdict yet (awaiting / pending-setup /
+ * not graded). For QUALITATIVE goals it reads the cached AI verdict WITHOUT
+ * re-checking the data hash, so right after a data change (before the re-grade
+ * lands) it may reflect the prior tier — self-corrects when the new verdict
+ * arrives. NUMERIC goals are graded inline, always current with the data.
+ */
+export function readCappedGoalTier(goalId, spec, entries, lockedKeys, snapReading) {
+  const isScorecard = spec?.widget === SPEC_KINDS.SCORECARD;
+  const tierScale = isScorecard ? null : spec?.tierScale || null;
+
+  // Numeric-ladder goals grade deterministically — compute inline rather than
+  // depend on a cached verdict: numeric grades are cheap AND not server-
+  // persisted, so hydration can't supply them on a fresh device. Matches the
+  // number the widget shows (grade-numeric.js). No consistency cap for numeric.
+  if (tierScale) {
+    const reading = numericReadingFor(spec, entries, snapReading);
+    return reading ? (gradeNumericTier(reading.value, tierScale)?.tier ?? null) : null;
+  }
+
+  // Qualitative goals: the AI verdict from the cache, with the consistency cap.
+  const stored = readGoalTier(goalId);
+  if (!stored || stored.awaiting || stored.pendingSetup || !stored.tier) {
+    return null;
+  }
+  const tiers = spec?.tiers || null;
+  if (!tiers) return stored.tier;
+  const cadence = isSingleRecordWidget(spec?.widget) ? null : specCadence(spec);
+  if (!cadence) return stored.tier;
+  const cycle = buildCycleWindows({ entries, cadence, now: Date.now(), lockedKeys });
+  const consistency = cadenceConsistency(cycle);
+  return capVerdictByConsistency(stored, consistency, cadence).tier;
+}
+
 /** The ordered tier ladder + display labels — shared with the UI (Phase 3). */
 export const TIER_ORDER = [
   "not_achieved",

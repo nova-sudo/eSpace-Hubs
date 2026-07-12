@@ -65,9 +65,15 @@ function statusChip(health) {
 export function FocusHero({ card, week }) {
   const [open, setOpen] = useState(false);
   const link = useHubLink();
-  const { goal, spec, health, l1 } = card;
+  const { goal, spec, health, l1, tier } = card;
+  const needsSetup = health?.status === HEALTH.NEEDS_SETUP;
+  // The carousel now leads with the achievement tier, so a graded-failing goal
+  // reads as "Not achieved" rather than by its fill status.
+  const notAchieved = tier === "not_achieved";
 
-  const chip = statusChip(health);
+  const chip = notAchieved
+    ? { tone: "bad", label: "Not achieved" }
+    : statusChip(health);
   const kindLabel = SPEC_KIND_META[spec?.widget]?.label ?? "Goal";
   const context = [kindLabel, l1?.category || l1?.title].filter(Boolean).join(" · ");
   const signal = heroSignal(health);
@@ -75,11 +81,12 @@ export function FocusHero({ card, week }) {
 
   const cadence = specCadence(spec);
   const windowKey = currentWindowKey(cadence);
-  // A goal that still needs setup can't be filled or settled yet — it needs
-  // its setup questions answered first, so the hero points to Goals instead of
-  // offering the inline editor / "Skip for now".
-  const needsSetup = health?.status === HEALTH.NEEDS_SETUP;
-  const canInline = !needsSetup && isInlineFillable(spec?.widget) && !!week;
+  // Neither a needs-setup nor a failing-tier goal is fixed by a quick log from
+  // the hero — setup needs its questions answered, a failing tier needs the
+  // metric improved — so both point to Goals instead of the inline editor /
+  // "Skip for now".
+  const linkOnly = needsSetup || notAchieved;
+  const canInline = !linkOnly && isInlineFillable(spec?.widget) && !!week;
 
   // Fill strip — cycle windows from deriveGoalHealth (oldest→newest objects),
   // capped to the 8 windows ENDING at the current one. total===0 = a
@@ -194,7 +201,9 @@ export function FocusHero({ card, week }) {
           {needsSetup
             ? readinessLabel(health?.readiness) ||
               "This goal needs setup before it can be tracked."
-            : "This is your most-slipping goal right now. Logging it keeps the goal healthy — it takes about a minute."}
+            : notAchieved
+              ? "Graded “Not achieved” — open it in Goals to see what it takes to reach the next tier."
+              : "This is your most-slipping goal right now. Logging it keeps the goal healthy — it takes about a minute."}
         </p>
 
         <div className="mt-6 flex items-center gap-3">
@@ -233,7 +242,7 @@ export function FocusHero({ card, week }) {
             </Link>
           )}
 
-          {!needsSetup && windowKey ? (
+          {!linkOnly && windowKey ? (
             <button
               type="button"
               onClick={() => setLock(goal?.id, windowKey, true)}

@@ -1,11 +1,19 @@
 // Public surface of the goal-tiers feature (AI achievement-tier grading).
 export {
   useGoalTier,
+  readCappedGoalTier,
   TIER_ORDER,
   TIER_LABELS,
   TIER_FIELD,
 } from "./use-goal-tier";
-export { readGoalTier, resetGoalTiers } from "./goal-tier-store";
+export {
+  readGoalTier,
+  resetGoalTiers,
+  hydrateGoalTiers,
+  subscribeGoalTiers,
+  getGoalTiersSnapshot,
+  getGoalTiersServerSnapshot,
+} from "./goal-tier-store";
 export {
   publishGoalLiveReading,
   readGoalLiveReading,

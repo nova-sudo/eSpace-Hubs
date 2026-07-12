@@ -142,8 +142,8 @@ function AllCaughtUp({ total }) {
         All caught up<span style={{ color: "var(--good)" }}>.</span>
       </div>
       <div className="mx-auto mt-2 max-w-[380px] text-[13.5px] leading-[1.5] text-muted-fg">
-        All {total} tracked goals are on pace or auto-tracked. Nothing needs you
-        right now.
+        Every one of your {total} goals has reached Achieved or better. Nothing
+        needs you right now.
       </div>
     </div>
   );
