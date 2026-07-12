@@ -578,6 +578,35 @@ export interface GradingVerdict {
   provider: string | null;
 }
 
+export type GoalTier =
+  | "not_achieved"
+  | "achieved"
+  | "over_achieved"
+  | "role_model";
+
+export interface GoalTierVerdictBody {
+  tier: GoalTier;
+  reasoning: string;
+  confidence: "high" | "medium" | "low";
+}
+
+/**
+ * Durable cache of a goal's AI achievement-tier verdict, keyed per goal by a
+ * `tierHash` of the graded inputs. One row per (orgId, userId, goalId) — a data
+ * change bumps the hash and the row is upserted. 180-day TTL on `gradedAt`.
+ */
+export interface GoalTierVerdict {
+  _id: ObjectId;
+  orgId: ObjectId;
+  userId: ObjectId;
+  goalId: string;
+  tierHash: string;
+  verdict: GoalTierVerdictBody;
+  gradedAt: Date;
+  model: string | null;
+  provider: string | null;
+}
+
 // ─── evidence (user-starred review artifacts) ───────────────────────
 
 /**

@@ -16,6 +16,7 @@ import {
   chatHandler,
   gradePrHandler,
   gradeGoalTierHandler,
+  listGoalTierVerdictsHandler,
 } from "./controller.js";
 import { classifyGoalsHandler } from "./classify-controller.js";
 
@@ -26,6 +27,8 @@ aiRouter.post("/grade-pr", requireAuth(), gradePrHandler);
 // Score which achievement tier a developer is at for one goal, given the
 // goal's classifier-distilled tier criteria + its current metric data.
 aiRouter.post("/grade-goal-tier", requireAuth(), gradeGoalTierHandler);
+// Hydrate all persisted tier verdicts for the user in one request (page load).
+aiRouter.get("/goal-tier-verdicts", requireAuth(), listGoalTierVerdictsHandler);
 // /classify-goals — NDJSON stream (one AnalysisEvent per line).
 // Auth runs as middleware; once headers flush, the handler owns the
 // response and never throws into express's error handler.

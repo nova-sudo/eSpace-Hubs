@@ -70,5 +70,18 @@ export const gradeGoalTierSchema = z.object({
   }),
   currentData: z.string().max(8_000).default(""),
   provider,
+  // Durable-cache coordinates (optional for back-compat with older clients):
+  // goalId + a client-computed hash of the graded inputs. When both are
+  // present the handler returns a persisted verdict for a matching hash
+  // instead of re-calling the model, and persists fresh grades under them.
+  goalId: z.string().min(1).max(200).optional(),
+  tierHash: z
+    .string()
+    .min(1)
+    .max(128)
+    .regex(/^[A-Za-z0-9_-]+$/)
+    .optional(),
+  // Bypass the server cache (the "re-analyze" affordance).
+  force: z.boolean().optional(),
 });
 export type GradeGoalTierInput = z.infer<typeof gradeGoalTierSchema>;

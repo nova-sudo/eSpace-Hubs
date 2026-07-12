@@ -29,6 +29,7 @@ import {
   gradeGoalTier,
   getGoalTiersServerSnapshot,
   getGoalTiersSnapshot,
+  hydrateGoalTiers,
   readGoalTier,
   setGoalTierVerdict,
   subscribeGoalTiers,
@@ -508,6 +509,12 @@ export function useGoalTier(goalId, spec) {
     getGoalTiersSnapshot,
     getGoalTiersServerSnapshot,
   );
+  // One-shot: seed the local cache from the durable server store so a fresh
+  // device / cleared localStorage doesn't re-grade unchanged goals. Self-guarded
+  // — every mounted badge calls it, but only the first request goes out.
+  useEffect(() => {
+    hydrateGoalTiers();
+  }, []);
   const { snapshots } = useSnapshots();
   const { entries } = useGoalInputs(goalId);
   // useGoalInputs subscribes to the inputs store tick, so this re-reads on

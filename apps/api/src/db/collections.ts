@@ -25,6 +25,7 @@ import type {
   GoalContextDoc,
   GoalInputEntry,
   GoalSpecRecord,
+  GoalTierVerdict,
   GoalTree,
   GradingVerdict,
   HubConfig,
@@ -101,6 +102,13 @@ export async function getGradingVerdictsCollection(): Promise<
 > {
   const db = await getDb();
   return db.collection<GradingVerdict>("grading_verdicts");
+}
+
+export async function getGoalTierVerdictsCollection(): Promise<
+  Collection<GoalTierVerdict>
+> {
+  const db = await getDb();
+  return db.collection<GoalTierVerdict>("goal_tier_verdicts");
 }
 
 export async function getEvidenceCollection(): Promise<
@@ -365,6 +373,31 @@ async function ensureIndexes(): Promise<void> {
       key: { gradedAt: 1 },
       expireAfterSeconds: 15_552_000,
       name: "grading_verdicts_ttl",
+    },
+  ]);
+
+  const goalTierVerdicts = await getGoalTierVerdictsCollection();
+  await goalTierVerdicts.createIndexes([
+    {
+      // Cache key: one verdict per goal per user. A goal's data change bumps
+      // the tierHash and the controller upserts by this key, so only the
+      // latest verdict is kept (no history bloat).
+      key: { orgId: 1, userId: 1, goalId: 1 },
+      unique: true,
+      name: "goal_tier_verdicts_org_user_goal_uniq",
+    },
+    {
+      // Hot path on page load: "all tier verdicts for me" to hydrate the
+      // client cache in one round-trip.
+      key: { orgId: 1, userId: 1 },
+      name: "goal_tier_verdicts_org_user",
+    },
+    {
+      // 180-day TTL — a cache, like grading_verdicts. Evicts verdicts for
+      // goals the user stopped touching.
+      key: { gradedAt: 1 },
+      expireAfterSeconds: 15_552_000,
+      name: "goal_tier_verdicts_ttl",
     },
   ]);
 

@@ -26,6 +26,10 @@ let state = {};
 let tick = 0;
 let loaded = false;
 const inflight = new Set();
+// One-shot server hydration: seeds the local cache from the durable DB store
+// so a fresh device / cleared localStorage doesn't re-grade unchanged goals.
+let hydrated = false;
+let hydrating = false;
 
 function load() {
   if (loaded || typeof window === "undefined") return;
@@ -115,6 +119,12 @@ export async function gradeGoalTier({
           tiers,
           currentData: currentData || "",
           provider: aiProvider || undefined,
+          // Durable-cache coordinates: the server returns a persisted verdict
+          // for a matching hash instead of re-calling the model, and persists
+          // fresh grades under (goalId, tierHash). `force` bypasses it.
+          goalId,
+          tierHash: key,
+          force: force || undefined,
         }),
       },
       { provider: "ai" },
@@ -156,9 +166,50 @@ export function setGoalTierVerdict(goalId, verdict, key) {
   notify();
 }
 
+/**
+ * Seed the local cache from the durable server store, once per session. Merges
+ * ONLY goals we don't already hold locally — a local entry is at least as fresh
+ * (it's written on every grade and may carry a newer hash for data changed on
+ * this device since the server last saw it). Safe to call from many mounts: the
+ * `hydrated`/`hydrating` guards collapse them to a single request, and a 401 /
+ * network error leaves it un-hydrated so it retries once auth settles.
+ */
+export async function hydrateGoalTiers() {
+  if (hydrated || hydrating || typeof window === "undefined") return;
+  hydrating = true;
+  load();
+  try {
+    const res = await fetch("/api/v1/ai/goal-tier-verdicts", {
+      credentials: "include",
+    });
+    if (res.status === 401) return; // not authed yet — retry on a later mount
+    hydrated = true;
+    if (!res.ok) return;
+    const body = await res.json().catch(() => ({}));
+    const rows = Array.isArray(body?.verdicts) ? body.verdicts : [];
+    let changed = false;
+    for (const r of rows) {
+      if (!r?.goalId || !r?.tierHash || !r?.verdict) continue;
+      if (state[r.goalId]) continue; // keep the local (≥ as fresh) entry
+      state = { ...state, [r.goalId]: { ...r.verdict, key: r.tierHash } };
+      changed = true;
+    }
+    if (changed) {
+      persist();
+      notify();
+    }
+  } catch {
+    /* offline — the POST grade path still consults the server cache */
+  } finally {
+    hydrating = false;
+  }
+}
+
 export function resetGoalTiers() {
   state = {};
   loaded = true;
+  hydrated = false;
+  hydrating = false;
   notify();
   if (typeof window === "undefined") return;
   try {

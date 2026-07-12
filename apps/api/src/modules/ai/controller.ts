@@ -19,6 +19,8 @@ import {
   retryAfterMsFromHeaders,
 } from "../../lib/rate-limit.js";
 import { HttpError } from "../../middleware/error-handler.js";
+import { getGoalTierVerdictsCollection } from "../../db/collections.js";
+import type { GoalTierVerdictBody } from "../../db/types.js";
 import { resolveRequestedId, selectProvider } from "./provider.js";
 import { anthropicComplete, isAnthropicId } from "./anthropic.js";
 import { chatSchema, gradePrSchema, gradeGoalTierSchema } from "./schemas.js";
@@ -447,6 +449,29 @@ export async function gradeGoalTierHandler(
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
     const payload = gradeGoalTierSchema.parse(req.body);
+
+    // Durable cache: when the client supplies goalId + tierHash, a matching
+    // persisted verdict is returned WITHOUT calling the model — grade once per
+    // data state, share across the user's devices, re-grade only on change.
+    const cacheable = Boolean(payload.goalId && payload.tierHash);
+    const verdicts = await getGoalTierVerdictsCollection();
+    if (cacheable && !payload.force) {
+      const hit = await verdicts.findOne({
+        orgId: session.orgId,
+        userId: session.userId,
+        goalId: payload.goalId,
+      });
+      if (hit && hit.tierHash === payload.tierHash) {
+        res.json({
+          verdict: hit.verdict,
+          model: hit.model,
+          provider: hit.provider,
+          cached: true,
+        });
+        return;
+      }
+    }
+
     const userPrompt = buildTierUserPrompt(
       payload.goalTitle,
       payload.tiers,
@@ -500,21 +525,84 @@ export async function gradeGoalTierHandler(
       );
     }
 
-    const verdict = {
-      tier:
-        typeof parsed?.tier === "string" && VALID_TIERS.includes(parsed.tier)
-          ? parsed.tier
-          : "not_achieved",
+    const verdict: GoalTierVerdictBody = {
+      tier: (typeof parsed?.tier === "string" && VALID_TIERS.includes(parsed.tier)
+        ? parsed.tier
+        : "not_achieved") as GoalTierVerdictBody["tier"],
+      // Clamp to the persistence validator's 4000-char bound — a model that
+      // ignores "one sentence" and returns a long reasoning must not make the
+      // upsert throw (which would 500 and lose an already-paid-for grade).
       reasoning:
-        typeof parsed?.reasoning === "string" ? parsed.reasoning.trim() : "",
-      confidence:
-        typeof parsed?.confidence === "string" &&
-        VALID_CONFIDENCE.includes(parsed.confidence)
-          ? parsed.confidence
-          : "low",
+        typeof parsed?.reasoning === "string"
+          ? parsed.reasoning.trim().slice(0, 4_000)
+          : "",
+      confidence: (typeof parsed?.confidence === "string" &&
+      VALID_CONFIDENCE.includes(parsed.confidence)
+        ? parsed.confidence
+        : "low") as GoalTierVerdictBody["confidence"],
     };
 
-    res.json({ verdict, model: modelName, provider: providerId });
+    // Persist the fresh verdict under (user, goal) keyed by tierHash. Upsert so
+    // a data change (new hash) replaces the prior row — only the latest is kept.
+    if (cacheable) {
+      await verdicts.updateOne(
+        {
+          orgId: session.orgId,
+          userId: session.userId,
+          goalId: payload.goalId!,
+        },
+        {
+          $set: {
+            tierHash: payload.tierHash!,
+            verdict,
+            gradedAt: new Date(),
+            model: modelName ?? null,
+            provider: providerId ?? null,
+          },
+          $setOnInsert: {
+            orgId: session.orgId,
+            userId: session.userId,
+            goalId: payload.goalId!,
+          },
+        },
+        { upsert: true },
+      );
+    }
+
+    res.json({ verdict, model: modelName, provider: providerId, cached: false });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── GET /api/v1/ai/goal-tier-verdicts ───────────────────────────────
+// Hydrate the client's tier-verdict cache in one round-trip: every persisted
+// verdict for the user, so a fresh device / cleared cache doesn't re-grade
+// goals whose data hasn't changed.
+export async function listGoalTierVerdictsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const verdicts = await getGoalTierVerdictsCollection();
+    const rows = await verdicts
+      .find({ orgId: session.orgId, userId: session.userId })
+      .toArray();
+    res.json({
+      verdicts: rows.map((r) => ({
+        goalId: r.goalId,
+        tierHash: r.tierHash,
+        verdict: r.verdict,
+        gradedAt: r.gradedAt,
+        model: r.model,
+        provider: r.provider,
+      })),
+    });
   } catch (err) {
     next(err);
   }
