@@ -150,7 +150,7 @@ export function useGoalHealth(groupedItems) {
         const gradeable =
           health.status !== HEALTH.NEEDS_SETUP &&
           health.status !== HEALTH.NO_DATA;
-        const tier = gradeable
+        const verdict = gradeable
           ? readCappedGoalTier(
               goal.id,
               spec,
@@ -159,9 +159,19 @@ export function useGoalHealth(groupedItems) {
               latestSnapReading(snapshots, goal.id),
             )
           : null;
-        // Carry the L1 parent + tier so the Focus hero + carousel can show
-        // "<kind> · <L1>" and rank without re-deriving downstream.
-        const card = { goal, spec, health, trend, l1: group.l1, tier };
+        const tier = verdict?.tier ?? null;
+        // Carry the L1 parent + tier (and the grader's reasoning, so the Focus
+        // hero can explain WHY a goal is Not achieved) — rank without
+        // re-deriving downstream.
+        const card = {
+          goal,
+          spec,
+          health,
+          trend,
+          l1: group.l1,
+          tier,
+          tierReasoning: verdict?.reasoning ?? null,
+        };
         cards.push(card);
 
         summary.total += 1;

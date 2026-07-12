@@ -38,7 +38,7 @@ function NavArrow({ dir, disabled, onClick }) {
   );
 }
 
-export function FocusCarousel({ queue, week }) {
+export function FocusCarousel({ queue }) {
   const [index, setIndex] = useState(0);
   if (!Array.isArray(queue) || queue.length === 0) return null;
 
@@ -64,9 +64,9 @@ export function FocusCarousel({ queue, week }) {
         ) : null}
       </div>
 
-      {/* key by goal id → remount on navigate so the hero's inline editor never
-          carries an open/expanded state onto the next goal. */}
-      <FocusHero key={card.goal.id} card={card} week={week} />
+      {/* key by goal id → remount on navigate so the hero's modal/skip state
+          never carries onto the next goal. */}
+      <FocusHero key={card.goal.id} card={card} />
 
       {count > 1 ? (
         <div className="mt-3.5 flex flex-wrap items-center justify-center gap-1.5">

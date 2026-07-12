@@ -13,12 +13,11 @@
  * `queue` is severity-sorted, so queue[0] IS the top priority.
  */
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Button, Loader, Reveal } from "@/components/ui";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
 import { useHubLink } from "@/features/hubs";
-import { resolveCompletedWorkWeek } from "@/lib/date";
 import { FocusCarousel } from "./focus-carousel";
 import { GoalHealthGrid } from "./goal-health-grid";
 import { useGoalHealth } from "./use-goal-health";
@@ -35,10 +34,6 @@ export function IntelligencePage() {
 
   const link = useHubLink();
   const fillHref = link("/goals");
-  // The week inline "Log it now" writes against — same completed work week the
-  // grid + check-in default to. Resolved once per mount.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const week = useMemo(() => resolveCompletedWorkWeek(), []);
   const [showBoard, setShowBoard] = useState(false);
 
   const loading = !itemsReady || !inputsReady;
@@ -93,7 +88,7 @@ export function IntelligencePage() {
       ) : (
         <Reveal stagger className="flex flex-col gap-[30px]">
           {needCount > 0 ? (
-            <FocusCarousel queue={queue} week={week} />
+            <FocusCarousel queue={queue} />
           ) : (
             <AllCaughtUp total={summary.total} />
           )}

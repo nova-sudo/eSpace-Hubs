@@ -735,10 +735,11 @@ export function useGoalTier(goalId, spec) {
 }
 
 /**
- * Read a goal's DISPLAYED achievement tier synchronously (no hook), with the
- * cadence-consistency cap applied — the same tier the badge shows. For surfaces
- * that rank/filter many goals by tier outside React's hook rules (the
- * Intelligence carousel). Pass the goal's entries + its locked window keys (so
+ * Read a goal's DISPLAYED tier VERDICT synchronously (no hook) — `{ tier,
+ * reasoning }` or null — with the cadence-consistency cap applied, i.e. the
+ * same tier + explanation the badge shows. For surfaces that rank/filter many
+ * goals by tier outside React's hook rules (the Intelligence carousel). Pass
+ * the goal's entries + its locked window keys (so
  * the cap matches the badge) + its latest snapshot reading (numeric source for
  * AUTO goals). Callers should force null for needs-setup / no-data goals — this
  * helper trusts a cached qualitative verdict and won't re-derive readiness.
@@ -759,7 +760,8 @@ export function readCappedGoalTier(goalId, spec, entries, lockedKeys, snapReadin
   // number the widget shows (grade-numeric.js). No consistency cap for numeric.
   if (tierScale) {
     const reading = numericReadingFor(spec, entries, snapReading);
-    return reading ? (gradeNumericTier(reading.value, tierScale)?.tier ?? null) : null;
+    const v = reading ? gradeNumericTier(reading.value, tierScale) : null;
+    return v ? { tier: v.tier, reasoning: v.reasoning || "" } : null;
   }
 
   // Qualitative goals: the AI verdict from the cache, with the consistency cap.
@@ -768,12 +770,12 @@ export function readCappedGoalTier(goalId, spec, entries, lockedKeys, snapReadin
     return null;
   }
   const tiers = spec?.tiers || null;
-  if (!tiers) return stored.tier;
-  const cadence = isSingleRecordWidget(spec?.widget) ? null : specCadence(spec);
-  if (!cadence) return stored.tier;
+  const cadence = tiers ? (isSingleRecordWidget(spec?.widget) ? null : specCadence(spec)) : null;
+  if (!cadence) return { tier: stored.tier, reasoning: stored.reasoning || "" };
   const cycle = buildCycleWindows({ entries, cadence, now: Date.now(), lockedKeys });
   const consistency = cadenceConsistency(cycle);
-  return capVerdictByConsistency(stored, consistency, cadence).tier;
+  const capped = capVerdictByConsistency(stored, consistency, cadence);
+  return { tier: capped.tier, reasoning: capped.reasoning || "" };
 }
 
 /** The ordered tier ladder + display labels — shared with the UI (Phase 3). */
