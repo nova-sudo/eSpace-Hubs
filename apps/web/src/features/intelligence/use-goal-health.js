@@ -31,6 +31,7 @@ import {
 } from "@/features/goal-locks";
 import { isContextComplete, useAllGoalContext } from "@/features/goal-context";
 import { specCadence } from "@/features/goal-specs";
+import { GOAL_READINESS } from "@/features/goal-widgets";
 import {
   computeTrend,
   deriveGoalHealth,
@@ -38,9 +39,11 @@ import {
   NEEDS_ATTENTION,
 } from "./status";
 
-// Action-Queue ordering: an untouched goal is more urgent than a stale
-// one, which is more urgent than one that's filled-but-behind.
+// Action-Queue ordering: a not-yet-set-up goal is the most blocking (you can't
+// track it at all until it's defined), then an untouched goal, then a stale
+// one, then one that's filled-but-behind.
 const SEVERITY = Object.freeze({
+  [HEALTH.NEEDS_SETUP]: -1,
   [HEALTH.NO_DATA]: 0,
   [HEALTH.STALE]: 1,
   [HEALTH.BEHIND]: 2,
@@ -108,7 +111,13 @@ export function useGoalHealth(groupedItems) {
         if (health.status === HEALTH.NEEDS_SETUP) summary.setup += 1;
         if (trend?.good === true) summary.improving += 1;
         if (trend?.good === false) summary.slipping += 1;
-        if (NEEDS_ATTENTION.has(health.status)) {
+        // A goal that still needs SETUP needs the user too — but only the
+        // actionable kind (unanswered setup questions). Untrackable / delegated
+        // goals are intentionally not self-tracked, so they must NOT nag.
+        const actionableSetup =
+          health.status === HEALTH.NEEDS_SETUP &&
+          health.readiness === GOAL_READINESS.NEEDS_CONTEXT;
+        if (NEEDS_ATTENTION.has(health.status) || actionableSetup) {
           summary.attention += 1;
           queue.push(card);
         }

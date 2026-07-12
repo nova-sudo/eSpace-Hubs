@@ -22,6 +22,7 @@ import { Pill } from "@/components/ui";
 import { SPEC_KIND_META, specCadence } from "@/features/goal-specs";
 import { cadenceWindowLabel } from "@/features/goal-inputs";
 import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
+import { readinessLabel } from "@/features/goal-widgets";
 import { currentWindowKey, setLock } from "@/features/goal-locks";
 import { useHubLink } from "@/features/hubs";
 import { HEALTH } from "./status";
@@ -33,6 +34,9 @@ function daysSince(ts) {
 
 /** Big-numeral signal per status — the one number the hero leads with. */
 function heroSignal(health) {
+  if (health?.status === HEALTH.NEEDS_SETUP) {
+    return { big: "!", unit: "", sub: "not set up yet" };
+  }
   const d = daysSince(health?.fill?.lastEntryTs);
   if (health?.status === HEALTH.NO_DATA || d == null) {
     return { big: "—", unit: "", sub: "never logged" };
@@ -46,6 +50,8 @@ function heroSignal(health) {
 function statusChip(health) {
   if (health?.overdue) return { tone: "bad", label: "Gone quiet" };
   switch (health?.status) {
+    case HEALTH.NEEDS_SETUP:
+      return { tone: "warn", label: "Needs setup" };
     case HEALTH.BEHIND:
       return { tone: "bad", label: "Behind target" };
     case HEALTH.STALE:
@@ -69,7 +75,11 @@ export function FocusHero({ card, week }) {
 
   const cadence = specCadence(spec);
   const windowKey = currentWindowKey(cadence);
-  const canInline = isInlineFillable(spec?.widget) && !!week;
+  // A goal that still needs setup can't be filled or settled yet — it needs
+  // its setup questions answered first, so the hero points to Goals instead of
+  // offering the inline editor / "Skip for now".
+  const needsSetup = health?.status === HEALTH.NEEDS_SETUP;
+  const canInline = !needsSetup && isInlineFillable(spec?.widget) && !!week;
 
   // Fill strip — cycle windows from deriveGoalHealth (oldest→newest objects),
   // capped to the 8 windows ENDING at the current one. total===0 = a
@@ -181,8 +191,10 @@ export function FocusHero({ card, week }) {
           className="mt-[22px] max-w-[440px] leading-[1.55] text-muted-fg"
           style={{ fontFamily: "var(--font-sans)", fontSize: 14 }}
         >
-          This is your most-slipping goal right now. Logging it keeps the goal
-          healthy — it takes about a minute.
+          {needsSetup
+            ? readinessLabel(health?.readiness) ||
+              "This goal needs setup before it can be tracked."
+            : "This is your most-slipping goal right now. Logging it keeps the goal healthy — it takes about a minute."}
         </p>
 
         <div className="mt-6 flex items-center gap-3">
@@ -217,11 +229,11 @@ export function FocusHero({ card, week }) {
                 padding: "15px 26px",
               }}
             >
-              Open in goals →
+              {needsSetup ? "Set it up →" : "Open in goals →"}
             </Link>
           )}
 
-          {windowKey ? (
+          {!needsSetup && windowKey ? (
             <button
               type="button"
               onClick={() => setLock(goal?.id, windowKey, true)}
