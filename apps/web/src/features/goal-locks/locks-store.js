@@ -102,6 +102,28 @@ export function reopenCurrentWindow(goalId, windowKey) {
   if (windowKey !== "all") setLock(goalId, "all", false);
 }
 
+/**
+ * Drop every settle-lock for a goal. Used when re-analyzing wipes the goal's
+ * history — a lock left on a now-empty window would read as "settled but
+ * empty," so the clean slate clears the locks too. No-op when the goal has no
+ * locks (nothing written, no change event).
+ */
+export function clearGoalLocks(goalId) {
+  if (!goalId) return;
+  const locks = readLocks();
+  const prefix = `${goalId}::`;
+  let changed = false;
+  const next = {};
+  for (const [k, v] of Object.entries(locks)) {
+    if (k.startsWith(prefix)) {
+      changed = true;
+      continue;
+    }
+    next[k] = v;
+  }
+  if (changed) write(next);
+}
+
 /* ─────────────────── useSyncExternalStore plumbing ─────────────────── */
 
 export function subscribeLocks(cb) {

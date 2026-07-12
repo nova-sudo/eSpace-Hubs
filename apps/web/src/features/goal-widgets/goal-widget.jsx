@@ -32,6 +32,8 @@ import { UntrackableCard } from "./state-shells/untrackable-card";
 import { ContextCollector } from "./state-shells/context-collector";
 import { useIsContextComplete, readContextFor } from "@/features/goal-context";
 import { saveSpec } from "@/features/goal-specs";
+import { clearGoalEntries } from "@/features/goal-inputs";
+import { clearGoalLocks } from "@/features/goal-locks";
 // Import directly (not via @/features/analyst) to keep the dep edge
 // goal-widgets → analyst one-way at the module level. analyst-page.jsx
 // pulls GoalWidgetsGrid from @/features/goal-widgets so taking the
@@ -254,7 +256,14 @@ async function runReclassify(spec, goal, contextAnswers) {
     // still feeds the user's definitions to the classifier.
     contextAnswers: contextAnswers ?? savedContextPairs(spec),
   });
-  saveSpec(result);
+  const saved = saveSpec(result);
+  // Re-analysis may have swapped the widget shape — wipe the goal's logged
+  // history + settle-locks so the new widget reads clean, not stale entries
+  // from the old one. Mirrors the analyst commit path (classify-run-store).
+  if (saved?.ok) {
+    clearGoalEntries(spec.goalId);
+    clearGoalLocks(spec.goalId);
+  }
 }
 
 /**

@@ -5,6 +5,7 @@
  */
 
 export {
+  clearGoalLocks,
   isLocked,
   isCurrentWindowLocked,
   readLocks,

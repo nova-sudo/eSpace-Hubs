@@ -18,8 +18,23 @@
 import { getAiProvider } from "./use-ai-provider";
 import { markAnalyzedAt, saveSpec, readValidSpecs } from "@/features/goal-specs";
 import { readContextFor } from "@/features/goal-context";
+import { clearGoalEntries } from "@/features/goal-inputs";
+import { clearGoalLocks } from "@/features/goal-locks";
 import { ANALYSIS } from "./ai/analysis-events";
 import { startJob, endJob } from "@/lib/jobs-store";
+
+/**
+ * Re-analysis replaces the widget, so the goal's logged entries + settle-locks
+ * belong to a (possibly) different widget shape and would corrupt the new
+ * widget's reading. Wipe them on commit so the re-analyzed widget starts clean.
+ * No-op when there's no history (a first-ever classification), so it's safe to
+ * call on every committed spec.
+ */
+function wipeGoalHistory(goalId) {
+  if (!goalId) return;
+  clearGoalEntries(goalId);
+  clearGoalLocks(goalId);
+}
 
 const CHANGE_EVENT = "classify-run:change";
 const JOB_ID = "analysis";
@@ -231,6 +246,7 @@ export function commitSpec(goalId) {
   if (!spec) return { ok: false, errors: ["spec not in pending buffer"] };
   const result = saveSpec(spec);
   if (result.ok) {
+    wipeGoalHistory(goalId);
     const next = { ...state.pendingSpecs };
     delete next[goalId];
     setState({ pendingSpecs: next });
@@ -245,8 +261,10 @@ export function commitAllPending() {
   const failed = [];
   for (const id of ids) {
     const result = saveSpec(state.pendingSpecs[id]);
-    if (result.ok) saved += 1;
-    else failed.push({ goalId: id, errors: result.errors });
+    if (result.ok) {
+      saved += 1;
+      wipeGoalHistory(id);
+    } else failed.push({ goalId: id, errors: result.errors });
   }
   const stillFailed = new Set(failed.map((f) => f.goalId));
   const next = {};
