@@ -30,6 +30,7 @@ import { resolveWidget } from "./registry";
 import { DelegatedCard } from "./state-shells/delegated-card";
 import { UntrackableCard } from "./state-shells/untrackable-card";
 import { ContextCollector } from "./state-shells/context-collector";
+import { ComposeWidgetModal } from "./compose-widget-modal";
 import { useIsContextComplete, readContextFor } from "@/features/goal-context";
 import { saveSpec } from "@/features/goal-specs";
 import { clearGoalEntries } from "@/features/goal-inputs";
@@ -52,10 +53,27 @@ export function GoalWidget({ spec, goal, variant = "light", className, onRetry }
   // completes — keeping it mounted closes that race for the multi-step wizard
   // and any stray blur.
   const [reanalyzing, setReanalyzing] = useState(false);
+  // "Describe your own tracker" modal — the manual COMPOSED escape hatch.
+  // Reachable from the ContextCollector (setup) and a mounted widget's
+  // "build my own" control. Owned here so both states can open the same modal.
+  const [composeOpen, setComposeOpen] = useState(false);
 
   const contextComplete = useIsContextComplete(spec);
 
   if (!spec) return null;
+
+  const composeModal = (
+    <ComposeWidgetModal
+      open={composeOpen}
+      onClose={() => setComposeOpen(false)}
+      spec={spec}
+      goal={goal}
+      onSaved={() => {
+        setComposeOpen(false);
+        setForceEditContext(false);
+      }}
+    />
+  );
 
   // ── State 0 ── Untrackable: user or AI marked this goal as not
   // currently trackable. Takes precedence over delegation, context,
@@ -94,6 +112,7 @@ export function GoalWidget({ spec, goal, variant = "light", className, onRetry }
     (forceEditContext || !contextComplete || reanalyzing);
   if (needsContext) {
     return (
+      <>
       <ContextCollector
         spec={spec}
         goal={goal}
@@ -103,6 +122,9 @@ export function GoalWidget({ spec, goal, variant = "light", className, onRetry }
           setForceEditContext(false);
           onRetry?.();
         }}
+        // Escape hatch: "none of these fit — describe your own tracker" opens
+        // the COMPOSED compose modal instead of answering the setup questions.
+        onCompose={() => setComposeOpen(true)}
         // Save → close the override and let the actual widget take
         // back the slot. Without this, after the user clicked
         // "edit truths" + "Save answers", the view stayed pinned to
@@ -127,6 +149,8 @@ export function GoalWidget({ spec, goal, variant = "light", className, onRetry }
           }
         }}
       />
+      {composeModal}
+      </>
     );
   }
 
@@ -171,20 +195,26 @@ export function GoalWidget({ spec, goal, variant = "light", className, onRetry }
     // context.required gate). Returns the promise so WidgetShell can show
     // a busy state + toast the result.
     onReanalyze: () => runReclassify(spec, goal),
+    // "Build my own": open the COMPOSED compose modal to replace this widget
+    // with a user-described tracker (for goals the classifier keeps mis-fitting).
+    onComposeOwn: () => setComposeOpen(true),
   };
 
   return (
-    <WidgetErrorBoundary onRetry={onRetry}>
-      <WidgetControlsProvider value={controls}>
-        <Widget
-          spec={spec}
-          goal={goal}
-          variant={variant}
-          className={className}
-          onRetry={onRetry}
-        />
-      </WidgetControlsProvider>
-    </WidgetErrorBoundary>
+    <>
+      <WidgetErrorBoundary onRetry={onRetry}>
+        <WidgetControlsProvider value={controls}>
+          <Widget
+            spec={spec}
+            goal={goal}
+            variant={variant}
+            className={className}
+            onRetry={onRetry}
+          />
+        </WidgetControlsProvider>
+      </WidgetErrorBoundary>
+      {composeModal}
+    </>
   );
 }
 

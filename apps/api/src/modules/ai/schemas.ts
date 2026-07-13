@@ -85,3 +85,18 @@ export const gradeGoalTierSchema = z.object({
   force: z.boolean().optional(),
 });
 export type GradeGoalTierInput = z.infer<typeof gradeGoalTierSchema>;
+
+// ─── compose a custom (COMPOSED) widget from a text description ───────
+//
+// The "describe your own tracker" escape hatch: the user types, in plain
+// English, how they want to track a goal, and the model designs a COMPOSED
+// spec (fields + optional cadence + tiers). The handler validates the model
+// output through the shared spec builder, so the result is always renderable
+// and gradeable.
+export const composeWidgetSchema = z.object({
+  goalId: z.string().min(1).max(200),
+  goalTitle: z.string().max(500).default(""),
+  description: z.string().min(3).max(2_000),
+  provider,
+});
+export type ComposeWidgetInput = z.infer<typeof composeWidgetSchema>;

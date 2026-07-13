@@ -174,15 +174,22 @@ export async function fetchSpecs() {
  * `res.ok`. The API PUT fires in the background (optimistic insert +
  * targeted rollback on failure). The server runs the same validator,
  * so a locally-accepted spec passes server validation.
+ *
+ * `opts.replace` — a deliberate WHOLE-widget replacement (e.g. the user
+ * describes their own COMPOSED tracker). This bypasses the locked-tiers
+ * preserve below: the new widget kind carries its own tiers/ladder, and
+ * keeping a prior widget's locked tiers (worse: a numeric tierScale) on a
+ * different widget kind would attach criteria the user never approved.
  */
-export function saveSpec(spec) {
+export function saveSpec(spec, { replace = false } = {}) {
   // Locked tiers are the user's contract — a re-analysis (or any external
   // save) must NOT overwrite them. When the stored spec is locked, carry its
   // tiers/ladder + the lock flag onto the incoming spec before validating.
-  // (Explicit tier edits go through `updateSpecTiers`, which bypasses this.)
+  // (Explicit tier edits go through `updateSpecTiers`, which bypasses this;
+  // a `replace` save bypasses it too — see the opts doc above.)
   let input = spec;
   const existing = spec?.goalId ? state.specs[spec.goalId] : null;
-  if (existing?.tiersLocked === true) {
+  if (!replace && existing?.tiersLocked === true) {
     input = {
       ...spec,
       tiers: existing.tiers,

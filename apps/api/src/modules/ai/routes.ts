@@ -17,6 +17,7 @@ import {
   gradePrHandler,
   gradeGoalTierHandler,
   listGoalTierVerdictsHandler,
+  composeWidgetHandler,
 } from "./controller.js";
 import { classifyGoalsHandler } from "./classify-controller.js";
 
@@ -27,6 +28,8 @@ aiRouter.post("/grade-pr", requireAuth(), gradePrHandler);
 // Score which achievement tier a developer is at for one goal, given the
 // goal's classifier-distilled tier criteria + its current metric data.
 aiRouter.post("/grade-goal-tier", requireAuth(), gradeGoalTierHandler);
+// "Describe your own tracker" → a COMPOSED spec built from the user's text.
+aiRouter.post("/compose-widget", requireAuth(), composeWidgetHandler);
 // Hydrate all persisted tier verdicts for the user in one request (page load).
 aiRouter.get("/goal-tier-verdicts", requireAuth(), listGoalTierVerdictsHandler);
 // /classify-goals — NDJSON stream (one AnalysisEvent per line).

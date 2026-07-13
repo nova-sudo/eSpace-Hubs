@@ -68,7 +68,8 @@ export function WidgetShell({
   // Optional user-controls injected by <GoalWidget>. Null handlers skip
   // rendering — widgets rendered outside the resolver (e.g. tests) still
   // work unchanged.
-  const { onMarkDelegated, onEditContext, onReanalyze } = useWidgetControls();
+  const { onMarkDelegated, onEditContext, onReanalyze, onComposeOwn } =
+    useWidgetControls();
   // Readiness gate for the cadence stepper. The state shells (ContextCollector
   // / Delegated / Untrackable) also render through WidgetShell, so gating the
   // stepper on widget-variant alone leaked it into the "define before tracking"
@@ -161,7 +162,7 @@ export function WidgetShell({
           they stand against not-achieved / achieved / over / role-model. */}
       {spec?.tiers ? <GoalTierLadder spec={spec} variant={variant} /> : null}
 
-      {(spec?.reasoning || onRetry || onReanalyze || footer || onMarkDelegated || onEditContext) ? (
+      {(spec?.reasoning || onRetry || onReanalyze || footer || onMarkDelegated || onEditContext || onComposeOwn) ? (
         <div
           className="mt-3 flex items-center justify-between gap-2 border-t pt-2"
           style={{ borderColor: theme.divider }}
@@ -180,6 +181,11 @@ export function WidgetShell({
             {onMarkDelegated ? (
               <FooterChip theme={theme} onClick={onMarkDelegated}>
                 delegate
+              </FooterChip>
+            ) : null}
+            {onComposeOwn ? (
+              <FooterChip theme={theme} onClick={onComposeOwn}>
+                build my own
               </FooterChip>
             ) : null}
             {footer}

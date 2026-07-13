@@ -33,6 +33,7 @@ export function ContextCollector({
   onRetry,
   onSaved,
   onReclassify,
+  onCompose,
 }) {
   const { answers, setAnswers } = useGoalContext(spec.goalId);
   const questions = spec.context?.questions || [];
@@ -223,6 +224,24 @@ export function ContextCollector({
                 : "Save answers"}
           </button>
         </div>
+        {onCompose ? (
+          <button
+            type="button"
+            onClick={onCompose}
+            disabled={busy}
+            className="self-start uppercase tracking-[0.5px] transition-opacity hover:opacity-90"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 9.5,
+              letterSpacing: "0.5px",
+              color: variant === "light" ? "rgba(255,255,255,0.6)" : "var(--dim-fg)",
+              background: "transparent",
+            }}
+            title="None of these fit? Describe in your own words how you want to track this goal and the AI builds a custom tracker."
+          >
+            None of these fit? Build your own tracker →
+          </button>
+        ) : null}
       </form>
     </WidgetShell>
   );
