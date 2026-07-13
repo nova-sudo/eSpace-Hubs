@@ -31,20 +31,36 @@ import { DelegatedCard } from "./state-shells/delegated-card";
 import { UntrackableCard } from "./state-shells/untrackable-card";
 import { ContextCollector } from "./state-shells/context-collector";
 import { ComposeWidgetModal } from "./compose-widget-modal";
+import { EditSetupModal } from "./edit-setup-modal";
 import { useIsContextComplete, readContextFor } from "@/features/goal-context";
 import { saveSpec } from "@/features/goal-specs";
 import { clearGoalEntries } from "@/features/goal-inputs";
 import { clearGoalLocks } from "@/features/goal-locks";
-// Import directly (not via @/features/analyst) to keep the dep edge
-// goal-widgets → analyst one-way at the module level. analyst-page.jsx
-// pulls GoalWidgetsGrid from @/features/goal-widgets so taking the
-// barrel path here would close a cycle; ES-module cycles often work
-// but can hand back `undefined` to whichever side initialised first.
-// reclassify-one-goal.js itself only depends on `./ai/analysis-events`,
-// which is below both features in our dep graph.
-import { reclassifyOneGoal } from "@/features/analyst";
+// analyst-page.jsx pulls GoalWidgetsGrid from @/features/goal-widgets, so
+// these barrel imports close a goal-widgets ↔ analyst ES-module cycle.
+// That's fine here: every one of these bindings is referenced at render /
+// callback time (inside components/handlers), never at module-init time,
+// so the cycle is fully resolved before any of them is read. Keep it that
+// way — do NOT call these at the top level of this module.
+import {
+  reclassifyOneGoal,
+  useAnalystOptional,
+  ANALYST_MODES,
+  stageSpecForReview,
+} from "@/features/analyst";
 
-export function GoalWidget({ spec, goal, variant = "light", className, onRetry }) {
+export function GoalWidget({
+  spec,
+  goal,
+  variant = "light",
+  className,
+  onRetry,
+  // Embedders (e.g. the SCORECARD sub-component modal) can null out or
+  // redirect controls that don't make sense in their context. Merged
+  // over the derived State-C controls, so `{ onReanalyze: null }` hides
+  // that chip without the widget files knowing.
+  controlsOverride = null,
+}) {
   // User override — force the collector to re-open even after answers exist.
   const [forceEditContext, setForceEditContext] = useState(false);
   // Pins the ContextCollector mounted while a re-analyze it owns is in flight.
@@ -57,6 +73,14 @@ export function GoalWidget({ spec, goal, variant = "light", className, onRetry }
   // Reachable from the ContextCollector (setup) and a mounted widget's
   // "build my own" control. Owned here so both states can open the same modal.
   const [composeOpen, setComposeOpen] = useState(false);
+  // "Edit setup" modal — adjust targets / scorecard weights on the current
+  // committed widget without re-running the AI.
+  const [editSetupOpen, setEditSetupOpen] = useState(false);
+
+  // Optional handle to the analyst overlay (null when there's no provider
+  // above — e.g. an isolated render). Re-analyze uses it to open the
+  // Review pane so the user vets the AI's proposal before it lands.
+  const analyst = useAnalystOptional();
 
   const contextComplete = useIsContextComplete(spec);
 
@@ -72,6 +96,16 @@ export function GoalWidget({ spec, goal, variant = "light", className, onRetry }
         setComposeOpen(false);
         setForceEditContext(false);
       }}
+    />
+  );
+
+  const editSetupModal = (
+    <EditSetupModal
+      open={editSetupOpen}
+      onClose={() => setEditSetupOpen(false)}
+      spec={spec}
+      goal={goal}
+      onSaved={() => setEditSetupOpen(false)}
     />
   );
 
@@ -189,15 +223,42 @@ export function GoalWidget({ spec, goal, variant = "light", className, onRetry }
     onEditContext: spec.context?.questions?.length
       ? () => setForceEditContext(true)
       : null,
-    // Direct, reliable re-analyze for ANY classified widget — re-runs the
-    // classifier with the goal's full description + saved context answers
-    // and writes the new spec immediately (no Review-pane buffer, no
-    // context.required gate). Returns the promise so WidgetShell can show
-    // a busy state + toast the result.
-    onReanalyze: () => runReclassify(spec, goal),
+    // Re-analyze re-runs the classifier with the goal's full description +
+    // saved context answers, then opens the analyst Review pane seeded with
+    // the AI's proposal — the user vets targets / weights / scope and hits
+    // Save before it replaces the committed widget (nothing changes until
+    // they confirm; committing wipes history like any re-analysis). Falls
+    // back to a direct save only when there's no <AnalystProvider> above.
+    onReanalyze: async () => {
+      const result = await reclassifyGoalToSpec(spec, goal);
+      if (analyst?.requestOpen) {
+        stageSpecForReview(result, {
+          title: goal?.title || result.title,
+          parentL1: goal?.parentL1Title,
+        });
+        analyst.requestOpen(ANALYST_MODES.REVIEW);
+        return;
+      }
+      const saved = saveSpec(result);
+      if (!saved?.ok) {
+        // Surface the validation failure through WidgetShell's catch/toast
+        // instead of silently swallowing it (this branch only runs when
+        // there's no AnalystProvider — isolated renders / tests).
+        throw new Error(
+          (saved?.errors || []).join(", ") || "Re-classified spec was invalid.",
+        );
+      }
+      clearGoalEntries(spec.goalId);
+      clearGoalLocks(spec.goalId);
+    },
     // "Build my own": open the COMPOSED compose modal to replace this widget
     // with a user-described tracker (for goals the classifier keeps mis-fitting).
     onComposeOwn: () => setComposeOpen(true),
+    // "Edit setup": adjust this widget's targets / scorecard weights in place
+    // — same widget, keeps history (no AI, no wipe).
+    onEditSetup: () => setEditSetupOpen(true),
+    // Embedder overrides (e.g. sub-component modal disables re-analyze).
+    ...(controlsOverride || {}),
   };
 
   return (
@@ -214,6 +275,7 @@ export function GoalWidget({ spec, goal, variant = "light", className, onRetry }
         </WidgetControlsProvider>
       </WidgetErrorBoundary>
       {composeModal}
+      {editSetupModal}
     </>
   );
 }
@@ -268,8 +330,8 @@ function clearUntrackable(spec) {
  *    from the goal prop the dashboard already passes in — same source
  *    of truth as the analyst's `flattenGoalsForClassification`.
  */
-async function runReclassify(spec, goal, contextAnswers) {
-  const result = await reclassifyOneGoal({
+async function reclassifyGoalToSpec(spec, goal, contextAnswers) {
+  return reclassifyOneGoal({
     goal: {
       id: spec.goalId,
       title: goal?.title || spec.title || "(untitled)",
@@ -286,6 +348,17 @@ async function runReclassify(spec, goal, contextAnswers) {
     // still feeds the user's definitions to the classifier.
     contextAnswers: contextAnswers ?? savedContextPairs(spec),
   });
+}
+
+/**
+ * ContextCollector path ("Re-analyze with these answers"): re-classify
+ * and SAVE immediately. The user is mid-setup in the collector, so we
+ * apply the new spec straight away rather than bouncing them into the
+ * Review overlay. The mounted-widget "re-analyze" chip uses the review
+ * flow instead (see GoalWidget's `onReanalyze`).
+ */
+async function runReclassify(spec, goal, contextAnswers) {
+  const result = await reclassifyGoalToSpec(spec, goal, contextAnswers);
   const saved = saveSpec(result);
   // Re-analysis may have swapped the widget shape — wipe the goal's logged
   // history + settle-locks so the new widget reads clean, not stale entries

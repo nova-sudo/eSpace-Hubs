@@ -68,7 +68,7 @@ export function WidgetShell({
   // Optional user-controls injected by <GoalWidget>. Null handlers skip
   // rendering — widgets rendered outside the resolver (e.g. tests) still
   // work unchanged.
-  const { onMarkDelegated, onEditContext, onReanalyze, onComposeOwn } =
+  const { onMarkDelegated, onEditContext, onReanalyze, onComposeOwn, onEditSetup } =
     useWidgetControls();
   // Readiness gate for the cadence stepper. The state shells (ContextCollector
   // / Delegated / Untrackable) also render through WidgetShell, so gating the
@@ -76,11 +76,12 @@ export function WidgetShell({
   // state. Only show the stepper once the goal is actually trackable.
   const contextComplete = useIsContextComplete(spec);
 
-  // The footer "re-analyze" chip. Prefer the direct reclassify+save path
-  // (onReanalyze, injected by GoalWidget) so a single click re-runs the
-  // classifier and applies the new spec immediately — with a busy state
-  // and a success/failure toast. Falls back to onRetry (e.g. the analyst
-  // overlay) when no direct handler is wired.
+  // The footer "re-analyze" chip. Prefer the injected onReanalyze
+  // (GoalWidget): it re-runs the classifier and opens the analyst Review
+  // pane seeded with the AI's proposal so the user vets targets/weights/
+  // scope before it replaces the committed widget — with a busy state and
+  // a success/failure toast. Falls back to onRetry (e.g. the analyst
+  // overlay's own re-analyze) when no direct handler is wired.
   async function handleReanalyze() {
     if (reanalyzing) return;
     if (!onReanalyze) {
@@ -90,7 +91,7 @@ export function WidgetShell({
     setReanalyzing(true);
     try {
       await onReanalyze();
-      toast.success("Re-analyzed — spec & tiers updated.");
+      toast.success("Re-analyzed — review & confirm the new setup.");
     } catch (err) {
       toast.error(`Re-analyze failed: ${err?.message || err}`);
     } finally {
@@ -162,7 +163,7 @@ export function WidgetShell({
           they stand against not-achieved / achieved / over / role-model. */}
       {spec?.tiers ? <GoalTierLadder spec={spec} variant={variant} /> : null}
 
-      {(spec?.reasoning || onRetry || onReanalyze || footer || onMarkDelegated || onEditContext || onComposeOwn) ? (
+      {(spec?.reasoning || onRetry || onReanalyze || footer || onMarkDelegated || onEditContext || onComposeOwn || onEditSetup) ? (
         <div
           className="mt-3 flex items-center justify-between gap-2 border-t pt-2"
           style={{ borderColor: theme.divider }}
@@ -171,6 +172,11 @@ export function WidgetShell({
             {spec?.reasoning ? (
               <FooterChip theme={theme} onClick={() => setShowReason((s) => !s)}>
                 {showReason ? "hide why" : "why?"}
+              </FooterChip>
+            ) : null}
+            {onEditSetup ? (
+              <FooterChip theme={theme} onClick={onEditSetup}>
+                edit setup
               </FooterChip>
             ) : null}
             {onEditContext ? (

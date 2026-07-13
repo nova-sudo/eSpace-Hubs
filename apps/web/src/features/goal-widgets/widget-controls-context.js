@@ -16,6 +16,7 @@ import { createContext, useContext } from "react";
 const WidgetControlsContext = createContext({
   onMarkDelegated: null,
   onEditContext: null,
+  onEditSetup: null,
 });
 
 export function WidgetControlsProvider({ value, children }) {

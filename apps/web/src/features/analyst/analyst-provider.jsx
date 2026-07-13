@@ -79,3 +79,14 @@ export function useAnalyst() {
   }
   return ctx;
 }
+
+/**
+ * Non-throwing variant — returns null when there's no <AnalystProvider>
+ * above. Used by GoalWidget, which renders both inside the analyst
+ * overlay AND on standalone pages/tests: a mounted widget's "re-analyze"
+ * wants to open the overlay's Review pane when the provider is present,
+ * and fall back to its direct save path when it isn't.
+ */
+export function useAnalystOptional() {
+  return useContext(AnalystContext);
+}

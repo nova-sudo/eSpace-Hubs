@@ -275,6 +275,36 @@ export function commitAllPending() {
   return { saved, failed };
 }
 
+/**
+ * Stage a single freshly-classified spec into the Review buffer WITHOUT
+ * running a full classification pass. Used by the per-widget "re-analyze"
+ * flow: the caller runs `reclassifyOneGoal`, then stages the result here
+ * and opens the analyst overlay in Review mode so the user can adjust
+ * targets / weights / scope before it replaces the committed spec.
+ *
+ * Appends a synthetic GOAL_STARTED event so the Review card shows the
+ * title + parent breadcrumb (its meta comes from that event). Leaves the
+ * run phase untouched — an idle store still renders the buffer fine, and
+ * a bulk run in flight just gains one more card. Commit goes through the
+ * normal `commitSpec` (saveSpec + history wipe), matching re-analyze.
+ */
+export function stageSpecForReview(spec, meta = {}) {
+  if (!spec?.goalId) return;
+  const goalId = spec.goalId;
+  const started = {
+    type: ANALYSIS.GOAL_STARTED,
+    payload: {
+      goalId,
+      title: meta.title || spec.title || "(untitled)",
+      parentL1: meta.parentL1 || null,
+    },
+  };
+  setState({
+    events: [...state.events, started],
+    pendingSpecs: { ...state.pendingSpecs, [goalId]: spec },
+  });
+}
+
 /** Discard a single pending spec without saving. */
 export function discardSpec(goalId) {
   if (!state.pendingSpecs[goalId]) return;

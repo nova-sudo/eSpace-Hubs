@@ -132,6 +132,19 @@ export function ScorecardComponentModal({
             goal={syntheticGoal}
             variant="light"
             onRetry={null}
+            // This widget is SYNTHETIC — its goalId is `${parent}::sc${i}`,
+            // not a real goal. Re-analyze / build-your-own / edit-setup /
+            // delegate would all persist a bogus top-level spec under that
+            // synthetic id (and never touch the real scorecard component).
+            // Suppress them here; component setup is edited via the parent
+            // SCORECARD tile's "edit setup" chip. "edit truths" stays so
+            // CODE_RUBRIC criteria remain editable in this modal.
+            controlsOverride={{
+              onReanalyze: null,
+              onComposeOwn: null,
+              onEditSetup: null,
+              onMarkDelegated: null,
+            }}
           />
         </div>
       </div>

@@ -11,8 +11,15 @@
  * (analysis-stream.jsx) need them — both import from `./ai/analysis-
  * events` directly.
  */
-export { AnalystProvider, useAnalyst, ANALYST_MODES } from "./analyst-provider";
+export {
+  AnalystProvider,
+  useAnalyst,
+  useAnalystOptional,
+  ANALYST_MODES,
+} from "./analyst-provider";
 export { AnalystPage } from "./analyst-page";
+export { SpecSetupEditor } from "./spec-editors";
+export { stageSpecForReview } from "./classify-run-store";
 export { AnalystActivator } from "./analyst-activator";
 export { AnalysisStream } from "./analysis-stream";
 export {
