@@ -13,6 +13,7 @@
  */
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { GoalWidget } from "./goal-widget";
 
 export function GoalWidgetModal({ open, onClose, spec, goal }) {
@@ -26,19 +27,27 @@ export function GoalWidgetModal({ open, onClose, spec, goal }) {
   }, [open, onClose]);
 
   if (!open || !spec) return null;
+  if (typeof document === "undefined") return null;
 
   const title = goal?.title || spec.title || "Goal";
 
-  // Contained dialog, mirroring how the widget renders in the grid: the card
-  // is capped at 88vh and the <GoalWidget> renders at its NATURAL height
-  // inside a plain (block) scroll body — the body scrolls the whole widget,
-  // exactly like the grid page scrolls a tall tile. We must NOT give the
+  // PORTAL TO document.body — this is load-bearing, not cosmetic. The AppShell
+  // wraps the page in a `transform`/`will-change:transform` div (for the analyst
+  // swipe). A transformed ancestor becomes the containing block for
+  // `position:fixed` descendants, so WITHOUT the portal `fixed inset-0` sizes to
+  // that wrapper (e.g. 746px), NOT the viewport — while `88vh` stays
+  // viewport-relative (782px) and overflows it, cutting the header off the top
+  // and the footer off the bottom. Portaling out of the wrapper makes `fixed`
+  // truly viewport-relative again.
+  //
+  // Contained dialog: the card is capped at 88vh and the <GoalWidget> renders at
+  // its NATURAL height inside a plain (block) scroll body — the body scrolls the
+  // whole widget, like the grid page scrolls a tall tile. We must NOT give the
   // widget a bounded height (e.g. flex-1): the composed widget's internal
   // `h-full` + fields-scroll then activate and collapse the cadence stepper /
-  // tier ladder / footer on top of each other. The header is `shrink-0` and
-  // lives OUTSIDE the scroll body, so it's always pinned at the top; the 88vh
-  // cap (< viewport) keeps the whole dialog on-screen.
-  return (
+  // tier ladder / footer on top of each other. The header is `shrink-0`, outside
+  // the scroll body, so it stays pinned at the top.
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -92,6 +101,7 @@ export function GoalWidgetModal({ open, onClose, spec, goal }) {
           <GoalWidget spec={spec} goal={goal} variant="dark" onRetry={null} />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -26,6 +26,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { SpecSetupEditor } from "@/features/analyst";
 import { saveSpec } from "@/features/goal-specs";
@@ -64,6 +65,7 @@ export function EditSetupModal({ open, onClose, spec, goal, onSaved }) {
   );
 
   if (!open || !draft) return null;
+  if (typeof document === "undefined") return null;
 
   function handleSave() {
     if (saving) return;
@@ -85,7 +87,9 @@ export function EditSetupModal({ open, onClose, spec, goal, onSaved }) {
     onClose?.();
   }
 
-  return (
+  // Portal to document.body — escape the AppShell's transform wrapper, which
+  // would otherwise be the containing block for this fixed overlay and clip it.
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -231,6 +235,7 @@ export function EditSetupModal({ open, onClose, spec, goal, onSaved }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

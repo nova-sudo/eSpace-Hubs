@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { GoalWidget } from "../goal-widget";
 import {
   buildSubSpec,
@@ -83,6 +84,7 @@ export function ScorecardComponentModal({
   }, [open, onClose]);
 
   if (!open || !component) return null;
+  if (typeof document === "undefined") return null;
 
   const syntheticSpec = buildSubSpec(parentSpec, component, index);
   const syntheticGoal = {
@@ -91,7 +93,9 @@ export function ScorecardComponentModal({
     title: syntheticSpec.title,
   };
 
-  return (
+  // Portal to document.body — escape the AppShell's transform wrapper, which
+  // would otherwise be the containing block for this fixed overlay and clip it.
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -148,7 +152,8 @@ export function ScorecardComponentModal({
           />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

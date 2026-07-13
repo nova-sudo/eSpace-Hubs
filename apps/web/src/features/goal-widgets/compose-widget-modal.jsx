@@ -15,6 +15,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { composeWidget } from "@/features/analyst";
 import { saveSpec } from "@/features/goal-specs";
@@ -62,6 +63,7 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
   }, [open, onClose]);
 
   if (!open) return null;
+  if (typeof document === "undefined") return null;
 
   const goalId = spec?.goalId;
   const goalTitle = goal?.title || spec?.title || "this goal";
@@ -111,7 +113,9 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
     onClose?.();
   }
 
-  return (
+  // Portal to document.body — escape the AppShell's transform wrapper, which
+  // would otherwise be the containing block for this fixed overlay and clip it.
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -300,7 +304,8 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
