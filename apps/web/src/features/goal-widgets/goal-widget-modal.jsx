@@ -29,15 +29,15 @@ export function GoalWidgetModal({ open, onClose, spec, goal }) {
 
   const title = goal?.title || spec.title || "Goal";
 
-  // Contained dialog: the card is capped at 88vh and the hosted <GoalWidget>
-  // FILLS the scrollable body (className="flex-1"), so its own internal
-  // fields-scroll engages — exactly the grid-cell behaviour it's built for,
-  // now given the bounded height it needs. Header is `shrink-0` so it stays
-  // pinned; the body is `overflow-y-auto` as a fallback for any widget/state
-  // shell that doesn't forward the fill class (it then just scrolls whole).
-  // This is why an earlier `max-h + block body` version overflowed: the
-  // widget's `h-full`/internal-scroll never got a bounded parent to resolve
-  // against, so it expanded past the cap instead of scrolling within it.
+  // Contained dialog, mirroring how the widget renders in the grid: the card
+  // is capped at 88vh and the <GoalWidget> renders at its NATURAL height
+  // inside a plain (block) scroll body — the body scrolls the whole widget,
+  // exactly like the grid page scrolls a tall tile. We must NOT give the
+  // widget a bounded height (e.g. flex-1): the composed widget's internal
+  // `h-full` + fields-scroll then activate and collapse the cadence stepper /
+  // tier ladder / footer on top of each other. The header is `shrink-0` and
+  // lives OUTSIDE the scroll body, so it's always pinned at the top; the 88vh
+  // cap (< viewport) keeps the whole dialog on-screen.
   return (
     <div
       role="dialog"
@@ -86,14 +86,10 @@ export function GoalWidgetModal({ open, onClose, spec, goal }) {
             ✕ ESC
           </button>
         </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
-          <GoalWidget
-            spec={spec}
-            goal={goal}
-            variant="dark"
-            onRetry={null}
-            className="flex-1"
-          />
+        {/* Plain block scroll body — the widget renders at natural height and
+            THIS scrolls it. No flex bounding on the widget (see note above). */}
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <GoalWidget spec={spec} goal={goal} variant="dark" onRetry={null} />
         </div>
       </div>
     </div>
