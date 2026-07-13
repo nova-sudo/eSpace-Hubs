@@ -71,29 +71,38 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
         health.needsFill ? "border-border-strong" : "border-border",
       )}
     >
-      {/* Header: kind chip + title | trend · AI tier · status */}
-      <div className="flex items-start gap-2">
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
+      {/* Header: a meta row (kind chip + trend · AI tier · status) that WRAPS on
+          narrow cards, then the title on its own full-width row.
+
+          The old single-row layout put the chip+title in a flex-1/min-w-0 column
+          beside a shrink-0 badge cluster. In the 3-up grid (~220px cards) the
+          badges (e.g. "ROLE MODEL" + "ON PACE" ≈ 160px) collapsed that column to
+          a few px, but the `w-fit` chip couldn't shrink — so it overflowed and
+          overlapped the badges. Splitting the title onto its own row frees the
+          meta row for just chip+badges, and flex-wrap drops the badges to a
+          second line if they still don't fit. */}
+      <div className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span
-            className="w-fit shrink-0 rounded-[3px] border border-border px-1 py-px text-[9px] uppercase tracking-[0.6px] text-muted-fg"
+            className="shrink-0 rounded-[3px] border border-border px-1 py-px text-[9px] uppercase tracking-[0.6px] text-muted-fg"
             style={{ fontFamily: "var(--font-mono)" }}
           >
             {kindLabel}
           </span>
-          <div className="truncate text-[13px] font-medium text-fg" title={goal?.title}>
-            {goal?.title || spec?.title || "Untitled goal"}
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            <TrendArrow trend={trend} />
+            <GoalTierBadge goalId={goal?.id} spec={spec} />
+            <Pill tone={meta.tone}>
+              <span
+                className="inline-block h-[6px] w-[6px] rounded-full"
+                style={{ background: meta.dot }}
+              />
+              {meta.label}
+            </Pill>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <TrendArrow trend={trend} />
-          <GoalTierBadge goalId={goal?.id} spec={spec} />
-          <Pill tone={meta.tone}>
-            <span
-              className="inline-block h-[6px] w-[6px] rounded-full"
-              style={{ background: meta.dot }}
-            />
-            {meta.label}
-          </Pill>
+        <div className="truncate text-[13px] font-medium text-fg" title={goal?.title}>
+          {goal?.title || spec?.title || "Untitled goal"}
         </div>
       </div>
 
