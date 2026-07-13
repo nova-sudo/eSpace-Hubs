@@ -4,6 +4,7 @@ import { WidgetShell, TargetChip } from "../widget-shell";
 import { useDataSource } from "../data-sources/use-data-source";
 import { evalTarget } from "./merged-count-widget";
 import { ComplianceLine } from "../compliance-line";
+import { usePublishGoalReading } from "../use-publish-reading";
 
 /**
  * First-pass rate — share of merged PRs that pass review cleanly.
@@ -35,6 +36,23 @@ export function FirstPassRateWidget({
   const pingPong = data?.pingPong ?? 0;
   const target = spec.source?.target;
   const meets = target && pct != null ? evalTarget(pct, target) : null;
+
+  // Publish the live reading so the achievement-tier grader can score this goal
+  // off the value shown here — instead of "awaiting data" until a snapshot is
+  // captured. Null while loading / no data so hasAnyData stays honest.
+  usePublishGoalReading(
+    goal?.id,
+    spec.widget,
+    !isLoading && !error && pct != null
+      ? {
+          value: `${pct}% first-pass · ${clean} clean / ${pingPong} ping-pong`,
+          score: pct,
+          unit: "%",
+          statusTone: meets === true ? "ok" : meets === false ? "warn" : "accent",
+          statusLabel: meets === true ? "on target" : meets === false ? "below target" : "tracked",
+        }
+      : null,
+  );
 
   return (
     <WidgetShell

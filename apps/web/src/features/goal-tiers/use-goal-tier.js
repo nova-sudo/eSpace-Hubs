@@ -371,10 +371,27 @@ function buildCurrentData(spec, entries, reading, liveReading) {
     case SPEC_KINDS.FREE_TEXT:
       return `${list.length} reflection note(s) logged`;
     default:
-      // AUTO widgets (merged/turnaround/linkage/…), CODE_RUBRIC, SCORECARD:
-      // the snapshot reading is the right current-data source.
-      return readingToText(reading);
+      // AUTO widgets (merged/turnaround/linkage/first-pass/…) + CODE_RUBRIC:
+      // prefer the value the MOUNTED widget just published (fresh, and present
+      // before any snapshot is captured); fall back to the snapshot reading.
+      return liveReadingToText(liveReading) || readingToText(reading);
   }
+}
+
+/**
+ * Serialize an AUTO / CI-CD / rubric widget's published live reading — the
+ * normalized { value: <string>, statusLabel } shape (NOT the scorecard
+ * { score } shape) — into grader-friendly prose. Empty string when nothing
+ * usable was published, so buildCurrentData falls through to the snapshot.
+ */
+function liveReadingToText(live) {
+  if (!live || typeof live !== "object") return "";
+  if (typeof live.value !== "string" || !live.value.trim()) return "";
+  const status =
+    typeof live.statusLabel === "string" && live.statusLabel.trim()
+      ? ` — ${live.statusLabel.trim()}`
+      : "";
+  return `current reading: ${live.value.trim()}${status}`;
 }
 
 /**
@@ -574,17 +591,17 @@ export function useGoalTier(goalId, spec) {
     getGoalLiveReadingsServerSnapshot,
   );
   const liveReading = useMemo(() => {
-    if (!isScorecard) return null;
     const live = readGoalLiveReading(goalId);
-    // Match on the widget kind too — the store is never cleared on
-    // reclassification, so a goal that used to be a CI/CD or rubric widget can
-    // still hold a stale foreign-kind reading (no .score) under its id. Without
-    // this guard that reading would inflate hasAnyData below and make the
-    // grader score emptiness instead of returning AWAITING_VERDICT (mirrors
-    // Evidence's fromLiveReading, which guards on live.widget === spec.widget).
-    return live?.widget === SPEC_KINDS.SCORECARD ? live : null;
+    // Accept the reading ONLY when it was published for the CURRENT widget kind.
+    // The store is never cleared on reclassification, so a goal that used to be
+    // a different widget can still hold a stale foreign-kind reading under its
+    // id; the widget-match guard rejects it (mirrors Evidence's fromLiveReading).
+    // This is what lets AUTO widgets (first-pass rate, merged count, linkage, …)
+    // grade on the value the MOUNTED widget computes — instead of "awaiting data"
+    // until a snapshot is captured (a fresh setup has none).
+    return live?.widget === spec?.widget ? live : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isScorecard, goalId, liveTick]);
+  }, [spec?.widget, goalId, liveTick]);
 
   // W1: the single numeric reading the widget is graded on, when a numeric
   // ladder (tierScale) exists. Null for qualitative widgets / no data yet.
@@ -592,7 +609,7 @@ export function useGoalTier(goalId, spec) {
   const reading = useMemo(() => {
     if (!tierScale) return null;
     if (liveReading && Number.isFinite(liveReading.score)) {
-      return { value: liveReading.score, unit: "%" };
+      return { value: liveReading.score, unit: liveReading.unit || "%" };
     }
     return numericReadingFor(spec, entries, snapReading);
   }, [tierScale, spec, entries, snapReading, liveReading]);

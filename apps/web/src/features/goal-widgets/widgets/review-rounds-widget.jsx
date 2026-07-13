@@ -5,6 +5,7 @@ import { WidgetShell, TargetChip } from "../widget-shell";
 import { useDataSource } from "../data-sources/use-data-source";
 import { evalTarget } from "./merged-count-widget";
 import { ComplianceLine } from "../compliance-line";
+import { usePublishGoalReading } from "../use-publish-reading";
 
 /**
  * Review-rounds widget — average reviewer comments per merged MR.
@@ -20,6 +21,21 @@ export function ReviewRoundsWidget({ spec, goal, variant = "light", className, o
   const value = data?.value ?? null;
   const target = spec.source?.target;
   const meets = target && value != null ? evalTarget(value, target) : null;
+
+  // Publish the live reading so the tier grader scores off this value.
+  usePublishGoalReading(
+    goal?.id,
+    spec.widget,
+    !isLoading && !error && value != null
+      ? {
+          value: `${fmtNumber(value)} avg reviewer comments per MR`,
+          score: value,
+          unit: "",
+          statusTone: meets === true ? "ok" : meets === false ? "warn" : "accent",
+          statusLabel: meets === true ? "on target" : meets === false ? "below target" : "tracked",
+        }
+      : null,
+  );
 
   // Bar fill is a relative gauge: 0 → max(value, target). When a target is
   // present, it acts as the visual ceiling so users see exactly where they

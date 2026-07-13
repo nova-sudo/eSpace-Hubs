@@ -4,6 +4,7 @@ import { WidgetShell, TargetChip } from "../widget-shell";
 import { useDataSource } from "../data-sources/use-data-source";
 import { evalTarget } from "./merged-count-widget";
 import { ComplianceLine } from "../compliance-line";
+import { usePublishGoalReading } from "../use-publish-reading";
 
 export function LinkageWidget({ spec, goal, variant = "light", className, onRetry }) {
   const { data, isLoading, error, windowLabel } = useDataSource(spec.source);
@@ -12,6 +13,21 @@ export function LinkageWidget({ spec, goal, variant = "light", className, onRetr
   const loose = data?.loose ?? 0;
   const target = spec.source?.target;
   const meets = target && pct != null ? evalTarget(pct, target) : null;
+
+  // Publish the live reading so the tier grader scores off this value.
+  usePublishGoalReading(
+    goal?.id,
+    spec.widget,
+    !isLoading && !error && pct != null
+      ? {
+          value: `${pct}% linked · ${linked} linked / ${loose} loose`,
+          score: pct,
+          unit: "%",
+          statusTone: meets === true ? "ok" : meets === false ? "warn" : "accent",
+          statusLabel: meets === true ? "on target" : meets === false ? "below target" : "tracked",
+        }
+      : null,
+  );
 
   return (
     <WidgetShell
