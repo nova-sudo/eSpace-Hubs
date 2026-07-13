@@ -7,7 +7,6 @@ import { Button, PageHeader } from "@/components/ui";
 import { useIntegrations } from "@/features/integrations";
 import { useHubLink } from "@/features/hubs";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
-import { readInputs, useAllGoalInputs } from "@/features/goal-inputs";
 import { ConfigPanel } from "./config-panel";
 import { DocumentPreview } from "./document-preview";
 import { ReviewPrepChecklist } from "./review-prep-checklist";
@@ -47,11 +46,11 @@ export function EvidencePage() {
   // readInputs() on hydration/change.
   const { ready } = useGoalWidgetItems();
   const goalReadings = useGoalReadings();
-  const inputsTick = useAllGoalInputs();
+  // Enrichment (verdict, evidence, timing) lives in useGoalReadings now, so the
+  // rows already carry everything — this just shelves them by L1.
   const evidence = useMemo(
-    () => buildGoalEvidenceGroups(goalReadings, readInputs()),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [goalReadings, inputsTick],
+    () => buildGoalEvidenceGroups(goalReadings),
+    [goalReadings],
   );
 
   const rangeLabel = yearToDateLabel();

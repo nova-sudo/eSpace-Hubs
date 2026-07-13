@@ -30,6 +30,20 @@ const ACCENT = "#1d4ed8";
 const LINE = "#e2e0d8";
 const PANEL = "#f7f5ef";
 
+// Achievement-tier short labels (react-pdf can't import the theme-aware UI).
+const TIER_SHORT = {
+  not_achieved: "Not met",
+  achieved: "Achieved",
+  over_achieved: "Over-achieved",
+  role_model: "Role model",
+};
+
+/** Short calendar date for an evidence timestamp — the "when". */
+function fmtDate(ts) {
+  if (!ts) return "";
+  return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 const s = StyleSheet.create({
   page: {
     backgroundColor: "#ffffff",
@@ -72,6 +86,15 @@ const s = StyleSheet.create({
   itemImpact: { color: MUTED, fontSize: 8.5, marginLeft: 78, marginBottom: 4 },
   l1Head: { fontSize: 12, fontFamily: "Helvetica-Bold", marginTop: 12, marginBottom: 2 },
   l1Reading: { fontSize: 9, color: MUTED, marginBottom: 6 },
+  // Rich per-goal block (what / how / when).
+  goalTitle: { fontSize: 10.5, fontFamily: "Helvetica-Bold", marginTop: 9 },
+  goalMeta: { fontSize: 9, color: MUTED, marginTop: 1.5, lineHeight: 1.4 },
+  goalMetaLabel: { fontFamily: "Helvetica-Bold", color: DIM },
+  goalAssess: { fontSize: 9, color: INK, marginTop: 2.5, lineHeight: 1.45 },
+  evList: { marginTop: 4, marginBottom: 2 },
+  evRow: { flexDirection: "row", marginTop: 2.5, paddingLeft: 8 },
+  evDate: { fontSize: 7.5, color: DIM, width: 44, fontFamily: "Helvetica-Bold" },
+  evBody: { flex: 1, fontSize: 8.5, color: MUTED, lineHeight: 1.4 },
   tRow: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: LINE, paddingVertical: 4 },
   tHead: { backgroundColor: PANEL },
   tCellGoal: { width: "40%", paddingRight: 6, fontSize: 8.5 },
@@ -131,6 +154,53 @@ function goalGroups(goalReadings) {
   return groups;
 }
 
+/**
+ * One L2 goal, rendered rich: what it was set out to achieve → where it landed
+ * (+ tier), the grader's assessment (the "how/why"), and the dated proof the
+ * user logged (the "when"). The header is atomic (`wrap={false}`) but the
+ * evidence list flows across pages so a long log is never clipped.
+ */
+function GoalBlock({ r }) {
+  const v = r.verdict;
+  const graded = v && !v.awaiting && !v.pendingSetup;
+  const tier = graded && v.tier ? TIER_SHORT[v.tier] : null;
+  const reasoning = graded && v.reasoning ? v.reasoning : null;
+  const evidence = Array.isArray(r.evidence) ? r.evidence : [];
+
+  return (
+    <View>
+      <View wrap={false}>
+        <Text style={s.goalTitle}>{r.goal?.title || "(untitled)"}</Text>
+        <Text style={s.goalMeta}>
+          <Text style={s.goalMetaLabel}>Target: </Text>
+          {formatExpected(r.spec) || "—"}
+          <Text style={s.goalMetaLabel}>    Achieved: </Text>
+          {r.reading?.value || "—"}
+          {r.reading?.statusLabel ? ` · ${r.reading.statusLabel}` : ""}
+          {tier ? ` · ${tier}` : ""}
+        </Text>
+        {reasoning ? (
+          <Text style={s.goalAssess}>
+            <Text style={s.goalMetaLabel}>Assessment: </Text>
+            {reasoning}
+            {v.confidence === "low" ? " (low confidence)" : ""}
+          </Text>
+        ) : null}
+      </View>
+      {evidence.length ? (
+        <View style={s.evList}>
+          {evidence.map((ev, i) => (
+            <View key={i} style={s.evRow} wrap={false}>
+              <Text style={s.evDate}>{fmtDate(ev.ts)}</Text>
+              <Text style={s.evBody}>{ev.text}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export function EvidencePdfDocument({
   name,
   team,
@@ -179,22 +249,7 @@ export function EvidencePdfDocument({
                 {g.rows.length === 0 ? (
                   <Text style={s.l1Reading}>No L2s classified yet for this L1.</Text>
                 ) : (
-                  <View>
-                    <View style={[s.tRow, s.tHead]} wrap={false}>
-                      <Text style={[s.tCellGoal, s.tHeadCell]}>Goal</Text>
-                      <Text style={[s.tCellExp, s.tHeadCell]}>Expected</Text>
-                      <Text style={[s.tCellAch, s.tHeadCell]}>Achieved</Text>
-                      <Text style={[s.tCellStat, s.tHeadCell]}>Status</Text>
-                    </View>
-                    {g.rows.map((r, ri) => (
-                      <View key={ri} style={s.tRow} wrap={false}>
-                        <Text style={s.tCellGoal}>{r.goal?.title || "(untitled)"}</Text>
-                        <Text style={s.tCellExp}>{formatExpected(r.spec)}</Text>
-                        <Text style={s.tCellAch}>{r.reading?.value || "—"}</Text>
-                        <Text style={s.tCellStat}>{r.reading?.statusLabel || "—"}</Text>
-                      </View>
-                    ))}
-                  </View>
+                  g.rows.map((r, ri) => <GoalBlock key={ri} r={r} />)
                 )}
               </View>
             ))}

@@ -17,6 +17,7 @@ import { Pill } from "@/components/ui";
 import { SPEC_KIND_META } from "@/features/goal-specs";
 import { GoalTierBadge } from "@/features/goal-tiers";
 import { useHubLink } from "@/features/hubs";
+import { formatExpected } from "./format-expected";
 
 const TONE_PILL = { ok: "ok", accent: "accent", warn: "warn", muted: "muted" };
 
@@ -25,6 +26,12 @@ function relAgo(ts) {
   const d = Math.round((Date.now() - ts) / 86_400_000);
   if (d <= 0) return "today";
   return `${d}d ago`;
+}
+
+/** Short calendar date for an evidence timestamp — the "when". */
+function fmtDate(ts) {
+  if (!ts) return "";
+  return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 export function GoalEvidenceBoard({ groups, loading, goalsHref }) {
@@ -91,10 +98,17 @@ export function GoalEvidenceBoard({ groups, loading, goalsHref }) {
 }
 
 function GoalEvidenceCard({ row }) {
-  const { goal, spec, reading, evidence, checkinDays, lastTs } = row;
+  const { goal, spec, reading, verdict, evidence, checkinDays, lastTs } = row;
   const kindLabel = SPEC_KIND_META[spec?.widget]?.label ?? "Goal";
   const tone = TONE_PILL[reading?.statusTone] || "muted";
   const logged = relAgo(lastTs);
+  const expected = formatExpected(spec);
+  // The grader's one-line "why this tier" — the HOW. Only show it once there's
+  // a real verdict (not the awaiting / needs-setup placeholder states).
+  const reasoning =
+    verdict && !verdict.awaiting && !verdict.pendingSetup && verdict.reasoning
+      ? verdict.reasoning
+      : null;
 
   return (
     <div className="rounded-[10px] border border-border bg-card px-4 py-3.5">
@@ -111,8 +125,16 @@ function GoalEvidenceCard({ row }) {
               {goal.title}
             </span>
           </div>
+          {/* WHAT: what the goal was set up to achieve → where it landed. */}
           {reading?.value ? (
-            <div className="mt-1.5 text-[12px] text-muted-fg">{reading.value}</div>
+            <div className="mt-1.5 text-[12px] text-fg/85">
+              <LabelTag>Achieved</LabelTag> {reading.value}
+            </div>
+          ) : null}
+          {expected ? (
+            <div className="mt-0.5 text-[11px] text-muted-fg">
+              <LabelTag>Target</LabelTag> {expected}
+            </div>
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
@@ -123,12 +145,27 @@ function GoalEvidenceCard({ row }) {
         </div>
       </div>
 
-      {/* Logged evidence — the proof the user attached to this goal. */}
+      {/* HOW: the grader's assessment of what tier this reached and why. */}
+      {reasoning ? (
+        <div className="mt-2 text-[11.5px] leading-[1.45] text-muted-fg">
+          <LabelTag>Assessment</LabelTag> {reasoning}
+          {verdict.confidence === "low" ? (
+            <span className="text-dim-fg"> · low confidence</span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* WHEN + proof: the dated evidence the user logged against this goal. */}
       {evidence.length > 0 ? (
         <ul className="mt-3 flex flex-col gap-1.5 border-t border-border pt-2.5">
           {evidence.map((ev, i) => (
             <li key={i} className="flex items-start gap-2 text-[11.5px] leading-[1.4]">
-              <span className="mt-[5px] h-1 w-1 shrink-0 rounded-full" style={{ background: "var(--accent)" }} />
+              <span
+                className="mt-px shrink-0 uppercase tracking-[0.3px] text-dim-fg"
+                style={{ fontFamily: "var(--font-mono)", fontSize: 9, width: 40 }}
+              >
+                {fmtDate(ev.ts)}
+              </span>
               {/* Display the full text, but link to the EXTRACTED url (not the
                   "label: url" text, which would resolve as a broken relative link). */}
               <span className="min-w-0 text-fg/85">
@@ -162,5 +199,17 @@ function GoalEvidenceCard({ row }) {
         {logged ? <span>· last logged {logged}</span> : null}
       </div>
     </div>
+  );
+}
+
+/** Tiny uppercase mono field label used inline before a value. */
+function LabelTag({ children }) {
+  return (
+    <span
+      className="uppercase tracking-[0.4px] text-dim-fg"
+      style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}
+    >
+      {children}
+    </span>
   );
 }

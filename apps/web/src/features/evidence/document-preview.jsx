@@ -11,6 +11,19 @@ const STATUS_PILL_COLORS = {
   muted: { bg: "var(--card-alt)", fg: "var(--muted-fg)" },
 };
 
+const TIER_SHORT = {
+  not_achieved: "Not met",
+  achieved: "Achieved",
+  over_achieved: "Over-achieved",
+  role_model: "Role model",
+};
+
+/** Short calendar date for an evidence timestamp — the "when". */
+function fmtDate(ts) {
+  if (!ts) return "";
+  return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 export function DocumentPreview({
   format,
   level,
@@ -197,117 +210,111 @@ function GoalReadingsBlock({ readings }) {
     }
   }
 
-  // Expected vs Achieved table — 4 columns: Goal | Expected | Achieved | Status
-  // Each L1 gets a header row spanning the goal column, then its L2s
-  // appear as full data rows underneath. Reads more like a perf-review
-  // grid than a bullet list.
-  const cols = "minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1.4fr) auto";
+  // Per-goal blocks (what / how / when) — mirrors the exported PDF/markdown so
+  // the on-screen preview never shows less than the download.
   return (
-    <div className="overflow-hidden rounded-[var(--radius-sub)] border border-border">
-      <div
-        className="grid border-b border-border bg-card-alt px-3.5 py-2 uppercase tracking-[0.5px] text-muted-fg"
-        style={{
-          gridTemplateColumns: cols,
-          fontFamily: "var(--font-mono)",
-          fontSize: 9.5,
-        }}
-      >
-        <span>Goal</span>
-        <span>Expected</span>
-        <span>Achieved</span>
-        <span className="text-right">Status</span>
-      </div>
+    <div className="flex flex-col gap-5">
       {grouped.map((g, gi) => (
         <div key={(g.l1.goal && g.l1.goal.id) || gi}>
-          <div
-            className="grid items-baseline gap-2 border-b border-border bg-card-alt/50 px-3.5 py-2"
-            style={{
-              gridTemplateColumns: cols,
-              fontFamily: "var(--font-display)",
-              fontSize: 13,
-              letterSpacing: "-0.2px",
-              fontWeight: 600,
-            }}
-          >
-            <span className="truncate" title={g.l1.goal?.title}>
+          <div className="flex items-baseline justify-between gap-3 border-b border-border pb-1.5">
+            <span
+              className="min-w-0 truncate text-fg"
+              style={{ fontFamily: "var(--font-display)", fontSize: 13.5, fontWeight: 600, letterSpacing: "-0.2px" }}
+              title={g.l1.goal?.title}
+            >
               {g.l1.goal?.title || "(untitled L1)"}
-            </span>
-            <span
-              className="text-dim-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-            >
-              {g.l1.goal?.weightage > 0
-                ? `${g.l1.goal.weightage}% weight`
-                : ""}
-            </span>
-            <span
-              className="font-semibold tabular-nums text-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600 }}
-            >
-              {g.l1.reading?.value || ""}
-            </span>
-            <span className="text-right">
-              {g.l1.reading ? (
-                <StatusPill
-                  tone={g.l1.reading.statusTone}
-                  label={g.l1.reading.statusLabel}
-                />
+              {g.l1.goal?.weightage > 0 ? (
+                <span className="ml-2 text-dim-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>
+                  {g.l1.goal.weightage}% weight
+                </span>
               ) : null}
             </span>
+            {g.l1.reading ? (
+              <span className="shrink-0 text-muted-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>
+                {g.l1.reading.value}
+              </span>
+            ) : null}
           </div>
           {g.items.length === 0 ? (
-            <div
-              className="px-3.5 py-2.5 text-dim-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-            >
+            <div className="mt-2 text-dim-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}>
               No L2s classified yet for this L1.
             </div>
           ) : (
-            g.items.map((r, i) => {
-              const expected = formatExpected(r.spec);
-              return (
-                <div
-                  key={r.goal.id}
-                  className="grid items-baseline gap-2 px-3.5 py-2.5"
-                  style={{
-                    gridTemplateColumns: cols,
-                    borderBottom:
-                      i < g.items.length - 1 || gi < grouped.length - 1
-                        ? "1px dashed var(--border)"
-                        : "none",
-                  }}
-                >
-                  <span
-                    className="truncate text-[12.5px]"
-                    title={r.goal.title}
-                  >
-                    {r.goal.title || "(untitled L2)"}
-                  </span>
-                  <span
-                    className="truncate text-muted-fg"
-                    style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-                    title={expected}
-                  >
-                    {expected}
-                  </span>
-                  <span
-                    className="font-semibold tabular-nums text-fg"
-                    style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-                  >
-                    {r.reading.value}
-                  </span>
-                  <span className="text-right">
-                    <StatusPill
-                      tone={r.reading.statusTone}
-                      label={r.reading.statusLabel}
-                    />
-                  </span>
-                </div>
-              );
-            })
+            <div className="mt-2.5 flex flex-col gap-3">
+              {g.items.map((r) => (
+                <PreviewGoalBlock key={r.goal.id} r={r} />
+              ))}
+            </div>
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+/** One L2 goal in the paper preview: target → achieved (+ tier), the grader's
+ *  assessment, and the dated evidence. Mirrors the PDF's GoalBlock. */
+function PreviewGoalBlock({ r }) {
+  const v = r.verdict;
+  const graded = v && !v.awaiting && !v.pendingSetup;
+  const tier = graded && v.tier ? TIER_SHORT[v.tier] : null;
+  const reasoning = graded && v.reasoning ? v.reasoning : null;
+  const expected = formatExpected(r.spec);
+  const evidence = Array.isArray(r.evidence) ? r.evidence : [];
+
+  return (
+    <div style={{ borderLeft: "2px solid var(--border)", paddingLeft: 12 }}>
+      <div className="flex items-start justify-between gap-2">
+        <span className="min-w-0 text-[13px] font-medium text-fg" title={r.goal.title}>
+          {r.goal.title || "(untitled L2)"}
+        </span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {tier ? (
+            <span className="uppercase" style={{ fontFamily: "var(--font-mono)", fontSize: 9, fontWeight: 700, color: "var(--accent)" }}>
+              {tier}
+            </span>
+          ) : null}
+          {r.reading?.statusLabel ? (
+            <StatusPill tone={r.reading.statusTone} label={r.reading.statusLabel} />
+          ) : null}
+        </div>
+      </div>
+      <div className="mt-1 text-[11.5px] text-muted-fg">
+        <span className="uppercase text-dim-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}>Target </span>
+        {expected || "—"}
+        <span className="uppercase text-dim-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}>  →  Achieved </span>
+        {r.reading?.value || "—"}
+      </div>
+      {reasoning ? (
+        <div className="mt-1 text-[11.5px] leading-[1.45] text-fg/80">
+          <span className="uppercase text-dim-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}>Assessment </span>
+          {reasoning}
+          {v.confidence === "low" ? <span className="text-dim-fg"> · low confidence</span> : null}
+        </div>
+      ) : null}
+      {evidence.length ? (
+        <ul className="mt-1.5 flex flex-col gap-1">
+          {evidence.map((ev, i) => (
+            <li key={i} className="flex items-start gap-2 text-[11px] leading-[1.4] text-fg/80">
+              <span
+                className="mt-px shrink-0 uppercase tracking-[0.3px] text-dim-fg"
+                style={{ fontFamily: "var(--font-mono)", fontSize: 9, width: 40 }}
+              >
+                {fmtDate(ev.ts)}
+              </span>
+              <span className="min-w-0">
+                {ev.text}
+                {ev.url ? (
+                  <>
+                    {" "}
+                    <a href={ev.url} target="_blank" rel="noreferrer" className="text-accent hover:underline">↗</a>
+                  </>
+                ) : null}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

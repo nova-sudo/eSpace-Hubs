@@ -8,8 +8,6 @@
  * per-item / per-field evidence, links).
  */
 
-import { startOfYearMs } from "@/lib/date";
-
 const LINK_RE = /https?:\/\/\S+/;
 
 /**
@@ -34,7 +32,7 @@ function urlIn(s) {
 
 /** Distinct calendar days (UTC) among the timestamps — collapses the many
  *  micro-edit rows the accumulating widgets append in one sitting into one. */
-function distinctDays(tsList) {
+export function distinctDays(tsList) {
   const days = new Set();
   for (const ts of tsList) days.add(new Date(ts).toISOString().slice(0, 10));
   return days.size;
@@ -91,14 +89,16 @@ export function extractEvidenceItems(entries, cutoff, cap = 5) {
 }
 
 /**
- * Group per-goal readings into L1 shelves with each L2 goal's logged evidence.
- * Windowed to year-to-date — the L2s are annual goals, so evidence is counted
- * from Jan 1 of the current year onward.
- * @param {Array} readings  useGoalReadings() output ({goal,spec,level,parentL1,reading})
- * @param {Object} allInputs  readInputs() → { [goalId]: entries[] }
+ * Group already-enriched per-goal readings into L1 shelves. Each L2 row is
+ * enriched upstream (useGoalReadings) with its achievement verdict, its logged
+ * evidence, and check-in timing — this only shelves them by L1 and tallies the
+ * status summary. Keeping enrichment in ONE place means the board and the
+ * PDF/markdown export never diverge on what a goal achieved.
+ *
+ * @param {Array} readings  useGoalReadings() output — L2 rows carry
+ *   { goal, spec, reading, verdict, evidence, checkinDays, lastTs }.
  */
-export function buildGoalEvidenceGroups(readings, allInputs, now = Date.now()) {
-  const cutoff = startOfYearMs(now);
+export function buildGoalEvidenceGroups(readings) {
   const groups = [];
   let active = null;
   const summary = { total: 0, onTrack: 0, inProgress: 0, behind: 0, awaiting: 0 };
@@ -116,21 +116,14 @@ export function buildGoalEvidenceGroups(readings, allInputs, now = Date.now()) {
       g.l1Reading = r.reading || null;
     } else if (r.level === "L2") {
       const g = ensureGroup(r.parentL1);
-      const entries = allInputs?.[r.goal.id] || [];
-      const inWindowTs = entries
-        .filter((e) => typeof e?.ts === "number" && e.ts >= cutoff)
-        .map((e) => e.ts);
-      const lastTs = entries.length ? entries[entries.length - 1].ts : null;
       g.goals.push({
         goal: r.goal,
         spec: r.spec,
         reading: r.reading || null,
-        evidence: extractEvidenceItems(entries, cutoff),
-        // Distinct check-in DAYS, not raw rows — accumulating widgets
-        // (composed / milestone / recurring) append a row per micro-edit, so
-        // a raw count reads "12 check-ins" for one sitting.
-        checkinDays: distinctDays(inWindowTs),
-        lastTs,
+        verdict: r.verdict || null,
+        evidence: r.evidence || [],
+        checkinDays: r.checkinDays || 0,
+        lastTs: r.lastTs || null,
       });
       summary.total += 1;
       const bucket = TONE_BUCKET[r.reading?.statusTone] || "awaiting";

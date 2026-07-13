@@ -46,7 +46,12 @@ import {
   subscribeGoalLiveReadings,
   getGoalLiveReadingsSnapshot,
   getGoalLiveReadingsServerSnapshot,
+  readGoalTier,
+  subscribeGoalTiers,
+  getGoalTiersSnapshot,
+  getGoalTiersServerSnapshot,
 } from "@/features/goal-tiers";
+import { extractEvidenceItems, distinctDays } from "./goal-evidence";
 import { startOfYearIso, startOfYearMs } from "@/lib/date";
 import {
   inferIncidentMode,
@@ -102,6 +107,14 @@ export function useGoalReadings() {
     getGoalLiveReadingsSnapshot,
     getGoalLiveReadingsServerSnapshot,
   );
+  // Subscribe to the achievement-tier verdict cache so each row carries the
+  // fresh {tier, reasoning, confidence} the grader produced — Evidence shows
+  // "what was achieved (and why)", not just the raw reading.
+  const tiersTick = useSyncExternalStore(
+    subscribeGoalTiers,
+    getGoalTiersSnapshot,
+    getGoalTiersServerSnapshot,
+  );
 
   return useMemo(() => {
     const out = [];
@@ -122,6 +135,8 @@ export function useGoalReadings() {
       tickets,
       allInputs,
       snapshots,
+      // Year-to-date cutoff for the evidence-item window (L2s are annual goals).
+      yearStart,
     };
 
     for (const l1 of goals.l1s) {
@@ -134,7 +149,7 @@ export function useGoalReadings() {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [goals, specs, merged, events, jira, snapshots, inputsTick, contextTick, liveTick]);
+  }, [goals, specs, merged, events, jira, snapshots, inputsTick, contextTick, liveTick, tiersTick]);
 }
 
 function pushReading(out, goal, level, ctx) {
@@ -145,14 +160,30 @@ function pushReading(out, goal, level, ctx) {
   // so it can prefer compliance over a single in-window snapshot.
   const compliance = goalCompliance(ctx.snapshots || [], goal.id);
   const ctxWithCompliance = { ...ctx, compliance };
-  out.push({
+  const row = {
     goal,
     spec,
     level,
     parentL1: ctx.parentL1 || null,
     reading: summarizeGoal(spec, goal, ctxWithCompliance),
     compliance,
-  });
+  };
+  if (level === "L2") {
+    // Enrich L2 (the tracked goals) with the achievement verdict + the concrete
+    // proof the user logged, windowed year-to-date. This is what lets Evidence —
+    // and the PDF / markdown export — show WHAT was achieved (tier + reading),
+    // HOW (the grader's reasoning + the logged proof), and WHEN (proof dates).
+    const entries = ctx.allInputs?.[goal.id] || [];
+    const cutoff = ctx.yearStart;
+    row.verdict = readGoalTier(goal.id);
+    row.evidence = extractEvidenceItems(entries, cutoff, 8);
+    const inWindowTs = entries
+      .filter((e) => typeof e?.ts === "number" && e.ts >= cutoff)
+      .map((e) => e.ts);
+    row.checkinDays = distinctDays(inWindowTs);
+    row.lastTs = entries.length ? entries[entries.length - 1].ts : null;
+  }
+  out.push(row);
 }
 
 /**

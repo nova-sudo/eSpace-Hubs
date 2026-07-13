@@ -29,18 +29,11 @@ export function renderMarkdown({
     const l1s = goalReadings.filter((r) => r.level === "L1").length;
     const l2s = goalReadings.filter((r) => r.level === "L2").length;
     lines.push(`## 02 · Performance goals · ${l1s} L1 · ${l2s} L2`);
-    // Group L1 → its L2s. Each L1 gets its own Expected/Achieved table
-    // for that L1's children. Reads more like a structured perf-review
-    // packet than a list of bullets — the markdown table headers become
-    // proper columns when rendered.
+    // Group L1 → its L2s. Each L2 becomes a per-goal block — what it was set
+    // out to achieve → where it landed (+ tier), the grader's assessment (the
+    // "how/why"), and the dated proof logged against it (the "when"). Richer
+    // than a flat table, which can't hold reasoning + an evidence list.
     let activeL1 = null;
-    let pendingHeader = false;
-    function emitTableHeader() {
-      lines.push("");
-      lines.push("| Goal | Expected | Achieved | Status |");
-      lines.push("|---|---|---|---|");
-      pendingHeader = false;
-    }
     for (const r of goalReadings) {
       if (r.level === "L1") {
         activeL1 = r;
@@ -51,9 +44,6 @@ export function renderMarkdown({
           lines.push("");
           lines.push(`> ${r.reading.value} — _${r.reading.statusLabel}_`);
         }
-        // Defer the table header until we see the first L2 (avoids
-        // empty tables for L1s with no classified children).
-        pendingHeader = true;
       } else if (r.level === "L2") {
         if (!activeL1 || activeL1.goal?.id !== r.parentL1?.id) {
           activeL1 = { goal: r.parentL1, level: "L1", reading: null };
@@ -61,14 +51,8 @@ export function renderMarkdown({
             r.parentL1?.weightage > 0 ? ` _(${r.parentL1.weightage}% weight)_` : "";
           lines.push("");
           lines.push(`### ${r.parentL1?.title || "(untitled L1)"}${w}`);
-          pendingHeader = true;
         }
-        if (pendingHeader) emitTableHeader();
-        const expected = mdEscape(formatExpected(r.spec));
-        const achieved = mdEscape(r.reading?.value || "—");
-        const status = r.reading?.statusLabel || "—";
-        const title = mdEscape(r.goal?.title || "(untitled L2)");
-        lines.push(`| ${title} | ${expected} | ${achieved} | ${status} |`);
+        emitGoalBlock(lines, r);
       }
     }
     lines.push("");
@@ -86,13 +70,47 @@ export function renderMarkdown({
   return lines.join("\n");
 }
 
+const TIER_SHORT = {
+  not_achieved: "Not met",
+  achieved: "Achieved",
+  over_achieved: "Over-achieved",
+  role_model: "Role model",
+};
+
+/** Short calendar date for an evidence timestamp — the "when". */
+function fmtDate(ts) {
+  if (!ts) return "";
+  return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 /**
- * Escape pipe characters so they don't break markdown table rows.
- * Anything else is left alone — the rest of the markdown shape is
- * fine because cell content is short.
+ * One L2 goal as a markdown block: target → achieved (+ tier), the grader's
+ * assessment (the "how/why"), and the dated evidence logged against it (the
+ * "when"). `r` is an enriched reading row carrying `verdict` + `evidence`.
  */
-function mdEscape(s) {
-  return String(s ?? "").replace(/\|/g, "\\|");
+function emitGoalBlock(lines, r) {
+  const v = r.verdict;
+  const graded = v && !v.awaiting && !v.pendingSetup;
+  const tier = graded && v.tier ? TIER_SHORT[v.tier] : null;
+  const expected = formatExpected(r.spec) || "—";
+  const achieved = r.reading?.value || "—";
+  const status = r.reading?.statusLabel || "—";
+
+  lines.push("");
+  lines.push(`#### ${r.goal?.title || "(untitled L2)"}${tier ? ` — ${tier}` : ""}`);
+  lines.push(`- **Target:** ${expected} → **Achieved:** ${achieved} _(${status})_`);
+  if (graded && v.reasoning) {
+    lines.push(
+      `- **Assessment:** ${v.reasoning}${v.confidence === "low" ? " _(low confidence)_" : ""}`,
+    );
+  }
+  const evidence = Array.isArray(r.evidence) ? r.evidence : [];
+  if (evidence.length) {
+    lines.push(`- **Evidence:**`);
+    for (const ev of evidence) {
+      lines.push(`  - ${fmtDate(ev.ts)} — ${ev.text}`);
+    }
+  }
 }
 
 export function downloadMarkdown(filename, content) {
