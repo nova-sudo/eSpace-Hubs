@@ -4,6 +4,7 @@ import { Grain } from "@/components/ui";
 import { AnalystPage, AnalystProvider, useAnalyst } from "@/features/analyst";
 import { CommandPalette, useGlobalShortcuts } from "@/features/command-palette";
 import { BackfillBanner, useAutoSnapshot } from "@/features/snapshots";
+import { useActiveHub } from "@/features/hubs";
 import { Header } from "./header";
 import { Footer } from "./footer";
 import { SubTabsTag } from "./sub-tabs-tag";
@@ -30,14 +31,18 @@ export function AppShell({ children, hideFooter = false }) {
 
 function AppShellInner({ children, hideFooter }) {
   const { open } = useAnalyst();
+  // The snapshot / backfill machinery is the DEV goal-cycle-history feature.
+  // The goal + snapshot stores are per-user, NOT hub-scoped, so mounting this
+  // chrome on every hub leaked the backfill banner (and weekly auto-capture,
+  // plus its integration fetches) into admin/qa/manager for a multi-hub user.
+  // Gate it on the active hub actually exposing the `snapshots` surface —
+  // only the dev hub does today. A null hub (non-hub AppShell usage) is
+  // treated as "no snapshots", which is correct.
+  const hub = useActiveHub();
+  const tracksSnapshots = Boolean(hub?.pages?.snapshots);
   // Hook the global keyboard shortcuts (1-6, j/k, g+x chords). The palette's
   // own ⌘K / ? listener lives inside the palette component.
   useGlobalShortcuts();
-  // Auto-snapshotter — captures one snapshot per completed Sun → Thu
-  // work-week. Idempotent: if the most recent completed week already
-  // has a snapshot (manual or auto), this is a no-op. Lives at the
-  // shell level so it fires on any page visit, not just the dashboard.
-  useAutoSnapshot();
   return (
     <>
       {/* No forced blend — Grain follows the theme (screen on dark, multiply
@@ -64,8 +69,9 @@ function AppShellInner({ children, hideFooter }) {
       >
         {/* Backfill banner sits above the header. Self-hides when the
             snapshot store has every completed Sun → Thu week of the
-            current year already covered. */}
-        <BackfillBanner />
+            current year already covered. Gated to snapshot-tracking hubs
+            (dev) so it never surfaces in admin/qa/manager. */}
+        {tracksSnapshots ? <BackfillBanner /> : null}
         <Header />
         {/* Side bookmark for drill-down routes within the active top-level
             tab (Performance → Reviews log + Snapshots). Self-hides on
@@ -84,6 +90,22 @@ function AppShellInner({ children, hideFooter }) {
       {/* Mounted last so it floats above the analyst overlay; uses fixed
           positioning + z-100 to clear every other layer including the grain. */}
       <CommandPalette />
+      {/* Auto-snapshotter — captures one snapshot per completed Sun → Thu
+          work-week (idempotent). Wrapped in a child component and mounted
+          only for snapshot-tracking hubs, so outside dev the hook — and the
+          integration fetches it drives — never runs at all. */}
+      {tracksSnapshots ? <AutoSnapshotRunner /> : null}
     </>
   );
+}
+
+/**
+ * Headless runner for the weekly auto-snapshot. Isolated into its own
+ * component so it can be conditionally MOUNTED (React hook rules forbid
+ * conditionally CALLING useAutoSnapshot). Mounted only where the active
+ * hub tracks snapshots; unmounted everywhere else.
+ */
+function AutoSnapshotRunner() {
+  useAutoSnapshot();
+  return null;
 }
