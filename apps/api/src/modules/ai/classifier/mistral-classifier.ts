@@ -1078,11 +1078,26 @@ export function specEventFromBuffer(
     firstReviewOnly: obj.firstReviewOnly === true,
     classifiedAt: Date.now(),
   };
-  if (candidate.widget === "SCORECARD" && !candidate.scorecard) {
-    candidate.scorecard = seedDefaultScorecard();
+  if (candidate.widget === "SCORECARD") {
+    if (!candidate.scorecard) {
+      candidate.scorecard = seedDefaultScorecard();
+      candidate.kind = "auto"; // 2 auto-seeded components → auto.
+    } else {
+      // `kind` is DERIVED from the components — "auto" when every component is
+      // AUTO, "hybrid" when any is MANUAL. The model sometimes emits a kind
+      // that contradicts its own components (e.g. "hybrid" with only AUTO
+      // components), which validateSpec then rejects, failing the whole goal's
+      // (re)classification. Recompute kind from the components rather than
+      // trust the model's label.
+      const sc = candidate.scorecard as any;
+      const comps: any[] = Array.isArray(sc.components) ? sc.components : [];
+      const anyManual = comps.some((c) => c && c.kind === "manual");
+      candidate.kind = anyManual ? "hybrid" : "auto";
+    }
+    // SCORECARD owns its data through components; top-level source/manual are
+    // always null on a clean spec.
     candidate.source = null;
     candidate.manual = null;
-    candidate.kind = "auto"; // 2 auto-seeded components → auto.
   }
   // COMPOSED safety net: the model picked the generative widget but didn't
   // emit a usable `fields` array. Rather than hard-fail the whole goal, seed
