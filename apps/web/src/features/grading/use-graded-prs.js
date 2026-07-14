@@ -412,6 +412,14 @@ export function useGradedPrs(spec, options = {}) {
     summary,
     progress,
     isListLoading,
+    // Whether the verdict cache has finished hydrating from the API for
+    // this session. `summary.total` reads 0 until this flips true (no
+    // verdicts in the Map yet), which is indistinguishable from "resolved,
+    // nothing graded" — so callers that publish this summary as a live
+    // reading (the tier grader's feed) must hold until it's true, or they
+    // churn the grading cache key: null during hydration → real value after.
+    // Read from the store snapshot so it stays reactive via gradingStoreSnap.
+    verdictsFetched: getVerdictsState().fetched,
     listError,
     grade,
     gradeAll,

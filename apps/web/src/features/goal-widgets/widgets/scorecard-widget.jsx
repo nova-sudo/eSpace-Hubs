@@ -578,7 +578,22 @@ function mergeRubricIntoRow(row, component, rubric) {
       ungraded: rubric.summary?.ungraded ?? 0,
       errored: rubric.summary?.errored ?? 0,
     },
-    isLoading: rubric.isListLoading,
+    // Loading spans BOTH stages: the PR list fetch AND the verdict-cache
+    // hydration. Until verdicts hydrate, `pct`/`total` read 0 —
+    // indistinguishable from "resolved, nothing graded" — so the composite
+    // publish (gated on `rows.some(isLoading)`) must keep holding through the
+    // hydration window. Mirrors the MANUAL row's `!inputs.fetched` guard;
+    // without it the scorecard publishes a half-empty reading that re-triggers
+    // useGoalTier when verdicts land.
+    //
+    // Only wait on hydration when there ARE criteria to grade — an
+    // empty-rubric slot runs useGradedPrs with `enabled: false`, so
+    // `verdictsFetched` never flips and gating on it would wedge the whole
+    // composite (it would never publish). No criteria → nothing to hydrate →
+    // treat as resolved.
+    isLoading:
+      rubric.isListLoading ||
+      ((rubric.rubric?.length ?? 0) > 0 && !rubric.verdictsFetched),
     error: rubric.listError,
     // Forward the imperative grader + per-slot progress so the
     // ComponentRow can render a "Grade now" button + progress chip.
