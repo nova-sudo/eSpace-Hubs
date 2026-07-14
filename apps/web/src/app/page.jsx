@@ -1,20 +1,16 @@
 /**
- * Root page — never renders content of its own.
+ * Root page. Logged-OUT visitors get the public marketing landing page;
+ * logged-IN users are bounced to their hub (or the hub picker). The decision
+ * lives in the client <RootGate /> which reads useSession(); the landing's CTAs
+ * all route to /login.
  *
- * Post-M10.2 every hub is mounted at /[hub]/..., so the root path
- * exists only to bounce the authenticated user to their primary hub.
- * Unauthenticated users get caught by the AuthGuard inside
- * <HubRedirect /> and routed to /login.
- *
- * Kept as a server component for the smallest possible bundle; the
- * actual logic lives in the client <HubRedirect /> component which
- * reads useSession() + useAvailableHubs() and calls router.replace().
+ * Kept as a thin server component; RootGate does the auth branch client-side.
  */
 
-import { HubRedirect } from "@/features/hubs";
+import { RootGate } from "@/features/landing";
 
 export const dynamic = "force-dynamic";
 
 export default function Root() {
-  return <HubRedirect />;
+  return <RootGate />;
 }

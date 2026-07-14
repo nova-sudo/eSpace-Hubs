@@ -58,6 +58,9 @@ function maybeToastCompanionUnreachable(message) {
  * or in a known-public surface). Matched as prefix-or-exact paths.
  */
 const PUBLIC_AUTH_PATHS = Object.freeze([
+  "/", // public marketing landing — RootGate shows it to logged-out
+       // visitors, so the /auth/me 401 must NOT bounce them to /login.
+       // Exact-match only: "/" never matches "/foo" (startsWith("//")).
   "/login",
   "/signup",
   "/waiting-approval",
