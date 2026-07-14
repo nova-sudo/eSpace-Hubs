@@ -3,11 +3,13 @@
 /**
  * AI goal-tier verdict cache (Phase 2).
  *
- * Caches the result of `POST /api/v1/ai/grade-goal-tier` per goal,
- * keyed by a `key` the hook computes from (day + hash of tiers + current
- * data). We re-grade at most once per day per goal — or sooner when the
- * tiers or the goal's live data change. localStorage-backed so it
- * survives reloads; reset on auth transition.
+ * Caches the result of `POST /api/v1/ai/grade-goal-tier` per goal. Each
+ * cached verdict carries a `criteriaKey` (hash of the tier criteria + numeric
+ * ladder), a data `key` (hash of the live reading / prose), and a `gradedDay`
+ * (local YYYY-MM-DD). The hook re-grades qualitative goals at most once per day
+ * — or immediately when the criteria change (edit / re-analyze) or the user
+ * hits "re-grade" (force). localStorage-backed so it survives reloads; reset on
+ * auth transition.
  *
  * NOT server-persisted: a tier verdict is a cheap derived read of the
  * goal's tiers + current metrics, so a per-device daily cache is enough
@@ -83,9 +85,10 @@ export function readGoalTier(goalId) {
 }
 
 /**
- * Grade a goal's tier unless we already have a fresh verdict for `key`.
- * Idempotent: skips when the stored verdict matches `key` or a grade is
- * already in flight for the goal. `force` re-grades regardless. On a
+ * Grade a goal's tier unless it's already been graded today against the same
+ * criteria. Idempotent: skips when the stored verdict is same-criteria +
+ * same-day, or a grade is already in flight for the goal. `force` re-grades
+ * regardless (the manual "re-grade" button + window-fill path). On a
  * rate-limit / error the prior verdict is left intact (no failure cached).
  */
 export async function gradeGoalTier({
@@ -94,6 +97,8 @@ export async function gradeGoalTier({
   tiers,
   currentData,
   key,
+  criteriaKey,
+  gradedDay,
   aiProvider,
   force = false,
 }) {
@@ -101,7 +106,21 @@ export async function gradeGoalTier({
   if (!goalId || !tiers || !key) return;
   if (!force) {
     const existing = state[goalId];
-    if (existing && existing.key === key) return;
+    // Already graded today against these exact criteria — the verdict is a
+    // pure function of (criteria, data), so re-running the model would just
+    // reproduce it. The hook's effect is the primary throttle; this guards the
+    // store directly. (The `key` still flows to the server as the durable-cache
+    // coordinate, but it no longer gates the CLIENT re-grade — that's what used
+    // to churn on every live-reading change.)
+    if (
+      existing &&
+      criteriaKey != null &&
+      gradedDay != null &&
+      existing.criteriaKey === criteriaKey &&
+      existing.gradedDay === gradedDay
+    ) {
+      return;
+    }
     if (inflight.has(goalId)) return;
   }
   inflight.add(goalId);
@@ -136,7 +155,10 @@ export async function gradeGoalTier({
     );
     const body = await res.json().catch(() => ({}));
     if (res.ok && body?.verdict?.tier) {
-      state = { ...state, [goalId]: { ...body.verdict, key } };
+      state = {
+        ...state,
+        [goalId]: { ...body.verdict, key, criteriaKey, gradedDay },
+      };
       persist();
       notify();
     }
@@ -155,19 +177,27 @@ export async function gradeGoalTier({
  * already equal, so callers can safely invoke it from a render effect without
  * looping.
  */
-export function setGoalTierVerdict(goalId, verdict, key) {
+export function setGoalTierVerdict(goalId, verdict, key, criteriaKey) {
   load();
   if (!goalId || !verdict || !key) return;
   const existing = state[goalId];
   if (
     existing &&
     existing.key === key &&
+    existing.criteriaKey === criteriaKey &&
     existing.tier === verdict.tier &&
     Boolean(existing.awaiting) === Boolean(verdict.awaiting)
   ) {
     return; // already current — avoid a redundant notify/re-render loop
   }
-  state = { ...state, [goalId]: { ...verdict, key } };
+  // Stamp criteriaKey (so qualitative "awaiting" verdicts validate on the same
+  // basis the hook reads) but NOT gradedDay — a deterministic numeric grade or
+  // an "awaiting" placeholder must never count as the day's AI grade, or the
+  // first real grade of the day would be throttled away.
+  state = {
+    ...state,
+    [goalId]: { ...verdict, key, ...(criteriaKey != null ? { criteriaKey } : {}) },
+  };
   persist();
   notify();
 }

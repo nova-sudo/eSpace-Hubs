@@ -515,6 +515,16 @@ function contextToText(spec, answers) {
   return lines.join("\n");
 }
 
+/** Local calendar day stamp ("YYYY-MM-DD"), used to throttle AI re-grades to
+ *  at most once per day per goal. Local (not UTC) so the daily refresh lines
+ *  up with the user's "first login of the day", not a UTC rollover. */
+function localDayStamp(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function useGoalTier(goalId, spec) {
   // Re-render when a verdict lands in the store. Captured (not discarded):
   // the grading effect below depends on it, so a verdict landing under a
@@ -668,6 +678,15 @@ export function useGoalTier(goalId, spec) {
     return hashStr(basis);
   }, [tiers, currentData, tierScale, reading]);
 
+  // The grading BASIS — the tier criteria + numeric ladder, WITHOUT the live
+  // data. A qualitative verdict stays valid as long as this is unchanged, so a
+  // data change no longer invalidates it (and no longer triggers a re-grade).
+  // The expensive AI re-grade is throttled to once/day + manual; see the effect.
+  const criteriaKey = useMemo(() => {
+    if (!tiers && !tierScale) return null;
+    return hashStr(JSON.stringify(tiers) + "|" + JSON.stringify(tierScale));
+  }, [tiers, tierScale]);
+
   useEffect(() => {
     if (!goalId || !key) return;
     if (!tiers && !tierScale) return;
@@ -679,42 +698,61 @@ export function useGoalTier(goalId, spec) {
     if (tierScale && reading) {
       const verdict = gradeNumericTier(reading.value, tierScale);
       if (verdict) {
-        setGoalTierVerdict(goalId, verdict, key);
+        setGoalTierVerdict(goalId, verdict, key, criteriaKey);
         return;
       }
     }
     // 2. Nothing usable to grade yet → "awaiting data" (don't spend an AI
-    //    call grading emptiness, which is what produced "can't rank").
+    //    call grading emptiness, which is what produced "can't rank"). NB: no
+    //    gradedDay stamp here, so the first REAL grade still fires the moment
+    //    data arrives — even later the same day.
     if (!hasAnyData || (tierScale && !reading && !tiers)) {
-      setGoalTierVerdict(goalId, AWAITING_VERDICT, key);
+      setGoalTierVerdict(goalId, AWAITING_VERDICT, key, criteriaKey);
       return;
     }
-    // 3. Qualitative widget (or a spec without a numeric ladder) → AI grader.
+    // 3. Qualitative widget → AI grader, THROTTLED. A verdict is a pure
+    //    function of (criteria, data), so re-grade ONLY when the basis really
+    //    changes: the first grade, any criteria edit / re-analyze, or — at most
+    //    once per local day — a data change since the last grade. In-day data
+    //    changes are deferred to the next day's first view (or the manual
+    //    "re-grade" button) instead of spending an AI call on every change.
     if (tiers) {
-      void gradeGoalTier({
-        goalId,
-        goalTitle: spec?.title,
-        tiers,
-        currentData,
-        key,
-        aiProvider: getAiProvider(),
-      });
+      const stored = readGoalTier(goalId);
+      const today = localDayStamp();
+      const criteriaChanged = !stored || stored.criteriaKey !== criteriaKey;
+      const dataChanged = !stored || stored.key !== key;
+      const gradedToday = !!stored && stored.gradedDay === today;
+      if (criteriaChanged || (!gradedToday && dataChanged)) {
+        void gradeGoalTier({
+          goalId,
+          goalTitle: spec?.title,
+          tiers,
+          currentData,
+          key,
+          criteriaKey,
+          gradedDay: today,
+          aiProvider: getAiProvider(),
+        });
+      }
     } else {
-      setGoalTierVerdict(goalId, AWAITING_VERDICT, key);
+      setGoalTierVerdict(goalId, AWAITING_VERDICT, key, criteriaKey);
     }
-    // tiersTick: re-check after ANY verdict lands (including one that
-    // resolved under a now-stale key) so a dropped retry isn't permanent —
-    // gradeGoalTier's own freshness check makes the extra re-checks cheap
-    // no-ops when the stored verdict already matches `key`.
+    // tiersTick: re-check after ANY verdict lands so a dropped retry isn't
+    // permanent — the throttle gate above makes the extra re-checks cheap
+    // no-ops once the goal is graded for the day.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [goalId, key, inputsHydrated, needsSetup, tiersTick]);
+  }, [goalId, key, criteriaKey, inputsHydrated, needsSetup, tiersTick]);
 
   const stored = readGoalTier(goalId);
   // A not-ready goal reports "pending setup" regardless of any cached verdict
-  // (which may predate the current definitions being edited).
+  // (which may predate the current definitions being edited). Otherwise the
+  // verdict is valid while its BASIS is unchanged: qualitative goals key on
+  // criteriaKey (data-independent, so a live-reading change doesn't blank the
+  // tier or churn a re-grade); numeric goals key on the exact data `key` since
+  // they're re-derived deterministically on every reading change.
   const verdict = needsSetup
     ? SETUP_VERDICT
-    : stored && stored.key === key
+    : stored && (tierScale ? stored.key === key : stored.criteriaKey === criteriaKey)
       ? stored
       : null;
 
@@ -745,6 +783,8 @@ export function useGoalTier(goalId, spec) {
         tiers,
         currentData,
         key,
+        criteriaKey,
+        gradedDay: localDayStamp(),
         aiProvider: getAiProvider(),
         force: true,
       }),

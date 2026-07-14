@@ -92,9 +92,26 @@ export function GoalTierBadge({ goalId, spec }) {
  * "dark" white tiles).
  */
 export function GoalTierLadder({ spec, variant = "light" }) {
-  const { hasTiers, tiers, verdict, loading } = useGoalTier(spec?.goalId, spec);
+  const { hasTiers, tiers, verdict, loading, regrade } = useGoalTier(
+    spec?.goalId,
+    spec,
+  );
   const [editing, setEditing] = useState(false);
+  const [regrading, setRegrading] = useState(false);
   if (!hasTiers) return null;
+
+  // Manual re-grade — the escape hatch from the once-a-day throttle. Grading is
+  // otherwise deferred to the next day's first view; this forces a fresh grade
+  // against the latest data now.
+  async function onRegrade() {
+    if (regrading) return;
+    setRegrading(true);
+    try {
+      await regrade?.();
+    } finally {
+      setRegrading(false);
+    }
+  }
 
   const tierMap = tiers || {};
   const current = verdict?.tier || null;
@@ -128,29 +145,48 @@ export function GoalTierLadder({ spec, variant = "light" }) {
         >
           Achievement tier
           {spec?.tiersLocked ? " · 🔒" : ""}
-          {loading && !verdict ? " · grading…" : ""}
+          {(loading && !verdict) || regrading ? " · grading…" : ""}
         </span>
-        {/* The criteria belong to the goal owner — let them correct what the
-            AI extracted. Editing re-grades against the new criteria; saving
-            locks them so re-analysis won't overwrite. */}
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="shrink-0 uppercase tracking-[0.5px] hover:opacity-100"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9,
-            color: muted,
-            opacity: 0.8,
-          }}
-          title={
-            spec?.tiersLocked
-              ? "Criteria locked — re-analysis won't overwrite. Click to edit or unlock."
-              : "Edit the achievement-tier criteria for this goal"
-          }
-        >
-          edit
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Manual re-grade — grading is throttled to once a day, so this is
+              how the user forces a fresh grade after new activity lands. */}
+          <button
+            type="button"
+            onClick={onRegrade}
+            disabled={regrading}
+            className="uppercase tracking-[0.5px] hover:opacity-100 disabled:opacity-40"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              color: muted,
+              opacity: 0.8,
+            }}
+            title="Re-grade this goal now against the latest data"
+          >
+            {regrading ? "grading…" : "re-grade"}
+          </button>
+          {/* The criteria belong to the goal owner — let them correct what the
+              AI extracted. Editing re-grades against the new criteria; saving
+              locks them so re-analysis won't overwrite. */}
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="uppercase tracking-[0.5px] hover:opacity-100"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              color: muted,
+              opacity: 0.8,
+            }}
+            title={
+              spec?.tiersLocked
+                ? "Criteria locked — re-analysis won't overwrite. Click to edit or unlock."
+                : "Edit the achievement-tier criteria for this goal"
+            }
+          >
+            edit
+          </button>
+        </div>
       </div>
       <div className="flex flex-col gap-1">
         {TIER_ORDER.map((t, i) => {
