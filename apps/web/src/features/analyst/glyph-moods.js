@@ -2,7 +2,8 @@
  * glyphMood — map the analyst's live state to a GlyphAgent emotion.
  *
  * Returns one of:
- *   "idle" | "scan" | "think" | "aha" | "working" | "happy" | "concern" | "confused"
+ *   "idle" | "scan" | "think" | "aha" | "working" | "happy" | "proud"
+ *   | "concern" | "confused" | "sad" | "cry" | "dizzy"
  *
  * The analyst exposes a `mode` (from useAnalyst) and a classify `phase` (from
  * useClassifyGoals). When iterating goal-by-goal during analysis, pass the goal
@@ -14,8 +15,10 @@ export function glyphMood({ mode, phase, activeGoal } = {}) {
   // Reacting to the goal currently being classified takes priority.
   if (activeGoal) {
     if (activeGoal.status === "no-data" || activeGoal.status === "unclassified") return "confused";
+    if (activeGoal.status === "missed" || activeGoal.status === "failed") return "cry";
     if (activeGoal.status === "behind" || activeGoal.status === "at-risk") return "concern";
-    if (activeGoal.status === "on-pace" || activeGoal.status === "done") return "happy";
+    if (activeGoal.status === "done") return "proud";
+    if (activeGoal.status === "on-pace") return "happy";
     if (activeGoal.justFound) return "aha";
   }
 
@@ -30,6 +33,8 @@ export function glyphMood({ mode, phase, activeGoal } = {}) {
       return "concern";          // awaiting your judgement on flagged specs
     case "chat":
       return "scan";             // attentive / listening
+    case "error":
+      return "dizzy";            // pipeline failed / no signal
     case "widgets":
     default:
       return "idle";             // resting on the dashboard

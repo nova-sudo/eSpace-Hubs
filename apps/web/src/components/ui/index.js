@@ -9,6 +9,7 @@ export { ContributionHeatmap } from "./contribution-heatmap";
 export { Delta } from "./delta";
 export { DitherField, DitherDisc, DitherBars } from "./dither-field";
 export { Field, Input } from "./input";
+export { GlyphAgent } from "./glyph-agent";
 export { Grain } from "./grain";
 export { ItemEvidence } from "./item-evidence";
 export { MonoLabel } from "./mono-label";

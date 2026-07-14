@@ -11,7 +11,7 @@ import { ReviewPane } from "./review-pane";
 import { useClassifyGoals, flattenGoalsForClassification } from "./use-classify-goals";
 import { AnalystChatMode } from "./analyst-chat-mode";
 import { AI_PROVIDERS, useAiProvider } from "./use-ai-provider";
-import { GlyphAgent } from "./glyph-agent";
+import { GlyphAgent } from "@/components/ui";
 import { glyphMood } from "./glyph-moods";
 import { useGoals } from "@/features/goals";
 
