@@ -51,7 +51,7 @@ export function CompanionSetupGuide() {
               forwards requests through a Cloudflare Tunnel.
             </p>
             <a
-              href="https://github.com/nova-sudo/eSpaceDev/releases/latest"
+              href="https://github.com/nova-sudo/eSpace-Hubs/releases/latest"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-[var(--radius-sub)] px-3.5 py-2 text-[11px] font-normal uppercase tracking-[0.8px] transition-opacity hover:opacity-90"
@@ -73,7 +73,7 @@ export function CompanionSetupGuide() {
             >
               macOS/Linux builds are on the same{" "}
               <a
-                href="https://github.com/nova-sudo/eSpaceDev/releases/latest"
+                href="https://github.com/nova-sudo/eSpace-Hubs/releases/latest"
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ color: "var(--accent)" }}

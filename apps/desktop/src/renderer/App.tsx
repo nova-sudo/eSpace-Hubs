@@ -715,7 +715,7 @@ export function App() {
           onClick={(e) => {
             e.preventDefault();
             void companion.shell.openExternal(
-              "https://github.com/nova-sudo/eSpaceDev/blob/main/docs/RUN_LOCALLY.md",
+              "https://github.com/nova-sudo/eSpace-Hubs/blob/main/docs/RUN_LOCALLY.md",
             );
           }}
         >
