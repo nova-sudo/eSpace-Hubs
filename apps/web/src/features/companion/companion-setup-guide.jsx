@@ -8,9 +8,11 @@
  * reach git.bcn.crealogix.net). Espace devs don't need it.
  *
  * Decisions baked into the copy:
- *   - We don't auto-download the companion installer from here yet.
- *     Phase 4 ships the installer + auto-update; until then the user
- *     pulls a tagged release from GitHub.
+ *   - Step 1 links straight to the latest GitHub Release rather than
+ *     streaming a file ourselves — electron-builder's artifactName
+ *     includes the version, so there's no stable one-click asset URL
+ *     without also pinning a fixed filename. /releases/latest degrades
+ *     gracefully (shows "no releases yet") if none has been cut.
  *   - The CF tunnel hostname is user-provided. Phase 4 wraps the
  *     `cloudflared` CLI so the companion mints the hostname itself,
  *     but for v1 we let the user paste their existing one.
@@ -43,10 +45,43 @@ export function CompanionSetupGuide() {
         title="Install the companion app"
         body={
           <>
-            Grab the latest release for your OS from the eSpace Dev Hub
-            GitHub releases page and run the installer. The companion
-            runs in your system tray; it starts a local copy of the
-            backend and forwards requests through a Cloudflare Tunnel.
+            <p style={{ margin: "0 0 10px 0" }}>
+              Download and run the installer. The companion runs in your
+              system tray; it starts a local copy of the backend and
+              forwards requests through a Cloudflare Tunnel.
+            </p>
+            <a
+              href="https://github.com/nova-sudo/eSpaceDev/releases/latest"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-[var(--radius-sub)] px-3.5 py-2 text-[11px] font-normal uppercase tracking-[0.8px] transition-opacity hover:opacity-90"
+              style={{
+                fontFamily: "var(--font-mono)",
+                background: "var(--accent)",
+                color: "var(--accent-on)",
+              }}
+            >
+              Download for Windows ↗
+            </a>
+            <span
+              style={{
+                display: "block",
+                marginTop: 6,
+                fontSize: 11,
+                color: "var(--muted-fg)",
+              }}
+            >
+              macOS/Linux builds are on the same{" "}
+              <a
+                href="https://github.com/nova-sudo/eSpaceDev/releases/latest"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--accent)" }}
+              >
+                releases page
+              </a>
+              .
+            </span>
           </>
         }
       />
@@ -182,9 +217,9 @@ function Step({ num, title, body }) {
       </span>
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         <span style={{ fontSize: 13.5, fontWeight: 600 }}>{title}</span>
-        <span style={{ fontSize: 12.5, lineHeight: 1.6, color: "var(--fg)" }}>
+        <div style={{ fontSize: 12.5, lineHeight: 1.6, color: "var(--fg)" }}>
           {body}
-        </span>
+        </div>
       </div>
     </div>
   );
