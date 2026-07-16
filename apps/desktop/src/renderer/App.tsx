@@ -304,7 +304,9 @@ export function App() {
       )}
       <header style={S.header}>
         <div>
-          <h1 style={S.title}>eSpace Dev Hub Companion</h1>
+          <h1 style={S.title}>
+            eSpace Dev Hub <em style={S.titleAccent}>Companion</em>
+          </h1>
           <p style={S.subtitle}>
             Runs the backend container on your machine so the Vercel app can
             reach private resources (Crealogix VPN, internal GitLab, etc.).
@@ -313,7 +315,7 @@ export function App() {
         <Badge ping={ping} running={status?.running ?? false} />
       </header>
 
-      <Section title="Backend">
+      <Section num="01 /" title="Backend">
         <div style={S.row}>
           <Stat
             label="Container"
@@ -360,7 +362,7 @@ export function App() {
         )}
       </Section>
 
-      <Section title="VPN (Crealogix)">
+      <Section num="02 /" title="VPN (Crealogix)">
         <div style={S.row}>
           <Stat
             label="Tunnel"
@@ -515,7 +517,7 @@ export function App() {
         </Field>
       </Section>
 
-      <Section title="Pairing & tunnel routing">
+      <Section num="03 /" title="Pairing & tunnel routing">
         <div style={S.row}>
           <Stat
             label="Companion"
@@ -663,7 +665,7 @@ export function App() {
         </Field>
       </Section>
 
-      <Section title="Settings">
+      <Section num="04 /" title="Settings">
         <Field
           label="Repo path"
           help="Absolute path to your espace-devhub checkout. The companion runs `docker compose` from here."
@@ -697,7 +699,7 @@ export function App() {
         </Field>
       </Section>
 
-      <Section title="Logs">
+      <Section num="05 /" title="Logs">
         <pre style={S.logs}>
           {logs.length === 0 ? "(no logs yet — Start backend to see output)" : logs.join("\n")}
         </pre>
@@ -780,16 +782,33 @@ function Badge({
   );
 }
 
+/**
+ * Tone → color lookup shared by Stat and inline status text, so every
+ * status readout in the companion (backend, VPN, pairing) reads from
+ * the same four-value Nothing UI semantic palette.
+ */
+const TONE_COLOR: Record<"good" | "bad" | "muted" | "warn", string> = {
+  good: "var(--good)",
+  bad: "var(--bad)",
+  warn: "var(--warn)",
+  muted: "var(--muted-fg)",
+};
+
 function Section({
+  num,
   title,
   children,
 }: {
+  num?: string;
   title: string;
   children: React.ReactNode;
 }) {
   return (
     <section style={S.section}>
-      <h2 style={S.sectionTitle}>{title}</h2>
+      <div style={S.sectionHead}>
+        {num ? <span style={S.sectionNum}>{num}</span> : null}
+        <h2 style={S.sectionTitle}>{title}</h2>
+      </div>
       {children}
     </section>
   );
@@ -804,16 +823,10 @@ function Stat({
   value: string;
   tone: "good" | "bad" | "muted" | "warn";
 }) {
-  const color = {
-    good: "var(--good)",
-    bad: "var(--bad)",
-    warn: "var(--warn)",
-    muted: "var(--muted)",
-  }[tone];
   return (
     <div style={S.stat}>
       <div style={S.statLabel}>{label}</div>
-      <div style={{ ...S.statValue, color }}>{value}</div>
+      <div style={{ ...S.statValue, color: TONE_COLOR[tone] }}>{value}</div>
     </div>
   );
 }
@@ -842,8 +855,8 @@ const S: Record<string, React.CSSProperties> = {
   shell: {
     display: "flex",
     flexDirection: "column",
-    gap: 16,
-    padding: 24,
+    gap: 20,
+    padding: 28,
     minHeight: "100vh",
     boxSizing: "border-box",
   },
@@ -852,13 +865,23 @@ const S: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     alignItems: "flex-start",
     gap: 16,
+    paddingBottom: 20,
+    borderBottom: "1px solid var(--border)",
   },
-  title: { fontSize: 18, margin: 0 },
+  title: {
+    margin: 0,
+    fontFamily: "var(--font-dot)",
+    fontWeight: 900,
+    fontSize: 20,
+    letterSpacing: "0.5px",
+    textTransform: "uppercase",
+  },
+  titleAccent: { fontStyle: "normal", color: "var(--accent)" },
   subtitle: {
-    margin: "4px 0 0 0",
-    color: "var(--muted)",
+    margin: "6px 0 0 0",
+    color: "var(--muted-fg)",
     fontSize: 12.5,
-    lineHeight: 1.5,
+    lineHeight: 1.55,
     maxWidth: 520,
   },
   badge: {
@@ -867,116 +890,148 @@ const S: Record<string, React.CSSProperties> = {
     gap: 6,
     padding: "4px 10px",
     border: "1px solid",
-    borderRadius: 999,
-    fontSize: 11,
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    borderRadius: "var(--radius-pill)",
+    fontSize: 10.5,
+    fontFamily: "var(--font-mono)",
+    fontWeight: 700,
     textTransform: "uppercase",
-    letterSpacing: 0.4,
+    letterSpacing: "0.4px",
   },
-  badgeDot: { width: 8, height: 8, borderRadius: "50%" },
+  badgeDot: { width: 6, height: 6, borderRadius: "50%" },
   section: {
-    background: "var(--panel)",
+    background: "var(--card)",
     border: "1px solid var(--border)",
-    borderRadius: 8,
-    padding: 16,
+    borderRadius: "var(--radius-tile)",
+    padding: 18,
     display: "flex",
     flexDirection: "column",
     gap: 12,
   },
+  sectionHead: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: 10,
+    marginBottom: 2,
+    paddingBottom: 10,
+    borderBottom: "1px solid var(--border)",
+  },
+  sectionNum: {
+    fontFamily: "var(--font-dot)",
+    fontWeight: 700,
+    fontSize: 15,
+    letterSpacing: "0.4px",
+    color: "var(--accent)",
+  },
   sectionTitle: {
-    fontSize: 11,
+    fontSize: 15,
     margin: 0,
-    color: "var(--muted)",
+    fontWeight: 700,
     textTransform: "uppercase",
-    letterSpacing: 0.6,
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    letterSpacing: "0.4px",
+    fontFamily: "var(--font-dot)",
   },
   row: { display: "flex", gap: 24, flexWrap: "wrap" },
-  stat: { display: "flex", flexDirection: "column", gap: 2, minWidth: 120 },
+  stat: { display: "flex", flexDirection: "column", gap: 3, minWidth: 120 },
   statLabel: {
-    fontSize: 10,
-    color: "var(--muted)",
+    fontSize: 10.5,
+    color: "var(--muted-fg)",
     textTransform: "uppercase",
-    letterSpacing: 0.4,
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    letterSpacing: "0.6px",
+    fontFamily: "var(--font-mono)",
   },
-  statValue: { fontSize: 14, fontWeight: 600 },
-  actions: { display: "flex", gap: 8 },
+  statValue: { fontSize: 13.5, fontWeight: 700, fontFamily: "var(--font-sans)" },
+  actions: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" },
   btnPrimary: {
     background: "var(--accent)",
-    color: "white",
-    border: 0,
-    borderRadius: 4,
-    padding: "8px 14px",
-    fontSize: 12,
-    fontWeight: 600,
+    color: "var(--accent-on)",
+    border: "1px solid var(--accent)",
+    borderRadius: "var(--radius-sub)",
+    padding: "7px 14px",
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.8px",
+    fontFamily: "var(--font-mono)",
     cursor: "pointer",
   },
   btnSecondary: {
     background: "transparent",
     color: "var(--fg)",
-    border: "1px solid var(--border)",
-    borderRadius: 4,
-    padding: "8px 14px",
-    fontSize: 12,
+    border: "1px solid var(--border-strong)",
+    borderRadius: "var(--radius-sub)",
+    padding: "7px 14px",
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.8px",
+    fontFamily: "var(--font-mono)",
     cursor: "pointer",
   },
   btnGhost: {
     background: "transparent",
-    color: "var(--muted)",
+    color: "var(--muted-fg)",
     border: 0,
-    padding: "4px 8px",
+    padding: "4px 6px",
     fontSize: 11,
+    fontFamily: "var(--font-mono)",
     cursor: "pointer",
     textDecoration: "underline",
   },
   helpInline: {
     fontSize: 11,
-    color: "var(--muted)",
+    color: "var(--muted-fg)",
     margin: 0,
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-    lineHeight: 1.4,
+    fontFamily: "var(--font-mono)",
+    lineHeight: 1.5,
   },
   field: { display: "flex", flexDirection: "column", gap: 4 },
-  fieldLabel: { fontSize: 12, color: "var(--fg)" },
-  fieldHelp: { fontSize: 11, color: "var(--muted)" },
+  fieldLabel: {
+    fontSize: 10,
+    color: "var(--muted-fg)",
+    textTransform: "uppercase",
+    letterSpacing: "1.2px",
+    fontFamily: "var(--font-mono)",
+  },
+  fieldHelp: { fontSize: 11, color: "var(--dim-fg)", lineHeight: 1.4 },
   input: {
-    background: "var(--bg)",
+    background: "var(--panel-2)",
     color: "var(--fg)",
-    border: "1px solid var(--border)",
-    borderRadius: 4,
+    border: "1px solid var(--border-strong)",
+    borderRadius: "var(--radius-sub)",
     padding: "8px 10px",
     fontSize: 12,
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    fontFamily: "var(--font-mono)",
   },
   logs: {
     margin: 0,
-    background: "var(--bg)",
+    background: "var(--panel-2)",
     border: "1px solid var(--border)",
-    borderRadius: 4,
+    borderRadius: "var(--radius-sub)",
     padding: 10,
     fontSize: 11,
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-    color: "var(--muted)",
+    fontFamily: "var(--font-mono)",
+    color: "var(--muted-fg)",
     maxHeight: 220,
     overflow: "auto",
     whiteSpace: "pre-wrap",
   },
   errorBanner: {
-    background: "rgba(248,81,73,0.1)",
+    background: "color-mix(in srgb, var(--bad) 12%, transparent)",
     border: "1px solid var(--bad)",
-    borderRadius: 4,
+    borderRadius: "var(--radius-sub)",
     padding: "8px 10px",
     color: "var(--bad)",
     fontSize: 12,
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    fontFamily: "var(--font-mono)",
   },
   footer: {
     marginTop: "auto",
     display: "flex",
     justifyContent: "space-between",
-    color: "var(--muted)",
+    color: "var(--dim-fg)",
     fontSize: 11,
+    fontFamily: "var(--font-mono)",
+    paddingTop: 4,
   },
   link: { color: "var(--accent)", textDecoration: "none" },
 };

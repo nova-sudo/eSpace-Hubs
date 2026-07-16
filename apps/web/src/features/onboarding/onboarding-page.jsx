@@ -19,6 +19,15 @@
  * new onboardingCompletedAt and stops redirecting here), and pushes
  * to `redirectTo`.
  *
+ * Crealogix engagement — a second, gated step:
+ *   Crealogix's private infra isn't reachable from Vercel, so those
+ *   users must pair the desktop companion app before their account is
+ *   usable. Rather than add a server-side "verified" flag, we simply
+ *   defer the POST above (the thing that actually flips
+ *   onboardingCompletedAt) until <CompanionGateStep> observes a live
+ *   companion connection. The existing AuthGuard redirect is therefore
+ *   the enforcement mechanism — no API changes needed.
+ *
  * Design intent — this page is its OWN visual world, not a hub:
  *   - Full-bleed neutral background (no hub theme) with the Nothing UI
  *     halftone dot-grid texture.
@@ -36,6 +45,7 @@ import { apiPost } from "@/lib/api-client";
 import { useSession } from "@/features/auth";
 import { resetHubsStore } from "@/features/hubs";
 import { HUBS } from "@espace-devhub/shared/hubs";
+import { CompanionGateStep } from "./companion-gate-step.jsx";
 
 // Common departments rendered as quick-pick chips above the free-text
 // input. The registry knows about more (engineering/platform/backend/
@@ -55,6 +65,8 @@ export function OnboardingPage() {
   const [employeeId, setEmployeeId] = useState("");
   const [department, setDepartment] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [step, setStep] = useState("profile"); // "profile" | "companion"
+  const requiresCompanion = user?.engagement === "crealogix";
 
   // Pre-fill displayName from the existing session user once it
   // resolves. Setting state inside an effect (not directly in the
@@ -65,12 +77,7 @@ export function OnboardingPage() {
     }
   }, [user, displayName]);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!displayName.trim() || !employeeId.trim() || !department.trim()) {
-      toast.error("All three fields are required.");
-      return;
-    }
+  async function submitOnboarding() {
     setSubmitting(true);
     try {
       const r = await apiPost("/onboarding", {
@@ -96,6 +103,22 @@ export function OnboardingPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!displayName.trim() || !employeeId.trim() || !department.trim()) {
+      toast.error("All three fields are required.");
+      return;
+    }
+    // Crealogix users don't get onboarded yet — the profile POST (which
+    // flips onboardingCompletedAt) waits until the companion step below
+    // confirms a live connection.
+    if (requiresCompanion) {
+      setStep("companion");
+      return;
+    }
+    await submitOnboarding();
   }
 
   // Compute a preview of which hub the department maps to. Shown
@@ -144,6 +167,13 @@ export function OnboardingPage() {
       />
 
       <div className="relative mx-auto grid min-h-screen max-w-3xl grid-rows-[1fr_auto] px-6 py-16">
+        {step === "companion" ? (
+          <CompanionGateStep
+            submitting={submitting}
+            onContinue={submitOnboarding}
+            onBack={() => setStep("profile")}
+          />
+        ) : (
         <div className="flex flex-col justify-center">
           <div
             className="mb-5 inline-flex w-fit items-center gap-2 rounded-full border border-border-strong px-3 py-1.5"
@@ -154,7 +184,7 @@ export function OnboardingPage() {
               style={{ background: "var(--accent)" }}
             />
             <span className="uppercase tracking-[1.5px] text-muted-fg">
-              Step 1 of 1 · One-time setup
+              {requiresCompanion ? "Step 1 of 2" : "Step 1 of 1"} · One-time setup
             </span>
           </div>
 
@@ -277,6 +307,7 @@ export function OnboardingPage() {
             </div>
           </form>
         </div>
+        )}
 
         <div
           className="mt-[42px] border-t border-border pt-4 text-[10.5px]"
