@@ -14,7 +14,11 @@
 #
 # That triggers .github/workflows/release-desktop.yml which builds on
 # every platform, signs (if certs available via secrets), and publishes
-# to https://github.com/nova-sudo/eSpaceDev/releases.
+# to https://github.com/nova-sudo/eSpace-Hubs/releases. Publishing to
+# this repo (rather than a separate one) matters: the workflow
+# authenticates with the default GITHUB_TOKEN, which GitHub Actions
+# only scopes to the repo the workflow runs in — publishing anywhere
+# else needs a real cross-repo PAT secret instead.
 #
 # Signing precedence (all OPTIONAL — unsigned build is the fallback):
 #   - Windows: env CSC_LINK + CSC_KEY_PASSWORD point at an Authenticode
@@ -55,7 +59,7 @@ files:
 publish:
   provider: github
   owner: nova-sudo
-  repo: eSpaceDev
+  repo: eSpace-Hubs
   # `releaseType: release` would auto-promote the draft on publish.
   # We keep `draft` so a human flips the toggle to "Published" once
   # they've smoke-tested the artifacts on each OS.

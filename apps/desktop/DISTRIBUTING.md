@@ -33,7 +33,7 @@ notification once it's ready.
 
 ## Secrets — what to set and where
 
-Settings → Secrets and variables → Actions, on the `nova-sudo/eSpaceDev`
+Settings → Secrets and variables → Actions, on the `nova-sudo/eSpace-Hubs`
 repo. All optional — without them the build still completes, just
 unsigned/un-notarized.
 
