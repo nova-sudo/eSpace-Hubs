@@ -17,6 +17,12 @@
  * clicks Start backend, parses the *.trycloudflare.com hostname from
  * its log output, and auto-registers with the Dev Hub. Zero typing.
  *
+ * System requirements are one-click, too — "Install" shells out to the
+ * platform package manager for cloudflared, or downloads + launches
+ * Docker Desktop's own installer. Neither is silent (Docker in
+ * particular needs an admin-elevated GUI installer), so both surface
+ * a clear next step instead of a bare copy-paste command.
+ *
  * Why not a multi-page router
  * ───────────────────────────
  * One vertical list, all visible, each step disabled until the prior
@@ -40,6 +46,8 @@ type CompanionApi = (Window & {
         version: string | null;
         message: string;
       }>;
+      installDocker: () => Promise<{ ok: boolean; message: string }>;
+      installCloudflared: () => Promise<{ ok: boolean; message: string }>;
       chooseDirectory: (title?: string) => Promise<{
         canceled: boolean;
         path: string | null;
@@ -69,8 +77,10 @@ interface OnboardingProps {
 type ToolState =
   | { phase: "idle" }
   | { phase: "checking" }
+  | { phase: "installing" }
   | { phase: "ok"; version: string }
-  | { phase: "missing"; message: string };
+  | { phase: "missing"; message: string }
+  | { phase: "install-launched"; message: string };
 
 const cfInstallHint = {
   win: "winget install --id Cloudflare.cloudflared",
@@ -117,6 +127,16 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     );
   }
 
+  async function runDockerInstall() {
+    setDockerState({ phase: "installing" });
+    const r = await companion.onboarding.installDocker();
+    setDockerState(
+      r.ok
+        ? { phase: "install-launched", message: r.message }
+        : { phase: "missing", message: r.message },
+    );
+  }
+
   async function runCfCheck() {
     setCfState({ phase: "checking" });
     const r = await companion.onboarding.checkCloudflared();
@@ -124,6 +144,30 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       r.installed
         ? { phase: "ok", version: r.version || "cloudflared found." }
         : { phase: "missing", message: r.message },
+    );
+  }
+
+  async function runCfInstall() {
+    setCfState({ phase: "installing" });
+    const r = await companion.onboarding.installCloudflared();
+    if (!r.ok) {
+      setCfState({ phase: "missing", message: r.message });
+      return;
+    }
+    // cloudflared installs onto PATH immediately (unlike Docker, no
+    // GUI installer to wait on) — recheck right away to confirm. A
+    // freshly-installed binary's directory can still miss this
+    // process's PATH on Windows until the companion restarts, so a
+    // failed recheck here isn't necessarily wrong.
+    const check = await companion.onboarding.checkCloudflared();
+    setCfState(
+      check.installed
+        ? { phase: "ok", version: check.version || "cloudflared found." }
+        : {
+            phase: "missing",
+            message:
+              "Installed, but not visible on PATH yet — restart the companion app and recheck.",
+          },
     );
   }
 
@@ -168,6 +212,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     <div style={S.overlay}>
       <div style={S.shell}>
         <header style={S.header}>
+          <div style={S.eyebrow}>
+            <span style={S.eyebrowDot} aria-hidden="true" />
+            <span style={S.eyebrowLabel}>Setup</span>
+          </div>
           <h1 style={S.title}>
             Welcome to the <em style={S.titleAccent}>companion</em>.
           </h1>
@@ -182,64 +230,33 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           title="System requirements"
           done={sysOk}
           locked={false}
-          help="The companion runs the backend in Docker and exposes it via Cloudflare Tunnel. Both tools just need to be on PATH; the companion starts and stops them for you."
+          help="The companion runs the backend in Docker and exposes it via Cloudflare Tunnel. Install both below, or let the companion do it — it starts and stops them for you afterward."
         >
-          {/* Docker */}
-          <div style={S.toolRow}>
-            <span style={S.toolLabel}>Docker</span>
-            {dockerState.phase === "idle" && (
-              <Button onClick={runDockerCheck} variant="primary">
-                Check
-              </Button>
-            )}
-            {dockerState.phase === "checking" && (
-              <span style={S.muted}>Checking…</span>
-            )}
-            {dockerState.phase === "ok" && (
-              <span style={S.good}>✓ {dockerState.version}</span>
-            )}
-            {dockerState.phase === "missing" && (
-              <div style={S.errorBlock}>
-                <span style={S.bad}>{dockerState.message}</span>
-                <Button onClick={runDockerCheck} variant="secondary">
-                  Recheck
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* cloudflared */}
-          <div style={S.toolRow}>
-            <span style={S.toolLabel}>cloudflared</span>
-            {cfState.phase === "idle" && (
-              <Button onClick={runCfCheck} variant="primary">
-                Check
-              </Button>
-            )}
-            {cfState.phase === "checking" && (
-              <span style={S.muted}>Checking…</span>
-            )}
-            {cfState.phase === "ok" && (
-              <span style={S.good}>✓ {cfState.version}</span>
-            )}
+          <ToolRow
+            glyph="DK"
+            label="Docker"
+            state={dockerState}
+            onCheck={runDockerCheck}
+            onInstall={runDockerInstall}
+            installLabel="Download & install"
+          />
+          <ToolRow
+            glyph="CF"
+            label="cloudflared"
+            state={cfState}
+            onCheck={runCfCheck}
+            onInstall={runCfInstall}
+            installLabel="Install"
+          >
             {cfState.phase === "missing" && (
-              <div style={S.errorBlock}>
-                <span style={S.bad}>{cfState.message}</span>
-                <p style={S.installHint}>
-                  Install with:{" "}
-                  <code style={S.code}>{cfInstallHint.win}</code>{" "}
-                  (Windows),{" "}
-                  <code style={S.code}>{cfInstallHint.mac}</code>{" "}
-                  (macOS), or{" "}
-                  <code style={S.code}>{cfInstallHint.linux}</code>{" "}
-                  (Linux). Restart this wizard after install.
-                </p>
-                <Button onClick={runCfCheck} variant="secondary">
-                  Recheck
-                </Button>
-              </div>
+              <p style={S.installHint}>
+                Or run it yourself:{" "}
+                <code style={S.code}>{cfInstallHint.win}</code> (Windows),{" "}
+                <code style={S.code}>{cfInstallHint.mac}</code> (macOS), or{" "}
+                <code style={S.code}>{cfInstallHint.linux}</code> (Linux).
+              </p>
             )}
-          </div>
+          </ToolRow>
         </Step>
 
         <Step
@@ -271,10 +288,11 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           help="Opens your default browser to the eSpace Dev Hub approval page. You'll see the pairing code and the IP that initiated it before approving."
         >
           {paired ? (
-            <span style={S.good}>✓ Paired. You're ready to go.</span>
+            <StatusPill tone="ok">Paired. You're ready to go.</StatusPill>
           ) : pairBusy ? (
             <div style={S.row}>
               <span style={S.muted}>
+                <span className="companion-spinner" style={S.spinnerInline} />
                 Approve in your browser. The wizard will update as soon as the
                 server sees the approval.
               </span>
@@ -365,6 +383,93 @@ function Step({
   );
 }
 
+/** A colored, pill-shaped status chip — mirrors apps/web's Pill tones. */
+function StatusPill({
+  tone,
+  children,
+}: {
+  tone: "ok" | "bad" | "accent" | "muted";
+  children: React.ReactNode;
+}) {
+  return <span style={{ ...S.pill, ...PILL_TONES[tone] }}>{children}</span>;
+}
+
+/** One system-requirement row: glyph badge, label, live status, actions. */
+function ToolRow({
+  glyph,
+  label,
+  state,
+  onCheck,
+  onInstall,
+  installLabel,
+  children,
+}: {
+  glyph: string;
+  label: string;
+  state: ToolState;
+  onCheck: () => void;
+  onInstall: () => void;
+  installLabel: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div style={S.toolRow}>
+      <div style={S.toolRowHead}>
+        <span style={S.toolGlyph}>{glyph}</span>
+        <span style={S.toolLabel}>{label}</span>
+        <span style={S.toolStatus}>
+          {state.phase === "idle" && <StatusPill tone="muted">Not checked</StatusPill>}
+          {state.phase === "checking" && (
+            <StatusPill tone="accent">
+              <span className="companion-spinner" style={S.spinnerInline} />
+              Checking
+            </StatusPill>
+          )}
+          {state.phase === "installing" && (
+            <StatusPill tone="accent">
+              <span className="companion-spinner" style={S.spinnerInline} />
+              Installing
+            </StatusPill>
+          )}
+          {state.phase === "ok" && <StatusPill tone="ok">✓ Installed</StatusPill>}
+          {state.phase === "missing" && <StatusPill tone="bad">Not found</StatusPill>}
+          {state.phase === "install-launched" && (
+            <StatusPill tone="accent">Installer running</StatusPill>
+          )}
+        </span>
+      </div>
+
+      {state.phase === "ok" && <p style={S.toolDetail}>{state.version}</p>}
+      {state.phase === "missing" && <p style={S.toolDetailBad}>{state.message}</p>}
+      {state.phase === "install-launched" && (
+        <p style={S.toolDetail}>{state.message}</p>
+      )}
+
+      <div style={S.toolActions}>
+        {state.phase === "idle" && (
+          <Button onClick={onCheck} variant="primary">
+            Check
+          </Button>
+        )}
+        {(state.phase === "missing" || state.phase === "install-launched") && (
+          <>
+            {state.phase === "missing" && (
+              <Button onClick={onInstall} variant="primary">
+                {installLabel}
+              </Button>
+            )}
+            <Button onClick={onCheck} variant="secondary">
+              Recheck
+            </Button>
+          </>
+        )}
+      </div>
+
+      {children}
+    </div>
+  );
+}
+
 function Button({
   onClick,
   variant,
@@ -376,14 +481,22 @@ function Button({
   disabled?: boolean;
   children: React.ReactNode;
 }) {
+  const [hover, setHover] = useState(false);
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={{
         ...S.btn,
         ...(variant === "primary" ? S.btnPrimary : S.btnSecondary),
+        ...(hover && !disabled
+          ? variant === "primary"
+            ? S.btnPrimaryHover
+            : S.btnSecondaryHover
+          : null),
         opacity: disabled ? 0.5 : 1,
         cursor: disabled ? "not-allowed" : "pointer",
       }}
@@ -394,6 +507,13 @@ function Button({
 }
 
 /* ─────────────────── styles ─────────────────── */
+
+const PILL_TONES: Record<"ok" | "bad" | "accent" | "muted", React.CSSProperties> = {
+  ok: { background: "color-mix(in srgb, var(--good) 16%, transparent)", color: "var(--good)" },
+  bad: { background: "color-mix(in srgb, var(--bad) 16%, transparent)", color: "var(--bad)" },
+  accent: { background: "var(--accent-dim)", color: "var(--accent)" },
+  muted: { background: "color-mix(in srgb, var(--fg) 6%, transparent)", color: "var(--muted-fg)" },
+};
 
 const S: Record<string, React.CSSProperties> = {
   overlay: {
@@ -416,30 +536,48 @@ const S: Record<string, React.CSSProperties> = {
     gap: 20,
   },
   header: { marginBottom: 8 },
+  eyebrow: { display: "flex", alignItems: "center", gap: 8, marginBottom: 12 },
+  eyebrowDot: {
+    display: "inline-block",
+    width: 6,
+    height: 6,
+    borderRadius: "var(--radius-pill)",
+    background: "var(--accent)",
+  },
+  eyebrowLabel: {
+    fontFamily: "var(--font-mono)",
+    fontSize: 10.5,
+    fontWeight: 700,
+    color: "var(--muted-fg)",
+    textTransform: "uppercase",
+    letterSpacing: "1.4px",
+  },
   title: {
     margin: 0,
     fontFamily: "var(--font-dot)",
     fontWeight: 900,
-    fontSize: 30,
+    fontSize: 32,
     lineHeight: 1.05,
     letterSpacing: "0.5px",
     textTransform: "uppercase",
   },
   titleAccent: { fontStyle: "normal", color: "var(--accent)" },
   subtitle: {
-    margin: "8px 0 0 0",
+    margin: "10px 0 0 0",
     color: "var(--muted-fg)",
     fontSize: 13,
     lineHeight: 1.55,
+    maxWidth: 440,
   },
   step: {
     background: "var(--card)",
     border: "1px solid var(--border)",
     borderRadius: "var(--radius-tile)",
-    padding: 18,
+    padding: 20,
     display: "flex",
     flexDirection: "column",
-    gap: 10,
+    gap: 12,
+    boxShadow: "0 1px 0 rgba(255,255,255,0.02) inset",
   },
   stepHead: { display: "flex", alignItems: "center", gap: 10 },
   stepNum: {
@@ -452,6 +590,7 @@ const S: Record<string, React.CSSProperties> = {
     fontFamily: "var(--font-mono)",
     fontSize: 12,
     fontWeight: 700,
+    flex: "none",
   },
   stepTitle: {
     margin: 0,
@@ -465,17 +604,49 @@ const S: Record<string, React.CSSProperties> = {
   toolRow: {
     display: "flex",
     flexDirection: "column",
-    gap: 6,
-    paddingBottom: 8,
-    borderBottom: "1px solid var(--border)",
+    gap: 8,
+    padding: "12px 0",
+    borderBottom: "1px dashed var(--border)",
+  },
+  toolRowHead: { display: "flex", alignItems: "center", gap: 10 },
+  toolGlyph: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 26,
+    height: 26,
+    borderRadius: "var(--radius-sub)",
+    background: "var(--accent-dim)",
+    color: "var(--accent)",
+    fontFamily: "var(--font-mono)",
+    fontSize: 9.5,
+    fontWeight: 700,
+    letterSpacing: "0.3px",
+    flex: "none",
   },
   toolLabel: {
     fontFamily: "var(--font-mono)",
-    fontSize: 10.5,
-    color: "var(--muted-fg)",
+    fontSize: 12,
+    color: "var(--fg)",
     textTransform: "uppercase",
     letterSpacing: "0.6px",
+    flex: 1,
   },
+  toolStatus: { flex: "none" },
+  toolDetail: {
+    margin: "0 0 0 36px",
+    fontSize: 11.5,
+    color: "var(--muted-fg)",
+    lineHeight: 1.5,
+    fontFamily: "var(--font-mono)",
+  },
+  toolDetailBad: {
+    margin: "0 0 0 36px",
+    fontSize: 11.5,
+    color: "var(--bad)",
+    lineHeight: 1.5,
+  },
+  toolActions: { display: "flex", gap: 8, marginLeft: 36 },
   help: {
     margin: 0,
     fontSize: 12,
@@ -483,9 +654,9 @@ const S: Record<string, React.CSSProperties> = {
     lineHeight: 1.55,
   },
   installHint: {
-    margin: 0,
-    fontSize: 12,
-    color: "var(--muted-fg)",
+    margin: "0 0 0 36px",
+    fontSize: 11.5,
+    color: "var(--dim-fg)",
     lineHeight: 1.6,
   },
   code: {
@@ -520,20 +691,49 @@ const S: Record<string, React.CSSProperties> = {
     textTransform: "uppercase",
     letterSpacing: "0.8px",
     fontFamily: "var(--font-mono)",
+    transition: "background 0.12s ease, border-color 0.12s ease, transform 0.12s ease",
   },
   btnPrimary: {
     background: "var(--accent)",
     color: "var(--accent-on)",
     border: "1px solid var(--accent)",
   },
+  btnPrimaryHover: {
+    transform: "translateY(-1px)",
+    boxShadow: "0 4px 12px var(--accent-dim)",
+  },
   btnSecondary: {
     background: "transparent",
     color: "var(--fg)",
     border: "1px solid var(--border-strong)",
   },
+  btnSecondaryHover: {
+    borderColor: "var(--accent)",
+    color: "var(--accent)",
+  },
+  pill: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    padding: "2px 8px",
+    borderRadius: "var(--radius-pill)",
+    fontFamily: "var(--font-mono)",
+    fontSize: 10,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.4px",
+    whiteSpace: "nowrap",
+  },
+  spinnerInline: { marginRight: 6, verticalAlign: "-1.5px" },
   good: { fontSize: 12, color: "var(--good)" },
   bad: { fontSize: 12, color: "var(--bad)" },
-  muted: { fontSize: 12, color: "var(--muted-fg)" },
+  muted: {
+    fontSize: 12,
+    color: "var(--muted-fg)",
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+  },
   errorBlock: { display: "flex", flexDirection: "column", gap: 6 },
   footer: {
     display: "flex",

@@ -33,6 +33,8 @@ import * as pair from "./pair";
 import * as tunnel from "./tunnel-register";
 import * as tunnelSpawn from "./tunnel-spawn";
 import { checkDocker } from "./docker-check";
+import { downloadAndLaunchDockerInstaller } from "./docker-install";
+import { installCloudflared } from "./cloudflared-install";
 import { initAutoUpdater } from "./auto-update";
 
 // __dirname is available natively in CommonJS — no fileURLToPath
@@ -381,6 +383,14 @@ ipcMain.handle("docker:check", async () => {
 
 ipcMain.handle("cloudflared:check", async () => {
   return tunnelSpawn.check();
+});
+
+ipcMain.handle("docker:install", async () => {
+  return downloadAndLaunchDockerInstaller();
+});
+
+ipcMain.handle("cloudflared:install", async () => {
+  return installCloudflared();
 });
 
 ipcMain.handle("dialog:choose-directory", async (_event, title?: string) => {

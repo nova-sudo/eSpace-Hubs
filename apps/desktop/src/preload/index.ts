@@ -62,6 +62,16 @@ const api = {
         version: string | null;
         message: string;
       }>,
+    installDocker: () =>
+      ipcRenderer.invoke("docker:install") as Promise<{
+        ok: boolean;
+        message: string;
+      }>,
+    installCloudflared: () =>
+      ipcRenderer.invoke("cloudflared:install") as Promise<{
+        ok: boolean;
+        message: string;
+      }>,
     chooseDirectory: (title?: string) =>
       ipcRenderer.invoke("dialog:choose-directory", title) as Promise<{
         canceled: boolean;

@@ -64,6 +64,17 @@
       ::-webkit-scrollbar { width: 8px; height: 8px; }
       ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
       ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+      @keyframes companion-spin { to { transform: rotate(360deg); } }
+      .companion-spinner {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 2px solid var(--border-strong);
+        border-top-color: var(--accent);
+        animation: companion-spin 0.7s linear infinite;
+        flex: none;
+      }
     </style>
   </head>
   <body>
