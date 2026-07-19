@@ -35,6 +35,62 @@ function commandExists(cmd: string): Promise<boolean> {
   });
 }
 
+/**
+ * Windows only: pull PATH fresh from the registry and merge it into
+ * this process's env.
+ *
+ * winget/an installer updates the registry's PATH value, but a
+ * already-running process (the companion) keeps its own env snapshot
+ * from launch — so a `cloudflared --version` recheck run right after
+ * install can fail to find the binary even though the install
+ * genuinely succeeded, and the wizard would tell the user to restart
+ * the whole app. Refreshing here means the recheck immediately
+ * following an install actually sees the new PATH.
+ */
+function refreshWindowsPath(): Promise<void> {
+  if (process.platform !== "win32") return Promise.resolve();
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    const ps = spawn(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-Command",
+        "[System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')",
+      ],
+      { windowsHide: true },
+    );
+    let out = "";
+    ps.stdout?.on("data", (d) => {
+      out += d.toString();
+    });
+    ps.on("error", settle);
+    ps.on("close", () => {
+      const combined = out.trim();
+      if (combined) {
+        process.env.PATH = combined;
+        pushLog("[cloudflared-install] refreshed PATH from registry");
+      }
+      settle();
+    });
+    setTimeout(settle, 5_000);
+  });
+}
+
+// winget's own message for "package already present, nothing newer to
+// upgrade to" — from our side this IS the success case (cloudflared is
+// installed), but winget exits non-zero for it, so `run()` would
+// otherwise report it as a failure and show this raw text as an error.
+const WINGET_ALREADY_CURRENT_RE =
+  /already installed/i;
+const WINGET_NO_UPGRADE_RE =
+  /no (applicable|available|newer) (update|upgrade|package)/i;
+
 function run(cmd: string, args: string[]): Promise<InstallResult> {
   return new Promise((resolve) => {
     pushLog(`[cloudflared-install] running: ${cmd} ${args.join(" ")}`);
@@ -86,7 +142,7 @@ export async function installCloudflared(): Promise<InstallResult> {
             "winget isn't available on this machine (needs the App Installer from the Microsoft Store). Use the manual command below.",
         };
       }
-      return run("winget", [
+      const result = await run("winget", [
         "install",
         "--id",
         "Cloudflare.cloudflared",
@@ -94,6 +150,19 @@ export async function installCloudflared(): Promise<InstallResult> {
         "--accept-package-agreements",
         "--accept-source-agreements",
       ]);
+      // Refresh regardless of outcome — a genuine fresh install also
+      // needs this so the caller's follow-up recheck (see
+      // Onboarding.tsx's runCfInstall) finds cloudflared without
+      // requiring an app restart.
+      await refreshWindowsPath();
+      if (result.ok) return result;
+      if (
+        WINGET_ALREADY_CURRENT_RE.test(result.message) &&
+        WINGET_NO_UPGRADE_RE.test(result.message)
+      ) {
+        return { ok: true, message: "cloudflared is already installed and up to date." };
+      }
+      return result;
     }
     case "darwin": {
       const hasBrew = await commandExists("brew");
