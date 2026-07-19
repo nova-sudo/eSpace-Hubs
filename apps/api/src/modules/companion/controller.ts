@@ -84,11 +84,22 @@ function hashToken(plaintext: string): string {
     .replaceAll("=", "");
 }
 
-/** Best-effort base URL for the approval link the companion shows the
- *  user. Reconstructed from the request's Host + X-Forwarded-Proto so
- *  it works behind the Next.js catch-all on Vercel AND in local dev
- *  without an extra env var. */
+/** Base URL for the approval link the companion shows the user.
+ *
+ * Prefers an explicit public URL (same APP_URL → NEXT_PUBLIC_APP_URL
+ * precedence as auth/controller.ts's appOrigin()) over reconstructing
+ * one from the request. The request-based reconstruction — Host +
+ * X-Forwarded-Proto — only works when this handler sees the ORIGINAL
+ * request. It breaks behind a proxy hop that rewrites Host to its own
+ * destination, which is exactly what happens in the docker-compose
+ * "full" profile: next.config.mjs rewrites /api/v1/* from the web
+ * container to this one via API_ORIGIN (http://api:4000), so this
+ * handler sees Host: api:4000 — the container-internal address, not
+ * anything the user's browser can reach. That produced approval links
+ * like `https://api:4000/companion/pair?code=...`. */
 function approvalBaseUrl(req: Request): string {
+  const explicit = process.env.APP_URL?.trim() || process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (explicit) return explicit.replace(/\/$/, "");
   const proto = (req.headers["x-forwarded-proto"] as string) || "http";
   const host = req.headers["host"] || "localhost:3000";
   return `${proto}://${host}`;

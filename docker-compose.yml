@@ -74,6 +74,16 @@ services:
       # so set MONGO_URI=mongodb://mongo:27017/devhub-dev in
       # .env.local if you want the local-mongo path.
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://espace-hubs.vercel.app,http://localhost:3000}
+      # Public-facing URL of the web frontend, used to build the
+      # companion pairing approval link (approvalBaseUrl() in
+      # apps/api/src/modules/companion/controller.ts). Needed here
+      # specifically for the "full" profile below, where the web
+      # container proxies /api/v1/* to this one — that proxy hop
+      # replaces the request's Host header with this container's own
+      # address, so the handler can't reconstruct the real public URL
+      # from the request alone. Same var + default the `web` service
+      # below already uses, so the two stay in sync.
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
     # Static hostname mappings injected into the container's /etc/hosts.
     #
     # Mapping form (`host: ip`) is used here rather than the list
