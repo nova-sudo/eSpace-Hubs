@@ -33,6 +33,13 @@ on:
   push:
     tags:
       - "desktop-v*"
+  # Manual escape hatch — lets a run be kicked off from the Actions tab
+  # (or the API) against any branch, without needing to push a
+  # `desktop-v*` tag first. electron-builder's `--publish always` (see
+  # the `release` npm script) publishes regardless of which ref
+  # triggered the run, computing the release tag from package.json's
+  # version either way.
+  workflow_dispatch: {}
 
 permissions:
   contents: write # required for electron-builder's GitHub publisher
