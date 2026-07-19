@@ -25,6 +25,8 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import { settings } from "./settings.js";
 
 interface RunResult {
@@ -109,8 +111,49 @@ export function pushLog(line: string): void {
   }
 }
 
+/**
+ * `docker compose up` hard-fails before starting anything if
+ * apps/api/.env.local is missing (docker-compose.yml's `env_file:`
+ * entry) — a fresh clone never has one, since it holds
+ * (dev-placeholder) secrets and is gitignored. The raw failure is a
+ * Windows/Docker internals error ("GetFileAttributesEx ... The system
+ * cannot find the file specified") that means nothing to a user who's
+ * never heard of env_file. apps/api/.env.example's defaults work
+ * as-is for local dev (dev SESSION_SECRET/INTEGRATION_TOKEN_KEY, Mongo
+ * URI matching this compose file) — no values need filling in just to
+ * get the backend running — so bootstrap it automatically instead of
+ * making the user do it by hand. Never touches an existing .env.local.
+ */
+function ensureApiEnvLocal(repo: string): { ok: boolean; message?: string } {
+  const envLocal = path.join(repo, "apps", "api", ".env.local");
+  const envExample = path.join(repo, "apps", "api", ".env.example");
+  if (fs.existsSync(envLocal)) return { ok: true };
+  if (!fs.existsSync(envExample)) {
+    return {
+      ok: false,
+      message: `apps/api/.env.local is missing and there's no .env.example to copy from at ${repo} — check the repo folder set in Settings is correct.`,
+    };
+  }
+  try {
+    fs.copyFileSync(envExample, envLocal);
+    pushLog(`[companion] created apps/api/.env.local from .env.example (dev defaults)`);
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      message: `Couldn't create apps/api/.env.local from .env.example: ${msg}`,
+    };
+  }
+}
+
 export async function startBackend(): Promise<{ ok: boolean; message: string }> {
   lastError = null;
+  const envCheck = ensureApiEnvLocal(repoPath());
+  if (!envCheck.ok) {
+    lastError = envCheck.message ?? "apps/api/.env.local is missing.";
+    return { ok: false, message: lastError };
+  }
   pushLog("[companion] starting docker compose up -d");
   const res = await run(dockerComposeArgs("up", "-d"));
   if (!res.ok) {
