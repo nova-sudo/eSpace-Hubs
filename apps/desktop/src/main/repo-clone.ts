@@ -52,18 +52,40 @@ export function resetCloneState(): void {
 
 const RECEIVING_OBJECTS_RE = /Receiving objects:\s+(\d+)%/;
 
+// Keep the wizard's error paragraph readable — git/npm can dump
+// anywhere from one line to a full usage/help page on failure. Head
+// (not tail) is kept: git's own errors put the actual problem first
+// ("fatal: …", "usage: git clone …") and pile exhaustive flag
+// reference after it. Full output always still goes to pushLog/the
+// Logs panel.
+const MESSAGE_MAX = 400;
+function truncateMessage(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= MESSAGE_MAX) return trimmed;
+  return `${trimmed.slice(0, MESSAGE_MAX)}… (see Logs for the full output)`;
+}
+
 function runGitClone(url: string, dest: string): Promise<{ ok: boolean; message: string }> {
   return new Promise((resolve) => {
     pushLog(`[repo-clone] git clone ${url} -> ${dest}`);
+    // NOT shell:true here, unlike npm below — git ships as a real
+    // git.exe on Windows (resolves fine via plain CreateProcess), while
+    // npm is a .cmd shim that needs a shell to resolve. Routing this
+    // through cmd.exe anyway (as an earlier version did) re-quotes the
+    // command line and can corrupt git's argument parsing — the
+    // symptom is git bailing out and dumping its full `usage: git
+    // clone …` help text instead of actually cloning.
     const child = spawn("git", ["clone", "--progress", url, dest], {
-      shell: process.platform === "win32",
+      shell: false,
       windowsHide: true,
     });
     let tail = "";
     // git writes --progress output to stderr, clone banner included.
+    // Accumulate (not overwrite) — a real error can span more than one
+    // `data` event, and we'd otherwise keep only the last fragment.
     child.stderr?.on("data", (d) => {
       const text = d.toString();
-      tail = text;
+      tail += text;
       pushLog(`[repo-clone/git] ${text.trim()}`);
       const m = RECEIVING_OBJECTS_RE.exec(text);
       if (m) {
@@ -85,7 +107,11 @@ function runGitClone(url: string, dest: string): Promise<{ ok: boolean; message:
     });
     child.on("close", (code) => {
       if (code === 0) resolve({ ok: true, message: "Cloned." });
-      else resolve({ ok: false, message: tail.trim() || `git clone exited with code ${code}.` });
+      else
+        resolve({
+          ok: false,
+          message: tail.trim() ? truncateMessage(tail) : `git clone exited with code ${code}.`,
+        });
     });
   });
 }
@@ -100,12 +126,14 @@ function runNpmInstall(cwd: string): Promise<{ ok: boolean; message: string }> {
     });
     let tail = "";
     child.stdout?.on("data", (d) => {
-      tail = d.toString();
-      pushLog(`[repo-clone/npm] ${tail.trim()}`);
+      const text = d.toString();
+      tail += text;
+      pushLog(`[repo-clone/npm] ${text.trim()}`);
     });
     child.stderr?.on("data", (d) => {
-      tail = d.toString();
-      pushLog(`[repo-clone/npm/err] ${tail.trim()}`);
+      const text = d.toString();
+      tail += text;
+      pushLog(`[repo-clone/npm/err] ${text.trim()}`);
     });
     child.on("error", (err) => {
       const isMissing = (err as NodeJS.ErrnoException).code === "ENOENT";
@@ -118,7 +146,11 @@ function runNpmInstall(cwd: string): Promise<{ ok: boolean; message: string }> {
     });
     child.on("close", (code) => {
       if (code === 0) resolve({ ok: true, message: "Dependencies installed." });
-      else resolve({ ok: false, message: tail.trim() || `npm install exited with code ${code}.` });
+      else
+        resolve({
+          ok: false,
+          message: tail.trim() ? truncateMessage(tail) : `npm install exited with code ${code}.`,
+        });
     });
   });
 }
