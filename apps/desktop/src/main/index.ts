@@ -35,6 +35,7 @@ import * as tunnelSpawn from "./tunnel-spawn";
 import { checkDocker } from "./docker-check";
 import { downloadAndLaunchDockerInstaller } from "./docker-install";
 import { installCloudflared } from "./cloudflared-install";
+import { cloneAndInstall, getCloneState, resetCloneState } from "./repo-clone";
 import { initAutoUpdater } from "./auto-update";
 
 // __dirname is available natively in CommonJS — no fileURLToPath
@@ -391,6 +392,31 @@ ipcMain.handle("docker:install", async () => {
 
 ipcMain.handle("cloudflared:install", async () => {
   return installCloudflared();
+});
+
+ipcMain.handle(
+  "repo:clone-start",
+  async (_event, { parentDir, repoUrl }: { parentDir: string; repoUrl?: string }) => {
+    if (typeof parentDir !== "string" || !parentDir.trim()) {
+      throw new Error("parentDir must be a non-empty string");
+    }
+    resetCloneState();
+    // Fire-and-forget — the renderer polls repo:clone-status for
+    // progress instead of awaiting this handler, since the clone +
+    // install can take well over a minute.
+    void cloneAndInstall(parentDir, repoUrl).catch((err: unknown) => {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[main] cloneAndInstall failed:",
+        err instanceof Error ? err.message : String(err),
+      );
+    });
+    return { ok: true };
+  },
+);
+
+ipcMain.handle("repo:clone-status", async () => {
+  return getCloneState();
 });
 
 ipcMain.handle("dialog:choose-directory", async (_event, title?: string) => {

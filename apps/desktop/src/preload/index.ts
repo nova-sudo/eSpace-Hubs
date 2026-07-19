@@ -72,6 +72,17 @@ const api = {
         ok: boolean;
         message: string;
       }>,
+    startClone: (parentDir: string, repoUrl?: string) =>
+      ipcRenderer.invoke("repo:clone-start", { parentDir, repoUrl }) as Promise<{
+        ok: boolean;
+      }>,
+    cloneStatus: () =>
+      ipcRenderer.invoke("repo:clone-status") as Promise<{
+        phase: "idle" | "cloning" | "installing" | "done" | "error";
+        pct: number;
+        message: string;
+        repoPath: string | null;
+      }>,
     chooseDirectory: (title?: string) =>
       ipcRenderer.invoke("dialog:choose-directory", title) as Promise<{
         canceled: boolean;

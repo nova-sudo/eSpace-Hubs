@@ -48,6 +48,8 @@ type CompanionApi = (Window & {
       }>;
       installDocker: () => Promise<{ ok: boolean; message: string }>;
       installCloudflared: () => Promise<{ ok: boolean; message: string }>;
+      startClone: (parentDir: string, repoUrl?: string) => Promise<{ ok: boolean }>;
+      cloneStatus: () => Promise<CloneState>;
       chooseDirectory: (title?: string) => Promise<{
         canceled: boolean;
         path: string | null;
@@ -82,6 +84,15 @@ type ToolState =
   | { phase: "missing"; message: string }
   | { phase: "install-launched"; message: string };
 
+interface CloneState {
+  phase: "idle" | "cloning" | "installing" | "done" | "error";
+  pct: number;
+  message: string;
+  repoPath: string | null;
+}
+
+const IDLE_CLONE_STATE: CloneState = { phase: "idle", pct: 0, message: "", repoPath: null };
+
 const cfInstallHint = {
   win: "winget install --id Cloudflare.cloudflared",
   mac: "brew install cloudflared",
@@ -92,6 +103,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const [dockerState, setDockerState] = useState<ToolState>({ phase: "idle" });
   const [cfState, setCfState] = useState<ToolState>({ phase: "idle" });
   const [repoPath, setRepoPath] = useState("");
+  const [cloneState, setCloneState] = useState<CloneState>(IDLE_CLONE_STATE);
+  const [clonePct, setClonePct] = useState(0);
   const [apiBaseUrl, setApiBaseUrl] = useState("");
   const [paired, setPaired] = useState(false);
   const [pairBusy, setPairBusy] = useState(false);
@@ -110,6 +123,37 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       setPaired(p.paired);
     })();
   }, []);
+
+  // Poll clone/install progress while active — same short-poll
+  // convention App.tsx uses for backend/VPN status, just faster (400ms)
+  // since this drives a visible progress bar.
+  useEffect(() => {
+    if (cloneState.phase !== "cloning" && cloneState.phase !== "installing") return;
+    const id = setInterval(async () => {
+      const s = await companion.onboarding.cloneStatus();
+      setCloneState(s);
+      if (s.repoPath) setRepoPath(s.repoPath);
+    }, 400);
+    return () => clearInterval(id);
+  }, [cloneState.phase]);
+
+  // git's --progress gives a real percentage for the clone half of the
+  // bar; npm install has no equivalent signal across npm versions, so
+  // its half creeps forward cosmetically while "installing" and snaps
+  // to 100 the moment the real state says "done".
+  useEffect(() => {
+    if (cloneState.phase === "cloning") setClonePct(cloneState.pct);
+    if (cloneState.phase === "done") setClonePct(100);
+    if (cloneState.phase === "idle") setClonePct(0);
+  }, [cloneState.phase, cloneState.pct]);
+
+  useEffect(() => {
+    if (cloneState.phase !== "installing") return;
+    const id = setInterval(() => {
+      setClonePct((p) => (p < 95 ? p + (95 - p) * 0.08 : p));
+    }, 300);
+    return () => clearInterval(id);
+  }, [cloneState.phase]);
 
   const dockerOk = dockerState.phase === "ok";
   const cfOk = cfState.phase === "ok";
@@ -179,6 +223,19 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       setRepoPath(r.path);
       await companion.settings.set({ repoPath: r.path });
     }
+  }
+
+  async function cloneRepo() {
+    const r = await companion.onboarding.chooseDirectory(
+      "Choose a folder to clone eSpace-Hubs into",
+    );
+    if (r.canceled || !r.path) return;
+    setClonePct(0);
+    setCloneState({ phase: "cloning", pct: 0, message: "Starting…", repoPath: null });
+    await companion.onboarding.startClone(r.path);
+    // The polling effect above (keyed off cloneState.phase) picks up
+    // progress from here — startClone only kicks the main-process job
+    // off, it doesn't wait for it.
   }
 
   async function startPair() {
@@ -264,7 +321,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           title="Repository folder"
           done={repoOk}
           locked={!sysOk}
-          help="Absolute path to your espace-devhub checkout. The companion runs `docker compose` from there."
+          help="Absolute path to your espace-devhub checkout. The companion runs `docker compose` from there. Already have a checkout? Pick its folder. Starting fresh? Clone one below — the companion also installs its dependencies in the background."
         >
           <div style={S.row}>
             <input
@@ -274,10 +331,44 @@ export function Onboarding({ onComplete }: OnboardingProps) {
               placeholder="No folder selected"
               style={{ ...S.input, flex: 1 }}
             />
-            <Button onClick={chooseRepo} variant="primary" disabled={!sysOk}>
+            <Button
+              onClick={chooseRepo}
+              variant="secondary"
+              disabled={!sysOk || cloneState.phase === "cloning" || cloneState.phase === "installing"}
+            >
               Pick folder
             </Button>
           </div>
+
+          {(cloneState.phase === "idle" || cloneState.phase === "done") && (
+            <Button
+              onClick={cloneRepo}
+              variant="primary"
+              disabled={!sysOk}
+            >
+              Clone repo
+            </Button>
+          )}
+
+          {(cloneState.phase === "cloning" || cloneState.phase === "installing") && (
+            <div style={S.cloneProgress}>
+              <DotProgressBar pct={clonePct} />
+              <span style={S.muted}>{cloneState.message}</span>
+            </div>
+          )}
+
+          {cloneState.phase === "done" && (
+            <StatusPill tone="ok">✓ Cloned and installed at {cloneState.repoPath}</StatusPill>
+          )}
+
+          {cloneState.phase === "error" && (
+            <div style={S.errorBlock}>
+              <p style={S.toolDetailBadFlush}>{cloneState.message}</p>
+              <Button onClick={cloneRepo} variant="secondary">
+                Retry clone
+              </Button>
+            </div>
+          )}
         </Step>
 
         <Step
@@ -392,6 +483,36 @@ function StatusPill({
   children: React.ReactNode;
 }) {
   return <span style={{ ...S.pill, ...PILL_TONES[tone] }}>{children}</span>;
+}
+
+/**
+ * Dot-matrix progress bar — a row of dots lights up left-to-right as
+ * `pct` climbs, matching the dot-grid/Doto aesthetic instead of a
+ * plain solid fill bar.
+ */
+function DotProgressBar({ pct, dots = 28 }: { pct: number; dots?: number }) {
+  const clamped = Math.max(0, Math.min(100, pct));
+  const lit = Math.round((clamped / 100) * dots);
+  return (
+    <div
+      style={S.dotBar}
+      role="progressbar"
+      aria-valuenow={Math.round(clamped)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+    >
+      {Array.from({ length: dots }).map((_, i) => (
+        <span
+          key={i}
+          style={{
+            ...S.dotBarDot,
+            background: i < lit ? "var(--accent)" : "var(--border-strong)",
+            ...(i === lit - 1 ? S.dotBarDotLeading : null),
+          }}
+        />
+      ))}
+    </div>
+  );
 }
 
 /** One system-requirement row: glyph badge, label, live status, actions. */
@@ -645,6 +766,32 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: 11.5,
     color: "var(--bad)",
     lineHeight: 1.5,
+  },
+  toolDetailBadFlush: {
+    margin: 0,
+    fontSize: 11.5,
+    color: "var(--bad)",
+    lineHeight: 1.5,
+  },
+  cloneProgress: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  dotBar: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 4,
+  },
+  dotBarDot: {
+    width: 6,
+    height: 6,
+    borderRadius: "var(--radius-pill)",
+    flex: "none",
+    transition: "background 0.2s ease",
+  },
+  dotBarDotLeading: {
+    boxShadow: "0 0 0 3px var(--accent-dim)",
   },
   toolActions: { display: "flex", gap: 8, marginLeft: 36 },
   help: {
