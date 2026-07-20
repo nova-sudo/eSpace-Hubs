@@ -1,7 +1,8 @@
 # `@espace-devhub/desktop` — Companion app
 
-Desktop tray app that runs the eSpace Dev Hub **backend container** on
-a user's machine. The deployed Vercel frontend can then route API
+Desktop tray app that runs the eSpace Dev Hub **backend** on
+a user's machine (as a native Node process, not a Docker container —
+see backend-process.ts for why). The deployed Vercel frontend can then route API
 calls through to it (via a Cloudflare Tunnel), giving the user access
 to private resources their machine can reach but Vercel cannot — for
 example, Crealogix's internal GitLab at `git.bcn.crealogix.net`.
@@ -11,10 +12,10 @@ example, Crealogix's internal GitLab at `git.bcn.crealogix.net`.
 What works today:
 
 - ✅ Tray icon + window UI (Phase 1)
-- ✅ Start / stop the `docker compose --profile tunnel` stack (Phase 1)
+- ✅ Start / stop the backend (native `apps/api` process + auto-spawned cloudflared tunnel) (Phase 1)
 - ✅ Live API healthcheck against `localhost:4000/healthz` (Phase 1)
 - ✅ Persisted settings (repo path, Cloudflare Tunnel token, auto-start) (Phase 1)
-- ✅ Logs panel tailing the docker compose output (Phase 1)
+- ✅ Logs panel tailing the backend process output (Phase 1)
 - ✅ VPN status detection — DNS probe of `git.bcn.crealogix.net` (Phase 2)
 - ✅ VPN credentials in OS keychain via electron's `safeStorage` (Phase 2)
 - ✅ FortiClient client discovery + best-effort connect (Phase 2)
@@ -57,13 +58,15 @@ will warn the user on first launch ("Unknown publisher" → More info
 
 ## How users will use it
 
-1. Install Docker Desktop (one-time)
+1. Install Node.js (one-time) — the onboarding wizard offers to do this
 2. Install this companion app (one-time)
-3. Clone the espace-devhub repo somewhere on disk
-4. Open the companion, point it at the repo path, paste their CF
-   tunnel token
-5. Click **Start backend** — Docker boots `mongo` + `api` + a
-   Cloudflare Tunnel sidecar
+3. Clone the espace-devhub repo somewhere on disk — the wizard can do
+   this too (clone + `npm install`, no terminal needed)
+4. Open the companion, pair the device (approve in browser)
+5. Click **Start backend** — the companion spawns `apps/api` directly
+   and auto-spawns a Cloudflare Tunnel; MONGO_URI in
+   `apps/api/.env.local` needs to point at a real MongoDB (no local
+   Mongo container — see docs/RUN_LOCALLY.md)
 6. Open the Vercel-deployed app in their browser; the frontend routes
    API calls through the user's tunnel
 

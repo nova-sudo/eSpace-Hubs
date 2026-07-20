@@ -50,8 +50,8 @@ const api = {
   },
   // Phase 4 — onboarding wizard helpers.
   onboarding: {
-    checkDocker: () =>
-      ipcRenderer.invoke("docker:check") as Promise<{
+    checkNode: () =>
+      ipcRenderer.invoke("node:check") as Promise<{
         installed: boolean;
         version: string | null;
         message: string;
@@ -62,8 +62,8 @@ const api = {
         version: string | null;
         message: string;
       }>,
-    installDocker: () =>
-      ipcRenderer.invoke("docker:install") as Promise<{
+    installNode: () =>
+      ipcRenderer.invoke("node:install") as Promise<{
         ok: boolean;
         message: string;
       }>,

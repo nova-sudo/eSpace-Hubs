@@ -1,7 +1,7 @@
 /**
  * Companion-app UI. Two big sections:
  *
- *   1. Status — Docker container running/stopped + API healthcheck
+ *   1. Status — backend process running/stopped + API healthcheck
  *      result. Live-updates every 3s. The user's "is it working?"
  *      glance.
  *
@@ -72,7 +72,7 @@ type CompanionWindow = Window & {
       set: (patch: Record<string, unknown>) => Promise<unknown>;
     };
     onboarding: {
-      checkDocker: () => Promise<{
+      checkNode: () => Promise<{
         installed: boolean;
         version: string | null;
         message: string;
@@ -308,7 +308,7 @@ export function App() {
             eSpace Dev Hub <em style={S.titleAccent}>Companion</em>
           </h1>
           <p style={S.subtitle}>
-            Runs the backend container on your machine so the Vercel app can
+            Runs the backend directly on your machine so the Vercel app can
             reach private resources (Crealogix VPN, internal GitLab, etc.).
           </p>
         </div>
@@ -318,7 +318,7 @@ export function App() {
       <Section num="01 /" title="Backend">
         <div style={S.row}>
           <Stat
-            label="Container"
+            label="Backend"
             value={status?.running ? "running" : "stopped"}
             tone={status?.running ? "good" : "muted"}
           />
@@ -668,7 +668,7 @@ export function App() {
       <Section num="04 /" title="Settings">
         <Field
           label="Repo path"
-          help="Absolute path to your espace-devhub checkout. The companion runs `docker compose` from here."
+          help="Absolute path to your espace-devhub checkout. The companion runs the backend directly from here — no Docker."
         >
           <input
             type="text"

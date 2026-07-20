@@ -40,7 +40,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
-import { pushLog } from "./docker.js";
+import { pushLog } from "./log-buffer.js";
 
 const RESTART_BASE_MS = 2_000;
 const RESTART_MAX_MS = 60_000;
@@ -149,7 +149,7 @@ export function onHostname(cb: (hostname: string) => void): void {
 }
 
 /**
- * Probe for `cloudflared` on PATH. Mirrors docker-check.ts's shape so
+ * Probe for `cloudflared` on PATH. Mirrors node-check.ts's shape so
  * the wizard can show a uniform "missing-tool" panel for either.
  */
 export function check(): Promise<{

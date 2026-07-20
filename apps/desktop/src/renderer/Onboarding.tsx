@@ -8,7 +8,7 @@
  * on next refresh and unmounts this component.
  *
  * Steps (linear, can't skip ahead):
- *   1. System requirements (Docker + cloudflared)
+ *   1. System requirements (Node.js + cloudflared)
  *   2. Repo folder (native folder picker)
  *   3. Pair this device
  *
@@ -17,10 +17,15 @@
  * clicks Start backend, parses the *.trycloudflare.com hostname from
  * its log output, and auto-registers with the Dev Hub. Zero typing.
  *
+ * The backend itself runs as a native Node process the companion
+ * spawns directly (backend-process.ts) rather than through Docker —
+ * Docker Desktop's WSL2 VM doesn't reliably inherit a VPN client's
+ * routes, so a container can resolve a VPN-gated host but still fail
+ * to connect to it. Running natively on the host's own network stack
+ * sidesteps that. Node.js is the one real requirement this implies.
+ *
  * System requirements are one-click, too — "Install" shells out to the
- * platform package manager for cloudflared, or downloads + launches
- * Docker Desktop's own installer. Neither is silent (Docker in
- * particular needs an admin-elevated GUI installer), so both surface
+ * platform package manager for both Node.js and cloudflared, surfacing
  * a clear next step instead of a bare copy-paste command.
  *
  * Why not a multi-page router
@@ -36,7 +41,7 @@ import { useEffect, useState } from "react";
 type CompanionApi = (Window & {
   companion: {
     onboarding: {
-      checkDocker: () => Promise<{
+      checkNode: () => Promise<{
         installed: boolean;
         version: string | null;
         message: string;
@@ -46,7 +51,7 @@ type CompanionApi = (Window & {
         version: string | null;
         message: string;
       }>;
-      installDocker: () => Promise<{ ok: boolean; message: string }>;
+      installNode: () => Promise<{ ok: boolean; message: string }>;
       installCloudflared: () => Promise<{ ok: boolean; message: string }>;
       startClone: (parentDir: string, repoUrl?: string) => Promise<{ ok: boolean }>;
       cloneStatus: () => Promise<CloneState>;
@@ -100,7 +105,7 @@ const cfInstallHint = {
 };
 
 export function Onboarding({ onComplete }: OnboardingProps) {
-  const [dockerState, setDockerState] = useState<ToolState>({ phase: "idle" });
+  const [nodeState, setNodeState] = useState<ToolState>({ phase: "idle" });
   const [cfState, setCfState] = useState<ToolState>({ phase: "idle" });
   const [repoPath, setRepoPath] = useState("");
   const [cloneState, setCloneState] = useState<CloneState>(IDLE_CLONE_STATE);
@@ -155,29 +160,41 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     return () => clearInterval(id);
   }, [cloneState.phase]);
 
-  const dockerOk = dockerState.phase === "ok";
+  const nodeOk = nodeState.phase === "ok";
   const cfOk = cfState.phase === "ok";
-  const sysOk = dockerOk && cfOk;
+  const sysOk = nodeOk && cfOk;
   const repoOk = !!repoPath.trim();
   const canFinish = sysOk && repoOk && paired;
 
-  async function runDockerCheck() {
-    setDockerState({ phase: "checking" });
-    const r = await companion.onboarding.checkDocker();
-    setDockerState(
+  async function runNodeCheck() {
+    setNodeState({ phase: "checking" });
+    const r = await companion.onboarding.checkNode();
+    setNodeState(
       r.installed
-        ? { phase: "ok", version: r.version || "Docker found." }
+        ? { phase: "ok", version: r.version || "Node.js found." }
         : { phase: "missing", message: r.message },
     );
   }
 
-  async function runDockerInstall() {
-    setDockerState({ phase: "installing" });
-    const r = await companion.onboarding.installDocker();
-    setDockerState(
-      r.ok
-        ? { phase: "install-launched", message: r.message }
-        : { phase: "missing", message: r.message },
+  async function runNodeInstall() {
+    setNodeState({ phase: "installing" });
+    const r = await companion.onboarding.installNode();
+    if (!r.ok) {
+      setNodeState({ phase: "missing", message: r.message });
+      return;
+    }
+    // Same PATH-visibility caveat as cloudflared below — a
+    // freshly-installed binary's directory can miss this process's
+    // PATH on Windows until the companion restarts.
+    const check = await companion.onboarding.checkNode();
+    setNodeState(
+      check.installed
+        ? { phase: "ok", version: check.version || "Node.js found." }
+        : {
+            phase: "missing",
+            message:
+              "Installed, but not visible on PATH yet — restart the companion app and recheck.",
+          },
     );
   }
 
@@ -287,15 +304,15 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           title="System requirements"
           done={sysOk}
           locked={false}
-          help="The companion runs the backend in Docker and exposes it via Cloudflare Tunnel. Install both below, or let the companion do it — it starts and stops them for you afterward."
+          help="The companion runs the backend directly on your machine (no Docker) and exposes it via Cloudflare Tunnel. Install both below, or let the companion do it — it starts and stops them for you afterward."
         >
           <ToolRow
-            glyph="DK"
-            label="Docker"
-            state={dockerState}
-            onCheck={runDockerCheck}
-            onInstall={runDockerInstall}
-            installLabel="Download & install"
+            glyph="JS"
+            label="Node.js"
+            state={nodeState}
+            onCheck={runNodeCheck}
+            onInstall={runNodeInstall}
+            installLabel="Install"
           />
           <ToolRow
             glyph="CF"
@@ -321,7 +338,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           title="Repository folder"
           done={repoOk}
           locked={!sysOk}
-          help="Absolute path to your espace-devhub checkout. The companion runs `docker compose` from there. Already have a checkout? Pick its folder. Starting fresh? Clone one below — the companion also installs its dependencies in the background."
+          help="Absolute path to your espace-devhub checkout. The companion runs the backend directly from there — no Docker. Already have a checkout? Pick its folder. Starting fresh? Clone one below — the companion also installs its dependencies in the background."
         >
           <div style={S.row}>
             <input

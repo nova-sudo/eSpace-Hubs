@@ -21,7 +21,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { settings } from "./settings.js";
-import { pushLog } from "./docker.js";
+import { pushLog } from "./log-buffer.js";
 
 export const DEFAULT_REPO_URL = "https://github.com/nova-sudo/eSpace-Hubs.git";
 

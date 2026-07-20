@@ -1,8 +1,8 @@
 {
   "name": "@espace-devhub/desktop",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "private": true,
-  "description": "eSpace Dev Hub — desktop companion (Crealogix Docker + VPN runner).",
+  "description": "eSpace Dev Hub — desktop companion (Crealogix backend + VPN runner).",
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "concurrently -k -n vite,electron -c blue,green \"npm:dev:vite\" \"npm:dev:electron\"",

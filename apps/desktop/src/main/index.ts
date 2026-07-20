@@ -4,7 +4,7 @@
  * Responsibilities (Phase 1):
  *   - Single window UI for the user
  *   - System tray icon with quick-action menu (window visible / quit)
- *   - IPC bridge exposing Docker compose control + API healthcheck
+ *   - IPC bridge exposing backend process control + API healthcheck
  *   - Persisted settings via electron-store (CF tunnel token, last
  *     known repo path, auto-start on login)
  *
@@ -15,16 +15,21 @@
  *   - Auto-update (Phase 4)
  *
  * The companion app's job is to make running the eSpace Dev Hub
- * backend container a one-click affair for Crealogix devs whose
- * laptops are the only network-route to git.bcn.crealogix.net. This
- * Phase 1 wires the controls and surfaces; future phases automate
- * the steps the user still does by hand (connecting VPN, registering
- * the tunnel with the server).
+ * backend a one-click affair for Crealogix devs whose laptops are
+ * the only network-route to git.bcn.crealogix.net. The backend runs
+ * as a plain Node process spawned directly by the companion (see
+ * backend-process.ts) rather than through Docker — Docker Desktop's
+ * WSL2 VM doesn't reliably inherit the host's VPN routes, so running
+ * natively on the host's own network stack is what actually reaches
+ * VPN-gated upstreams. This Phase 1 wires the controls and surfaces;
+ * future phases automate the steps the user still does by hand
+ * (connecting VPN, registering the tunnel with the server).
  */
 
 import { app, BrowserWindow, Tray, Menu, dialog, ipcMain, shell, nativeImage } from "electron";
 import path from "node:path";
-import { startBackend, stopBackend, backendStatus, tailLogs } from "./docker";
+import { startBackend, stopBackend, backendStatus } from "./backend-process";
+import { tailLogs } from "./log-buffer";
 import { pingApi } from "./health";
 import { settings } from "./settings";
 import * as vpn from "./vpn";
@@ -32,8 +37,8 @@ import * as keychain from "./keychain";
 import * as pair from "./pair";
 import * as tunnel from "./tunnel-register";
 import * as tunnelSpawn from "./tunnel-spawn";
-import { checkDocker } from "./docker-check";
-import { downloadAndLaunchDockerInstaller } from "./docker-install";
+import { checkNode } from "./node-check";
+import { installNode } from "./node-install";
 import { installCloudflared } from "./cloudflared-install";
 import { cloneAndInstall, getCloneState, resetCloneState } from "./repo-clone";
 import { initAutoUpdater } from "./auto-update";
@@ -188,8 +193,8 @@ function createTray(): Tray {
 
 ipcMain.handle("backend:start", async () => {
   // Phase 2c — if the user has the auto-connect setting on AND the
-  // VPN is currently down, attempt to bring it up first. The Docker
-  // stack itself doesn't need the VPN to start; what NEEDS the VPN
+  // VPN is currently down, attempt to bring it up first. The backend
+  // process itself doesn't need the VPN to start; what NEEDS the VPN
   // is the upstream calls the api makes once requests arrive (e.g.
   // git.bcn.crealogix.net fetches). But pre-flighting here gives
   // cleaner UX — by the time "Backend: running" lights up, the
@@ -200,14 +205,15 @@ ipcMain.handle("backend:start", async () => {
       await vpn.connect();
       // Don't block on VPN completing — the actual connection can
       // take 5–20s and FortiClient's GUI flow may need user input.
-      // We start Docker in parallel; the user's first integration
-      // call may bounce if the VPN isn't up yet, but that's a
-      // recoverable state (retry the request after VPN connects).
+      // We start the backend in parallel; the user's first
+      // integration call may bounce if the VPN isn't up yet, but
+      // that's a recoverable state (retry the request after VPN
+      // connects).
     }
   }
   const result = await startBackend();
 
-  // Phase 3d + auto-tunnel — after Docker is up:
+  // Phase 3d + auto-tunnel — after the backend is up:
   //   1. spawn cloudflared (TryCloudflare); when it allocates the
   //      *.trycloudflare.com hostname, the onHostname callback wired
   //      below auto-fires tunnel.start(hostname) to register with the
@@ -278,7 +284,7 @@ ipcMain.handle("backend:stop", async () => {
   //   1. clear the tunnel registration (so the Dev Hub catch-all stops
   //      routing to a hostname we're about to take down)
   //   2. kill the cloudflared subprocess (severs the public hostname)
-  //   3. stop Docker
+  //   3. stop the backend process
   // Reversing 1-2 would leave the Dev Hub briefly routing to a dead
   // cloudflared, surfacing "companion_unreachable" toasts to anyone
   // mid-request.
@@ -374,20 +380,21 @@ ipcMain.handle("shell:open-external", async (_event, url: string) => {
 });
 
 // ─── onboarding wizard IPC ───────────────────────────────────────────
-// The first-run wizard needs to verify Docker is on PATH + let the
-// user pick their repo path via a native folder picker. Both are
+// The first-run wizard needs to verify Node.js is on PATH (the backend
+// now runs as a native Node process — see backend-process.ts) + let
+// the user pick their repo path via a native folder picker. Both are
 // scoped to main because the renderer has no file-system access.
 
-ipcMain.handle("docker:check", async () => {
-  return checkDocker();
+ipcMain.handle("node:check", async () => {
+  return checkNode();
 });
 
 ipcMain.handle("cloudflared:check", async () => {
   return tunnelSpawn.check();
 });
 
-ipcMain.handle("docker:install", async () => {
-  return downloadAndLaunchDockerInstaller();
+ipcMain.handle("node:install", async () => {
+  return installNode();
 });
 
 ipcMain.handle("cloudflared:install", async () => {
@@ -488,7 +495,7 @@ app.on("before-quit", () => {
   // Best-effort cleanup, ordered like backend:stop:
   //   1. clear Dev Hub registration
   //   2. kill cloudflared
-  //   3. stop Docker
+  //   3. stop the backend process
   // We don't await any of these — quit shouldn't stall waiting on
   // network calls or subprocess teardown.
   void tunnel.stop();
