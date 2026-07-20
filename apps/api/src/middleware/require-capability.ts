@@ -1,30 +1,30 @@
 /**
- * Route guard: requires an authenticated session whose role grants ALL
- * of the given capabilities. 403 otherwise.
+ * Route guard: requires an authenticated session whose user holds ALL of
+ * the given capabilities. 403 otherwise.
  *
- * Always pair with `requireAuth` (which establishes the session and
- * 401s when it's absent) — this guard only checks authorisation, so the
+ * Always pair with `requireAuth` (which establishes the session and 401s
+ * when it's absent) — this guard only checks authorisation, so the
  * 401-vs-403 split stays correct.
  *
- * Resolution note: the session carries a single PRIMARY role
- * (`session.role`), not the full multi-role list — the same snapshot
- * `requireRole` reads. Capabilities are resolved from that primary role
- * via `resolveCapabilities([role])`. The capability-model migration
- * keeps the most operational role first (admin > manager > qa > dev >
- * …), so a manager's primary role is `manager` and this gate passes for
- * them. The one gap is a user whose primary role isn't the granting one
- * (e.g. an admin who is ALSO a manager); threading the full
- * `roles`/`capabilities` onto the session closes it and is tracked with
- * the M-CAP follow-up. Preferred over `requireRole` for new surfaces
- * because it gates on WHAT the user can do, not which role label they
- * happen to carry.
+ * Resolution: capabilities are computed from the user's FULL role set
+ * (`effectiveCapabilities`), read fresh from the users collection by
+ * `session.userId`. Deliberately NOT from `session.role` (the single
+ * primary-role snapshot `requireRole` reads):
+ *
+ *   - Multi-role correctness: a user who is `admin` AND `manager` has
+ *     `admin` as their primary role, so a primary-role check would deny
+ *     them `manager.team.view` even though they hold the manager role.
+ *   - Freshness: reading the current user doc means a role change takes
+ *     effect on the next request — no re-login to re-mint the session.
+ *
+ * Cost: one indexed user lookup per guarded request. Manager routes hit
+ * the DB anyway, so this is negligible.
  */
 
 import type { NextFunction, Request, Response } from "express";
-import {
-  resolveCapabilities,
-  type Capability,
-} from "@espace-devhub/shared/capabilities";
+import { type Capability } from "@espace-devhub/shared/capabilities";
+import { getUsersCollection } from "../db/collections.js";
+import { effectiveCapabilities } from "../lib/user-roles.js";
 import { HttpError } from "./error-handler.js";
 
 export function requireCapability(...required: Capability[]) {
@@ -33,23 +33,38 @@ export function requireCapability(...required: Capability[]) {
       "requireCapability: at least one capability must be specified",
     );
   }
-  return (req: Request, _res: Response, next: NextFunction): void => {
-    if (!req.session) {
-      // Defensive — `requireAuth` should run first. Treat as auth failure
-      // to keep the 401-vs-403 contract simple.
-      return next(new HttpError(401, "unauthenticated", "Login required."));
+  return async (
+    req: Request,
+    _res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      if (!req.session) {
+        // Defensive — `requireAuth` should run first.
+        return next(new HttpError(401, "unauthenticated", "Login required."));
+      }
+      const users = await getUsersCollection();
+      const user = await users.findOne({
+        _id: req.session.userId,
+        orgId: req.session.orgId,
+      });
+      if (!user) {
+        return next(new HttpError(401, "unauthenticated", "Login required."));
+      }
+      const held = effectiveCapabilities(user);
+      const missing = required.filter((cap) => !held.has(cap));
+      if (missing.length > 0) {
+        return next(
+          new HttpError(
+            403,
+            "forbidden",
+            `Requires capability: ${required.join(", ")}.`,
+          ),
+        );
+      }
+      next();
+    } catch (err) {
+      next(err);
     }
-    const held = resolveCapabilities([req.session.role]);
-    const missing = required.filter((cap) => !held.has(cap));
-    if (missing.length > 0) {
-      return next(
-        new HttpError(
-          403,
-          "forbidden",
-          `Requires capability: ${required.join(", ")}.`,
-        ),
-      );
-    }
-    next();
   };
 }
