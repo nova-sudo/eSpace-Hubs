@@ -25,6 +25,7 @@ import {
   AdminHubConfig,
   AdminUsers,
 } from "@/hubs/admin";
+import { ManagerDashboard, ManagerPlaceholder } from "@/hubs/manager";
 
 /**
  * Map of hubId → React component for the dashboard slot.
@@ -37,7 +38,7 @@ const DASHBOARDS = {
   dev: IntelligencePage,
   qa: QaDashboard,
   admin: AdminDashboard,
-  manager: () => <QaPlaceholder slot="dashboard" />, // placeholder; real UI later
+  manager: ManagerDashboard,
 };
 
 /**
@@ -74,4 +75,19 @@ const ADMIN_SLOT_COMPONENTS = {
 
 export function getAdminSlotComponent(slot) {
   return ADMIN_SLOT_COMPONENTS[slot] ?? null;
+}
+
+/**
+ * Manager-specific page-slot resolver. Mirrors the admin one — the
+ * manager hub's `employees` slot has no counterpart in other hubs, so
+ * its route file (app/[hub]/employees/page.jsx) dispatches through this
+ * map. `employees` is a placeholder until the per-report board UI lands
+ * (P1 of docs/manager-hub-plan.md).
+ */
+const MANAGER_SLOT_COMPONENTS = {
+  employees: () => <ManagerPlaceholder slot="employees" />,
+};
+
+export function getManagerSlotComponent(slot) {
+  return MANAGER_SLOT_COMPONENTS[slot] ?? null;
 }

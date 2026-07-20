@@ -25,6 +25,9 @@ import { cn } from "@/lib/cn";
  */
 const NAV_ITEMS = [
   { slot: "dashboard", subpath: "" },
+  // Manager hub: per-report boards. Filtered out on hubs whose `pages`
+  // map doesn't expose the slot (i.e. every non-manager hub today).
+  { slot: "employees", subpath: "/employees" },
   // "checkin" retired — filling now lives on the Goals page via the per-widget
   // cadence stepper. The /checkin routes redirect to Goals for old bookmarks.
   { slot: "goals", subpath: "/goals" },
@@ -49,6 +52,7 @@ const DEFAULT_LABELS = {
   users: "Users",
   audit: "Audit",
   settings: "Settings",
+  employees: "Employees",
   reviews: "Reviews",
   snapshots: "Snapshots",
 };

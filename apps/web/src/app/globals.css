@@ -128,6 +128,38 @@
 }
 
 /* ─────────────────────────────────────────────────────────────
+   Manager hub skin — warm-white + orange identity.
+   Scoped to the manager hub subtree via [data-hub="manager"]
+   (HubProvider stamps data-hub on its wrapper). Only the accent
+   family + light surfaces are re-coloured; semantic good/warn/bad
+   stay put so state never reads as "brand". Dark keeps the base dark
+   surfaces and just brightens the orange. The no-flash script always
+   sets an explicit data-theme on <html>, so the light/dark scoping
+   below is total.
+   ───────────────────────────────────────────────────────────── */
+[data-hub="manager"] {
+  --accent: #d2540a;
+  --accent-on: #ffffff;
+  --accent-dim: rgba(210, 84, 10, 0.10);
+  --accent-dot: rgba(210, 84, 10, 0.28);
+}
+[data-theme="light"] [data-hub="manager"] {
+  --bg: #fbf7f1;
+  --card: #ffffff;
+  --card-alt: #fdf6ec;
+  --panel: #faf3ea;
+  --panel-2: #f2e7d8;
+  --border: rgba(120, 72, 24, 0.14);
+  --border-strong: rgba(120, 72, 24, 0.26);
+}
+[data-theme="dark"] [data-hub="manager"] {
+  --accent: #ff8a3d;
+  --accent-on: #241403;
+  --accent-dim: rgba(255, 138, 61, 0.16);
+  --accent-dot: rgba(255, 138, 61, 0.34);
+}
+
+/* ─────────────────────────────────────────────────────────────
    Analyst "GLYPH" instrument — the rail is ALWAYS the dark machine
    (constants, not theme-mapped); the workspace beside it follows the
    theme via the tokens above. The emotive face is canvas-drawn in

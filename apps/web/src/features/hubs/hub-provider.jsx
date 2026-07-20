@@ -30,10 +30,12 @@ import { useAvailableHubs } from "./use-available-hubs";
 import { HubContext } from "./hub-context";
 
 function themeStyle(hub) {
-  // Nothing UI is a SINGLE cobalt accent, theme-aware (light/dark) from
-  // globals.css. We deliberately do NOT override --accent per hub anymore —
-  // the old per-hub accents (Dev green, QA orange) fought the cobalt design and
-  // couldn't dark-switch. `--primary` is kept for any non-accent hub references.
+  // Base hubs share the single cobalt accent from globals.css; `--primary`
+  // is exposed here for any non-accent hub references. Hubs that need a full
+  // re-skin (e.g. the Manager hub's warm-white/orange identity) do it via a
+  // `[data-hub="<id>"]` token scope in globals.css — stamped through the
+  // `data-hub` attribute on the wrapper below — which dark-switches cleanly,
+  // unlike the old inline per-hub accents.
   return {
     "--primary": hub.theme.primary,
   };
@@ -86,7 +88,9 @@ export function HubProvider({ hubSlug, children }) {
 
   return (
     <HubContext.Provider value={activeHub}>
-      <div style={themeStyle(activeHub)}>{children}</div>
+      <div data-hub={activeHub.id} style={themeStyle(activeHub)}>
+        {children}
+      </div>
     </HubContext.Provider>
   );
 }
