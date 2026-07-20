@@ -119,10 +119,10 @@ export function AdminUsers() {
         italicWord="org"
         subtitle={
           <>
-            Click a row to edit roles, status, and hub access. Changes take
-            effect on the user&apos;s next request — they don&apos;t need to log
-            out. Self-edits can&apos;t strip your own admin role or disable your
-            own account.
+            Click a row to edit roles, status, hub access, and who they report
+            to. Changes take effect on the user&apos;s next request — they
+            don&apos;t need to log out. Self-edits can&apos;t strip your own
+            admin role or disable your own account.
           </>
         }
         right={
@@ -196,6 +196,7 @@ export function AdminUsers() {
                   setOpenUserId(openUserId === u.id ? null : u.id)
                 }
                 onUpdate={applyUpdate}
+                allUsers={users}
               />
             ))}
           </div>
@@ -234,6 +235,7 @@ function PendingApprovalsSection({ users, openUserId, onExpand, onUpdate, sessio
             expanded={openUserId === u.id}
             onExpand={() => onExpand(u.id)}
             onUpdate={onUpdate}
+            allUsers={users}
           />
         ))}
       </div>
@@ -437,7 +439,7 @@ function SignupCodeRow({ code, onToggle }) {
   );
 }
 
-function UserRow({ user, isSelf, expanded, onExpand, onUpdate }) {
+function UserRow({ user, isSelf, expanded, onExpand, onUpdate, allUsers }) {
   return (
     <div
       className="rounded-[var(--radius-tile)] border bg-card"
@@ -480,13 +482,18 @@ function UserRow({ user, isSelf, expanded, onExpand, onUpdate }) {
       </button>
 
       {expanded ? (
-        <UserEditor user={user} isSelf={isSelf} onUpdate={onUpdate} />
+        <UserEditor
+          user={user}
+          isSelf={isSelf}
+          onUpdate={onUpdate}
+          allUsers={allUsers}
+        />
       ) : null}
     </div>
   );
 }
 
-function UserEditor({ user, isSelf, onUpdate }) {
+function UserEditor({ user, isSelf, onUpdate, allUsers }) {
   // Local edit state — initialised from the canonical user. Saves
   // produce a NEW canonical object via the PATCH response, at which
   // point we lift it up via onUpdate(); the editor stays mounted so
@@ -499,6 +506,7 @@ function UserEditor({ user, isSelf, onUpdate }) {
   );
   const [primaryHub, setPrimaryHub] = useState(user.primaryHub);
   const [engagement, setEngagement] = useState(user.engagement || "espace");
+  const [managerId, setManagerId] = useState(user.managerId ?? null);
   const [saving, setSaving] = useState(false);
 
   // Re-init when the canonical user updates (after a successful save
@@ -510,6 +518,7 @@ function UserEditor({ user, isSelf, onUpdate }) {
     setAllowedHubs(user.allowedHubs);
     setPrimaryHub(user.primaryHub);
     setEngagement(user.engagement || "espace");
+    setManagerId(user.managerId ?? null);
   }, [user]);
 
   const dirty = useMemo(() => {
@@ -519,6 +528,7 @@ function UserEditor({ user, isSelf, onUpdate }) {
     if (!sameArray(allowedHubs, user.allowedHubs)) return true;
     if (primaryHub !== user.primaryHub) return true;
     if (engagement !== (user.engagement || "espace")) return true;
+    if ((managerId ?? null) !== (user.managerId ?? null)) return true;
     return false;
   }, [
     displayName,
@@ -527,12 +537,14 @@ function UserEditor({ user, isSelf, onUpdate }) {
     allowedHubs,
     primaryHub,
     engagement,
+    managerId,
     user.displayName,
     user.roles,
     user.status,
     user.allowedHubs,
     user.primaryHub,
     user.engagement,
+    user.managerId,
   ]);
 
   function toggleRole(roleId) {
@@ -573,6 +585,7 @@ function UserEditor({ user, isSelf, onUpdate }) {
     if (!sameArray(allowedHubs, user.allowedHubs)) patch.allowedHubs = allowedHubs;
     if (primaryHub !== user.primaryHub) patch.primaryHub = primaryHub;
     if (engagement !== (user.engagement || "espace")) patch.engagement = engagement;
+    if ((managerId ?? null) !== (user.managerId ?? null)) patch.managerId = managerId;
 
     const r = await apiPatch(`/admin/users/${user.id}`, patch);
     setSaving(false);
@@ -772,6 +785,30 @@ function UserEditor({ user, isSelf, onUpdate }) {
           >
             <option value="espace">eSpace</option>
             <option value="crealogix">Crealogix</option>
+          </Select>
+        </Field>
+
+        {/* Manager assignment (P5). Sets users.managerId — the report edge
+            the Manager hub reads. Until Zoho populates it, this is how a
+            manager gets a team. Candidates are everyone else in the org;
+            those already holding the manager role are tagged. */}
+        <Field label="Manager">
+          <Select
+            tone="default"
+            value={managerId ?? ""}
+            onChange={(e) => setManagerId(e.target.value || null)}
+            disabled={saving}
+            className="w-full"
+          >
+            <option value="">(no manager)</option>
+            {(allUsers ?? [])
+              .filter((c) => c.id !== user.id)
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.displayName}
+                  {c.roles?.includes("manager") ? " · manager" : ""}
+                </option>
+              ))}
           </Select>
         </Field>
       </div>

@@ -75,6 +75,7 @@ interface PublicUser {
   department: string | null;
   employeeId: string | null;
   level: string | null;
+  managerId: string | null;
   hasPassword: boolean;
   hasTotp: boolean;
   totpEnrolledAt: string | null;
@@ -103,6 +104,7 @@ function toPublicUser(u: User): PublicUser {
     department: u.department ?? null,
     employeeId: u.employeeId ?? null,
     level: u.level ?? null,
+    managerId: u.managerId ? u.managerId.toHexString() : null,
     hasPassword: u.passwordHash !== null,
     hasTotp: u.totpSecret !== null,
     totpEnrolledAt: u.totpEnrolledAt ? u.totpEnrolledAt.toISOString() : null,
@@ -300,6 +302,16 @@ function diffPatch(input: {
   if (patch.engagement !== undefined) {
     recordIfChanged("engagement", patch.engagement, target.engagement ?? "espace");
   }
+  if (patch.managerId !== undefined) {
+    const nextHex = patch.managerId; // string | null
+    const curHex = target.managerId ? target.managerId.toHexString() : null;
+    if (nextHex !== curHex) {
+      // Stored as ObjectId | null; the audit diff keeps the hex/nulls.
+      set.managerId = nextHex ? new ObjectId(nextHex) : null;
+      before.managerId = curHex;
+      after.managerId = nextHex;
+    }
+  }
 
   if (Object.keys(set).length === 0) return null;
   return { set, before, after };
@@ -363,6 +375,29 @@ export async function updateUserHandler(
     });
     if (!target) {
       throw new HttpError(404, "not_found", "User not found in this org.");
+    }
+
+    // P5: a manager must be a real user in the same org, and never the user
+    // themselves.
+    if (patch.managerId) {
+      if (patch.managerId === targetId.toHexString()) {
+        throw new HttpError(
+          400,
+          "validation_error",
+          "A user can't be their own manager.",
+        );
+      }
+      const mgr = await col.findOne({
+        _id: new ObjectId(patch.managerId),
+        orgId: session.orgId,
+      });
+      if (!mgr) {
+        throw new HttpError(
+          400,
+          "validation_error",
+          "Manager not found in this org.",
+        );
+      }
     }
 
     validatePatch({ patch, target, actorUserId: session.userId });

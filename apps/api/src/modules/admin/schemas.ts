@@ -53,6 +53,14 @@ export const updateUserSchema = z.object({
   // Engagement assignment — admin can flip a user between "espace"
   // and "crealogix" (or future values). Omit to leave unchanged.
   engagement: engagementEnum.optional(),
+  // Manager assignment (P5). Hex ObjectId of this user's manager, or null
+  // to clear. The controller validates it references a real user in the
+  // same org and isn't the user themselves.
+  managerId: z
+    .string()
+    .regex(/^[0-9a-f]{24}$/i, "managerId must be a hex ObjectId")
+    .nullable()
+    .optional(),
 });
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 
