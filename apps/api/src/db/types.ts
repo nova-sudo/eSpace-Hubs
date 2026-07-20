@@ -607,6 +607,70 @@ export interface GoalTierVerdict {
   provider: string | null;
 }
 
+// ─── notifications (in-app inbox) ────────────────────────────────────
+
+export type NotificationKind =
+  | "manager_graded"
+  | "goal_approved"
+  | "goal_changes_requested";
+
+export const ALL_NOTIFICATION_KINDS: readonly NotificationKind[] = [
+  "manager_graded",
+  "goal_approved",
+  "goal_changes_requested",
+] as const;
+
+/**
+ * One in-app notification for a recipient (`userId`). Written by
+ * privileged actions (a manager grading a report, approving a BYO goal)
+ * and read via GET /api/v1/notifications. `data` carries a small,
+ * display-only payload (goalId, tier, actor name) so the client can
+ * render + deep-link without extra joins. A 180-day TTL on `createdAt`
+ * keeps the collection bounded — the inbox is a rolling feed, not an
+ * archive.
+ */
+export interface Notification {
+  _id: ObjectId;
+  orgId: ObjectId;
+  /** Recipient. */
+  userId: ObjectId;
+  kind: NotificationKind;
+  title: string;
+  body: string;
+  data: Record<string, unknown> | null;
+  createdAt: Date;
+  /** Actor who triggered it (the manager), or null for system events. */
+  createdBy: ObjectId | null;
+  /** Set when the recipient marks it read; null while unread. */
+  readAt: Date | null;
+}
+
+// ─── manager goal verdicts (a manager's authoritative tier grade) ────
+
+/**
+ * A manager's hand-set achievement tier for one of their report's goals.
+ * Unlike `goal_tier_verdicts` (a 180-day AI CACHE), this is a durable
+ * RECORD: one current verdict per (orgId, subjectUserId, goalId),
+ * upserted on re-grade. It OUTRANKS the AI verdict wherever a goal's tier
+ * is shown — the dev's own badge and the manager's board both prefer it.
+ */
+export interface ManagerGoalVerdict {
+  _id: ObjectId;
+  orgId: ObjectId;
+  /** The engineer being graded. */
+  subjectUserId: ObjectId;
+  goalId: string;
+  tier: GoalTier;
+  /** Manager's rationale shown to the report; may be empty. */
+  note: string;
+  /** The manager who set it. */
+  gradedBy: ObjectId;
+  /** Denormalised manager display name, so readers don't re-join users. */
+  gradedByName: string;
+  gradedAt: Date;
+  updatedAt: Date;
+}
+
 // ─── evidence (user-starred review artifacts) ───────────────────────
 
 /**

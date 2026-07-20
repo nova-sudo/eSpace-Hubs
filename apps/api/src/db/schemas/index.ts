@@ -21,6 +21,8 @@ import { integrationsValidator } from "./integrations.schema.js";
 import { hubConfigsValidator } from "./hub-configs.schema.js";
 import { companionDevicesValidator } from "./companion-devices.schema.js";
 import { companionPairingsValidator } from "./companion-pairings.schema.js";
+import { notificationsValidator } from "./notifications.schema.js";
+import { managerGoalVerdictsValidator } from "./manager-goal-verdicts.schema.js";
 import type { Document } from "mongodb";
 
 export interface CollectionDef {
@@ -46,4 +48,6 @@ export const COLLECTION_DEFS: readonly CollectionDef[] = [
   { name: "hub_configs", validator: hubConfigsValidator },
   { name: "companion_devices", validator: companionDevicesValidator },
   { name: "companion_pairings", validator: companionPairingsValidator },
+  { name: "notifications", validator: notificationsValidator },
+  { name: "manager_goal_verdicts", validator: managerGoalVerdictsValidator },
 ] as const;

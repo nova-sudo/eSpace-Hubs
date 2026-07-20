@@ -6,6 +6,7 @@ import { LogoMark } from "./logo-mark";
 import { ThemeToggle } from "./theme-toggle";
 import { AnalystActivator } from "@/features/analyst";
 import { UserChip } from "@/features/auth";
+import { NotificationBell } from "@/features/notifications";
 import { CompanionIndicator } from "@/features/companion";
 import { useActiveHub, HubSwitcher } from "@/features/hubs";
 import { cn } from "@/lib/cn";
@@ -148,6 +149,8 @@ export function Header() {
         {/* Companion-routing indicator — self-hides when the user has
             no companion. Engagement-agnostic; espace devs see nothing. */}
         <CompanionIndicator />
+        {/* In-app inbox — manager grades (and, later, approvals). */}
+        <NotificationBell />
         {/* Session-aware chip with logout dropdown. */}
         <UserChip />
       </div>

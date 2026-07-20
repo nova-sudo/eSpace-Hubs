@@ -30,6 +30,8 @@ import type {
   GradingVerdict,
   HubConfig,
   Integration,
+  ManagerGoalVerdict,
+  Notification,
   Org,
   Session,
   Snapshot,
@@ -142,6 +144,20 @@ export async function getCompanionPairingsCollection(): Promise<
 > {
   const db = await getDb();
   return db.collection<CompanionPairing>("companion_pairings");
+}
+
+export async function getNotificationsCollection(): Promise<
+  Collection<Notification>
+> {
+  const db = await getDb();
+  return db.collection<Notification>("notifications");
+}
+
+export async function getManagerGoalVerdictsCollection(): Promise<
+  Collection<ManagerGoalVerdict>
+> {
+  const db = await getDb();
+  return db.collection<ManagerGoalVerdict>("manager_goal_verdicts");
 }
 
 // ─── bootstrap: validators + indexes ─────────────────────────────────
@@ -476,8 +492,42 @@ async function ensureIndexes(): Promise<void> {
     },
   ]);
 
+  // ─── Manager hub (P2) collections ─────────────────────────────────
+
+  const notifications = await getNotificationsCollection();
+  await notifications.createIndexes([
+    {
+      // The inbox: "my notifications, newest first" + unread count.
+      key: { orgId: 1, userId: 1, createdAt: -1 },
+      name: "notifications_org_user_created",
+    },
+    {
+      // 180-day TTL — the inbox is a rolling feed, not an archive.
+      key: { createdAt: 1 },
+      expireAfterSeconds: 15_552_000,
+      name: "notifications_ttl",
+    },
+  ]);
+
+  const managerVerdicts = await getManagerGoalVerdictsCollection();
+  await managerVerdicts.createIndexes([
+    {
+      // One current manager verdict per (org, subject, goal). Upsert on
+      // re-grade replaces it — no history bloat.
+      key: { orgId: 1, subjectUserId: 1, goalId: 1 },
+      unique: true,
+      name: "manager_verdicts_org_subject_goal_uniq",
+    },
+    {
+      // Hot path: the dev hydrates "all manager verdicts about me" in one
+      // round-trip; the manager board reads "all for this report".
+      key: { orgId: 1, subjectUserId: 1 },
+      name: "manager_verdicts_org_subject",
+    },
+  ]);
+
   logger.debug(
-    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs, snapshots, grading_verdicts, integrations, hub_configs, companion_devices, companion_pairings",
+    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs, snapshots, grading_verdicts, integrations, hub_configs, companion_devices, companion_pairings, notifications, manager_goal_verdicts",
   );
 }
 

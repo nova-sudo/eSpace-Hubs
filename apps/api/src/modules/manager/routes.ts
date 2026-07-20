@@ -21,6 +21,7 @@ import { requireCapability } from "../../middleware/require-capability.js";
 import {
   getReportGoalHealthHandler,
   listReportsHandler,
+  putGoalVerdictHandler,
 } from "./controller.js";
 
 export const managerRouter: Router = Router();
@@ -37,4 +38,11 @@ managerRouter.get(
   requireAuth(),
   requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
   getReportGoalHealthHandler,
+);
+
+managerRouter.put(
+  "/reports/:userId/goals/:goalId/verdict",
+  requireAuth(),
+  requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
+  putGoalVerdictHandler,
 );

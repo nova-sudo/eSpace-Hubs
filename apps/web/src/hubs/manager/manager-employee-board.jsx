@@ -13,12 +13,14 @@
  * Data: GET /manager/reports/:userId/goal-health.
  */
 
+import { useState } from "react";
 import Link from "next/link";
 import { MonoLabel } from "@/components/ui";
 import { useActiveHubStrict, useHubLink } from "@/features/hubs";
 import { TIER_LABELS } from "@/features/goal-tiers";
 import { readinessLabel } from "@/features/goal-widgets";
 import { useReportHealth } from "./use-report-health";
+import { ManagerGradeDrawer } from "./manager-grade-drawer";
 
 function initials(name) {
   const parts = String(name || "")
@@ -132,7 +134,8 @@ function SummaryStat({ label, value, tone }) {
 export function ManagerEmployeeBoard({ userId }) {
   const hub = useActiveHubStrict();
   const link = useHubLink();
-  const { loading, data, error } = useReportHealth(userId);
+  const [grading, setGrading] = useState(null);
+  const { loading, data, error, refresh } = useReportHealth(userId);
 
   const back = (
     <Link
@@ -258,10 +261,38 @@ export function ManagerEmployeeBoard({ userId }) {
                             {sub}
                             {activity ? ` · updated ${activity}` : ""}
                           </div>
+                          {goal.tier?.source === "manager" ? (
+                            <div
+                              className="mt-1 text-accent"
+                              style={{
+                                fontFamily: "var(--font-mono)",
+                                fontSize: 10,
+                                letterSpacing: "0.04em",
+                              }}
+                            >
+                              ✓ graded by {goal.tier.gradedByName || "you"}
+                            </div>
+                          ) : null}
                         </div>
                         <div className="flex flex-none items-center gap-2">
                           <StatusChip goal={goal} />
                           <TierChip tier={goal.tier} />
+                          <button
+                            type="button"
+                            onClick={() => setGrading(goal)}
+                            className="rounded-md border border-dashed px-2.5 py-1 text-accent transition-colors hover:bg-accent-dim/50"
+                            style={{
+                              borderColor:
+                                "color-mix(in srgb, var(--accent) 45%, var(--border-strong))",
+                              fontFamily: "var(--font-mono)",
+                              fontSize: 10.5,
+                              fontWeight: 700,
+                              letterSpacing: "0.04em",
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            {goal.tier?.source === "manager" ? "Regrade" : "Grade"}
+                          </button>
                         </div>
                       </div>
                     );
@@ -274,10 +305,22 @@ export function ManagerEmployeeBoard({ userId }) {
       </div>
 
       <p className="mt-9 text-[12.5px] leading-[1.6] text-muted-fg">
-        Grading these tiers yourself, judging delegated goals, and approving
-        Build-Your-Own trackers arrive next — see{" "}
+        Your grade overrides the AI tier and notifies the engineer. Judging
+        delegated goals and approving Build-Your-Own trackers arrive next — see{" "}
         <span className="text-fg">docs/manager-hub-plan.md</span>.
       </p>
+
+      <ManagerGradeDrawer
+        open={!!grading}
+        goal={grading}
+        userId={userId}
+        userName={user?.displayName}
+        onClose={() => setGrading(null)}
+        onSaved={() => {
+          setGrading(null);
+          refresh();
+        }}
+      />
     </main>
   );
 }

@@ -44,6 +44,8 @@ import { hubConfigsRouter } from "./modules/hub-configs/routes.js";
 import { onboardingRouter } from "./modules/onboarding/routes.js";
 import { adminRouter } from "./modules/admin/routes.js";
 import { managerRouter } from "./modules/manager/routes.js";
+import { notificationsRouter } from "./modules/notifications/routes.js";
+import { goalVerdictsRouter } from "./modules/goal-verdicts/routes.js";
 import { companionRouter } from "./modules/companion/routes.js";
 
 /**
@@ -140,6 +142,8 @@ export function buildApp(): Application {
   app.use("/api/v1/onboarding", onboardingRouter);
   app.use("/api/v1/admin", adminRouter);
   app.use("/api/v1/manager", managerRouter);
+  app.use("/api/v1/notifications", notificationsRouter);
+  app.use("/api/v1/goal-verdicts", goalVerdictsRouter);
   app.use("/api/v1/companion", companionRouter);
 
   // ─── tail handlers ─────────────────────────────────────────────────

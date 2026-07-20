@@ -23,7 +23,17 @@ import {
   getGoalsCollection,
   getUsersCollection,
 } from "../../db/collections.js";
-import type { ContextAnswer, User, UserRole } from "../../db/types.js";
+import type {
+  ContextAnswer,
+  GoalTier,
+  User,
+  UserRole,
+} from "../../db/types.js";
+import {
+  getManagerVerdictMap,
+  upsertManagerVerdict,
+} from "../../lib/manager-verdicts.js";
+import { createNotification } from "../../lib/notifications.js";
 import { primaryRole } from "../../lib/user-roles.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import {
@@ -104,10 +114,11 @@ interface GoalRow {
   lastActivityAt: string | null;
   tier: {
     tier: string;
-    confidence: string;
+    confidence: string | null;
     reasoning: string;
     gradedAt: string;
     source: "ai" | "manager";
+    gradedByName: string | null;
   } | null;
 }
 
@@ -159,26 +170,28 @@ export async function getReportGoalHealthHandler(
     const { session, target } = await resolveReport(req);
     const scope = { orgId: session.orgId, userId: target._id };
 
-    const [tree, specDocs, ctxDocs, verdictDocs, activity] = await Promise.all([
-      getGoalsCollection().then((c) => c.findOne(scope)),
-      getGoalSpecsCollection().then((c) => c.find(scope).toArray()),
-      getGoalContextCollection().then((c) => c.find(scope).toArray()),
-      getGoalTierVerdictsCollection().then((c) => c.find(scope).toArray()),
-      getGoalInputsCollection().then((c) =>
-        c
-          .aggregate<{ _id: string; count: number; lastTs: Date }>([
-            { $match: scope },
-            {
-              $group: {
-                _id: "$goalId",
-                count: { $sum: 1 },
-                lastTs: { $max: "$ts" },
+    const [tree, specDocs, ctxDocs, verdictDocs, activity, managerVerdictMap] =
+      await Promise.all([
+        getGoalsCollection().then((c) => c.findOne(scope)),
+        getGoalSpecsCollection().then((c) => c.find(scope).toArray()),
+        getGoalContextCollection().then((c) => c.find(scope).toArray()),
+        getGoalTierVerdictsCollection().then((c) => c.find(scope).toArray()),
+        getGoalInputsCollection().then((c) =>
+          c
+            .aggregate<{ _id: string; count: number; lastTs: Date }>([
+              { $match: scope },
+              {
+                $group: {
+                  _id: "$goalId",
+                  count: { $sum: 1 },
+                  lastTs: { $max: "$ts" },
+                },
               },
-            },
-          ])
-          .toArray(),
-      ),
-    ]);
+            ])
+            .toArray(),
+        ),
+        getManagerVerdictMap(session.orgId, target._id),
+      ]);
 
     const specMap = new Map(specDocs.map((s) => [s.goalId, s.spec]));
     const ctxMap = new Map<string, Record<string, ContextAnswer>>(
@@ -215,7 +228,28 @@ export async function getReportGoalHealthHandler(
         const entryCount = act?.count ?? 0;
         const status = deriveStatus(readiness, variant, entryCount > 0);
         const judge = delegatedJudge(spec);
-        const v = verdictMap.get(l2.id) ?? null;
+        const mv = managerVerdictMap.get(l2.id) ?? null;
+        const aiv = verdictMap.get(l2.id) ?? null;
+        // Manager verdict wins over the AI cache wherever a tier shows.
+        const tierOut = mv
+          ? {
+              tier: mv.tier,
+              confidence: null,
+              reasoning: mv.note,
+              gradedAt: mv.gradedAt.toISOString(),
+              source: "manager" as const,
+              gradedByName: mv.gradedByName,
+            }
+          : aiv
+            ? {
+                tier: aiv.verdict.tier,
+                confidence: aiv.verdict.confidence,
+                reasoning: aiv.verdict.reasoning,
+                gradedAt: aiv.gradedAt.toISOString(),
+                source: "ai" as const,
+                gradedByName: null,
+              }
+            : null;
 
         summary.total += 1;
         if (status === "needs_setup" || status === "unclassified") {
@@ -225,10 +259,9 @@ export async function getReportGoalHealthHandler(
         if (status === "no_data") summary.noData += 1;
         if (status === "tracking") summary.tracking += 1;
         if (judge === "manager") summary.delegatedToYou += 1;
-        if (v) {
+        if (tierOut) {
           summary.graded += 1;
-          const t = v.verdict.tier;
-          if (t in summary.byTier) summary.byTier[t] += 1;
+          summary.byTier[tierOut.tier] += 1;
         }
 
         return {
@@ -243,15 +276,7 @@ export async function getReportGoalHealthHandler(
           delegatedJudge: judge,
           entryCount,
           lastActivityAt: act?.lastTs ? act.lastTs.toISOString() : null,
-          tier: v
-            ? {
-                tier: v.verdict.tier,
-                confidence: v.verdict.confidence,
-                reasoning: v.verdict.reasoning,
-                gradedAt: v.gradedAt.toISOString(),
-                source: "ai",
-              }
-            : null,
+          tier: tierOut,
         };
       }),
     }));
@@ -260,6 +285,105 @@ export async function getReportGoalHealthHandler(
       user: toReportCard(target),
       summary,
       groups,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── grade a report's goal (manager-authored tier verdict) ───────────
+
+const TIERS: readonly GoalTier[] = [
+  "not_achieved",
+  "achieved",
+  "over_achieved",
+  "role_model",
+];
+
+const TIER_LABEL: Record<GoalTier, string> = {
+  not_achieved: "Not achieved",
+  achieved: "Achieved",
+  over_achieved: "Over achieved",
+  role_model: "Role model",
+};
+
+/** Map every L2 goal id in a report's tree → its title. */
+function goalTitleMap(
+  tree: { l1s?: { l2s?: { id: string; title: string }[] }[] } | null,
+): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const l1 of tree?.l1s ?? []) {
+    for (const l2 of l1.l2s ?? []) map.set(l2.id, l2.title);
+  }
+  return map;
+}
+
+export async function putGoalVerdictHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { session, target } = await resolveReport(req);
+    const goalId = req.params.goalId;
+
+    const body = (req.body ?? {}) as { tier?: unknown; note?: unknown };
+    if (typeof body.tier !== "string" || !TIERS.includes(body.tier as GoalTier)) {
+      throw new HttpError(
+        400,
+        "invalid_tier",
+        "Pick one of the four achievement tiers.",
+      );
+    }
+    const tier = body.tier as GoalTier;
+    const note = typeof body.note === "string" ? body.note.slice(0, 4_000) : "";
+
+    // The goal must exist in this report's tree — no orphan verdicts.
+    const tree = await getGoalsCollection().then((c) =>
+      c.findOne({ orgId: session.orgId, userId: target._id }),
+    );
+    const titles = goalTitleMap(tree);
+    if (!titles.has(goalId)) {
+      throw new HttpError(404, "not_found", "No such goal for this report.");
+    }
+    const goalTitle = titles.get(goalId) ?? "a goal";
+
+    // The manager's display name, denormalised onto the verdict + notice.
+    const manager = await getUsersCollection().then((c) =>
+      c.findOne({ _id: session.userId, orgId: session.orgId }),
+    );
+    const managerName = manager?.displayName ?? "Your manager";
+
+    await upsertManagerVerdict({
+      orgId: session.orgId,
+      subjectUserId: target._id,
+      goalId,
+      tier,
+      note,
+      gradedBy: session.userId,
+      gradedByName: managerName,
+    });
+
+    // Best-effort inbox notice — must never block the grade itself.
+    void createNotification({
+      orgId: session.orgId,
+      userId: target._id,
+      kind: "manager_graded",
+      title: "Your manager graded a goal",
+      body: `${managerName} set "${goalTitle}" to ${TIER_LABEL[tier]}.`,
+      data: { goalId, tier, goalTitle, gradedByName: managerName, note },
+      createdBy: session.userId,
+    });
+
+    res.json({
+      ok: true,
+      verdict: {
+        goalId,
+        tier,
+        note,
+        gradedByName: managerName,
+        source: "manager",
+      },
     });
   } catch (err) {
     next(err);
