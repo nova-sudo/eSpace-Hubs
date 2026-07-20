@@ -112,9 +112,21 @@ services:
     # Symptom that means you need this: the dashboard surfaces
     # `integration_unreachable: Network error reaching gitlab:
     # fetch failed` while a `curl` from the host succeeds.
+    #
+    # The IP below is a DEFAULT, not a guarantee — corporate VPNs can
+    # (and do) hand different internal IPs to different sessions/users,
+    # so "stable for the life of the engagement" doesn't mean "stable
+    # across everyone's VPN client." If ENOTFOUND/EAI_AGAIN persists
+    # even with this mapping present, re-run `ping` on the host and
+    # override CREALOGIX_GITLAB_IP in a `.env` file next to this
+    # compose file (docker compose loads it automatically) rather than
+    # editing the default here — then `docker compose up -d
+    # --force-recreate api` so the container picks up the new mapping
+    # (a plain `up -d` won't recreate an already-running container
+    # just because an env var it references changed).
     extra_hosts:
       host.docker.internal: host-gateway
-      git.bcn.crealogix.net: 192.168.104.31
+      git.bcn.crealogix.net: ${CREALOGIX_GITLAB_IP:-192.168.104.31}
       # jira.bcn.crealogix.net: 10.x.x.x
       # jenkins.bcn.crealogix.net: 10.x.x.x
     depends_on:
