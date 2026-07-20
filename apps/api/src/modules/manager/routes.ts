@@ -18,7 +18,10 @@ import { Router } from "express";
 import { CAPABILITIES } from "@espace-devhub/shared/capabilities";
 import { requireAuth } from "../../middleware/require-auth.js";
 import { requireCapability } from "../../middleware/require-capability.js";
-import { listReportsHandler } from "./controller.js";
+import {
+  getReportGoalHealthHandler,
+  listReportsHandler,
+} from "./controller.js";
 
 export const managerRouter: Router = Router();
 
@@ -27,4 +30,11 @@ managerRouter.get(
   requireAuth(),
   requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
   listReportsHandler,
+);
+
+managerRouter.get(
+  "/reports/:userId/goal-health",
+  requireAuth(),
+  requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
+  getReportGoalHealthHandler,
 );

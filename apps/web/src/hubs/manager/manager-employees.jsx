@@ -1,21 +1,18 @@
 "use client";
 
 /**
- * Manager Hub — Team overview. Renders at /manager.
+ * Manager Hub — Employees roster. Renders at /[hub]/employees.
  *
- * The manager's landing surface: their direct reports (users whose
- * `managerId` is this manager) as a light roster. Per-report goal
- * boards, tier grading, delegated-goal verdicts, and Build-Your-Own
- * approvals land across P1–P4 (docs/manager-hub-plan.md). This P0 view
- * proves the vertical slice — capability gate → managerId-scoped read →
- * warm-white/orange themed UI.
+ * The list of the manager's direct reports; each opens that report's
+ * goal board (/[hub]/employees/:id). Replaces the P0 placeholder for
+ * this slot.
  *
- * Data: GET /api/v1/manager/reports.
+ * Data: GET /manager/reports.
  */
 
 import Link from "next/link";
 import { MonoLabel, PageHeader } from "@/components/ui";
-import { useActiveHubStrict, useHubLink } from "@/features/hubs";
+import { useHubLink } from "@/features/hubs";
 import { useManagerReports } from "./use-manager-reports";
 
 function initials(name) {
@@ -26,38 +23,21 @@ function initials(name) {
   return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
 }
 
-export function ManagerDashboard() {
-  const hub = useActiveHubStrict();
+export function ManagerEmployees() {
   const link = useHubLink();
   const { loading, reports, error } = useManagerReports();
 
   return (
-    <main className="relative z-[2] mx-auto max-w-5xl px-10 pb-14 pt-9">
+    <main className="relative z-[2] mx-auto max-w-4xl px-10 pb-14 pt-9">
       <PageHeader
-        crumb={`${hub.label} · team`}
-        title="Your team, at a glance."
-        italicWord="glance"
-        subtitle="Your direct reports and where they stand. Goal health, delegated goals, and grading arrive in the next drops."
+        crumb="Employees · pick someone to open their board"
+        title="Every report, in depth."
+        italicWord="depth"
+        subtitle="Open a teammate to see their full goal board and where each goal stands on the achievement tiers."
       />
 
-      <div className="mt-2 grid grid-cols-3 gap-4">
-        <StatCard
-          label="Direct reports"
-          value={loading ? "—" : String(reports.length)}
-          sub={
-            loading ? "loading" : reports.length ? "assigned to you" : "none yet"
-          }
-        />
-        <StatCard label="Goals tracked" value="—" sub="lands with goal health" />
-        <StatCard
-          label="Awaiting your call"
-          value="—"
-          sub="grading + approvals next"
-        />
-      </div>
-
-      <div className="mt-10">
-        <MonoLabel>Roster</MonoLabel>
+      <div className="mt-2">
+        <MonoLabel>Your reports</MonoLabel>
         <div className="mt-3">
           {error ? (
             <EmptyCard>
@@ -70,8 +50,7 @@ export function ManagerDashboard() {
             <EmptyCard>
               No direct reports are assigned to you yet. An admin sets each
               engineer's manager under{" "}
-              <span className="text-fg">User management</span> — once that's in
-              place, your team shows up here.
+              <span className="text-fg">User management</span>.
             </EmptyCard>
           ) : (
             <ul className="grid gap-2">
@@ -117,47 +96,7 @@ export function ManagerDashboard() {
           )}
         </div>
       </div>
-
-      <p className="mt-8 text-[12.5px] leading-[1.6] text-muted-fg">
-        Next: per-report goal boards, tier grading, delegated-goal verdicts, and
-        Build-Your-Own approvals — see{" "}
-        <span className="text-fg">docs/manager-hub-plan.md</span>.
-      </p>
     </main>
-  );
-}
-
-function StatCard({ label, value, sub }) {
-  return (
-    <div
-      className="rounded-md border border-border bg-card p-5"
-      style={{ borderColor: "var(--border-strong)" }}
-    >
-      <div
-        className="uppercase tracking-[0.4px] text-muted-fg"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-      >
-        {label}
-      </div>
-      <div
-        className="mt-2"
-        style={{
-          fontFamily: "var(--font-dot)",
-          fontWeight: 900,
-          fontSize: 34,
-          letterSpacing: "0.5px",
-          lineHeight: 1.05,
-        }}
-      >
-        {value}
-      </div>
-      <div
-        className="mt-1 text-[12px] text-muted-fg"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
-        {sub}
-      </div>
-    </div>
   );
 }
 

@@ -25,7 +25,7 @@ import {
   AdminHubConfig,
   AdminUsers,
 } from "@/hubs/admin";
-import { ManagerDashboard, ManagerPlaceholder } from "@/hubs/manager";
+import { ManagerDashboard, ManagerEmployees } from "@/hubs/manager";
 
 /**
  * Map of hubId → React component for the dashboard slot.
@@ -81,11 +81,11 @@ export function getAdminSlotComponent(slot) {
  * Manager-specific page-slot resolver. Mirrors the admin one — the
  * manager hub's `employees` slot has no counterpart in other hubs, so
  * its route file (app/[hub]/employees/page.jsx) dispatches through this
- * map. `employees` is a placeholder until the per-report board UI lands
- * (P1 of docs/manager-hub-plan.md).
+ * map. `employees` renders the report roster; each row opens a report's
+ * board at /[hub]/employees/:userId.
  */
 const MANAGER_SLOT_COMPONENTS = {
-  employees: () => <ManagerPlaceholder slot="employees" />,
+  employees: ManagerEmployees,
 };
 
 export function getManagerSlotComponent(slot) {
