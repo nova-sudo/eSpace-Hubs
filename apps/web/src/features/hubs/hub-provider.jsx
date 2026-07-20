@@ -38,6 +38,13 @@ function themeStyle(hub) {
   // unlike the old inline per-hub accents.
   return {
     "--primary": hub.theme.primary,
+    // Paint the (possibly per-hub-overridden) surface token as the page
+    // ground. Without this the body — which sits OUTSIDE this [data-hub]
+    // scope — keeps painting the base --bg, so a re-skinned hub's whiter
+    // background never actually showed. min-height keeps it covering the
+    // viewport even on short pages.
+    background: "var(--bg)",
+    minHeight: "100dvh",
   };
 }
 

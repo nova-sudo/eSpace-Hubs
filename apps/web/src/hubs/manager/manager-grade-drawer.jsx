@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { apiPut } from "@/lib/api-client";
 import { TIER_ORDER, TIER_LABELS } from "@/features/goal-tiers";
@@ -39,7 +40,19 @@ export function ManagerGradeDrawer({
     setSaving(false);
   }, [open, goal]);
 
+  // Lock body scroll while the drawer is open — it sits over the page,
+  // not in the flow, so the page underneath shouldn't scroll.
+  useEffect(() => {
+    if (!open) return undefined;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   if (!open || !goal) return null;
+  if (typeof document === "undefined") return null;
 
   const aiSuggested = goal.tier?.source === "ai" ? goal.tier.tier : null;
   const firstName = (userName || "They").split(" ")[0];
@@ -69,7 +82,7 @@ export function ManagerGradeDrawer({
     }
   }
 
-  return (
+  return createPortal(
     <>
       <div
         className="fixed inset-0 z-[60]"
@@ -80,8 +93,9 @@ export function ManagerGradeDrawer({
       <aside
         role="dialog"
         aria-label={`Grade ${goal.title}`}
-        className="fixed bottom-0 right-0 top-0 z-[61] flex w-[min(440px,100vw)] flex-col border-l bg-card"
+        className="fixed right-0 top-0 z-[61] flex w-[min(440px,100vw)] flex-col border-l bg-card"
         style={{
+          height: "100dvh",
           borderColor: "var(--border-strong)",
           boxShadow: "-30px 0 70px -30px rgba(30,15,0,0.5)",
         }}
@@ -257,6 +271,7 @@ export function ManagerGradeDrawer({
           </div>
         </div>
       </aside>
-    </>
+    </>,
+    document.body,
   );
 }

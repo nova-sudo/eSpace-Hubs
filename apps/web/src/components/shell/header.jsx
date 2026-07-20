@@ -149,8 +149,11 @@ export function Header() {
         {/* Light/dark switch — persists to localStorage('espace-theme'),
             which the no-flash script in layout.jsx reads on first paint. */}
         <ThemeToggle />
-        {/* Inverse-themed activator — opens the accent-ground analyst page. */}
-        <AnalystActivator />
+        {/* Inverse-themed activator — opens the accent-ground analyst page.
+            Analysis is the dev goal-classification feature, so gate it on the
+            hub actually exposing the analyst surface (dev only). Without this
+            it leaked "Resume analysis" into manager/qa/admin. */}
+        {hub?.pages?.analyst ? <AnalystActivator /> : null}
         {/* Companion-routing indicator — self-hides when the user has
             no companion. Engagement-agnostic; espace devs see nothing. */}
         <CompanionIndicator />

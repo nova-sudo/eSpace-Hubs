@@ -182,12 +182,17 @@ const MANAGER_HUB = Object.freeze({
   label: "Manager Hub",
   description: "Team-level visibility and employee performance review.",
   theme: freezeTheme({
-    // Cool blue/steel — neither green (dev) nor orange (qa).
-    primary: "#2c4a73",
-    accent: "#3b6aa0",
-    accentSurface: "rgba(59,106,160,0.10)",
+    // Warm white + orange identity — applied via the [data-hub="manager"]
+    // token scope in globals.css (these registry values are informational;
+    // the live accent comes from the CSS tokens).
+    primary: "#7a3d0a",
+    accent: "#d2540a",
+    accentSurface: "rgba(210,84,10,0.10)",
   }),
-  allowedIntegrations: Object.freeze(["gitlab", "jira"]),
+  // Managers read their reports' data server-side; they don't connect
+  // personal provider tokens, so the hub exposes no Integrations surface
+  // (settings hides the tab when this is empty).
+  allowedIntegrations: Object.freeze([]),
   pages: Object.freeze({
     dashboard: "manager:dashboard",
     employees: "manager:employees",

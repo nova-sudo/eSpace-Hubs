@@ -63,15 +63,15 @@ export function HubSwitcher() {
             fontFamily: "var(--font-mono)",
             fontSize: 11,
             borderColor: "var(--border-strong)",
-            background: active.theme.accentSurface,
-            color: active.theme.accent,
+            background: "var(--accent-dim)",
+            color: "var(--accent)",
           }}
         >
           <span
             className="grid h-4 w-4 place-items-center rounded-sm font-bold"
             style={{
-              background: active.theme.accent,
-              color: "#ffffff",
+              background: "var(--accent)",
+              color: "var(--accent-on)",
               fontSize: 9,
             }}
           >
@@ -116,8 +116,8 @@ export function HubSwitcher() {
                 <span
                   className="grid h-5 w-5 place-items-center rounded-sm font-bold"
                   style={{
-                    background: hub.theme.accentSurface,
-                    color: hub.theme.accent,
+                    background: isActive ? "var(--accent-dim)" : "var(--panel-2)",
+                    color: isActive ? "var(--accent)" : "var(--muted-fg)",
                     fontSize: 10,
                   }}
                 >
@@ -138,7 +138,7 @@ export function HubSwitcher() {
               {isActive ? (
                 <span
                   className="uppercase tracking-[0.4px]"
-                  style={{ fontSize: 9.5, color: hub.theme.accent }}
+                  style={{ fontSize: 9.5, color: "var(--accent)" }}
                 >
                   ● current
                 </span>
