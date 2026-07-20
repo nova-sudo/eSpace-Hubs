@@ -25,7 +25,11 @@ import {
   AdminHubConfig,
   AdminUsers,
 } from "@/hubs/admin";
-import { ManagerDashboard, ManagerEmployees } from "@/hubs/manager";
+import {
+  ManagerDashboard,
+  ManagerEmployees,
+  ManagerDelegated,
+} from "@/hubs/manager";
 
 /**
  * Map of hubId → React component for the dashboard slot.
@@ -86,6 +90,7 @@ export function getAdminSlotComponent(slot) {
  */
 const MANAGER_SLOT_COMPONENTS = {
   employees: ManagerEmployees,
+  delegated: ManagerDelegated,
 };
 
 export function getManagerSlotComponent(slot) {

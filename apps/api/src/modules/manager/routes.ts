@@ -20,6 +20,7 @@ import { requireAuth } from "../../middleware/require-auth.js";
 import { requireCapability } from "../../middleware/require-capability.js";
 import {
   getReportGoalHealthHandler,
+  listDelegatedQueueHandler,
   listReportsHandler,
   putGoalVerdictHandler,
 } from "./controller.js";
@@ -38,6 +39,13 @@ managerRouter.get(
   requireAuth(),
   requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
   getReportGoalHealthHandler,
+);
+
+managerRouter.get(
+  "/delegated-queue",
+  requireAuth(),
+  requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
+  listDelegatedQueueHandler,
 );
 
 managerRouter.put(

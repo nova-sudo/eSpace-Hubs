@@ -31,6 +31,7 @@ import type {
 } from "../../db/types.js";
 import {
   getManagerVerdictMap,
+  listManagerVerdictsForSubjects,
   upsertManagerVerdict,
 } from "../../lib/manager-verdicts.js";
 import { createNotification } from "../../lib/notifications.js";
@@ -385,6 +386,122 @@ export async function putGoalVerdictHandler(
         source: "manager",
       },
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── delegated queue (goals across all reports awaiting your verdict) ─
+
+interface DelegatedItem {
+  user: {
+    id: string;
+    displayName: string;
+    role: UserRole;
+    department: string | null;
+  };
+  goal: { id: string; title: string; category: string };
+  kindLabel: string | null;
+  note: string;
+  verdict: { tier: string; gradedAt: string; gradedByName: string } | null;
+}
+
+export async function listDelegatedQueueHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const orgId = session.orgId;
+
+    const users = await getUsersCollection();
+    const reports = await users
+      .find({ orgId, managerId: session.userId, status: { $ne: "disabled" } })
+      .toArray();
+    if (reports.length === 0) {
+      res.json({ items: [] });
+      return;
+    }
+    const reportIds = reports.map((u) => u._id);
+    const reportMap = new Map(reports.map((u) => [u._id.toHexString(), u]));
+
+    const [specDocs, treeDocs, verdictDocs] = await Promise.all([
+      getGoalSpecsCollection().then((c) =>
+        c
+          .find({
+            orgId,
+            userId: { $in: reportIds },
+            "spec.delegated.delegated": true,
+            "spec.delegated.judge": "manager",
+          })
+          .toArray(),
+      ),
+      getGoalsCollection().then((c) =>
+        c.find({ orgId, userId: { $in: reportIds } }).toArray(),
+      ),
+      listManagerVerdictsForSubjects(orgId, reportIds),
+    ]);
+
+    // (userId:goalId) → goal title/category, from each report's tree.
+    const goalMeta = new Map<string, { title: string; category: string }>();
+    for (const t of treeDocs) {
+      const uid = t.userId.toHexString();
+      for (const l1 of t.l1s ?? []) {
+        for (const l2 of l1.l2s ?? []) {
+          goalMeta.set(`${uid}:${l2.id}`, {
+            title: l2.title,
+            category: l2.category,
+          });
+        }
+      }
+    }
+    const verdictMap = new Map(
+      verdictDocs.map((v) => [`${v.subjectUserId.toHexString()}:${v.goalId}`, v]),
+    );
+
+    const items: DelegatedItem[] = [];
+    for (const s of specDocs) {
+      const uid = s.userId.toHexString();
+      const user = reportMap.get(uid);
+      const meta = goalMeta.get(`${uid}:${s.goalId}`);
+      if (!user || !meta) continue; // orphan spec (goal removed)
+      const dnote = (s.spec.delegated as { note?: unknown } | null | undefined)
+        ?.note;
+      const v = verdictMap.get(`${uid}:${s.goalId}`) ?? null;
+      items.push({
+        user: {
+          id: uid,
+          displayName: user.displayName,
+          role: primaryRole(user),
+          department: user.department ?? null,
+        },
+        goal: { id: s.goalId, title: meta.title, category: meta.category },
+        kindLabel: specKindLabel(s.spec),
+        note: typeof dnote === "string" ? dnote : "",
+        verdict: v
+          ? {
+              tier: v.tier,
+              gradedAt: v.gradedAt.toISOString(),
+              gradedByName: v.gradedByName,
+            }
+          : null,
+      });
+    }
+
+    // Ungraded first (need your call), then by engineer, then goal.
+    items.sort((a, b) => {
+      const av = a.verdict ? 1 : 0;
+      const bv = b.verdict ? 1 : 0;
+      if (av !== bv) return av - bv;
+      const n = a.user.displayName.localeCompare(b.user.displayName);
+      return n !== 0 ? n : a.goal.title.localeCompare(b.goal.title);
+    });
+
+    res.json({ items });
   } catch (err) {
     next(err);
   }

@@ -6,4 +6,5 @@
 export { ManagerDashboard } from "./manager-dashboard.jsx";
 export { ManagerEmployees } from "./manager-employees.jsx";
 export { ManagerEmployeeBoard } from "./manager-employee-board.jsx";
+export { ManagerDelegated } from "./manager-delegated.jsx";
 export { ManagerPlaceholder } from "./manager-placeholder.jsx";

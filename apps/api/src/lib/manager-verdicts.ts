@@ -66,3 +66,13 @@ export async function listManagerVerdictsForSubject(
   const col = await getManagerGoalVerdictsCollection();
   return col.find({ orgId, subjectUserId }).toArray();
 }
+
+/** All manager verdicts across a set of subjects (the delegated queue). */
+export async function listManagerVerdictsForSubjects(
+  orgId: ObjectId,
+  subjectUserIds: ObjectId[],
+): Promise<ManagerGoalVerdict[]> {
+  if (subjectUserIds.length === 0) return [];
+  const col = await getManagerGoalVerdictsCollection();
+  return col.find({ orgId, subjectUserId: { $in: subjectUserIds } }).toArray();
+}
