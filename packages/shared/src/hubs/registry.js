@@ -68,6 +68,7 @@ export const PAGE_SLOTS = Object.freeze([
   "team",
   "employees",
   "delegated",
+  "approvals",
 ]);
 
 // ─── hub definitions ─────────────────────────────────────────────────
@@ -191,6 +192,7 @@ const MANAGER_HUB = Object.freeze({
     dashboard: "manager:dashboard",
     employees: "manager:employees",
     delegated: "manager:delegated",
+    approvals: "manager:approvals",
     settings: "manager:settings",
   }),
   widgets: Object.freeze([

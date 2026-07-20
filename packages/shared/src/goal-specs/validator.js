@@ -273,6 +273,36 @@ function validateDelegated(delegated, errors) {
   return out;
 }
 
+const APPROVAL_STATUSES = ["pending", "approved", "rejected"];
+
+/**
+ * Validate the optional `approval` block — the manager-approval gate for
+ * COMPOSED "Build Your Own" trackers. Preserved verbatim so it round-trips
+ * through the client saveSpec + the server PUT (both run validateSpec).
+ * Absent (or malformed) → null, so non-BYO specs serialise byte-identically.
+ */
+function validateApproval(approval) {
+  if (approval == null || !isObject(approval)) return null;
+  if (!APPROVAL_STATUSES.includes(approval.status)) return null;
+  const out = { status: approval.status };
+  if (typeof approval.submittedAt === "number" && approval.submittedAt > 0) {
+    out.submittedAt = approval.submittedAt;
+  }
+  if (isNonEmptyString(approval.reviewedBy)) {
+    out.reviewedBy = approval.reviewedBy.trim();
+  }
+  if (isNonEmptyString(approval.reviewedByName)) {
+    out.reviewedByName = approval.reviewedByName.trim();
+  }
+  if (typeof approval.reviewedAt === "number" && approval.reviewedAt > 0) {
+    out.reviewedAt = approval.reviewedAt;
+  }
+  if (isNonEmptyString(approval.note)) {
+    out.note = approval.note.trim().slice(0, 2000);
+  }
+  return out;
+}
+
 /**
  * Validate a SCORECARD spec's `scorecard` block.
  *
@@ -677,6 +707,7 @@ export function validateSpec(obj) {
   const delegated = validateDelegated(obj.delegated, errors);
   const tiers = validateTiers(obj.tiers);
   const tierScale = validateTierScale(obj.tierScale);
+  const approval = validateApproval(obj.approval);
 
   if (errors.length > 0) return { ok: false, errors };
 
@@ -710,6 +741,9 @@ export function validateSpec(obj) {
     // CODE_RUBRIC specs. Optional boolean, false-by-default — kept
     // as undefined when not set so older specs serialise identically.
     ...(obj.firstReviewOnly === true ? { firstReviewOnly: true } : {}),
+    // P4: manager-approval gate for COMPOSED "Build Your Own" trackers.
+    // Absent for every other spec, so they serialise byte-identically.
+    ...(approval ? { approval } : {}),
     classifiedAt:
       typeof obj.classifiedAt === "number" && obj.classifiedAt > 0
         ? obj.classifiedAt

@@ -506,3 +506,208 @@ export async function listDelegatedQueueHandler(
     next(err);
   }
 }
+
+// ─── BYO approvals (Build-Your-Own trackers pending your approval) ────
+
+interface ApprovalItem {
+  user: {
+    id: string;
+    displayName: string;
+    role: UserRole;
+    department: string | null;
+  };
+  goal: { id: string; title: string; category: string };
+  submittedAt: number | null;
+  cadence: string | null;
+  fields: { kind: string; label: string }[];
+  tiers: Record<string, string> | null;
+}
+
+export async function listApprovalsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const orgId = session.orgId;
+
+    const users = await getUsersCollection();
+    const reports = await users
+      .find({ orgId, managerId: session.userId, status: { $ne: "disabled" } })
+      .toArray();
+    if (reports.length === 0) {
+      res.json({ items: [] });
+      return;
+    }
+    const reportIds = reports.map((u) => u._id);
+    const reportMap = new Map(reports.map((u) => [u._id.toHexString(), u]));
+
+    const [specDocs, treeDocs] = await Promise.all([
+      getGoalSpecsCollection().then((c) =>
+        c
+          .find({
+            orgId,
+            userId: { $in: reportIds },
+            "spec.approval.status": "pending",
+          })
+          .toArray(),
+      ),
+      getGoalsCollection().then((c) =>
+        c.find({ orgId, userId: { $in: reportIds } }).toArray(),
+      ),
+    ]);
+
+    const goalMeta = new Map<string, { title: string; category: string }>();
+    for (const t of treeDocs) {
+      const uid = t.userId.toHexString();
+      for (const l1 of t.l1s ?? []) {
+        for (const l2 of l1.l2s ?? []) {
+          goalMeta.set(`${uid}:${l2.id}`, {
+            title: l2.title,
+            category: l2.category,
+          });
+        }
+      }
+    }
+
+    const items: ApprovalItem[] = [];
+    for (const s of specDocs) {
+      const uid = s.userId.toHexString();
+      const user = reportMap.get(uid);
+      const meta = goalMeta.get(`${uid}:${s.goalId}`);
+      if (!user || !meta) continue;
+      const spec = s.spec;
+      const approval = spec.approval as { submittedAt?: unknown } | undefined;
+      const composed = spec.composed as { cadence?: unknown } | undefined;
+      const rawFields = Array.isArray(spec.fields) ? spec.fields : [];
+      const fields = rawFields
+        .map((f) => {
+          const o =
+            f && typeof f === "object" ? (f as Record<string, unknown>) : {};
+          return {
+            kind: typeof o.kind === "string" ? o.kind : "",
+            label: typeof o.label === "string" ? o.label : "",
+          };
+        })
+        .slice(0, 10);
+      const tiersObj =
+        spec.tiers && typeof spec.tiers === "object"
+          ? (spec.tiers as Record<string, unknown>)
+          : null;
+      const tiers = tiersObj
+        ? (Object.fromEntries(
+            Object.entries(tiersObj).filter(([, v]) => typeof v === "string"),
+          ) as Record<string, string>)
+        : null;
+
+      items.push({
+        user: {
+          id: uid,
+          displayName: user.displayName,
+          role: primaryRole(user),
+          department: user.department ?? null,
+        },
+        goal: { id: s.goalId, title: meta.title, category: meta.category },
+        submittedAt:
+          typeof approval?.submittedAt === "number"
+            ? approval.submittedAt
+            : null,
+        cadence: typeof composed?.cadence === "string" ? composed.cadence : null,
+        fields,
+        tiers,
+      });
+    }
+
+    items.sort(
+      (a, b) =>
+        (a.submittedAt ?? 0) - (b.submittedAt ?? 0) ||
+        a.user.displayName.localeCompare(b.user.displayName),
+    );
+
+    res.json({ items });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function putApprovalDecisionHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { session, target } = await resolveReport(req);
+    const goalId = req.params.goalId;
+
+    const body = (req.body ?? {}) as { decision?: unknown; note?: unknown };
+    if (body.decision !== "approve" && body.decision !== "request_changes") {
+      throw new HttpError(
+        400,
+        "invalid_decision",
+        "Decision must be approve or request_changes.",
+      );
+    }
+    const approved = body.decision === "approve";
+    const note = typeof body.note === "string" ? body.note.slice(0, 2_000) : "";
+
+    const specs = await getGoalSpecsCollection();
+    const doc = await specs.findOne({
+      orgId: session.orgId,
+      userId: target._id,
+      goalId,
+    });
+    if (!doc) {
+      throw new HttpError(404, "not_found", "No such goal for this report.");
+    }
+    const existing =
+      (doc.spec.approval as { submittedAt?: unknown } | undefined) ?? {};
+
+    const manager = await getUsersCollection().then((c) =>
+      c.findOne({ _id: session.userId, orgId: session.orgId }),
+    );
+    const managerName = manager?.displayName ?? "Your manager";
+
+    const approval: Record<string, unknown> = {
+      status: approved ? "approved" : "rejected",
+      reviewedBy: session.userId.toHexString(),
+      reviewedByName: managerName,
+      reviewedAt: Date.now(),
+    };
+    if (typeof existing.submittedAt === "number") {
+      approval.submittedAt = existing.submittedAt;
+    }
+    if (note) approval.note = note;
+
+    await specs.updateOne(
+      { orgId: session.orgId, userId: target._id, goalId },
+      { $set: { "spec.approval": approval } },
+    );
+
+    const tree = await getGoalsCollection().then((c) =>
+      c.findOne({ orgId: session.orgId, userId: target._id }),
+    );
+    const goalTitle = goalTitleMap(tree).get(goalId) ?? "your goal";
+
+    void createNotification({
+      orgId: session.orgId,
+      userId: target._id,
+      kind: approved ? "goal_approved" : "goal_changes_requested",
+      title: approved
+        ? "Your goal was approved"
+        : "Your manager requested changes",
+      body: approved
+        ? `${managerName} approved "${goalTitle}" — it's live now.`
+        : `${managerName} asked for changes to "${goalTitle}" before it goes live.`,
+      data: { goalId, goalTitle, decision: body.decision, note },
+      createdBy: session.userId,
+    });
+
+    res.json({ ok: true, status: approval.status });
+  } catch (err) {
+    next(err);
+  }
+}

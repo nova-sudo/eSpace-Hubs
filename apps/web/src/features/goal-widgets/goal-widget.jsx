@@ -28,6 +28,7 @@ import { WidgetShell } from "./widget-shell";
 import { WidgetControlsProvider } from "./widget-controls-context";
 import { resolveWidget } from "./registry";
 import { DelegatedCard } from "./state-shells/delegated-card";
+import { PendingApprovalCard } from "./state-shells/pending-approval-card";
 import { UntrackableCard } from "./state-shells/untrackable-card";
 import { ContextCollector } from "./state-shells/context-collector";
 import { ComposeWidgetModal } from "./compose-widget-modal";
@@ -123,6 +124,25 @@ export function GoalWidget({
         onRetry={onRetry}
         onClearUntrackable={() => clearUntrackable(spec)}
       />
+    );
+  }
+
+  // ── State 0.5 ── Build-Your-Own tracker awaiting (or sent back by) manager
+  // approval. Read-only until approved; "revise" re-opens the compose modal,
+  // which resubmits it as pending.
+  if (spec.approval?.status === "pending" || spec.approval?.status === "rejected") {
+    return (
+      <>
+        <PendingApprovalCard
+          spec={spec}
+          goal={goal}
+          variant={variant}
+          className={className}
+          onRetry={onRetry}
+          onRevise={() => setComposeOpen(true)}
+        />
+        {composeModal}
+      </>
     );
   }
 

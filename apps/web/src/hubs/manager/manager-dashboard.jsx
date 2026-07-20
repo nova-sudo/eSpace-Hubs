@@ -18,6 +18,7 @@ import { MonoLabel, PageHeader } from "@/components/ui";
 import { useActiveHubStrict, useHubLink } from "@/features/hubs";
 import { useManagerReports } from "./use-manager-reports";
 import { useDelegatedQueue } from "./use-delegated-queue";
+import { useApprovalsQueue } from "./use-approvals-queue";
 
 function initials(name) {
   const parts = String(name || "")
@@ -32,7 +33,10 @@ export function ManagerDashboard() {
   const link = useHubLink();
   const { loading, reports, error } = useManagerReports();
   const { items: delegated, loading: delLoading } = useDelegatedQueue();
+  const { items: approvals, loading: apprLoading } = useApprovalsQueue();
   const pendingDelegated = delegated.filter((d) => !d.verdict).length;
+  const awaiting = pendingDelegated + approvals.length;
+  const awaitingLoading = delLoading || apprLoading;
 
   return (
     <main className="relative z-[2] mx-auto max-w-5xl px-10 pb-14 pt-9">
@@ -54,12 +58,12 @@ export function ManagerDashboard() {
         <StatCard label="Goals tracked" value="—" sub="lands with goal health" />
         <StatCard
           label="Awaiting your call"
-          value={delLoading ? "—" : String(pendingDelegated)}
+          value={awaitingLoading ? "—" : String(awaiting)}
           sub={
-            delLoading
+            awaitingLoading
               ? "loading"
-              : pendingDelegated
-                ? "delegated goals to grade"
+              : awaiting
+                ? `${pendingDelegated} delegated · ${approvals.length} approvals`
                 : "nothing pending"
           }
         />

@@ -29,6 +29,7 @@ import {
   ManagerDashboard,
   ManagerEmployees,
   ManagerDelegated,
+  ManagerApprovals,
 } from "@/hubs/manager";
 
 /**
@@ -91,6 +92,7 @@ export function getAdminSlotComponent(slot) {
 const MANAGER_SLOT_COMPONENTS = {
   employees: ManagerEmployees,
   delegated: ManagerDelegated,
+  approvals: ManagerApprovals,
 };
 
 export function getManagerSlotComponent(slot) {

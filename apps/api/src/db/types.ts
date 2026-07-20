@@ -611,11 +611,13 @@ export interface GoalTierVerdict {
 
 export type NotificationKind =
   | "manager_graded"
+  | "goal_submitted"
   | "goal_approved"
   | "goal_changes_requested";
 
 export const ALL_NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "manager_graded",
+  "goal_submitted",
   "goal_approved",
   "goal_changes_requested",
 ] as const;

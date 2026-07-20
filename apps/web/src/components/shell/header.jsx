@@ -31,6 +31,7 @@ const NAV_ITEMS = [
   // non-manager hub today).
   { slot: "employees", subpath: "/employees" },
   { slot: "delegated", subpath: "/delegated" },
+  { slot: "approvals", subpath: "/approvals" },
   // "checkin" retired — filling now lives on the Goals page via the per-widget
   // cadence stepper. The /checkin routes redirect to Goals for old bookmarks.
   { slot: "goals", subpath: "/goals" },
@@ -57,6 +58,7 @@ const DEFAULT_LABELS = {
   settings: "Settings",
   employees: "Employees",
   delegated: "Delegated",
+  approvals: "Approvals",
   reviews: "Reviews",
   snapshots: "Snapshots",
 };

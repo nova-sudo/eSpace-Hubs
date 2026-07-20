@@ -28,7 +28,12 @@ export const notificationsValidator: Document = {
       orgId: { bsonType: "objectId" },
       userId: { bsonType: "objectId" },
       kind: {
-        enum: ["manager_graded", "goal_approved", "goal_changes_requested"],
+        enum: [
+          "manager_graded",
+          "goal_submitted",
+          "goal_approved",
+          "goal_changes_requested",
+        ],
       },
       title: { bsonType: "string", minLength: 1, maxLength: 200 },
       body: { bsonType: "string", maxLength: 2_000 },

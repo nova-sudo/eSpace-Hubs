@@ -257,6 +257,15 @@ export interface SpecComposed {
   prompt?: string;
 }
 
+export interface SpecApproval {
+  status: "pending" | "approved" | "rejected";
+  submittedAt?: number;
+  reviewedBy?: string;
+  reviewedByName?: string;
+  reviewedAt?: number;
+  note?: string;
+}
+
 export interface ValidatedSpec {
   schemaVersion: number;
   goalId: string;
@@ -280,5 +289,7 @@ export interface ValidatedSpec {
    * rubric. null when the goal has no gradeable tiers.
    */
   tiers: SpecTiers | null;
+  /** P4: manager-approval gate for COMPOSED "Build Your Own" trackers. */
+  approval?: SpecApproval | null;
   classifiedAt: number;
 }
