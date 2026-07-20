@@ -31,16 +31,24 @@ does not. Confirmed against the code:
 | A notifications system | None — only transient `sonner` toasts |
 | A server-side capability guard | Only `requireRole(...)` (primary-role snapshot) exists |
 
-## PROPOSED decisions — confirm before P2
+## Decisions (confirmed)
 
 1. **Grading model:** a manager verdict **overrides** the AI tier; the AI grade
-   pre-fills as a suggestion the manager can accept or change. (Alt: coexist /
-   manager-is-sole-grader.)
+   pre-fills as a suggestion the manager can accept or change. ✅ shipped (P2).
 2. **BYO approval:** **hard gate** — a composed tracker enters `pending` and is
-   not active until approved. (Alt: soft gate / gate all custom specs.)
+   not active until approved. **Read-only while pending**; **re-approve on
+   edit** (any recompose resubmits). ✅ shipped (P4).
 3. **Team assignment (pre-Zoho):** **admin assigns** `managerId` via the
-   existing admin user editor. (Alt: manager self-selects / both.)
-4. **Notifications:** in-app bell + inbox for v1; no email.
+   existing admin user editor. ⏳ P5 (the last enablement piece).
+4. **Notifications:** in-app bell + inbox for v1; no email. ✅ shipped (P2).
+
+## Status
+
+`docs → P0 → P1 → P2a → P2b → P3 → P4a → P4b`, every commit built + tested
+green. Features ①②③④ are all implemented. **P5 (manager↔report assignment)
+is the one remaining piece** — until an admin can set `users.managerId`, the
+hub has no reports to show, so this is what makes the whole thing usable
+pre-Zoho.
 
 ## The four features → concrete build
 
