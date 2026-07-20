@@ -35,6 +35,13 @@ import {
   subscribeGoalTiers,
 } from "./goal-tier-store";
 import {
+  hydrateManagerVerdicts,
+  readManagerVerdict,
+  subscribeManagerVerdicts,
+  getManagerVerdictsSnapshot,
+  getManagerVerdictsServerSnapshot,
+} from "./manager-verdict-store";
+import {
   getGoalLiveReadingsServerSnapshot,
   getGoalLiveReadingsSnapshot,
   readGoalLiveReading,
@@ -536,11 +543,20 @@ export function useGoalTier(goalId, spec) {
     getGoalTiersSnapshot,
     getGoalTiersServerSnapshot,
   );
-  // One-shot: seed the local cache from the durable server store so a fresh
+  // Manager verdicts are authoritative — they outrank the AI cache. Subscribe
+  // so a hydrated/updated grade re-renders, then read this goal's verdict.
+  useSyncExternalStore(
+    subscribeManagerVerdicts,
+    getManagerVerdictsSnapshot,
+    getManagerVerdictsServerSnapshot,
+  );
+  const managerVerdict = readManagerVerdict(goalId);
+  // One-shot: seed the local caches from the durable server stores so a fresh
   // device / cleared localStorage doesn't re-grade unchanged goals. Self-guarded
   // — every mounted badge calls it, but only the first request goes out.
   useEffect(() => {
     hydrateGoalTiers();
+    hydrateManagerVerdicts();
   }, []);
   const { snapshots } = useSnapshots();
   const { entries } = useGoalInputs(goalId);
@@ -692,6 +708,7 @@ export function useGoalTier(goalId, spec) {
     if (!tiers && !tierScale) return;
     if (!inputsHydrated) return;
     if (needsSetup) return; // not ready — don't grade (and don't spend an AI call)
+    if (managerVerdict) return; // manager grade is authoritative — skip AI grading
 
     // 1. Deterministic numeric grade — compare reading to thresholds, no AI.
     //    Instant, free, always consistent with the displayed number.
@@ -741,7 +758,25 @@ export function useGoalTier(goalId, spec) {
     // permanent — the throttle gate above makes the extra re-checks cheap
     // no-ops once the goal is graded for the day.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [goalId, key, criteriaKey, inputsHydrated, needsSetup, tiersTick]);
+  }, [goalId, key, criteriaKey, inputsHydrated, needsSetup, tiersTick, managerVerdict]);
+
+  // Manager verdict wins — authoritative, overrides the AI/deterministic
+  // verdict AND the consistency cap. A dev can't self-regrade over it.
+  if (managerVerdict) {
+    return {
+      hasTiers: true,
+      tiers,
+      verdict: {
+        tier: managerVerdict.tier,
+        reasoning: managerVerdict.note || "",
+        source: "manager",
+        gradedByName: managerVerdict.gradedByName || "",
+      },
+      loading: false,
+      consistency,
+      regrade: () => {},
+    };
+  }
 
   const stored = readGoalTier(goalId);
   // A not-ready goal reports "pending setup" regardless of any cached verdict
@@ -808,6 +843,10 @@ export function useGoalTier(goalId, spec) {
  * arrives. NUMERIC goals are graded inline, always current with the data.
  */
 export function readCappedGoalTier(goalId, spec, entries, lockedKeys, snapReading) {
+  // Manager verdict wins — authoritative, overrides AI/deterministic + cap.
+  const mgr = readManagerVerdict(goalId);
+  if (mgr) return { tier: mgr.tier, reasoning: mgr.note || "", source: "manager" };
+
   const isScorecard = spec?.widget === SPEC_KINDS.SCORECARD;
   const tierScale = isScorecard ? null : spec?.tierScale || null;
 

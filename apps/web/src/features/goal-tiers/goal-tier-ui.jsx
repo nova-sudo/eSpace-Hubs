@@ -68,7 +68,11 @@ export function GoalTierBadge({ goalId, spec }) {
   const title =
     `${TIER_LABELS[verdict.tier]}` +
     (verdict.reasoning ? ` — ${verdict.reasoning}` : "") +
-    (verdict.confidence === "low" ? " (low confidence)" : "");
+    (verdict.source === "manager"
+      ? ` · Graded by ${verdict.gradedByName || "your manager"}`
+      : verdict.confidence === "low"
+        ? " (low confidence)"
+        : "");
   return (
     <span
       className="inline-flex shrink-0 items-center rounded-[var(--radius-pill)] px-1.5 py-px font-bold uppercase tracking-[0.3px]"
@@ -144,6 +148,7 @@ export function GoalTierLadder({ spec, variant = "light" }) {
           style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: muted }}
         >
           Achievement tier
+          {verdict?.source === "manager" ? " · manager-graded" : ""}
           {spec?.tiersLocked ? " · 🔒" : ""}
           {(loading && !verdict) || regrading ? " · grading…" : ""}
         </span>
@@ -237,7 +242,20 @@ export function GoalTierLadder({ spec, variant = "light" }) {
           );
         })}
       </div>
-      {verdict?.reasoning ? (
+      {verdict?.source === "manager" ? (
+        <div
+          className="mt-1.5"
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 9.5,
+            color: muted,
+            lineHeight: 1.4,
+          }}
+        >
+          Graded by {verdict.gradedByName || "your manager"}
+          {verdict.reasoning ? ` — ${verdict.reasoning}` : ""}
+        </div>
+      ) : verdict?.reasoning ? (
         <div
           className="mt-1.5"
           style={{

@@ -39,6 +39,10 @@ import {
   subscribeGoalTiers,
   getGoalTiersSnapshot,
   getGoalTiersServerSnapshot,
+  hydrateManagerVerdicts,
+  subscribeManagerVerdicts,
+  getManagerVerdictsSnapshot,
+  getManagerVerdictsServerSnapshot,
   TIER_ORDER,
 } from "@/features/goal-tiers";
 import {
@@ -103,11 +107,20 @@ export function useGoalHealth(groupedItems) {
     getGoalTiersSnapshot,
     getGoalTiersServerSnapshot,
   );
+  // Manager verdicts outrank the AI tier in readCappedGoalTier — subscribe so
+  // the carousel re-ranks the instant a manager grade lands, and hydrate it
+  // alongside the AI tiers below.
+  const mgrTick = useSyncExternalStore(
+    subscribeManagerVerdicts,
+    getManagerVerdictsSnapshot,
+    getManagerVerdictsServerSnapshot,
+  );
   // The Intelligence page can be the first thing loaded (home "/"), with the
   // full board collapsed — so no tier badge mounts to seed the verdict cache.
   // Hydrate it here so the carousel has real tiers on first paint.
   useEffect(() => {
     hydrateGoalTiers();
+    hydrateManagerVerdicts();
   }, []);
 
   return useMemo(() => {
@@ -224,5 +237,5 @@ export function useGoalHealth(groupedItems) {
     // snapshots identity changes when the snapshot store updates; locksTick
     // bumps when a window is locked/unlocked.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupedItems, inputsTick, snapshots, locksTick, contextTick, tiersTick]);
+  }, [groupedItems, inputsTick, snapshots, locksTick, contextTick, tiersTick, mgrTick]);
 }

@@ -15,6 +15,14 @@ export {
   getGoalTiersServerSnapshot,
 } from "./goal-tier-store";
 export {
+  readManagerVerdict,
+  hydrateManagerVerdicts,
+  resetManagerVerdicts,
+  subscribeManagerVerdicts,
+  getManagerVerdictsSnapshot,
+  getManagerVerdictsServerSnapshot,
+} from "./manager-verdict-store";
+export {
   publishGoalLiveReading,
   readGoalLiveReading,
   resetGoalLiveReadings,
