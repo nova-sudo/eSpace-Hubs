@@ -39,16 +39,17 @@ does not. Confirmed against the code:
    not active until approved. **Read-only while pending**; **re-approve on
    edit** (any recompose resubmits). ✅ shipped (P4).
 3. **Team assignment (pre-Zoho):** **admin assigns** `managerId` via the
-   existing admin user editor. ⏳ P5 (the last enablement piece).
+   existing admin user editor. ✅ shipped (P5).
 4. **Notifications:** in-app bell + inbox for v1; no email. ✅ shipped (P2).
 
-## Status
+## Status — complete
 
-`docs → P0 → P1 → P2a → P2b → P3 → P4a → P4b`, every commit built + tested
-green. Features ①②③④ are all implemented. **P5 (manager↔report assignment)
-is the one remaining piece** — until an admin can set `users.managerId`, the
-hub has no reports to show, so this is what makes the whole thing usable
-pre-Zoho.
+`docs → P0 → P1 → P2a → P2b → P3 → P4a → P4b → P5`, every commit built +
+typechecked + tested green. **All four features (①②③④) plus the enablement
+(P5 assignment) are shipped.** Remaining, when the team wants it: live
+cadence-window pace parity on the manager board (P1 deferred it to the AI
+tier, which is exact), email notifications, and the Zoho sync superseding
+manual `managerId` assignment.
 
 ## The four features → concrete build
 
