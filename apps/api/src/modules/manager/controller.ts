@@ -46,6 +46,7 @@ import {
   specVariant,
   type GoalStatus,
 } from "./goal-health.js";
+import { buildGoalDetail } from "./goal-detail.js";
 
 /**
  * What a manager sees per direct report on the roster. Deliberately thin
@@ -287,6 +288,92 @@ export async function getReportGoalHealthHandler(
       summary,
       groups,
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── one goal's read-only review detail (for the grading drawer) ─────
+
+/**
+ * Full read-only projection of a single goal: its definition + tier
+ * criteria, the engineer's logged evidence, and the AI verdict. Feeds the
+ * manager's read-only GoalWidget view while grading. Boundary-scoped via
+ * resolveReport, same as every other manager read.
+ */
+export async function getReportGoalDetailHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { session, target } = await resolveReport(req);
+    const goalId = req.params.goalId;
+    const scope = { orgId: session.orgId, userId: target._id };
+
+    const [tree, specDoc, aiDoc, managerVerdictMap, inputs, totalEntryCount] =
+      await Promise.all([
+        getGoalsCollection().then((c) => c.findOne(scope)),
+        getGoalSpecsCollection().then((c) => c.findOne({ ...scope, goalId })),
+        getGoalTierVerdictsCollection().then((c) =>
+          c.findOne({ ...scope, goalId }),
+        ),
+        getManagerVerdictMap(session.orgId, target._id),
+        getGoalInputsCollection().then((c) =>
+          c.find({ ...scope, goalId }).sort({ ts: -1 }).limit(12).toArray(),
+        ),
+        getGoalInputsCollection().then((c) =>
+          c.countDocuments({ ...scope, goalId }),
+        ),
+      ]);
+
+    // Locate the L2 goal and its parent L1 in the report's tree.
+    let l2: { id: string; code: string; title: string; category: string } | null =
+      null;
+    let l1: { id: string; code: string; title: string; category: string } | null =
+      null;
+    for (const g1 of tree?.l1s ?? []) {
+      const found = (g1.l2s ?? []).find((x) => x.id === goalId);
+      if (found) {
+        l2 = {
+          id: found.id,
+          code: found.code,
+          title: found.title,
+          category: found.category,
+        };
+        l1 = {
+          id: g1.id,
+          code: g1.code,
+          title: g1.title,
+          category: g1.category,
+        };
+        break;
+      }
+    }
+    if (!l2) {
+      throw new HttpError(404, "not_found", "No such goal for this report.");
+    }
+
+    const mv = managerVerdictMap.get(goalId) ?? null;
+
+    const detail = buildGoalDetail({
+      l2,
+      l1,
+      spec: specDoc?.spec ?? null,
+      aiVerdict: aiDoc ? { verdict: aiDoc.verdict, gradedAt: aiDoc.gradedAt } : null,
+      managerVerdict: mv
+        ? {
+            tier: mv.tier,
+            note: mv.note,
+            gradedByName: mv.gradedByName,
+            gradedAt: mv.gradedAt,
+          }
+        : null,
+      inputs,
+      totalEntryCount,
+    });
+
+    res.json({ user: toReportCard(target), ...detail });
   } catch (err) {
     next(err);
   }

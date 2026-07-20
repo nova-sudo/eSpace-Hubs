@@ -13,6 +13,8 @@ import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { apiPut } from "@/lib/api-client";
 import { TIER_ORDER, TIER_LABELS } from "@/features/goal-tiers";
+import { useGoalDetail } from "./use-goal-detail";
+import { ManagerGoalReview } from "./manager-goal-review";
 
 const TIER_DESC = {
   not_achieved: "Below the agreed bar for the cycle.",
@@ -32,6 +34,10 @@ export function ManagerGradeDrawer({
   const [tier, setTier] = useState(null);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Read-only goal detail (definition, evidence, AI verdict) for the
+  // review panel — fetched lazily while the drawer is open.
+  const detail = useGoalDetail(userId, goal?.id, open);
 
   useEffect(() => {
     if (!open || !goal) return;
@@ -93,7 +99,7 @@ export function ManagerGradeDrawer({
       <aside
         role="dialog"
         aria-label={`Grade ${goal.title}`}
-        className="fixed right-0 top-0 z-[61] flex w-[min(440px,100vw)] flex-col border-l bg-card"
+        className="fixed right-0 top-0 z-[61] flex w-[min(600px,100vw)] flex-col border-l bg-card"
         style={{
           height: "100dvh",
           borderColor: "var(--border-strong)",
@@ -131,26 +137,36 @@ export function ManagerGradeDrawer({
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
+          {/* Read-only GoalWidget view — leads with the AI grade + the
+              engineer's evidence, then the criteria + definition. */}
+          <ManagerGoalReview
+            loading={detail.loading}
+            error={detail.error}
+            data={detail.data}
+          />
+
+          {/* Divider into the grading action itself. */}
+          <div className="mb-3 mt-6 flex items-center gap-2">
+            <span
+              className="uppercase text-muted-fg"
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 10,
+                letterSpacing: "0.09em",
+                fontWeight: 700,
+              }}
+            >
+              Set the tier
+            </span>
+            <span className="h-px flex-1" style={{ background: "var(--border)" }} />
+          </div>
+
           {aiSuggested ? (
-            <div className="mb-5 flex gap-2.5 rounded-md border border-border bg-card-alt px-3 py-2.5">
-              <span
-                className="flex-none rounded border border-border px-1.5 py-0.5 text-muted-fg"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 9,
-                  fontWeight: 700,
-                  letterSpacing: "0.08em",
-                  height: "fit-content",
-                }}
-              >
-                AI
-              </span>
-              <p className="text-[12.5px] leading-snug text-muted-fg">
-                Suggested{" "}
-                <b className="text-fg">{TIER_LABELS[aiSuggested]}</b> from the
-                current data. Accept it or override.
-              </p>
-            </div>
+            <p className="mb-3 text-[12px] leading-snug text-muted-fg">
+              The AI suggests{" "}
+              <b className="text-fg">{TIER_LABELS[aiSuggested]}</b>. Accept it
+              or override — your grade is final.
+            </p>
           ) : null}
 
           <div className="grid gap-2">

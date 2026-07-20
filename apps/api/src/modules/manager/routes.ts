@@ -19,6 +19,7 @@ import { CAPABILITIES } from "@espace-devhub/shared/capabilities";
 import { requireAuth } from "../../middleware/require-auth.js";
 import { requireCapability } from "../../middleware/require-capability.js";
 import {
+  getReportGoalDetailHandler,
   getReportGoalHealthHandler,
   listApprovalsHandler,
   listDelegatedQueueHandler,
@@ -41,6 +42,13 @@ managerRouter.get(
   requireAuth(),
   requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
   getReportGoalHealthHandler,
+);
+
+managerRouter.get(
+  "/reports/:userId/goals/:goalId/detail",
+  requireAuth(),
+  requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
+  getReportGoalDetailHandler,
 );
 
 managerRouter.get(
