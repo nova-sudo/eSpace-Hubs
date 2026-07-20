@@ -21,6 +21,7 @@ import { composeWidget } from "@/features/analyst";
 import { saveSpec } from "@/features/goal-specs";
 import { clearGoalEntries } from "@/features/goal-inputs";
 import { clearGoalLocks } from "@/features/goal-locks";
+import { apiPost } from "@/lib/api-client";
 
 const PHASE = { INPUT: "input", BUSY: "busy", PREVIEW: "preview" };
 
@@ -90,13 +91,18 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
     }
   }
 
-  function handleUse() {
+  async function handleUse() {
     if (!preview?.spec || saving) return;
     setSaving(true);
-    // `replace: true` — a deliberate whole-widget swap. Bypasses saveSpec's
-    // locked-tiers preserve so the tracker keeps the tiers shown in the
-    // preview (not a prior widget's locked tiers / numeric ladder).
-    const result = saveSpec(preview.spec, { replace: true });
+    // P4: a Build-Your-Own tracker enters "pending" — read-only until the
+    // manager approves. `replace: true` is a deliberate whole-widget swap
+    // (bypasses saveSpec's locked-tiers preserve) so it keeps the previewed
+    // tiers.
+    const pendingSpec = {
+      ...preview.spec,
+      approval: { status: "pending", submittedAt: Date.now() },
+    };
+    const result = saveSpec(pendingSpec, { replace: true });
     if (!result.ok) {
       setSaving(false);
       setError(
@@ -108,7 +114,27 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
     // logged history + settle-locks so it starts clean (same as re-analyze).
     clearGoalEntries(goalId);
     clearGoalLocks(goalId);
-    toast.success("Custom tracker created.");
+
+    // Route it for approval. No manager on file → the server says "approved"
+    // and we activate immediately; otherwise it stays pending (read-only) and
+    // the manager is notified.
+    const r = await apiPost(
+      `/goal-specs/${encodeURIComponent(goalId)}/submit-approval`,
+      {},
+    );
+    const status = r.ok ? r.data?.status || "pending" : "pending";
+    if (status === "approved") {
+      saveSpec(
+        { ...pendingSpec, approval: { status: "approved" } },
+        { replace: true },
+      );
+      toast.success("Custom tracker created.");
+    } else {
+      toast.success("Sent to your manager for approval.", {
+        description: "It goes live once they sign off.",
+      });
+    }
+    setSaving(false);
     onSaved?.();
     onClose?.();
   }
@@ -269,7 +295,7 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
                   cursor: saving ? "wait" : "pointer",
                 }}
               >
-                {saving ? "Saving…" : "Use this tracker →"}
+                {saving ? "Submitting…" : "Submit for approval →"}
               </button>
             </>
           ) : (

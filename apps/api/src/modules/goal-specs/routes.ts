@@ -12,10 +12,16 @@ import {
   deleteGoalSpecHandler,
   listGoalSpecsHandler,
   putGoalSpecHandler,
+  submitApprovalHandler,
 } from "./controller.js";
 
 export const goalSpecsRouter: Router = Router();
 
 goalSpecsRouter.get("/", requireAuth(), listGoalSpecsHandler);
 goalSpecsRouter.put("/:goalId", requireAuth(), putGoalSpecHandler);
+goalSpecsRouter.post(
+  "/:goalId/submit-approval",
+  requireAuth(),
+  submitApprovalHandler,
+);
 goalSpecsRouter.delete("/:goalId", requireAuth(), deleteGoalSpecHandler);

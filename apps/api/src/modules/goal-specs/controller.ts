@@ -11,8 +11,13 @@
  */
 
 import type { NextFunction, Request, Response } from "express";
-import { getGoalSpecsCollection } from "../../db/collections.js";
+import {
+  getGoalSpecsCollection,
+  getGoalsCollection,
+  getUsersCollection,
+} from "../../db/collections.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
+import { createNotification } from "../../lib/notifications.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import { validateSpec } from "@espace-devhub/shared/goal-specs";
 import type { ValidatedSpec } from "@espace-devhub/shared/goal-specs";
@@ -27,6 +32,73 @@ const goalIdParam = (req: Request): string => {
   }
   return goalId;
 };
+
+/**
+ * POST /:goalId/submit-approval — a dev submits their just-composed
+ * Build-Your-Own tracker (already saved with approval.status="pending")
+ * for manager review.
+ *
+ *   - Has a manager  → notify them; the tracker stays pending. → {status:"pending"}
+ *   - No manager     → nothing to route to; tell the client to activate it
+ *                       immediately. → {status:"approved"}
+ *
+ * The spec itself is written by the normal PUT /goal-specs path; this
+ * endpoint only routes the approval + notifies.
+ */
+export async function submitApprovalHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const goalId = goalIdParam(req);
+
+    const users = await getUsersCollection();
+    const me = await users.findOne({
+      _id: session.userId,
+      orgId: session.orgId,
+    });
+    const managerId = me?.managerId ?? null;
+
+    if (!managerId) {
+      res.json({ status: "approved" });
+      return;
+    }
+
+    const tree = await getGoalsCollection().then((c) =>
+      c.findOne({ orgId: session.orgId, userId: session.userId }),
+    );
+    let goalTitle = "a goal";
+    for (const l1 of tree?.l1s ?? []) {
+      for (const l2 of l1.l2s ?? []) {
+        if (l2.id === goalId) goalTitle = l2.title;
+      }
+    }
+
+    void createNotification({
+      orgId: session.orgId,
+      userId: managerId,
+      kind: "goal_submitted",
+      title: "A goal needs your approval",
+      body: `${me?.displayName ?? "A report"} submitted "${goalTitle}" for your approval.`,
+      data: {
+        goalId,
+        goalTitle,
+        subjectUserId: session.userId.toHexString(),
+        subjectName: me?.displayName ?? "",
+      },
+      createdBy: session.userId,
+    });
+
+    res.json({ status: "pending" });
+  } catch (err) {
+    next(err);
+  }
+}
 
 // ─── GET /api/v1/goal-specs ──────────────────────────────────────────
 
