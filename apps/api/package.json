@@ -21,7 +21,8 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json",
-    "admin:create": "tsx scripts/admin-create.ts"
+    "admin:create": "tsx scripts/admin-create.ts",
+    "admin:reset-password": "tsx scripts/reset-password.ts"
   },
   "dependencies": {
     "@anthropic-ai/bedrock-sdk": "^0.30.2",
