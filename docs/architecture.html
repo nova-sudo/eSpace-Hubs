@@ -192,7 +192,11 @@
       Three-tier monorepo: Next.js frontend, Express API service, MongoDB
       backend. The API is the only thing that talks to Mongo and the
       provider APIs — the browser never holds an integration token after
-      M6 (encrypted at rest, decrypted in-process for outbound calls).
+      M6 (encrypted at rest, decrypted in-process for outbound calls). The
+      frontend is a multi-hub shell — Dev (Goal Intelligence) and Manager
+      ship today, with QA and Admin alongside — and the API is
+      engagement-aware, serving the <code>espace</code> (eSpace Server) and
+      <code>crealogix</code> (Cloud) tenancies from one codebase.
     </p>
     <nav class="docs">
       <a href="file-structure.html">File structure</a>
@@ -243,7 +247,7 @@
           <rect x="780" y="30" width="280" height="120" rx="8" fill="#ffffff" stroke="#6f3fb8" stroke-width="1.5"/>
           <text x="920" y="58" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#6f3fb8" letter-spacing="0.5">DATA · MONGO</text>
           <text x="920" y="86" text-anchor="middle" font-family="system-ui,sans-serif" font-size="16" font-weight="600" fill="#0b0b0c">MongoDB 7</text>
-          <text x="920" y="108" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="#6f6f6f">13 collections · $jsonSchema validators</text>
+          <text x="920" y="108" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="#6f6f6f">19 collections · $jsonSchema validators</text>
           <text x="920" y="128" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#9a9a9a">TTL · keyset pagination · indexes ensured at boot</text>
         </g>
 
@@ -275,6 +279,10 @@
             <text x="920" y="278">goal_inputs</text>
             <text x="920" y="296">grading_verdicts</text>
             <text x="920" y="314">hub_configs</text>
+            <text x="800" y="350">goal_tier_verdicts</text>
+            <text x="920" y="332">notifications</text>
+            <text x="920" y="350">manager_verdicts</text>
+            <text x="920" y="368">evidence</text>
           </g>
         </g>
 
@@ -298,6 +306,8 @@
             <text x="555" y="296">snapshots</text>
             <text x="555" y="314">grading-verdicts</text>
             <text x="555" y="332">health</text>
+            <text x="555" y="350">manager</text>
+            <text x="555" y="368">notifications</text>
           </g>
         </g>
 
@@ -308,9 +318,9 @@
           <g font-family="ui-monospace,monospace" font-size="11" fill="#0b0b0c">
             <text x="60" y="224">auth · AuthGuard</text>
             <text x="60" y="242">hubs · HubProvider</text>
-            <text x="60" y="260">dashboard · tiles</text>
+            <text x="60" y="260">intelligence · manager</text>
             <text x="60" y="278">integrations · proxy-fetch</text>
-            <text x="60" y="296">snapshots · pull+mirror</text>
+            <text x="60" y="296">snapshots · server-synced</text>
             <text x="60" y="314">goals + grading</text>
             <text x="60" y="332">analyst · chat · palette</text>
             <text x="60" y="350">settings · onboarding</text>
@@ -329,7 +339,7 @@
           <rect x="270" y="430" width="200" height="120" rx="8" fill="#ffffff" stroke="#c47b00" stroke-width="1.5"/>
           <text x="370" y="458" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#c47b00" letter-spacing="0.5">PROVIDER · TICKETS</text>
           <text x="370" y="486" text-anchor="middle" font-family="system-ui,sans-serif" font-size="15" font-weight="600" fill="#0b0b0c">Atlassian Jira</text>
-          <text x="370" y="508" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#6f6f6f">REST v3 · /search/jql</text>
+          <text x="370" y="508" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#6f6f6f">REST v2/v3 · per engagement</text>
           <text x="370" y="528" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9.5" fill="#9a9a9a">Basic auth (email + API token)</text>
         </g>
         <g>
@@ -342,9 +352,9 @@
         <g>
           <rect x="730" y="430" width="200" height="120" rx="8" fill="#ffffff" stroke="#c47b00" stroke-width="1.5"/>
           <text x="830" y="458" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#c47b00" letter-spacing="0.5">PROVIDER · AI</text>
-          <text x="830" y="486" text-anchor="middle" font-family="system-ui,sans-serif" font-size="15" font-weight="600" fill="#0b0b0c">Mistral via NIM</text>
+          <text x="830" y="486" text-anchor="middle" font-family="system-ui,sans-serif" font-size="15" font-weight="600" fill="#0b0b0c">Multi-provider LLM</text>
           <text x="830" y="508" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10" fill="#6f6f6f">chat · grade-pr · classify</text>
-          <text x="830" y="528" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9.5" fill="#9a9a9a">NDJSON streamed back</text>
+          <text x="830" y="528" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9.5" fill="#9a9a9a">Mistral default · Claude · Bedrock</text>
         </g>
         <g>
           <rect x="960" y="430" width="100" height="120" rx="8" fill="#ffffff" stroke="#6f6f6f" stroke-width="1.5" stroke-dasharray="4 3"/>
@@ -394,9 +404,10 @@
           integration tokens — all GitHub/GitLab/Jira calls flow through
           <code>/api/v1/integrations/proxy/&lt;provider&gt;/*</code> on the API,
           which decrypts in-process and streams the upstream response back.
-          State management is local-first: snapshots, goals, grading verdicts
-          all live in localStorage and mirror to the API; the API is the
-          source of truth, localStorage is the speed-of-light cache.
+          State management is server-authoritative: goals, specs, context,
+          inputs, snapshots, and tier verdicts persist through the API and read
+          back per session — goal locks are the last localStorage-only holdout
+          (see BL-011). The API is the source of truth.
         </p>
       </div>
       <div class="card">
@@ -500,6 +511,16 @@
         <li>Frontend caches <code>{hubs, primaryHubId, defaultHubId}</code> in <code>hubsStore</code>; the URL slug at <code>/[hub]/*</code> must be in <code>hubs</code> or the HubProvider redirects.</li>
       </ol>
     </div>
+
+    <div class="flow">
+      <h4>F6 · Manager grades a report's goal</h4>
+      <ol>
+        <li>Manager opens a report's board → <code>GET /manager/reports/:userId/goal-health</code>, every read boundary-scoped to <code>managerId === session.userId</code> and capability-gated by <code>manager.team.view</code>.</li>
+        <li>The grading drawer loads full read-only detail (spec, evidence, AI verdict) via <code>GET /manager/reports/:userId/goals/:goalId/detail</code>.</li>
+        <li><code>PUT .../verdict</code> upserts a <code>manager_goal_verdicts</code> row — a durable tier that OUTRANKS the AI <code>goal_tier_verdicts</code> cache wherever a tier is shown.</li>
+        <li>A best-effort <code>notifications</code> row lands in the engineer's in-app inbox (bell). Delegated-goal judging and BYO-tracker approval reuse the same boundary + notification path.</li>
+      </ol>
+    </div>
   </section>
 
   <section>
@@ -559,6 +580,21 @@
           <td><code>lib/email.ts</code> + Resend</td>
           <td>Log-only fallback when <code>RESEND_API_KEY</code> is unset; sandbox vs verified domain modes</td>
         </tr>
+        <tr>
+          <td>Engagements</td>
+          <td><code>lib/engagement-config.ts</code></td>
+          <td><code>espace</code> / <code>crealogix</code> tenancies; per-engagement GitHub OAuth app, Jira, GitLab &amp; Jenkins resolved by env prefix; only non-secret URLs + client-ids reach the browser via <code>/me/engagement-config</code></td>
+        </tr>
+        <tr>
+          <td>Notifications</td>
+          <td><code>lib/notifications.ts</code> + <code>notifications</code></td>
+          <td>Server-written in-app inbox (bell); emitted on manager grade + BYO approval; 180-day TTL; no email fan-out yet</td>
+        </tr>
+        <tr>
+          <td>Manager reads</td>
+          <td><code>modules/manager</code> + <code>manager_goal_verdicts</code></td>
+          <td>Cross-user reads scoped to <code>managerId === session.userId</code>; a manager tier verdict outranks the AI cache; <code>requireCapability</code> gates on the full role-union, not the primary-role snapshot</td>
+        </tr>
       </tbody>
     </table>
   </section>
@@ -579,14 +615,9 @@
           <td>Auto-snapshot fires client-side. Server-side scheduling (recompute aggregates, expire tokens) waits on Redis + a worker process.</td>
         </tr>
         <tr>
-          <td>QA Hub widgets</td>
-          <td><span class="badge b-warn">scaffold-only</span></td>
-          <td>Hub routes + theming wired; <code>QaPlaceholder</code> lists reserved widget IDs. Real widgets blocked on QA-team metric choices + a TestRail/Zephyr connector.</td>
-        </tr>
-        <tr>
-          <td>Manager Hub</td>
-          <td><span class="badge b-bad">empty</span></td>
-          <td>Directory doesn't exist. Gated on (a) QA widgets to compose, (b) <code>users.managerId</code> being populated (Zoho-or-admin-form), (c) cross-user data-access policy.</td>
+          <td>QA Hub — deeper metrics</td>
+          <td><span class="badge b-info">partial</span></td>
+          <td>Four live tiles ship (Jenkins build-pass + flake signal, Jira defect volume + priority mix). Test-level flake and Zephyr test-execution widgets are the next iteration; tiles ship pointed at demo targets until each team sets its own job / project.</td>
         </tr>
         <tr>
           <td>Backup codes for TOTP</td>
@@ -613,7 +644,7 @@
   </section>
 
   <footer>
-    Generated 2026-05-12 · eSpace Dev Hub docs
+    Generated 2026-05-12 · updated 2026-07-22 (Manager Hub + QA tiles shipped; state server-authoritative; engagement-aware) · eSpace Dev Hub docs
   </footer>
 </main>
 </body>

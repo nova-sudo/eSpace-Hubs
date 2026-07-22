@@ -8,8 +8,13 @@
 > A visual board of this same list lives at
 > [`maps/backlog.html`](../maps/backlog.html).
 >
-> _Generated 2026-06-16. Source anchors are `file:line` or `doc § section` at
-> time of writing — verify the line still points at the same code before acting._
+> _Generated 2026-06-16; updated 2026-07-22. Since generation: the **Manager Hub
+> shipped** (team view · grading · delegated · BYO approvals · in-app
+> notifications); **snapshots + tier verdicts are now server-persisted** (BL-011
+> narrowed to goal locks); **BL-017** (auth enforcement) and **BL-018** (email
+> delivery) added as rollout-gating items; **BL-019** tracks Crealogix engagement
+> validation. Source anchors are `file:line` or `doc § section` at time of
+> writing — verify the line still points at the same code before acting._
 
 ## Legend
 
@@ -44,6 +49,19 @@
   - A health endpoint/probe distinguishes "companion reachable" from "tunnel up but api down."
   - A dropped tunnel raises an alert (log/notification) within minutes, not on next user visit.
   - The companion-pairing UI surfaces current tunnel status.
+
+### BL-017 · Enforce authentication in production builds
+- **Priority:** P0 · **Type:** security · **Size:** S
+- **Why:** The client `AuthGuard` gates on `NEXT_PUBLIC_AUTH_REQUIRED`, which
+  **defaults to `false`** — when unset it renders every protected page as-is with
+  no redirect. A production build that doesn't set it to `true` serves every hub
+  with no login, and the server-side TOTP-enrolment gate is partially reliant on
+  the same posture.
+- **Source:** [`auth-guard.jsx:37`](../apps/web/src/features/auth/auth-guard.jsx) (`AUTH_REQUIRED` defaults false)
+- **Acceptance criteria:**
+  - Production / staging builds set `NEXT_PUBLIC_AUTH_REQUIRED=true`; a build or deploy check fails when it's unset or false.
+  - Protected API routes refuse unauthenticated requests regardless of the client flag (defense in depth).
+  - A smoke test confirms an unauthenticated visit to a hub redirects to `/login` in the deployed build.
 
 ---
 
@@ -102,6 +120,18 @@
   - `.env.local` secret handling on the companion host is documented and least-privilege.
   - No secret is logged or echoed by the boot path.
 
+### BL-018 · Guarantee transactional email delivery in production
+- **Priority:** P1 · **Type:** reliability · **Size:** S
+- **Why:** `lib/email.ts` logs-and-returns-ok when `RESEND_API_KEY` is unset, so
+  invites and password resets silently no-op. A production deploy that forgets
+  the Resend config looks healthy while no mail is delivered — invites never
+  arrive, resets never send.
+- **Source:** [`lib/email.ts`](../apps/api/src/lib/email.ts) (log-only fallback), [`architecture.html`](architecture.html) § crosscutting (Email)
+- **Acceptance criteria:**
+  - Production boot fails fast (or warns loudly) when email is required but `RESEND_*` is unconfigured.
+  - A verified sending domain is configured and a test send is confirmed end-to-end.
+  - Invite / reset mail has a delivery guarantee, not best-effort logging.
+
 ---
 
 ## P2 — Medium
@@ -138,16 +168,18 @@
   - Affected tiles render a "showing first N — truncated" marker.
   - The signal is testable from a mocked capped response.
 
-### BL-011 · Server-persist snapshots, tier verdicts, and goal locks
-- **Priority:** P2 · **Type:** data-integrity · **Size:** L
-- **Why:** Snapshots, tier verdicts, and goal locks are localStorage-only —
-  device-local and wiped on every auth transition. A user loses history on
-  device change or re-login.
-- **Source:** [`goal-tier-store.js:1-17`](../apps/web/src), `snapshots-store.js`, `goal-locks` store
+### BL-011 · Server-persist goal locks
+- **Priority:** P2 · **Type:** data-integrity · **Size:** M
+- **Status:** _Partially done_ — snapshots and tier verdicts now persist
+  server-side (`snapshots` + `goal_tier_verdicts` collections; manager verdicts
+  in `manager_goal_verdicts` outrank the AI tier). **Goal locks** are the last
+  localStorage-only holdout — device-local and wiped on every auth transition,
+  so a user loses lock state on device change or re-login.
+- **Source:** `goal-locks` store (localStorage), [`goal-tier-store.js`](../apps/web/src) (now server-synced)
 - **Acceptance criteria:**
-  - Snapshots, tier verdicts, and locks persist server-side keyed by user.
-  - Data survives logout/login and is available across devices.
-  - A migration path imports existing localStorage data on first sync.
+  - Goal locks persist server-side keyed by user.
+  - Lock state survives logout/login and is available across devices.
+  - A migration path imports existing localStorage locks on first sync.
 
 ### BL-012 · Replace `user_notes_count` review-rounds proxy with real per-MR rounds
 - **Priority:** P2 · **Type:** tech-debt · **Size:** M
@@ -169,6 +201,19 @@
   - PDF export produces a styled document without invoking the browser print dialog.
   - Output matches the `.md` export content and the Nothing UI aesthetic.
   - Export works headlessly (no manual print-to-PDF step).
+
+### BL-019 · Validate the Crealogix engagement configuration
+- **Priority:** P2 · **Type:** reliability · **Size:** M
+- **Why:** The API is engagement-aware — `espace` and `crealogix` tenancies
+  resolve separate GitHub OAuth / Jira / GitLab / Jenkins config by env prefix.
+  The eSpace engagement is validated and in internal testing; the Crealogix
+  configuration is still being verified against their GitLab and Jira before
+  their rollout.
+- **Source:** [`lib/engagement-config.ts`](../apps/api/src/lib/engagement-config.ts)
+- **Acceptance criteria:**
+  - Crealogix Jira + GitLab (and Jenkins, if used) return expected data end-to-end for a test user.
+  - Per-engagement GitHub OAuth callback + token exchange verified for Crealogix.
+  - A documented go / no-go marks the Crealogix engagement validated.
 
 ---
 
