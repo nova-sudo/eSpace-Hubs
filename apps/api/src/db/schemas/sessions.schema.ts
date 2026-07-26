@@ -35,6 +35,14 @@ export const sessionsValidator: Document = {
       userId: { bsonType: "objectId" },
       orgId: { bsonType: "objectId" },
       role: { enum: [...ALL_USER_ROLES] },
+      // Full effective-roles snapshot — what requireRole() actually
+      // authorizes against. Optional/nullable for backward-compat with
+      // sessions minted before this field existed (falls back to
+      // `[role]` at read time — see require-role.ts).
+      roles: {
+        bsonType: ["array", "null"],
+        items: { enum: [...ALL_USER_ROLES] },
+      },
       createdAt: { bsonType: "date" },
       expiresAt: { bsonType: "date" },
       lastSeenAt: { bsonType: "date" },

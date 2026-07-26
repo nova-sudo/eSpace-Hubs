@@ -46,8 +46,8 @@ import type {
 } from "../../db/types.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { logger } from "../../lib/logger.js";
-import { effectiveRoles } from "../../lib/user-roles.js";
-import { updateSessionsRoleForUser } from "../auth/session.js";
+import { effectiveRoles, primaryRole } from "../../lib/user-roles.js";
+import { syncSessionRolesForUser } from "../auth/session.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import {
   createSignupCodeSchema,
@@ -278,10 +278,23 @@ function diffPatch(input: {
 
   if (patch.roles !== undefined) {
     recordIfChanged("roles", patch.roles, effectiveRoles(target));
-    // Keep `role` (primary) in lockstep — first element of `roles`.
-    // Backward-compat shim until the singular column is removed.
+    // Keep `role` (primary, display-only) in lockstep. Derived by
+    // seniority (primaryRole), NOT patch.roles[0] — the roles array is
+    // written in whatever order the caller assembled it (the admin
+    // UI's role-toggle appends newly-checked roles to the end), so
+    // "first element" doesn't reliably mean "primary" the moment a
+    // user holds more than one role. Getting this wrong here is what
+    // caused a freshly-admin-granted user to keep minting sessions
+    // with role "dev" — see requireRole's doc comment.
     if (set.roles && Array.isArray(patch.roles)) {
-      set.role = patch.roles[0];
+      // patch.roles is typed string[] because updateUserSchema's roleEnum
+      // widens to string for the z.enum(... as readonly [string,
+      // ...string[]]) cast — Zod has already runtime-validated every
+      // element against ALL_USER_ROLES, so this cast is safe.
+      set.role = primaryRole({
+        role: target.role,
+        roles: patch.roles as UserRole[],
+      });
     }
   }
   if (patch.status !== undefined) {
@@ -429,9 +442,13 @@ export async function updateUserHandler(
     // sessions immediately (mirrors setSessionTotpEnrolled). Without this,
     // requireRole() keeps authorizing off the stale role captured at their
     // last login until they log out and back in. See session.js's doc
-    // comment on updateSessionsRoleForUser for the full story.
-    if (diff.set.role !== undefined) {
-      await updateSessionsRoleForUser(targetId, updated.role);
+    // comment on syncSessionRolesForUser for the full story.
+    if (diff.set.role !== undefined || diff.set.roles !== undefined) {
+      await syncSessionRolesForUser(
+        targetId,
+        updated.role,
+        effectiveRoles(updated),
+      );
     }
 
     await writeAudit({

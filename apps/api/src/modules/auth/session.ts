@@ -44,7 +44,12 @@ function newSessionId(): string {
 export interface MintSessionInput {
   userId: ObjectId;
   orgId: ObjectId;
+  /** Primary role — display/audit only. See `roles` for what actually
+   *  gates access. */
   role: UserRole;
+  /** Full effective-roles snapshot (pass `effectiveRoles(user)`, not
+   *  `[user.role]`) — this is what requireRole() actually checks. */
+  roles: UserRole[];
   ip: string | null;
   userAgent: string | null;
   /** Whether the second factor was satisfied. M2.3c onwards toggles
@@ -78,6 +83,7 @@ export async function mintSession(input: MintSessionInput): Promise<{
     userId: input.userId,
     orgId: input.orgId,
     role: input.role,
+    roles: input.roles,
     createdAt: now,
     expiresAt,
     lastSeenAt: now,
@@ -178,28 +184,35 @@ export async function destroySessionsForUser(userId: ObjectId): Promise<number> 
 }
 
 /**
- * Sync every ACTIVE session's `role` snapshot for a user whose role just
- * changed (admin edit, self-promotion, etc.).
+ * Sync every ACTIVE session's `role` + `roles` snapshot for a user whose
+ * roles just changed (admin edit, self-promotion, etc.).
  *
- * `requireRole()` authorizes purely off `session.role` — a value pinned at
- * mint time — with no per-request DB lookup, the same performance tradeoff
+ * `requireRole()` authorizes off `session.roles` — a value pinned at mint
+ * time — with no per-request DB lookup, the same performance tradeoff
  * `totpVerified`/`totpEnrolled` make (see requireAuth's doc comment). That
  * tradeoff is only safe if every write path that changes the underlying
  * value also pushes it into any live sessions, exactly like
- * `setSessionTotpEnrolled` does for TOTP. This is that setter for role.
+ * `setSessionTotpEnrolled` does for TOTP. This is that setter for roles.
  *
  * Without this call, an admin granting someone the `admin` role mid-session
  * has no effect until that person logs out and back in — the account is
  * admin in the database, but every already-open tab keeps failing
- * `requireRole("admin")` with "Requires role: admin" until a fresh session
- * is minted. Call this immediately after any write that changes
- * `user.role`.
+ * `requireRole("admin")` until a fresh session is minted. Call this
+ * immediately after any write that changes `user.role` / `user.roles`.
+ *
+ * Pass BOTH the primary role and the full effective-roles array — don't
+ * derive one from the other here. (History: this used to sync only the
+ * singular `role`, computed as `roles[0]`. That's what caused the bug
+ * this function now prevents from regressing — see admin/controller.ts's
+ * diffPatch, which derives `role` by seniority via `primaryRole()`, not
+ * array position.)
  */
-export async function updateSessionsRoleForUser(
+export async function syncSessionRolesForUser(
   userId: ObjectId,
   role: UserRole,
+  roles: UserRole[],
 ): Promise<number> {
   const col = await getSessionsCollection();
-  const res = await col.updateMany({ userId }, { $set: { role } });
+  const res = await col.updateMany({ userId }, { $set: { role, roles } });
   return res.modifiedCount ?? 0;
 }

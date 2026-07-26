@@ -303,9 +303,18 @@ export interface Session {
   _id: string;
   userId: ObjectId;
   orgId: ObjectId;
-  /** Snapshot of the user's role at login time. Refreshed on each
-   *  login. Reads avoid an extra users round-trip per request. */
+  /** Snapshot of the user's PRIMARY role at login time — display /
+   *  audit only (audit.actorRole). NOT used for authorization; see
+   *  `roles` below and requireRole's doc comment for why. */
   role: UserRole;
+  /**
+   * Snapshot of the user's FULL effective roles at login time (or at
+   * their last role-changing edit — see syncSessionRolesForUser).
+   * This is what requireRole() actually checks. Optional for
+   * backward-compat with sessions minted before this field existed;
+   * requireRole falls back to `[role]` when absent.
+   */
+  roles?: UserRole[] | null;
   createdAt: Date;
   expiresAt: Date;
   lastSeenAt: Date;
