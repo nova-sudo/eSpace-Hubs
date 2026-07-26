@@ -213,7 +213,7 @@ function BrandMark() {
           color: "var(--brand-fg)",
         }}
       >
-        eSpace<span style={{ color: "var(--accent)" }}>/</span>DevHub
+        eSpace
       </span>
     </div>
   );

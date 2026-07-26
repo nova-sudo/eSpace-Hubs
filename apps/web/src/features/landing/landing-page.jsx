@@ -166,8 +166,7 @@ export function LandingPage() {
           <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
             <Logo3 />
             <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.2px" }}>
-              eSpace<span style={{ color: "var(--ac)" }}>/</span>
-              <span className="dt" style={{ fontSize: 15, fontWeight: 700 }}>DevHub</span>
+              eSpace
             </div>
           </div>
           <nav className="lp-nav" style={{ display: "flex", alignItems: "center", gap: 28 }}>

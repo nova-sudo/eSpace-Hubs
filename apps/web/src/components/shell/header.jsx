@@ -70,6 +70,19 @@ const HUB_SLOT_LABEL_OVERRIDES = {
   manager: { dashboard: "Team" },
 };
 
+/**
+ * Slots that stay registered in a hub's `pages` map (so the route still
+ * resolves — e.g. the wordmark link keeps working, direct URLs still
+ * work) but shouldn't clutter that hub's nav bar. Admin-only: its
+ * "Overview" dashboard and "Hubs" (hub-config) tab are redundant in the
+ * nav for admins, per product direction — QA also has a "dashboard"
+ * slot labeled "Overview" and must keep its nav entry, so this is keyed
+ * per-hub rather than per-slot.
+ */
+const HUB_HIDDEN_NAV_SLOTS = {
+  admin: ["dashboard", "hub-config"],
+};
+
 function labelFor(slot, hubId) {
   const hubOverride = HUB_SLOT_LABEL_OVERRIDES[hubId];
   return (
@@ -118,6 +131,9 @@ export function Header() {
         <nav className="flex gap-0.5" style={{ fontFamily: "var(--font-mono)" }}>
           {NAV_ITEMS.map((item) => {
             if (hub && !hub.pages[item.slot]) return null;
+            if (hub && HUB_HIDDEN_NAV_SLOTS[hub.id]?.includes(item.slot)) {
+              return null;
+            }
             const label = labelFor(item.slot, hub?.id);
             const href = `${hubPrefix}${item.subpath}` || "/";
             // Dashboard slot is the home tab. It highlights only on the

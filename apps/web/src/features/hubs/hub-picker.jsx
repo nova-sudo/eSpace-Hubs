@@ -9,9 +9,9 @@
  * this picker vs. redirect directly. The picker itself is just a
  * grid of cards plus the navigation handler.
  *
- * Visual design: full-bleed neutral surface (sand, not a hub theme).
- * Each card carries its hub's accent so the user can scan by colour
- * before reading the label.
+ * Visual design: Nothing UI canvas (design tokens, not a hub theme).
+ * Each card carries its own hub's accent so the user can scan by
+ * colour before reading the label.
  *
  * On click:
  *   1. Store the pick in localStorage (24h TTL).
@@ -19,6 +19,7 @@
  */
 
 import { useRouter } from "next/navigation";
+import { PageHeader } from "@/components/ui";
 import { setActivePick } from "./hub-pick-store.js";
 
 export function HubPicker({ hubs, primaryHubId }) {
@@ -30,47 +31,15 @@ export function HubPicker({ hubs, primaryHubId }) {
   }
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#f5f1e8",
-        color: "#1c1c1c",
-      }}
-    >
+    <main className="min-h-screen bg-bg text-fg">
       <div className="mx-auto grid min-h-screen max-w-5xl grid-rows-[1fr_auto] px-6 py-16">
         <div className="flex flex-col">
-          <div
-            className="mb-4 inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(28,28,28,0.12)] px-3 py-1"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-          >
-            <span
-              className="block h-1.5 w-1.5 rounded-full"
-              style={{ background: "#8a6b3c" }}
-            />
-            <span className="uppercase tracking-[0.5px] text-[#5a4a2c]">
-              Choose where to land
-            </span>
-          </div>
-
-          <h1
-            className="mb-3 font-semibold"
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 40,
-              lineHeight: 1.08,
-              letterSpacing: "-0.7px",
-            }}
-          >
-            You have access to{" "}
-            <span style={{ fontStyle: "italic" }}>{hubs.length} hubs</span>.
-          </h1>
-          <p
-            className="mb-10 max-w-xl text-[14.5px] leading-[1.55]"
-            style={{ color: "#5a4a2c" }}
-          >
-            Pick one to start. You can switch any time from the header — and
-            we'll remember this choice for the next 24 hours.
-          </p>
+          <PageHeader
+            crumb="Choose where to land"
+            title={`You have access to ${hubs.length} hubs.`}
+            italicWord={`${hubs.length} hubs`}
+            subtitle="Pick one to start. You can switch any time from the header — and we'll remember this choice for the next 24 hours."
+          />
 
           <div
             className="grid gap-4"
@@ -90,8 +59,8 @@ export function HubPicker({ hubs, primaryHubId }) {
         </div>
 
         <div
-          className="mt-12 border-t border-[rgba(28,28,28,0.08)] pt-4 text-[11px]"
-          style={{ fontFamily: "var(--font-mono)", color: "#7a6a4c" }}
+          className="mt-12 border-t border-border pt-4 text-[11px] text-muted-fg"
+          style={{ fontFamily: "var(--font-mono)" }}
         >
           Pick is stored in your browser. Switching hubs from the header
           updates it.
@@ -106,9 +75,8 @@ function HubCard({ hub, isPrimary, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="group relative flex flex-col items-start gap-3 overflow-hidden rounded-lg border-2 p-5 text-left transition-all hover:-translate-y-0.5"
+      className="group relative flex flex-col items-start gap-3 overflow-hidden rounded-lg border-2 bg-card p-5 text-left transition-all hover:-translate-y-0.5"
       style={{
-        background: "var(--card)",
         borderColor: hub.theme.accent,
         boxShadow: `0 1px 0 0 ${hub.theme.accentSurface}, 0 0 0 0 ${hub.theme.accentSurface}`,
       }}
@@ -148,7 +116,7 @@ function HubCard({ hub, isPrimary, onClick }) {
         >
           {hub.label}
         </div>
-        <p className="mt-1 text-[12.5px] leading-[1.5] text-[#5a4a2c]">
+        <p className="mt-1 text-[12.5px] leading-[1.5] text-muted-fg">
           {hub.description}
         </p>
       </div>
@@ -160,13 +128,13 @@ function HubCard({ hub, isPrimary, onClick }) {
         {Object.keys(hub.pages).slice(0, 4).map((slot) => (
           <span
             key={slot}
-            className="rounded-sm border border-dashed border-[rgba(28,28,28,0.16)] px-1.5 py-0.5 text-[#7a6a4c]"
+            className="rounded-sm border border-dashed border-border text-muted-fg px-1.5 py-0.5"
           >
             {slot}
           </span>
         ))}
         {Object.keys(hub.pages).length > 4 ? (
-          <span className="text-[#7a6a4c]">
+          <span className="text-muted-fg">
             +{Object.keys(hub.pages).length - 4}
           </span>
         ) : null}
