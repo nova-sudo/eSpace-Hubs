@@ -613,13 +613,15 @@ export type NotificationKind =
   | "manager_graded"
   | "goal_submitted"
   | "goal_approved"
-  | "goal_changes_requested";
+  | "goal_changes_requested"
+  | "user_pending_approval";
 
 export const ALL_NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "manager_graded",
   "goal_submitted",
   "goal_approved",
   "goal_changes_requested",
+  "user_pending_approval",
 ] as const;
 
 /**

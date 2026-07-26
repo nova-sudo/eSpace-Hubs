@@ -33,6 +33,7 @@ export const notificationsValidator: Document = {
           "goal_submitted",
           "goal_approved",
           "goal_changes_requested",
+          "user_pending_approval",
         ],
       },
       title: { bsonType: "string", minLength: 1, maxLength: 200 },

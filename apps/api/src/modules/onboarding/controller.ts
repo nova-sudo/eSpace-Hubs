@@ -31,6 +31,7 @@ import { resolveHubsForCapabilities } from "@espace-devhub/shared/hubs";
 import { getUsersCollection } from "../../db/collections.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { effectiveCapabilities } from "../../lib/user-roles.js";
+import { notifyOrgAdmins } from "../../lib/admin-notify.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import { toPublicUser } from "../auth/controller.js";
 
@@ -71,6 +72,18 @@ export async function submitOnboardingHandler(
 
     if (!result) {
       throw new HttpError(401, "unauthenticated", "User no longer exists.");
+    }
+
+    // Only ping admins the first time this user finishes onboarding while
+    // still unassigned — re-submission (an already-active user editing
+    // their department/employeeId) shouldn't re-notify anyone.
+    if (result.status === "pending_admin") {
+      void notifyOrgAdmins({
+        orgId: session.orgId,
+        title: "A new signup needs a role and hub",
+        body: `${result.displayName} (${result.email}) finished onboarding and is waiting for a role and hub assignment.`,
+        data: { userId: result._id.toHexString() },
+      });
     }
 
     // Compute the redirect from the user's CURRENT roles (set by the
