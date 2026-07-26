@@ -5,6 +5,17 @@
  * Always pair with `requireAuth` — this guard does NOT check session
  * presence (so the 401 vs 403 distinction stays correct: 401 = "log
  * in", 403 = "you're logged in but not allowed").
+ *
+ * `req.session.role` is a snapshot taken at login (mint time) — checked
+ * here with no per-request DB lookup, same performance tradeoff as the
+ * TOTP flags in requireAuth. That means it can only be TRUSTED if
+ * something explicitly re-syncs it the moment the underlying role
+ * changes. See `updateSessionsRoleForUser` in `../modules/auth/session.js`,
+ * called from the admin user-update handler — without that call, a role
+ * promotion granted mid-session is invisible to this guard until the
+ * user logs out and back in (the exact bug this comment now prevents
+ * regressing: "an admin gave me the admin role but I still get told I
+ * need admin permission").
  */
 
 import type { NextFunction, Request, Response } from "express";

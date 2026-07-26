@@ -176,3 +176,30 @@ export async function destroySessionsForUser(userId: ObjectId): Promise<number> 
   const res = await col.deleteMany({ userId });
   return res.deletedCount ?? 0;
 }
+
+/**
+ * Sync every ACTIVE session's `role` snapshot for a user whose role just
+ * changed (admin edit, self-promotion, etc.).
+ *
+ * `requireRole()` authorizes purely off `session.role` — a value pinned at
+ * mint time — with no per-request DB lookup, the same performance tradeoff
+ * `totpVerified`/`totpEnrolled` make (see requireAuth's doc comment). That
+ * tradeoff is only safe if every write path that changes the underlying
+ * value also pushes it into any live sessions, exactly like
+ * `setSessionTotpEnrolled` does for TOTP. This is that setter for role.
+ *
+ * Without this call, an admin granting someone the `admin` role mid-session
+ * has no effect until that person logs out and back in — the account is
+ * admin in the database, but every already-open tab keeps failing
+ * `requireRole("admin")` with "Requires role: admin" until a fresh session
+ * is minted. Call this immediately after any write that changes
+ * `user.role`.
+ */
+export async function updateSessionsRoleForUser(
+  userId: ObjectId,
+  role: UserRole,
+): Promise<number> {
+  const col = await getSessionsCollection();
+  const res = await col.updateMany({ userId }, { $set: { role } });
+  return res.modifiedCount ?? 0;
+}

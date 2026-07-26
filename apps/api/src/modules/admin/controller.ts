@@ -47,6 +47,7 @@ import type {
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { logger } from "../../lib/logger.js";
 import { effectiveRoles } from "../../lib/user-roles.js";
+import { updateSessionsRoleForUser } from "../auth/session.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import {
   createSignupCodeSchema,
@@ -422,6 +423,15 @@ export async function updateUserHandler(
         "internal_error",
         "User update returned no document.",
       );
+    }
+
+    // The role changed under this user — push it into any of THEIR live
+    // sessions immediately (mirrors setSessionTotpEnrolled). Without this,
+    // requireRole() keeps authorizing off the stale role captured at their
+    // last login until they log out and back in. See session.js's doc
+    // comment on updateSessionsRoleForUser for the full story.
+    if (diff.set.role !== undefined) {
+      await updateSessionsRoleForUser(targetId, updated.role);
     }
 
     await writeAudit({
