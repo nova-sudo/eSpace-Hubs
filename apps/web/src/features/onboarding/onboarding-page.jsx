@@ -6,14 +6,17 @@
  * Captures three fields once after first login:
  *   - displayName  (pre-filled from invite)
  *   - employeeId   (free text; informal, until Zoho lands)
- *   - department   (free text; resolved to a hub via the shared
- *                    registry's `departments` map at submit time)
+ *   - department   (free text; an org-chart / profile attribute only —
+ *                    post-M-CAP, hub access comes from the user's
+ *                    ROLES, assigned by an admin at invite or approval
+ *                    time, NOT from this field. Don't imply otherwise
+ *                    in the copy below; that used to be true pre-M-CAP
+ *                    and the UI drifted from the backend once it changed.)
  *
  * On submit the API:
  *   1. Persists the three fields on `users`.
- *   2. Resolves `department` → hubId via getHubIdForDepartment.
- *   3. Sets allowedHubs / primaryHub / onboardingCompletedAt.
- *   4. Returns the new PublicUser + a `redirectTo` path.
+ *   2. Returns the new PublicUser + a `redirectTo` computed from the
+ *      user's EXISTING roles (not from department).
  *
  * The frontend then refreshes the session (so the AuthGuard sees the
  * new onboardingCompletedAt and stops redirecting here), and pushes
@@ -44,7 +47,6 @@ import { toast } from "sonner";
 import { apiPost } from "@/lib/api-client";
 import { useSession } from "@/features/auth";
 import { resetHubsStore } from "@/features/hubs";
-import { HUBS } from "@espace-devhub/shared/hubs";
 import { CompanionGateStep } from "./companion-gate-step.jsx";
 
 // Common departments rendered as quick-pick chips above the free-text
@@ -120,11 +122,6 @@ export function OnboardingPage() {
     }
     await submitOnboarding();
   }
-
-  // Compute a preview of which hub the department maps to. Shown
-  // inline as feedback before submit. Uses the same registry as the
-  // server so the preview is bit-exact with what the API will do.
-  const previewHub = previewHubForDepartment(department);
 
   if (loading || !user) {
     return (
@@ -241,11 +238,7 @@ export function OnboardingPage() {
 
             <OnboardingField
               label="Department"
-              accentHint={
-                previewHub
-                  ? `Routes to the ${previewHub.label}.`
-                  : "Pick or type. Drives which hub you land in."
-              }
+              accentHint="Pick or type. For your org chart — an admin assigns which hub you land in."
             >
               <div className="mb-2.5 flex flex-wrap gap-[7px]">
                 {QUICK_PICKS.map((q) => {
@@ -293,17 +286,6 @@ export function OnboardingPage() {
               >
                 {submitting ? "Saving…" : "Continue →"}
               </button>
-              {previewHub ? (
-                <span
-                  className="text-[12px]"
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    color: "var(--muted-fg)",
-                  }}
-                >
-                  → {previewHub.label}
-                </span>
-              ) : null}
             </div>
           </form>
         </div>
@@ -351,18 +333,4 @@ function OnboardingField({ label, hint, accentHint, children }) {
       ) : null}
     </label>
   );
-}
-
-/**
- * Best-effort hub preview — runs the same lookup the server runs.
- * Kept local (no hook needed) so the input field updates the preview
- * synchronously on every keystroke.
- */
-function previewHubForDepartment(value) {
-  if (typeof value !== "string" || value.trim().length === 0) return null;
-  const norm = value.trim().toLowerCase();
-  for (const hub of Object.values(HUBS)) {
-    if (hub.departments.includes(norm)) return hub;
-  }
-  return null; // Server falls back to DEFAULT_HUB_ID; we just don't preview that case.
 }
