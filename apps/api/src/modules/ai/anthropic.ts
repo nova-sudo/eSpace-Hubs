@@ -97,6 +97,14 @@ interface CompleteInput {
   system?: string;
   messages: Array<{ role: "user" | "assistant"; content: string }>;
   maxTokens?: number;
+  /**
+   * Wall-clock budget for the round trip. Worth setting on any call that can
+   * produce a long reply: without it the SDK waits far longer than the proxy
+   * in front of this API will, and the caller is severed mid-flight with no
+   * status and no message to show the user. Failing on OUR terms lets us say
+   * something useful instead.
+   */
+  timeoutMs?: number;
 }
 
 /**
@@ -122,12 +130,15 @@ export async function anthropicComplete(
   const c = getClient();
   let msg: Anthropic.Messages.Message;
   try {
-    msg = await c.messages.create({
-      model: anthropicModel(),
-      max_tokens: opts.maxTokens ?? 2048,
-      ...(opts.system ? { system: opts.system } : {}),
-      messages: opts.messages,
-    });
+    msg = await c.messages.create(
+      {
+        model: anthropicModel(),
+        max_tokens: opts.maxTokens ?? 2048,
+        ...(opts.system ? { system: opts.system } : {}),
+        messages: opts.messages,
+      },
+      ...(opts.timeoutMs ? [{ timeout: opts.timeoutMs }] : []),
+    );
   } catch (err) {
     throw mapSdkError(err);
   }
@@ -145,6 +156,17 @@ export async function anthropicComplete(
  * SDK error classes.
  */
 function mapSdkError(err: unknown): HttpError {
+  // A timeout we imposed ourselves, not an upstream failure — the model was
+  // still writing when we ran out of budget. Say what actually happened and
+  // what to do about it, rather than reporting it as a provider error.
+  const name = (err as { name?: unknown })?.name;
+  if (name === "APIConnectionTimeoutError" || name === "AbortError") {
+    return new HttpError(
+      504,
+      "ai_response_timeout",
+      "That took too long to turn into a tracker. A shorter document — or just the part you actually want tracked — will come back quickly.",
+    );
+  }
   const status = (err as { status?: unknown })?.status;
   if (typeof status === "number") {
     const rateLimited = status === 429;

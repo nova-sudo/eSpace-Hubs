@@ -161,6 +161,13 @@ function buildGraderUserPrompt(
 async function callProvider(
   provider: ReturnType<typeof selectProvider>,
   body: object,
+  /**
+   * Wall-clock budget for the round trip. Set it on any call that can produce
+   * a long reply: without one, a slow generation outlives the proxy in front
+   * of this API and the caller is severed with no status and nothing to show
+   * the user. Failing first, on our terms, gives them a real message.
+   */
+  timeoutMs?: number,
 ): Promise<{ data: unknown; raw: string }> {
   if (!provider.apiKey) {
     throw new HttpError(
@@ -192,10 +199,21 @@ async function callProvider(
             ...provider.extraHeaders,
           },
           body: JSON.stringify(body),
+          ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
         }),
       { maxAttempts: 3, maxTotalWaitMs: 20_000 },
     );
   } catch (err) {
+    // Our own budget running out, not the provider being unreachable — the
+    // model was still writing. Distinguish it so the user gets advice that
+    // helps ("shorter document") rather than a network error they can't act on.
+    if ((err as { name?: unknown })?.name === "TimeoutError") {
+      throw new HttpError(
+        504,
+        "ai_response_timeout",
+        "That took too long to turn into a tracker. A shorter document — or just the part you actually want tracked — will come back quickly.",
+      );
+    }
     throw new HttpError(
       502,
       "ai_provider_unreachable",
@@ -739,10 +757,15 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   "  - Do NOT use it when every period asks for the same thing (\"log hours",
   "    mentored each week\"). A uniform tracker should stay flat — that's",
   "    simpler for the user and identical in behaviour.",
-  "  - Most periods only need `label` (and often `dueAt`). Add `prompt` only",
-  "    when the instruction genuinely differs, and `fields` ONLY when that",
-  "    period must capture a different SHAPE of data. Periods that omit them",
-  "    inherit the top-level `prompt` / `fields`, so keep entries short.",
+  "  - BE TERSE. Almost every entry should be `key` + `label` + `dueAt` and",
+  "    nothing else. Add `prompt` only when the instruction genuinely differs",
+  "    from the shared one, and `fields` ONLY when that period captures a",
+  "    different SHAPE of data. Omitted keys inherit the top-level values, so a",
+  "    plan of 13 near-identical weeks should still be 13 SHORT entries.",
+  "    Keep each `label` under ~70 characters: name the deliverable, don't",
+  "    restate the document's sentence about it. Verbosity here is the single",
+  "    biggest cause of a slow reply, and a reply that takes too long is",
+  "    delivered to the user as a failure.",
   "  - Requires a cadence. Max 53 entries.",
   "  - This is how a plan with per-period deliverables gets tracked properly",
   "    instead of collapsing to one generic status — if you use it, that",
@@ -928,16 +951,30 @@ const MAX_COMPOSED_PERIODS = 53;
 /**
  * Output ceiling for the compose call.
  *
- * Was 1,500 — fine for a flat tracker (6 fields + 4 tier strings), and far too
- * small the moment `composed.periods` existed: a 13-week plan emits a labelled,
- * often prompted entry per week, and the reply was being cut off mid-object.
- * The failure looked like "the model returned non-JSON", which sent debugging
- * in exactly the wrong direction.
+ * Sized from the arithmetic, not guessed. A terse period is roughly 35 tokens
+ * (key + label + dueAt); at the 53-period ceiling that's ~1,900, plus ~600 for
+ * fields, tiers and unrepresented — so 4,000 fits the largest legitimate plan
+ * with headroom.
  *
- * 8,000 covers the 53-period ceiling with the terse entries the prompt asks
- * for, and is still a small fraction of any current model's limit.
+ * Bigger is NOT free, which is the lesson from raising this to 8,000: the cap
+ * is a ceiling rather than a throttle, so it doesn't slow a short reply down —
+ * but it does let a verbose one run to completion, and a reply that used to be
+ * cut off at 1,500 tokens (fast, if broken) started taking over 30 seconds and
+ * being severed by the proxy with no status at all. The durable fix is asking
+ * for less prose per period, below; this number just stops being the binding
+ * constraint.
  */
-const COMPOSE_MAX_TOKENS = 8_000;
+const COMPOSE_MAX_TOKENS = 4_000;
+
+/**
+ * Wall-clock budget for the compose round trip.
+ *
+ * Deliberately under the ~30s ceiling the proxy in front of this API enforces:
+ * being severed mid-flight yields no status code and no message, so the user
+ * sees a bare 500 and we learn nothing. Failing first, on our terms, means a
+ * real error they can act on.
+ */
+const COMPOSE_TIMEOUT_MS = 25_000;
 
 interface CleanPeriod {
   key: string;
@@ -1214,6 +1251,7 @@ export async function composeWidgetHandler(
         system: COMPOSE_WIDGET_SYSTEM_PROMPT,
         messages: [{ role: "user", content: userPrompt }],
         maxTokens: COMPOSE_MAX_TOKENS,
+        timeoutMs: COMPOSE_TIMEOUT_MS,
       });
       content = r.content;
       modelName = r.model;
@@ -1234,7 +1272,7 @@ export async function composeWidgetHandler(
           { role: "system", content: COMPOSE_WIDGET_SYSTEM_PROMPT },
           { role: "user", content: userPrompt },
         ],
-      });
+      }, COMPOSE_TIMEOUT_MS);
       const data = upstream.data as CompletionResponse;
       content = data.choices?.[0]?.message?.content ?? "";
       modelName = data.model;
