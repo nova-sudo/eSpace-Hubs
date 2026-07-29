@@ -107,7 +107,18 @@ interface CompleteInput {
  */
 export async function anthropicComplete(
   opts: CompleteInput,
-): Promise<{ content: string; model: string; usage: unknown }> {
+): Promise<{
+  content: string;
+  model: string;
+  usage: unknown;
+  /**
+   * Why the model stopped. `"max_tokens"` means the reply was CUT OFF, which
+   * for a JSON-returning prompt yields a half-written object — surfaced so
+   * callers can say "the answer was too long" instead of the much less useful
+   * "that wasn't valid JSON".
+   */
+  stopReason: string | null;
+}> {
   const c = getClient();
   let msg: Anthropic.Messages.Message;
   try {
@@ -120,7 +131,12 @@ export async function anthropicComplete(
   } catch (err) {
     throw mapSdkError(err);
   }
-  return { content: textOf(msg.content), model: msg.model, usage: msg.usage };
+  return {
+    content: textOf(msg.content),
+    model: msg.model,
+    usage: msg.usage,
+    stopReason: msg.stop_reason ?? null,
+  };
 }
 
 /**

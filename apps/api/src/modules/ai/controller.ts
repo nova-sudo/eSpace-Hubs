@@ -236,7 +236,7 @@ async function callProvider(
 }
 
 interface CompletionResponse {
-  choices?: Array<{ message?: { content?: string } }>;
+  choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
   model?: string;
   usage?: unknown;
 }
@@ -886,6 +886,20 @@ function cleanComposedFields(raw: unknown): Array<Record<string, unknown>> {
 /** Mirrors COMPOSED_MAX_PERIODS in the shared validator. */
 const MAX_COMPOSED_PERIODS = 53;
 
+/**
+ * Output ceiling for the compose call.
+ *
+ * Was 1,500 — fine for a flat tracker (6 fields + 4 tier strings), and far too
+ * small the moment `composed.periods` existed: a 13-week plan emits a labelled,
+ * often prompted entry per week, and the reply was being cut off mid-object.
+ * The failure looked like "the model returned non-JSON", which sent debugging
+ * in exactly the wrong direction.
+ *
+ * 8,000 covers the 53-period ceiling with the terse entries the prompt asks
+ * for, and is still a small fraction of any current model's limit.
+ */
+const COMPOSE_MAX_TOKENS = 8_000;
+
 interface CleanPeriod {
   key: string;
   label: string;
@@ -1146,6 +1160,10 @@ export async function composeWidgetHandler(
     let modelName: string | undefined;
     let providerId: string;
     let providerLabel: string;
+    // Set when the model hit its output ceiling. A cut-off reply is a
+    // half-written JSON object, which would otherwise surface as the
+    // misleading "returned non-JSON content".
+    let truncated = false;
 
     if (
       isAnthropicId(
@@ -1155,12 +1173,13 @@ export async function composeWidgetHandler(
       const r = await anthropicComplete({
         system: COMPOSE_WIDGET_SYSTEM_PROMPT,
         messages: [{ role: "user", content: userPrompt }],
-        maxTokens: 1500,
+        maxTokens: COMPOSE_MAX_TOKENS,
       });
       content = r.content;
       modelName = r.model;
       providerId = "anthropic";
       providerLabel = "Claude";
+      truncated = r.stopReason === "max_tokens";
     } else {
       const provider = selectProvider({
         request: req,
@@ -1169,6 +1188,7 @@ export async function composeWidgetHandler(
       const upstream = await callProvider(provider, {
         model: provider.model,
         temperature: 0.2,
+        max_tokens: COMPOSE_MAX_TOKENS,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: COMPOSE_WIDGET_SYSTEM_PROMPT },
@@ -1180,6 +1200,7 @@ export async function composeWidgetHandler(
       modelName = data.model;
       providerId = provider.id;
       providerLabel = provider.label;
+      truncated = data.choices?.[0]?.finish_reason === "length";
     }
 
     let parsed: {
@@ -1191,6 +1212,26 @@ export async function composeWidgetHandler(
     try {
       parsed = parseJsonLoose(content) as typeof parsed;
     } catch {
+      if (truncated) {
+        // Distinct from "the model wrote prose": the reply was well-formed and
+        // simply ran out of room, so the fix is a shorter plan rather than a
+        // re-roll. Say that, instead of blaming the JSON.
+        logger.warn(
+          {
+            userId: session.userId.toHexString(),
+            goalId: payload.goalId,
+            provider: providerId,
+            chars: content.length,
+            attachmentChars: payload.attachment?.text.length ?? 0,
+          },
+          "[ai] compose-widget response hit the token ceiling",
+        );
+        throw new HttpError(
+          502,
+          "ai_response_truncated",
+          "That plan was too long to turn into one tracker in a single pass. Trim the document to the part you want tracked — or describe just that part — and try again.",
+        );
+      }
       throw new HttpError(
         502,
         "ai_provider_bad_response",

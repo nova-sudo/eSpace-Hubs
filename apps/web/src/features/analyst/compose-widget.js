@@ -105,8 +105,11 @@ export async function composeWidget({
   // `seeded: true` means the model's field list was unusable and the server
   // fell back to a generic tracker — surfaced so the UI can hint at it.
   // `unrepresented` is the document-aware sibling of that signal: parts of the
-  // source the flat COMPOSED shape couldn't carry. Phase 1 is knowingly lossy;
-  // this is the array that keeps the loss visible instead of silent.
+  // source one tracker couldn't carry. Per-period content now survives via
+  // `composed.periods`, so this list should be shorter than it was — what
+  // remains is genuinely out of scope (a weighted metrics table needs its own
+  // tier ladder; a risk register isn't a metric). It keeps that loss visible
+  // rather than silent.
   return {
     spec: body.spec,
     seeded: body.seeded === true,
