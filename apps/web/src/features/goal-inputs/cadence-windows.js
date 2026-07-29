@@ -11,9 +11,11 @@
  * per-incident) and cadence-less goals collapse to a single completion "pip".
  *
  * Pure — no React, no IO. The component passes `entries`, the cadence, and
- * `now` (Date.now() from the client). v1 anchors the cycle to the calendar
- * year of `now`; a goal's real `cycleId` bounds can be threaded in later via
- * `cycleStart` / `cycleEnd`.
+ * `now` (Date.now() from the client). `cycleStart` / `cycleEnd` default to the
+ * calendar year of `now`; pass them explicitly for a goal whose cycle doesn't
+ * run Jan–Dec (a 6-month IDP starting in August, say). Monthly and quarterly
+ * windows stay snapped to calendar boundaries either way, so their keys remain
+ * comparable across goals and with `currentPeriodKey`.
  *
  * Render mode:
  *   - "pip"      non-bucketing / no cadence → complete ↔ incomplete
@@ -38,28 +40,63 @@ function entryFilled(entries, start, end) {
   return false;
 }
 
+/** Runaway guard for the calendar-window walk — 64 months / 64 quarters. */
+const MAX_CALENDAR_WINDOWS = 64;
+
 /** Enumerate [start,end) windows tiling [cycleStart, cycleEnd) for a cadence. */
 function enumerateWindows(cadence, year, cycleStart, cycleEnd) {
   const out = [];
-  if (cadence === "quarterly") {
-    for (let q = 0; q < 4; q += 1) {
-      out.push({
-        start: Date.UTC(year, q * 3, 1),
-        end: Date.UTC(year, q * 3 + 3, 1),
-        key: `${year}-Q${q + 1}`,
-        label: `Q${q + 1}`,
-      });
-    }
-    return out;
-  }
-  if (cadence === "monthly") {
-    for (let m = 0; m < 12; m += 1) {
-      out.push({
-        start: Date.UTC(year, m, 1),
-        end: Date.UTC(year, m + 1, 1),
-        key: `${year}-${String(m + 1).padStart(2, "0")}`,
-        label: MONTHS[m],
-      });
+  // Monthly + quarterly walk the CALENDAR from the period containing
+  // `cycleStart` until `cycleEnd`, rather than always tiling Jan–Dec of one
+  // year. Two things depend on this:
+  //   1. A cycle that doesn't start in January (a 6-month IDP running Aug–Jan)
+  //      is representable at all — the old version silently returned the wrong
+  //      12 windows for it.
+  //   2. A cycle that crosses a year boundary keeps going instead of stopping
+  //      at Dec 31.
+  // Windows stay snapped to calendar month/quarter boundaries, so `key` keeps
+  // its existing `YYYY-MM` / `YYYY-Q#` shape and stays comparable with
+  // `currentPeriodKey` and with every periodKey already persisted in
+  // goal-inputs. With the default full-calendar-year bounds the output is
+  // identical to before, element for element.
+  if (cadence === "quarterly" || cadence === "monthly") {
+    const monthly = cadence === "monthly";
+    const step = monthly ? 1 : 3;
+    const from = new Date(cycleStart);
+    let y = from.getUTCFullYear();
+    // Snap back to the first month of the containing month/quarter, so a cycle
+    // starting mid-period still yields whole, calendar-aligned windows.
+    let m = monthly
+      ? from.getUTCMonth()
+      : Math.floor(from.getUTCMonth() / 3) * 3;
+    // Disambiguate labels only when the cycle spans more than one calendar
+    // year — otherwise a 13-month cycle would render "Jan" twice with no way
+    // to tell them apart. Single-year cycles keep the bare "Jan" / "Q1".
+    const spansYears = new Date(cycleEnd - 1).getUTCFullYear() !== y;
+    for (let i = 0; i < MAX_CALENDAR_WINDOWS; i += 1) {
+      const start = Date.UTC(y, m, 1);
+      if (start >= cycleEnd) break;
+      const suffix = spansYears ? ` ${String(y).slice(2)}` : "";
+      out.push(
+        monthly
+          ? {
+              start,
+              end: Date.UTC(y, m + 1, 1),
+              key: `${y}-${String(m + 1).padStart(2, "0")}`,
+              label: `${MONTHS[m]}${suffix}`,
+            }
+          : {
+              start,
+              end: Date.UTC(y, m + 3, 1),
+              key: `${y}-Q${Math.floor(m / 3) + 1}`,
+              label: `Q${Math.floor(m / 3) + 1}${suffix}`,
+            },
+      );
+      m += step;
+      if (m > 11) {
+        y += Math.floor(m / 12);
+        m %= 12;
+      }
     }
     return out;
   }
