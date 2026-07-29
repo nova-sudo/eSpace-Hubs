@@ -97,6 +97,39 @@ export const composeWidgetSchema = z.object({
   goalId: z.string().min(1).max(200),
   goalTitle: z.string().max(500).default(""),
   description: z.string().min(3).max(2_000),
+  // Text lifted out of a file the user attached, via /compose-widget/extract.
+  //
+  // Deliberately NOT folded into `description`, and `description`'s 2k cap
+  // deliberately not raised: the two mean different things. `description` is
+  // what the user themselves asked for — short, authoritative, worth its
+  // tight bound. `attachment.text` is bulk source material they're pointing
+  // at, which needs a far larger budget but carries less intent per token.
+  // Keeping them apart is what lets the prompt (and later, telemetry) tell
+  // "what the user typed" from "what came out of their file".
+  //
+  // The 20k cap mirrors MAX_EXTRACTED_CHARS in ./extract/index.ts — the
+  // extractor is the authority, this is the boundary check on a payload the
+  // client could have edited. The handler re-truncates on top of it (W8):
+  // a valid-per-schema 20k blob is still re-clamped before it hits a prompt.
+  attachment: z
+    .object({
+      text: z.string().min(1).max(20_000),
+      // Display metadata only — never used to build a path server-side.
+      sourceFilename: z.string().max(300).optional(),
+      sourceType: z.enum(["pdf", "docx", "xlsx", "xls", "csv"]).optional(),
+    })
+    .optional(),
   provider,
 });
 export type ComposeWidgetInput = z.infer<typeof composeWidgetSchema>;
+
+/**
+ * Non-file fields of the multipart POST /compose-widget/extract body.
+ * multer hands text parts through as strings on `req.body`; the file
+ * itself is validated by the extractor (magic bytes), not by zod.
+ * `goalId` is log/audit context — nothing is persisted against it.
+ */
+export const extractAttachmentSchema = z.object({
+  goalId: z.string().min(1).max(200),
+});
+export type ExtractAttachmentInput = z.infer<typeof extractAttachmentSchema>;

@@ -90,6 +90,34 @@ export function IntegrationsTab() {
           </div>
         </Card>
       </Section>
+
+      {/* The token promise above is absolute — "they never touch our server."
+          The AI features are the honest exception: text and attached documents
+          DO leave the browser, reach our API, and go on to a third-party model.
+          Saying so plainly here is the price of making the token claim
+          believable everywhere else. */}
+      <Section num="03 /" title="What the AI sees">
+        <Card className="p-6">
+          <div className="grid grid-cols-2 gap-6">
+            <PrivacyPoint
+              title="AI text does leave"
+              body="Unlike your tokens, what you type into the AI surfaces — goal descriptions, tracker descriptions, chat — is sent to our API and on to the provider you picked in Account (Claude, Mistral, GLM, OpenRouter). There's no on-device model; that trip is how you get an answer."
+            />
+            <PrivacyPoint
+              title="Attached documents too"
+              body="Attach a PDF, DOCX, XLSX or CSV to “Build your own tracker” and the file is uploaded to our API, its text pulled out there, and that text sent to the same AI provider. You see the extracted text and can edit or trim it before it goes anywhere."
+            />
+            <PrivacyPoint
+              title="We don't keep the file"
+              body="Uploads are parsed in memory and dropped with the response — no disk, no database, no object storage. We log the size, type and outcome so we can debug failures; never the contents. Only the tracker you approve is saved."
+            />
+            <PrivacyPoint
+              title="Their retention, their rules"
+              body="Once text reaches the AI provider it's covered by that provider's policy — commercial APIs commonly hold inputs and outputs for up to 30 days. Don't attach anything you wouldn't send to that vendor directly."
+            />
+          </div>
+        </Card>
+      </Section>
     </>
   );
 }

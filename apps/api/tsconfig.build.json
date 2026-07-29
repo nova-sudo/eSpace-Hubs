@@ -8,5 +8,8 @@
     "declarationMap": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "scripts"]
+  // Tests are run from source with `tsx --test` (see the `test` script), so
+  // compiling them only bloats the production image with code that never
+  // executes there — and ships fixture-building helpers alongside the app.
+  "exclude": ["node_modules", "dist", "scripts", "src/**/*.test.ts"]
 }

@@ -9,21 +9,71 @@
  * we preview the generated fields + cadence + tiers → "Use this tracker" saves
  * the spec (and wipes any prior widget's logged history, mirroring re-analyze).
  *
+ * Documents (Phase 1). Most people already *have* the plan — a manager's Word
+ * doc, a spreadsheet built in a 1:1 — and retyping it into a 2,000-character
+ * box loses fidelity to time pressure. So the user can attach one file, which
+ * adds two phases between INPUT and BUSY:
+ *
+ *   INPUT ──(file)──▶ EXTRACTING ──▶ EXTRACT_REVIEW ──▶ BUSY ──▶ PREVIEW
+ *     └───────────────(no file, unchanged path)────────▶ BUSY ──▶ PREVIEW
+ *
+ * EXTRACTING is deliberately NOT the BUSY spinner: reading a document is a
+ * different latency and failure domain than composing (a big PDF is slow; a
+ * scanned one fails outright), and one generic "Designing…" would mislabel
+ * both. EXTRACT_REVIEW puts the extracted text in an *editable* textarea
+ * because extraction is lossy in ways only the author can spot — this is the
+ * last cheap moment to fix it, before the text is sent to an AI provider.
+ *
+ * Phase 1 feeds the existing, unmodified COMPOSED schema, so a rich document
+ * genuinely cannot survive intact (one cadence, one flat field list). That
+ * lossiness is acceptable only because it's *surfaced*: `unrepresented` renders
+ * in the same amber banner family as the long-standing `seeded` warning — one
+ * visual vocabulary for "the AI wasn't sure / couldn't carry this", never two.
+ *
  * Presentation-only host: a centred fixed overlay (backdrop + ESC close),
  * matching GoalWidgetModal. Reachable from the ContextCollector ("describe your
  * own") and from a mounted widget's "build my own" control.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
-import { composeWidget } from "@/features/analyst";
+import { FileText, Paperclip, X } from "lucide-react";
+import {
+  ATTACHMENT_ACCEPT,
+  ATTACHMENT_MAX_BYTES,
+  composeWidget,
+  extractComposeAttachment,
+} from "@/features/analyst";
 import { saveSpec } from "@/features/goal-specs";
 import { clearGoalEntries } from "@/features/goal-inputs";
 import { clearGoalLocks } from "@/features/goal-locks";
 import { apiPost } from "@/lib/api-client";
+import { cn } from "@/lib/cn";
 
-const PHASE = { INPUT: "input", BUSY: "busy", PREVIEW: "preview" };
+const PHASE = {
+  INPUT: "input",
+  EXTRACTING: "extracting",
+  EXTRACT_REVIEW: "extract_review",
+  BUSY: "busy",
+  PREVIEW: "preview",
+};
+
+/**
+ * Announced through the aria-live region on every phase change. This modal
+ * swaps its whole body between phases with no focus move of its own, so a
+ * screen-reader user would otherwise hear nothing at all between "Generate"
+ * and a preview appearing.
+ */
+const PHASE_ANNOUNCEMENT = {
+  [PHASE.INPUT]: "",
+  [PHASE.EXTRACTING]: "Reading your document.",
+  [PHASE.EXTRACT_REVIEW]: "Document read. Check the text before we design the tracker.",
+  [PHASE.BUSY]: "Designing your tracker.",
+  [PHASE.PREVIEW]: "Tracker ready to review.",
+};
+
+const ACCEPTED_EXTENSIONS = ATTACHMENT_ACCEPT.split(",");
 
 const KIND_HINT = {
   checkbox: "yes / no",
@@ -40,8 +90,19 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
   const [description, setDescription] = useState("");
   const [phase, setPhase] = useState(PHASE.INPUT);
   const [error, setError] = useState(null);
-  const [preview, setPreview] = useState(null); // { spec, seeded }
+  const [preview, setPreview] = useState(null); // { spec, seeded, unrepresented }
   const [saving, setSaving] = useState(false);
+  // The attached File stays in state across failures on purpose — a transient
+  // 500 should never cost the user a second upload.
+  const [file, setFile] = useState(null);
+  const [extracted, setExtracted] = useState(null); // server result, kept for provenance
+  // True once THIS file has failed to extract, so the primary button stops
+  // retrying a read that will fail identically and composes instead.
+  const [extractFailed, setExtractFailed] = useState(false);
+  const [extractText, setExtractText] = useState(""); // the user-editable copy
+  const fileInputRef = useRef(null);
+  const reviewHeadingRef = useRef(null);
+  const extractAbortRef = useRef(null);
 
   // Reset the flow each time the modal opens for a goal.
   useEffect(() => {
@@ -51,26 +112,152 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
       setError(null);
       setPreview(null);
       setSaving(false);
+      setFile(null);
+      setExtracted(null);
+    setExtractFailed(false);
+      setExtractText("");
     }
   }, [open, spec?.goalId]);
+
+  // Never leave an upload running behind a closed modal.
+  useEffect(() => {
+    if (!open) extractAbortRef.current?.abort();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => {
-      if (e.key === "Escape") onClose?.();
+      if (e.key !== "Escape") return;
+      // ESC must not silently bin an in-flight extraction — the file is
+      // already uploaded and the user has no way to know it was thrown away.
+      if (phase === PHASE.EXTRACTING) {
+        setError("Still reading your document. Cancel that first, or wait for it to finish.");
+        return;
+      }
+      onClose?.();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, onClose, phase]);
+
+  // Focus management: EXTRACT_REVIEW asks the user to verify something, so
+  // land them on its heading rather than leaving focus on the (now gone)
+  // Generate button.
+  useEffect(() => {
+    if (phase === PHASE.EXTRACT_REVIEW) reviewHeadingRef.current?.focus();
+  }, [phase]);
 
   if (!open) return null;
   if (typeof document === "undefined") return null;
 
   const goalId = spec?.goalId;
   const goalTitle = goal?.title || spec?.title || "this goal";
+  const busy = phase === PHASE.BUSY;
+  const canGenerate = description.trim().length >= 3 || Boolean(file);
+
+  function requestClose() {
+    if (phase === PHASE.EXTRACTING) {
+      setError("Still reading your document. Cancel that first, or wait for it to finish.");
+      return;
+    }
+    onClose?.();
+  }
+
+  /** Client-side gate — reject the obvious cases before spending an upload. */
+  function acceptFile(candidate) {
+    if (!candidate) return;
+    const name = candidate.name || "";
+    // lastIndexOf returns -1 for a file with no dot at all, and slice(-1)
+    // would then hand back the final CHARACTER — "README" became "we can't
+    // read E." Treat "no extension" as its own case.
+    const dot = name.lastIndexOf(".");
+    const ext = dot === -1 ? "" : name.slice(dot).toLowerCase();
+    if (!ACCEPTED_EXTENSIONS.includes(ext)) {
+      setError(
+        `We can't read ${ext || "that file type"}. Attach a PDF, DOCX, XLSX, XLS or CSV.`,
+      );
+      return;
+    }
+    if (candidate.size > ATTACHMENT_MAX_BYTES) {
+      setError(
+        `${name} is ${formatBytes(candidate.size)} — the limit is 10 MB. Try a smaller export.`,
+      );
+      return;
+    }
+    setError(null);
+    setFile(candidate);
+    // A new file invalidates whatever we read from the old one.
+    setExtracted(null);
+    setExtractFailed(false);
+    setExtractText("");
+  }
+
+  function removeFile() {
+    setFile(null);
+    setExtracted(null);
+    setExtractFailed(false);
+    setExtractText("");
+    setError(null);
+  }
+
+  async function handleExtract() {
+    const controller = new AbortController();
+    extractAbortRef.current = controller;
+    setError(null);
+    setPhase(PHASE.EXTRACTING);
+    try {
+      const result = await extractComposeAttachment({
+        goalId,
+        file,
+        signal: controller.signal,
+      });
+      setExtracted(result);
+      setExtractText(result.text);
+      setPhase(PHASE.EXTRACT_REVIEW);
+    } catch (err) {
+      // A user-initiated cancel isn't an error worth shouting about.
+      if (controller.signal.aborted) {
+        setPhase(PHASE.INPUT);
+        return;
+      }
+      // Back to INPUT with the description AND the file intact — retrying a
+      // flaky upload should never mean re-picking the file. But remember that
+      // THIS file already failed, so the next press of the primary button
+      // composes from the typed description instead of retrying extraction
+      // forever. Without this the error copy ("…or describe it below") is a
+      // lie for the scanned-PDF case: the button would just re-extract, fail,
+      // and re-extract, and the only way out is spotting the chip's ✕.
+      setExtractFailed(true);
+      setError(err?.message || String(err));
+      setPhase(PHASE.INPUT);
+    } finally {
+      extractAbortRef.current = null;
+    }
+  }
+
+  /**
+   * The server's `description` is `min(3)`, but with a document attached the
+   * typed box is genuinely optional ("add anything the doc doesn't cover").
+   * Stand in a truthful sentence rather than forcing busywork typing.
+   */
+  function effectiveDescription() {
+    const typed = description.trim();
+    if (typed.length >= 3) return typed;
+    const name = extracted?.sourceFilename || file?.name;
+    return name ? `Build a tracker from the attached document (${name}).` : typed;
+  }
 
   async function handleGenerate() {
-    const desc = description.trim();
+    // An attached-but-unread file routes through extraction first; the same
+    // button drives both steps so there's only ever one primary action.
+    // `extractFailed` is the escape hatch: once this file has failed to read,
+    // pressing the button again composes from the typed description rather
+    // than looping on an extraction that will fail the same way.
+    if (file && !extracted && !extractFailed) {
+      void handleExtract();
+      return;
+    }
+    const desc = effectiveDescription();
     if (desc.length < 3) {
       setError("Describe how you'd track this — what you'd log, and how often.");
       return;
@@ -82,6 +269,13 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
         goalId,
         goalTitle: goal?.title || spec?.title,
         description: desc,
+        attachment: extracted
+          ? {
+              text: extractText,
+              sourceFilename: extracted.sourceFilename,
+              sourceType: extracted.sourceType,
+            }
+          : undefined,
       });
       setPreview(result);
       setPhase(PHASE.PREVIEW);
@@ -147,7 +341,7 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
       aria-modal="true"
       aria-label="Describe your own tracker"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose?.();
+        if (e.target === e.currentTarget) requestClose();
       }}
       style={{
         position: "fixed",
@@ -192,7 +386,7 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
           <button
             type="button"
             aria-label="Close"
-            onClick={() => onClose?.()}
+            onClick={requestClose}
             className="rounded-[var(--radius-sub)] px-2.5 py-1 transition-opacity hover:opacity-80"
             style={{
               fontFamily: "var(--font-mono)",
@@ -209,8 +403,22 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
 
         {/* Body */}
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {/* Phase transitions are otherwise silent for screen readers. */}
+          <div role="status" aria-live="polite" className="sr-only">
+            {PHASE_ANNOUNCEMENT[phase]}
+          </div>
+
           {phase === PHASE.PREVIEW && preview?.spec ? (
             <SpecPreview preview={preview} />
+          ) : phase === PHASE.EXTRACTING ? (
+            <ExtractingPanel filename={file?.name} />
+          ) : phase === PHASE.EXTRACT_REVIEW ? (
+            <ExtractReview
+              headingRef={reviewHeadingRef}
+              extracted={extracted}
+              text={extractText}
+              onChange={setExtractText}
+            />
           ) : (
             <>
               <label
@@ -222,11 +430,13 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                disabled={phase === PHASE.BUSY}
+                disabled={busy}
                 rows={5}
                 autoFocus
                 placeholder={
-                  'e.g. "Each quarter I want to log how many chapters I read — target 5 — plus a short note on what I read."'
+                  file
+                    ? "Add anything the document doesn't cover (optional)."
+                    : 'e.g. "Each quarter I want to log how many chapters I read — target 5 — plus a short note on what I read."'
                 }
                 className="w-full rounded-[var(--radius-sub)] p-2.5 outline-none focus:border-accent"
                 style={{
@@ -239,6 +449,35 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
                   resize: "vertical",
                 }}
               />
+
+              {file ? (
+                <FileChip
+                  file={file}
+                  read={Boolean(extracted)}
+                  disabled={busy}
+                  onRemove={removeFile}
+                />
+              ) : (
+                <AttachDropZone
+                  disabled={busy}
+                  onPick={() => fileInputRef.current?.click()}
+                  onDropFile={(f) => acceptFile(f)}
+                />
+              )}
+              {/* Real input, kept out of the layout — same construction as the
+                  goals importer, so keyboard and file-picker behaviour is the
+                  browser's, not ours. */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ATTACHMENT_ACCEPT}
+                onChange={(e) => {
+                  acceptFile(e.target.files?.[0]);
+                  e.target.value = ""; // allow re-picking the same file
+                }}
+                className="hidden"
+              />
+
               <div
                 className="mt-1.5"
                 style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--dim-fg)", lineHeight: 1.5 }}
@@ -298,20 +537,51 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
                 {saving ? "Submitting…" : "Submit for approval →"}
               </button>
             </>
-          ) : (
+          ) : phase === PHASE.EXTRACTING ? (
             <>
               <button
                 type="button"
-                onClick={() => onClose?.()}
+                onClick={() => extractAbortRef.current?.abort()}
                 className="uppercase tracking-[0.5px] transition-opacity hover:opacity-80"
                 style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--muted-fg)", background: "transparent" }}
               >
-                Cancel
+                Cancel upload
+              </button>
+              <button
+                type="button"
+                disabled
+                className="rounded-[var(--radius-sub)] px-4 py-2 font-bold uppercase"
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                  letterSpacing: "0.5px",
+                  color: "var(--accent-on)",
+                  background: "var(--accent)",
+                  border: "1px solid var(--accent)",
+                  opacity: 0.55,
+                  cursor: "wait",
+                }}
+              >
+                Reading…
+              </button>
+            </>
+          ) : phase === PHASE.EXTRACT_REVIEW ? (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setPhase(PHASE.INPUT);
+                  setError(null);
+                }}
+                className="uppercase tracking-[0.5px] transition-opacity hover:opacity-80"
+                style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--muted-fg)", background: "transparent" }}
+              >
+                ← Back
               </button>
               <button
                 type="button"
                 onClick={handleGenerate}
-                disabled={phase === PHASE.BUSY || description.trim().length < 3}
+                disabled={extractText.trim().length === 0}
                 className="rounded-[var(--radius-sub)] px-4 py-2 font-bold uppercase transition-[filter] hover:brightness-110"
                 style={{
                   fontFamily: "var(--font-mono)",
@@ -320,11 +590,39 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
                   color: "var(--accent-on)",
                   background: "var(--accent)",
                   border: "1px solid var(--accent)",
-                  opacity: phase === PHASE.BUSY || description.trim().length < 3 ? 0.55 : 1,
-                  cursor: phase === PHASE.BUSY ? "wait" : "pointer",
+                  opacity: extractText.trim().length === 0 ? 0.55 : 1,
                 }}
               >
-                {phase === PHASE.BUSY ? "Designing…" : "Generate tracker →"}
+                Looks good →
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={requestClose}
+                className="uppercase tracking-[0.5px] transition-opacity hover:opacity-80"
+                style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--muted-fg)", background: "transparent" }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={busy || !canGenerate}
+                className="rounded-[var(--radius-sub)] px-4 py-2 font-bold uppercase transition-[filter] hover:brightness-110"
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                  letterSpacing: "0.5px",
+                  color: "var(--accent-on)",
+                  background: "var(--accent)",
+                  border: "1px solid var(--accent)",
+                  opacity: busy || !canGenerate ? 0.55 : 1,
+                  cursor: busy ? "wait" : "pointer",
+                }}
+              >
+                {busy ? "Designing…" : "Generate tracker →"}
               </button>
             </>
           )}
@@ -335,6 +633,215 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
   );
 }
 
+/**
+ * Amber "we weren't sure" banner. Every uncertainty signal in this modal —
+ * the AI fell back to a generic tracker, part of a document didn't fit, the
+ * extractor flattened something — renders through this one component so users
+ * learn a single visual vocabulary instead of three.
+ */
+function WarnBanner({ children }) {
+  return (
+    <div
+      className="rounded-[var(--radius-sub)] px-2.5 py-2"
+      style={{
+        fontFamily: "var(--font-mono)",
+        fontSize: 10,
+        lineHeight: 1.5,
+        color: "var(--warn)",
+        background: "color-mix(in srgb, var(--warn) 12%, transparent)",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Attach affordance — a real <button> with the drag handlers layered on top,
+ * driving a real hidden <input type="file">. Same construction as the goals
+ * importer's DropZone: accessible because it's a button, not because we
+ * reimplemented keyboard handling on a div.
+ */
+function AttachDropZone({ onPick, onDropFile, disabled }) {
+  const [over, setOver] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      aria-label="Attach a document"
+      onDragEnter={(e) => {
+        e.preventDefault();
+        setOver(true);
+      }}
+      onDragOver={(e) => e.preventDefault()}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        onDropFile(e.dataTransfer.files?.[0]);
+      }}
+      disabled={disabled}
+      className={cn(
+        "mt-2 flex w-full items-center justify-center gap-2 rounded-[var(--radius-sub)] border border-dashed px-3 py-2.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        over ? "border-accent bg-accent-dim" : "border-border-strong bg-card-alt hover:border-accent",
+      )}
+    >
+      <Paperclip className="h-3.5 w-3.5 text-accent" />
+      <span
+        className="uppercase tracking-[0.4px]"
+        style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted-fg)" }}
+      >
+        Attach a plan — PDF · DOCX · XLSX · XLS · CSV, up to 10 MB
+      </span>
+    </button>
+  );
+}
+
+/** The attached file, as an explicit chip with a real, labelled remove control. */
+function FileChip({ file, read, onRemove, disabled }) {
+  return (
+    <div
+      className="mt-2 flex items-center gap-2 rounded-[var(--radius-sub)] px-2.5 py-2"
+      style={{ background: "var(--card-alt)", border: "1px solid var(--border)" }}
+    >
+      <FileText className="h-3.5 w-3.5 shrink-0 text-accent" />
+      <span className="min-w-0 flex-1 truncate" style={{ fontFamily: "var(--font-sans)", fontSize: 12.5 }} title={file.name}>
+        {file.name}
+      </span>
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--dim-fg)" }}>
+        {read ? `read · ${formatBytes(file.size)}` : formatBytes(file.size)}
+      </span>
+      <button
+        type="button"
+        onClick={onRemove}
+        disabled={disabled}
+        aria-label={`Remove ${file.name}`}
+        className="shrink-0 rounded-full p-1 text-dim-fg transition-colors hover:text-fg disabled:opacity-50"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * EXTRACTING — its own panel, not the BUSY spinner. It also carries the "we
+ * don't keep the file" line, because the moment a user hands over a document
+ * is the moment they want to know what happens to it.
+ */
+function ExtractingPanel({ filename }) {
+  return (
+    <div className="flex flex-col items-center gap-2 py-10 text-center">
+      <FileText className="h-5 w-5 animate-pulse text-accent" />
+      <div style={{ fontFamily: "var(--font-display)", fontSize: 15, letterSpacing: "-0.2px" }}>
+        Reading your document…
+      </div>
+      {filename ? (
+        <div className="max-w-full truncate" style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted-fg)" }} title={filename}>
+          {filename}
+        </div>
+      ) : null}
+      <div
+        className="max-w-[380px]"
+        style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--dim-fg)", lineHeight: 1.55 }}
+      >
+        We pull the text out on the server and throw the file away — it's never
+        stored. You'll get to read and edit the text before anything is sent to
+        the AI.
+      </div>
+    </div>
+  );
+}
+
+/**
+ * EXTRACT_REVIEW — the human-in-the-loop step. Editable on purpose: extraction
+ * flattens tables, drops layout, and occasionally mangles a heading, and the
+ * author is the only one who can tell. It's also the last point before the text
+ * leaves for a third-party AI provider, so trimming is a privacy control, not
+ * just a quality one.
+ */
+function ExtractReview({ headingRef, extracted, text, onChange }) {
+  const warnings = extracted?.warnings || [];
+  // Neutral "what I read" counts. Kept out of the amber banner deliberately:
+  // the extractors emit one of these on every successful run, so routing them
+  // through WarnBanner would make the warning state fire 100% of the time and
+  // stop carrying any signal by the time a real one (a dropped table, a
+  // skipped sheet) appears.
+  const info = extracted?.info || [];
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div>
+        <h2
+          ref={headingRef}
+          tabIndex={-1}
+          className="outline-none"
+          style={{ fontFamily: "var(--font-display)", fontSize: 15, letterSpacing: "-0.2px" }}
+        >
+          Here's what we read
+        </h2>
+        <div
+          className="mt-1"
+          style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--dim-fg)", lineHeight: 1.5 }}
+        >
+          {extracted?.sourceFilename ? `${extracted.sourceFilename} · ` : ""}
+          {text.length.toLocaleString()} characters. Fix anything that came out
+          wrong, or delete what you don't want sent.
+        </div>
+      </div>
+
+      {extracted?.truncated ? (
+        <WarnBanner>
+          The document was longer than we can send, so this is the first 20,000
+          characters. Trim it down to the part that matters most.
+        </WarnBanner>
+      ) : null}
+
+      {warnings.length > 0 ? (
+        <WarnBanner>
+          {warnings.map((w, i) => (
+            <div key={i}>⚠ {w}</div>
+          ))}
+        </WarnBanner>
+      ) : null}
+
+      {info.length > 0 ? (
+        <div
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 9.5,
+            color: "var(--dim-fg)",
+            lineHeight: 1.6,
+          }}
+        >
+          {info.map((line, i) => (
+            <div key={i}>{line}</div>
+          ))}
+        </div>
+      ) : null}
+
+      <label className="sr-only" htmlFor="compose-extract-text">
+        Extracted document text
+      </label>
+      <textarea
+        id="compose-extract-text"
+        value={text}
+        onChange={(e) => onChange(e.target.value)}
+        rows={14}
+        className="w-full rounded-[var(--radius-sub)] p-2.5 outline-none focus:border-accent"
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 11.5,
+          lineHeight: 1.55,
+          color: "var(--fg)",
+          background: "var(--card-alt)",
+          border: "1px solid var(--border)",
+          resize: "vertical",
+        }}
+      />
+    </div>
+  );
+}
+
 /** Read-only preview of the generated COMPOSED spec: cadence + fields + tiers. */
 function SpecPreview({ preview }) {
   const spec = preview.spec;
@@ -342,23 +849,34 @@ function SpecPreview({ preview }) {
   const cadence = spec.composed?.cadence || null;
   const prompt = spec.composed?.prompt || null;
   const tiers = spec.tiers || null;
+  const unrepresented = Array.isArray(preview.unrepresented) ? preview.unrepresented : [];
 
   return (
     <div className="flex flex-col gap-3">
       {preview.seeded ? (
-        <div
-          className="rounded-[var(--radius-sub)] px-2.5 py-2"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            lineHeight: 1.5,
-            color: "var(--warn)",
-            background: "color-mix(in srgb, var(--warn) 12%, transparent)",
-          }}
-        >
-          The AI couldn't parse specific fields, so this is a generic tracker.
-          Re-describe with the exact things you'd log for a better fit.
-        </div>
+        <WarnBanner>
+          The AI couldn&apos;t parse specific fields, so this is a generic tracker.
+          Re-describe with the exact things you&apos;d log for a better fit.
+        </WarnBanner>
+      ) : null}
+
+      {/* Phase 1 feeds one flat COMPOSED spec, so a multi-phase plan genuinely
+          can't fit. Listing what fell out is what keeps that honest. */}
+      {unrepresented.length > 0 ? (
+        <WarnBanner>
+          <div className="mb-1 font-bold uppercase tracking-[0.4px]">
+            {unrepresented.length} part{unrepresented.length === 1 ? "" : "s"} of your
+            document didn&apos;t fit this tracker
+          </div>
+          {unrepresented.map((item, i) => (
+            <div key={i}>· {item}</div>
+          ))}
+          <div className="mt-1">
+            A tracker logs one set of fields per period — anything that needed its
+            own week-by-week content or a weighted score is listed above. Track it
+            elsewhere, or re-describe to prioritise it.
+          </div>
+        </WarnBanner>
       ) : null}
 
       <div className="flex items-center gap-2">
@@ -444,4 +962,11 @@ function SpecPreview({ preview }) {
       ) : null}
     </div>
   );
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes)) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

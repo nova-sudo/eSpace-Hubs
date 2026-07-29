@@ -28,5 +28,10 @@ export {
   flattenGoalsForClassification,
 } from "./use-classify-goals";
 export { reclassifyOneGoal } from "./reclassify-one-goal";
-export { composeWidget } from "./compose-widget";
+export {
+  composeWidget,
+  extractComposeAttachment,
+  ATTACHMENT_ACCEPT,
+  ATTACHMENT_MAX_BYTES,
+} from "./compose-widget";
 export { AI_PROVIDERS, setAiProvider, useAiProvider, getAiProvider } from "./use-ai-provider";
