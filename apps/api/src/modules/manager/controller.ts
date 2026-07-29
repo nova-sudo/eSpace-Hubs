@@ -47,6 +47,18 @@ import {
   type GoalStatus,
 } from "./goal-health.js";
 import { buildGoalDetail } from "./goal-detail.js";
+import * as sharedGoalSpecs from "@espace-devhub/shared/goal-specs";
+
+/**
+ * The query-template registry, reached structurally. The approval projection
+ * is the only thing here that needs it, and it must never be the reason this
+ * endpoint 500s: if the registry isn't reachable the approval card simply
+ * loses one description line, which is a far better failure than a manager
+ * unable to see their queue at all.
+ */
+const queryRegistry = sharedGoalSpecs as unknown as {
+  describeQuerySource?: (source: unknown) => string;
+};
 
 /**
  * What a manager sees per direct report on the roster. Deliberately thin
@@ -608,6 +620,17 @@ interface ApprovalItem {
   cadence: string | null;
   fields: { kind: string; label: string }[];
   /**
+   * Fields the tracker READS instead of asking for — gathered from the base
+   * schema AND from every per-period schema, because a query buried in week 9
+   * is still a query this approval authorises.
+   *
+   * Plain English only. This is the human check on a query an AI composed, so
+   * what ships is the sentence — "Checks AGENTS.md exists in espace/hubs
+   * (GitHub)" — never a template id or a URL. An approver can't audit
+   * `repo_file_exists`, and shouldn't have to.
+   */
+  autoFields: { label: string; description: string; provider: string | null }[];
+  /**
    * Per-period content, when the tracker authored any. The manager is
    * approving a PLAN, not just a form — without this a 13-week tracker with
    * distinct weekly deliverables and a uniform one look identical in the
@@ -615,6 +638,56 @@ interface ApprovalItem {
    */
   periods: { label: string; dueAt: string | null }[];
   tiers: Record<string, string> | null;
+}
+
+/**
+ * Turn every field carrying a `source` — wherever in the spec it lives — into
+ * one legible sentence for the approver. Deduped on the sentence itself: a
+ * 13-week plan that checks the same file every week should read as one line,
+ * not thirteen identical ones.
+ */
+function collectAutoFields(
+  baseFields: unknown[],
+  periods: unknown,
+): { label: string; description: string; provider: string | null }[] {
+  const out: { label: string; description: string; provider: string | null }[] = [];
+  const seen = new Set<string>();
+
+  const consider = (f: unknown): void => {
+    const o = f && typeof f === "object" ? (f as Record<string, unknown>) : null;
+    const source =
+      o?.source && typeof o.source === "object"
+        ? (o.source as Record<string, unknown>)
+        : null;
+    if (!source || typeof source.query !== "string") return;
+    let description: string;
+    try {
+      description = queryRegistry.describeQuerySource?.(source) ?? "";
+    } catch {
+      description = "";
+    }
+    // No sentence, no row. A template id in the approval queue is worse than
+    // nothing — it looks reviewed without being reviewable.
+    if (!description) return;
+    const label = typeof o?.label === "string" ? o.label : "";
+    const key = `${label}::${description}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({
+      label,
+      description: description.slice(0, 240),
+      provider: typeof source.provider === "string" ? source.provider : null,
+    });
+  };
+
+  for (const f of baseFields) consider(f);
+  for (const p of Array.isArray(periods) ? periods : []) {
+    const o = p && typeof p === "object" ? (p as Record<string, unknown>) : null;
+    for (const f of Array.isArray(o?.fields) ? (o.fields as unknown[]) : []) {
+      consider(f);
+    }
+  }
+  return out.slice(0, 20);
 }
 
 export async function listApprovalsHandler(
@@ -702,6 +775,7 @@ export async function listApprovalsHandler(
           };
         })
         .slice(0, 10);
+      const autoFields = collectAutoFields(rawFields, composed?.periods);
       const tiersObj =
         spec.tiers && typeof spec.tiers === "object"
           ? (spec.tiers as Record<string, unknown>)
@@ -726,6 +800,7 @@ export async function listApprovalsHandler(
             : null,
         cadence: typeof composed?.cadence === "string" ? composed.cadence : null,
         fields,
+        autoFields,
         periods,
         tiers,
       });

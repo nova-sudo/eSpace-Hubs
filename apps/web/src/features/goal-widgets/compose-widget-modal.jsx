@@ -30,6 +30,20 @@
  * in the same amber banner family as the long-standing `seeded` warning — one
  * visual vocabulary for "the AI wasn't sure / couldn't carry this", never two.
  *
+ * Automatic fields. A composed spec may now contain fields the server fills
+ * from the user's GitHub/GitLab, and those queries need things only the user
+ * knows — which repository, which host. The AI asks for them as ordinary
+ * `spec.context` questions, which adds one more phase:
+ *
+ *   … ──▶ PREVIEW ──(spec.context unanswered)──▶ CONTEXT ──▶ PREVIEW ──▶ submit
+ *
+ * CONTEXT reuses the ContextCollector shell verbatim rather than growing a
+ * second question form here — it already renders every CONTEXT_QUESTION_KIND,
+ * including selects and resource links, and two forms answering the same
+ * questions is exactly how the two would drift apart. It is a hard gate: a
+ * tracker whose queries cannot resolve their params is worse than one with no
+ * queries at all, because it looks automatic and reports nothing.
+ *
  * Presentation-only host: a centred fixed overlay (backdrop + ESC close),
  * matching GoalWidgetModal. Reachable from the ContextCollector ("describe your
  * own") and from a mounted widget's "build my own" control.
@@ -50,6 +64,13 @@ import { clearGoalEntries } from "@/features/goal-inputs";
 import { clearGoalLocks } from "@/features/goal-locks";
 import { apiPost } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
+import { useIsContextComplete } from "@/features/goal-context";
+import { ContextCollector } from "./state-shells/context-collector";
+// Namespace import for the same reason composed-fields.jsx uses one: the
+// plain-English sentence for a query belongs to the shared registry, and a
+// named import would make this modal fail to build against an older shared
+// package rather than simply describe the field less richly.
+import * as sharedGoalSpecs from "@espace-devhub/shared/goal-specs";
 
 const PHASE = {
   INPUT: "input",
@@ -57,6 +78,7 @@ const PHASE = {
   EXTRACT_REVIEW: "extract_review",
   BUSY: "busy",
   PREVIEW: "preview",
+  CONTEXT: "context",
 };
 
 /**
@@ -71,6 +93,7 @@ const PHASE_ANNOUNCEMENT = {
   [PHASE.EXTRACT_REVIEW]: "Document read. Check the text before we design the tracker.",
   [PHASE.BUSY]: "Designing your tracker.",
   [PHASE.PREVIEW]: "Tracker ready to review.",
+  [PHASE.CONTEXT]: "A few answers are needed before this tracker can read your repository.",
 };
 
 const ACCEPTED_EXTENSIONS = ATTACHMENT_ACCEPT.split(",");
@@ -146,6 +169,17 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
   useEffect(() => {
     if (phase === PHASE.EXTRACT_REVIEW) reviewHeadingRef.current?.focus();
   }, [phase]);
+
+  // The same completeness rule the widget resolver uses, applied to the spec
+  // we have not saved yet. Answers live in the goal-context store keyed by
+  // goalId, which is also where the server reads them from when it resolves a
+  // field's query — so answering here is not a preview-only formality, it is
+  // the real thing, written early. Hooks run before the `open` early-return
+  // below; `useIsContextComplete` treats a null spec as complete, so a closed
+  // modal or a spec with no questions costs nothing.
+  const contextComplete = useIsContextComplete(preview?.spec || null);
+  const needsContext =
+    Boolean(preview?.spec?.context?.required) && !contextComplete;
 
   if (!open) return null;
   if (typeof document === "undefined") return null;
@@ -287,6 +321,17 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
 
   async function handleUse() {
     if (!preview?.spec || saving) return;
+    // Hard gate, not a nudge. A source-backed field whose params never resolve
+    // renders as an automatic field that permanently reads "—", which is worse
+    // than a typed field: it looks like the tracker is working. Submitting for
+    // approval would also hand a manager something they cannot evaluate.
+    if (needsContext) {
+      setError(
+        "This tracker reads from your repository — answer the setup questions first.",
+      );
+      setPhase(PHASE.CONTEXT);
+      return;
+    }
     setSaving(true);
     // P4: a Build-Your-Own tracker enters "pending" — read-only until the
     // manager approves. `replace: true` is a deliberate whole-widget swap
@@ -408,8 +453,22 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
             {PHASE_ANNOUNCEMENT[phase]}
           </div>
 
-          {phase === PHASE.PREVIEW && preview?.spec ? (
-            <SpecPreview preview={preview} />
+          {phase === PHASE.CONTEXT && preview?.spec ? (
+            <ContextPanel
+              spec={preview.spec}
+              goal={goal}
+              onSaved={() => {
+                // The collector has committed the answers by now, so the
+                // completeness hook has already flipped. Going back to PREVIEW
+                // unconditionally is safe: if something is still blank,
+                // `needsContext` keeps the primary button pointing right back
+                // here rather than letting an unresolvable tracker through.
+                setError(null);
+                setPhase(PHASE.PREVIEW);
+              }}
+            />
+          ) : phase === PHASE.PREVIEW && preview?.spec ? (
+            <SpecPreview preview={preview} needsContext={needsContext} />
           ) : phase === PHASE.EXTRACTING ? (
             <ExtractingPanel filename={file?.name} />
           ) : phase === PHASE.EXTRACT_REVIEW ? (
@@ -504,7 +563,31 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
           className="flex items-center justify-between gap-2 border-t px-4 py-3"
           style={{ borderColor: "var(--border)" }}
         >
-          {phase === PHASE.PREVIEW ? (
+          {phase === PHASE.CONTEXT ? (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setPhase(PHASE.PREVIEW);
+                }}
+                className="uppercase tracking-[0.5px] transition-opacity hover:opacity-80"
+                style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--muted-fg)", background: "transparent" }}
+              >
+                ← Back to tracker
+              </button>
+              {/* No primary action here on purpose: the collector owns its own
+                  submit, and a second "done" button beside it would be two
+                  controls for one intent — one of which wouldn't commit the
+                  answers. */}
+              <span
+                className="uppercase tracking-[0.4px]"
+                style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--dim-fg)" }}
+              >
+                Answers save with the form above
+              </span>
+            </>
+          ) : phase === PHASE.PREVIEW ? (
             <>
               <button
                 type="button"
@@ -520,7 +603,14 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
               </button>
               <button
                 type="button"
-                onClick={handleUse}
+                onClick={
+                  needsContext
+                    ? () => {
+                        setError(null);
+                        setPhase(PHASE.CONTEXT);
+                      }
+                    : handleUse
+                }
                 disabled={saving}
                 className="rounded-[var(--radius-sub)] px-4 py-2 font-bold uppercase transition-[filter] hover:brightness-110"
                 style={{
@@ -534,7 +624,11 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
                   cursor: saving ? "wait" : "pointer",
                 }}
               >
-                {saving ? "Submitting…" : "Submit for approval →"}
+                {saving
+                  ? "Submitting…"
+                  : needsContext
+                    ? "Set up auto-fill →"
+                    : "Submit for approval →"}
               </button>
             </>
           ) : phase === PHASE.EXTRACTING ? (
@@ -652,6 +746,37 @@ function WarnBanner({ children }) {
       }}
     >
       {children}
+    </div>
+  );
+}
+
+/**
+ * CONTEXT — the setup questions a source-backed field needs answered.
+ *
+ * Deliberately a thin wrapper: the collector is mounted as-is, with no
+ * `onReclassify` (re-running the classifier here would throw away the tracker
+ * the user just approved of) and no `onCompose` (they are already inside the
+ * composer). `variant="dark"` matches the modal's card surface — the inverse
+ * theme belongs to the indigo analyst section, not here.
+ */
+function ContextPanel({ spec, goal, onSaved }) {
+  const count = spec.context?.questions?.length || 0;
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div>
+        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 15, letterSpacing: "-0.2px" }}>
+          {count === 1 ? "One thing we need from you" : `${count} things we need from you`}
+        </h2>
+        <div
+          className="mt-1"
+          style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--dim-fg)", lineHeight: 1.5 }}
+        >
+          Some fields fill themselves from your repository. We can&apos;t guess
+          which repo you mean, so answer these once and every automatic field
+          reuses them.
+        </div>
+      </div>
+      <ContextCollector spec={spec} goal={goal} variant="dark" onSaved={onSaved} />
     </div>
   );
 }
@@ -842,17 +967,48 @@ function ExtractReview({ headingRef, extracted, text, onChange }) {
   );
 }
 
+/** Is this field filled by the server from a repo host rather than by the user? */
+function isAutoField(f) {
+  return Boolean(f?.source && typeof f.source === "object" && f.source.query);
+}
+
+/**
+ * The one-sentence, plain-English account of what an automatic field will read.
+ * Sourced from the shared registry, which is also what the manager sees on the
+ * approval screen — the person approving and the person who asked for it should
+ * be reading the same sentence, or one of them is being told a different story.
+ */
+function describeSource(source) {
+  try {
+    return sharedGoalSpecs.describeQuerySource?.(source) || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Read-only preview of the generated COMPOSED spec: cadence + fields + tiers. */
-function SpecPreview({ preview }) {
+function SpecPreview({ preview, needsContext }) {
   const spec = preview.spec;
   const fields = Array.isArray(spec.fields) ? spec.fields : [];
   const cadence = spec.composed?.cadence || null;
   const prompt = spec.composed?.prompt || null;
   const tiers = spec.tiers || null;
   const unrepresented = Array.isArray(preview.unrepresented) ? preview.unrepresented : [];
+  const autoCount = fields.filter(isAutoField).length;
 
   return (
     <div className="flex flex-col gap-3">
+      {/* Same amber family as every other "this isn't finished" signal — the
+          setup questions are a gate, and a gate the user only discovers by
+          pressing the primary button is a gate they experience as a bug. */}
+      {needsContext ? (
+        <WarnBanner>
+          {autoCount > 0
+            ? `${autoCount} field${autoCount === 1 ? "" : "s"} fill${autoCount === 1 ? "s" : ""} automatically from your repository — but we still need to know which repository. Answer the setup questions before submitting.`
+            : "This tracker needs a few setup answers before it can be submitted."}
+        </WarnBanner>
+      ) : null}
+
       {preview.seeded ? (
         <WarnBanner>
           The AI couldn&apos;t parse specific fields, so this is a generic tracker.
@@ -908,29 +1064,59 @@ function SpecPreview({ preview }) {
           className="mb-1.5 uppercase tracking-[0.5px]"
           style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)" }}
         >
-          You'll log {fields.length} field{fields.length === 1 ? "" : "s"} each {cadence || "time"}
+          {autoCount > 0 && autoCount < fields.length
+            ? `You'll log ${fields.length - autoCount} field${fields.length - autoCount === 1 ? "" : "s"} each ${cadence || "time"} — ${autoCount} fill${autoCount === 1 ? "s" : ""} automatically`
+            : autoCount > 0 && autoCount === fields.length
+              ? `All ${fields.length} field${fields.length === 1 ? "" : "s"} fill automatically`
+              : `You'll log ${fields.length} field${fields.length === 1 ? "" : "s"} each ${cadence || "time"}`}
         </div>
         <div className="flex flex-col gap-1.5">
-          {fields.map((f) => (
-            <div
-              key={f.id}
-              className="flex items-center justify-between gap-2 rounded-[var(--radius-sub)] px-2.5 py-1.5"
-              style={{ background: "var(--card-alt)", border: "1px solid var(--border)" }}
-            >
-              <span className="min-w-0 truncate" style={{ fontFamily: "var(--font-sans)", fontSize: 13 }} title={f.label}>
-                {f.label}
-                {f.unit ? (
-                  <span style={{ color: "var(--dim-fg)" }}> ({f.unit})</span>
-                ) : null}
-              </span>
-              <span
-                className="shrink-0 uppercase"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--dim-fg)", letterSpacing: "0.4px" }}
+          {fields.map((f) => {
+            const auto = isAutoField(f);
+            // The registry sentence, not the raw template id: "checks that
+            // AGENTS.md exists in owner/repo" is something the user can agree
+            // or disagree with, whereas "repo_file_exists" is something they
+            // can only accept.
+            const sentence = auto ? describeSource(f.source) : null;
+            return (
+              <div
+                key={f.id}
+                className="flex flex-col gap-0.5 rounded-[var(--radius-sub)] px-2.5 py-1.5"
+                style={{ background: "var(--card-alt)", border: "1px solid var(--border)" }}
               >
-                {f.target ? `${KIND_HINT[f.kind] || f.kind} · ${f.target.op}${f.target.value}` : KIND_HINT[f.kind] || f.kind}
-              </span>
-            </div>
-          ))}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate" style={{ fontFamily: "var(--font-sans)", fontSize: 13 }} title={f.label}>
+                    {f.label}
+                    {f.unit ? (
+                      <span style={{ color: "var(--dim-fg)" }}> ({f.unit})</span>
+                    ) : null}
+                  </span>
+                  <span
+                    className="shrink-0 uppercase"
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 9,
+                      color: auto ? "var(--accent)" : "var(--dim-fg)",
+                      letterSpacing: "0.4px",
+                    }}
+                  >
+                    {auto
+                      ? "auto · read-only"
+                      : f.target
+                        ? `${KIND_HINT[f.kind] || f.kind} · ${f.target.op}${f.target.value}`
+                        : KIND_HINT[f.kind] || f.kind}
+                  </span>
+                </div>
+                {sentence ? (
+                  <span
+                    style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--dim-fg)", lineHeight: 1.45 }}
+                  >
+                    {sentence}
+                  </span>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       </div>
 

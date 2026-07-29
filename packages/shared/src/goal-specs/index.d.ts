@@ -50,3 +50,33 @@ export type {
 
 export { buildSpec, isSpec, validateSpec } from "./validator.js";
 export type { ValidationResult, BuildSpecInput } from "./validator.js";
+
+export {
+  buildProviderRequest,
+  contextPlaceholderId,
+  describeQuerySource,
+  extractQueryValue,
+  getQueryTemplate,
+  isContextPlaceholder,
+  isValidQueryParam,
+  listQueryTemplates,
+  QUERY_EXTRACTS,
+  QUERY_PARAM_KINDS,
+  QUERY_SOURCE_PROVIDERS,
+  QUERY_TEMPLATES,
+  QueryTemplateError,
+  validateQuerySource,
+} from "./query-templates.js";
+
+export type {
+  ConcreteQueryProvider,
+  NormalizedQuerySource,
+  ProviderRequest,
+  QueryBuildContext,
+  QueryExtract,
+  QueryParamKind,
+  QuerySource,
+  QuerySourceProvider,
+  QueryTemplate,
+  QueryTemplateSummary,
+} from "./query-templates.js";

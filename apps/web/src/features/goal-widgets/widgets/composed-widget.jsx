@@ -21,6 +21,12 @@
  * so the window index is what selects them; `buildCycleWindows` already hands
  * us that index, which keeps this widget and the stepper reading the same
  * period as the compliance math.
+ *
+ * Some fields answer themselves: a field carrying `source` is read from GitHub
+ * or GitLab instead of typed (see <ComposedFields>). We say so above the fields
+ * rather than leaving the user to infer it from a greyed-out box — "3 of these
+ * read themselves" is the difference between a form that looks half-broken and
+ * one that's doing work on your behalf.
  */
 
 import { useMemo } from "react";
@@ -54,6 +60,14 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
   const fields = period.fields;
   const promptCopy = period.prompt || "Track this goal's data below.";
 
+  const autoCount = useMemo(
+    () =>
+      (Array.isArray(fields) ? fields : []).filter(
+        (f) => f?.source && typeof f.source === "object" && f.source.query,
+      ).length,
+    [fields],
+  );
+
   const isLight = variant === "light";
   const muted = isLight ? "rgba(255,255,255,0.68)" : "var(--muted-fg)";
 
@@ -85,6 +99,12 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
         ) : null}
         <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: muted }}>
           {promptCopy}
+          {autoCount > 0 ? (
+            <span style={{ opacity: 0.85 }}>
+              {" "}
+              · {autoCount} read {autoCount === 1 ? "itself" : "themselves"} from your repos
+            </span>
+          ) : null}
         </div>
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           <ComposedFields

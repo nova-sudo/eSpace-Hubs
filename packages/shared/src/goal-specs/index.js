@@ -31,3 +31,24 @@ export {
 } from "./types.js";
 
 export { buildSpec, isSpec, validateSpec } from "./validator.js";
+
+// Source-backed COMPOSED fields: the allowlisted query registry. Exported from
+// the barrel because the composer prompt, the approval UI and the API executor
+// all need the SAME list — a second copy of "which queries are allowed" is a
+// second thing to forget to tighten.
+export {
+  buildProviderRequest,
+  contextPlaceholderId,
+  describeQuerySource,
+  extractQueryValue,
+  getQueryTemplate,
+  isContextPlaceholder,
+  isValidQueryParam,
+  listQueryTemplates,
+  QUERY_EXTRACTS,
+  QUERY_PARAM_KINDS,
+  QUERY_SOURCE_PROVIDERS,
+  QUERY_TEMPLATES,
+  QueryTemplateError,
+  validateQuerySource,
+} from "./query-templates.js";

@@ -26,6 +26,7 @@ import {
   SPEC_VARIANTS,
   TARGET_OPS,
 } from "./types.js";
+import { validateQuerySource } from "./query-templates.js";
 
 function isNonEmptyString(v) {
   return typeof v === "string" && v.trim().length > 0;
@@ -496,6 +497,20 @@ function validateField(f, i, errors) {
   if (f.kind === "counter" || f.kind === "number") {
     const target = validateTarget(f.target, `fields[${i}]`, errors);
     if (target) out.target = target;
+  }
+  // A field may declare where its value COMES FROM instead of being typed —
+  // an allowlisted GitHub/GitLab query (see query-templates.js). Absent is
+  // today's behaviour exactly, which is what keeps every COMPOSED spec already
+  // in Mongo valid.
+  //
+  // An invalid source FAILS the whole spec rather than degrading to a manual
+  // field. A tracker that quietly stops measuring what its title claims to
+  // measure is the worst outcome available here: it keeps rendering, keeps
+  // being graded, and nobody finds out until the review.
+  if (f.source !== undefined && f.source !== null) {
+    const source = validateQuerySource(f.source, errors, `fields[${i}].source`);
+    if (!source) return null;
+    out.source = source;
   }
   return out;
 }

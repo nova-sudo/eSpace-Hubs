@@ -6,6 +6,8 @@
  * and shape declarations. Web (JavaScript) consumes types.js directly.
  */
 
+import type { QuerySource } from "./query-templates.js";
+
 export const SPEC_KINDS: Readonly<{
   readonly MERGED_COUNT: "MERGED_COUNT";
   readonly REVIEW_ROUNDS: "REVIEW_ROUNDS";
@@ -108,6 +110,10 @@ export const CONTEXT_QUESTION_KINDS: readonly [
   "list",
   "number",
   "select",
+  // Drifted from types.js until source-backed fields needed it: the composer
+  // asks for a repo with a resource_link question, and TypeScript callers were
+  // being told that kind didn't exist.
+  "resource_link",
 ];
 export type ContextQuestionKind = (typeof CONTEXT_QUESTION_KINDS)[number];
 
@@ -249,6 +255,17 @@ export interface SpecField {
   optional?: boolean;
   options?: string[];
   target?: { op: TargetOp; value: number };
+  /**
+   * Where this field's value comes from, when the tools already know it — an
+   * allowlisted GitHub/GitLab query rather than something the user retypes
+   * every week. A field WITH a source is read-only in the UI; a field without
+   * one is unchanged, which is why every COMPOSED spec written before this
+   * existed still validates and renders identically.
+   *
+   * The shape is owned by ./query-templates: the AI may only name a template
+   * id and fill declared params, never a URL. See that file for why.
+   */
+  source?: QuerySource;
 }
 
 /**

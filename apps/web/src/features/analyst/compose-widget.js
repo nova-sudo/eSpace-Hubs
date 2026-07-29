@@ -22,6 +22,14 @@
  * the extracted text before it's sent anywhere. The server never keeps the
  * bytes, so the text we hold in React state is the only copy that survives.
  *
+ * Automatic fields. A returned spec may contain fields carrying a `source` — an
+ * allow-listed query the server resolves against the user's GitHub/GitLab, so
+ * the field fills itself and renders read-only. Nothing extra crosses the wire
+ * for it: the source rides inside `spec.fields[]`, and the questions it needs
+ * answered ride in `spec.context`, both of which the caller already receives.
+ * That is deliberate — a parallel channel would be a second place for the two
+ * halves to disagree about which answer feeds which query.
+ *
  * Note the two different transports below: compose is JSON via raw fetch (it
  * needs the `x-ai-provider` header), extraction is multipart via `apiPost`'s
  * `init.body` escape hatch. FormData MUST NOT carry a hand-set Content-Type —
@@ -109,7 +117,10 @@ export async function composeWidget({
   // `composed.periods`, so this list should be shorter than it was — what
   // remains is genuinely out of scope (a weighted metrics table needs its own
   // tier ladder; a risk register isn't a metric). It keeps that loss visible
-  // rather than silent.
+  // rather than silent — and now also carries fields that ASKED to be automatic
+  // but whose query the server refused, which degrade to typed fields. Same
+  // channel on purpose: to the user both are "this tracker is weaker than you
+  // described", and one banner they read beats two they learn to skip.
   return {
     spec: body.spec,
     seeded: body.seeded === true,

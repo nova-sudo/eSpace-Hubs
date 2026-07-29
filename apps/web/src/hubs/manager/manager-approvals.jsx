@@ -8,6 +8,12 @@
  * activates it (goes live for the report), Request changes sends it back
  * with a note. Either way the report is notified.
  *
+ * Some fields read themselves from GitHub/GitLab. Those get their own block,
+ * one plain-English sentence each ("Checks AGENTS.md exists in espace/hubs
+ * (GitHub)"), because approving a query an AI assembled — from text that may
+ * have come out of an uploaded document — is the point at which a human is
+ * supposed to be able to say no. A template id would make that impossible.
+ *
  * Data: GET /manager/approvals; POST /manager/reports/:id/goals/:id/approval.
  */
 
@@ -162,6 +168,48 @@ export function ManagerApprovals() {
                         ))}
                       </div>
                     ) : null}
+                    {/* Fields that read themselves. An AI picked these queries
+                        from an allowlist, partly out of a document someone
+                        uploaded — so the one place a human can catch a query
+                        that shouldn't run is right here, in a sentence. */}
+                    {item.autoFields?.length ? (
+                      <div className="border-t border-dashed border-border px-3 py-2.5">
+                        <div
+                          className="mb-1.5 uppercase text-dim-fg"
+                          style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.06em" }}
+                        >
+                          {item.autoFields.length} field
+                          {item.autoFields.length === 1 ? "" : "s"} read automatically
+                        </div>
+                        <ul className="grid gap-1.5">
+                          {item.autoFields.map((a, i) => (
+                            <li key={i} className="flex items-baseline gap-2 text-[12px] leading-snug">
+                              <span
+                                className="mt-0.5 flex-none rounded px-1.5 py-0.5 text-accent"
+                                style={{
+                                  fontFamily: "var(--font-mono)",
+                                  fontSize: 9,
+                                  letterSpacing: "0.06em",
+                                  textTransform: "uppercase",
+                                  fontWeight: 700,
+                                  background: "var(--accent-dim)",
+                                }}
+                              >
+                                auto
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                {a.label ? (
+                                  <span className="font-semibold">{a.label}</span>
+                                ) : null}
+                                {a.label ? " — " : null}
+                                <span className="text-muted-fg">{a.description}</span>
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+
                     {/* A plan with per-period content is the thing most worth
                         reviewing — approving "13 weeks of distinct
                         deliverables" without seeing them is rubber-stamping. */}

@@ -35,8 +35,12 @@ import {
   jenkinsProxyHandler,
   jiraProxyHandler,
 } from "./proxy.js";
+import { queryFieldRouter } from "./query-routes.js";
 
 export const integrationsRouter: Router = Router();
+
+// POST /query-field — must precede /:providerId (same reason as /proxy).
+integrationsRouter.use(queryFieldRouter);
 
 // Listing + upsert
 integrationsRouter.get("/", requireAuth(), listIntegrationsHandler);
