@@ -21,11 +21,13 @@ export class WidgetErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
-    // Soft-log in dev so we don't silently swallow bugs.
-    if (process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console
-      console.error("GoalWidget crashed:", error, info?.componentStack);
-    }
+    // Always log, including in production: this is a browser-only console
+    // message (nothing server-side captures it), so silencing it there just
+    // means a real bug looks like nothing happened — the exact gap that made
+    // a prior crash here show up as an untraceable "Uncaught" with no route
+    // back to which component or field caused it.
+    // eslint-disable-next-line no-console
+    console.error("GoalWidget crashed:", error, info?.componentStack);
   }
 
   reset = () => {

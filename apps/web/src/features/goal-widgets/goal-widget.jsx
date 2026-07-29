@@ -167,6 +167,12 @@ export function GoalWidget({
   if (needsContext) {
     return (
       <>
+      <WidgetErrorBoundary
+        onRetry={() => {
+          setForceEditContext(false);
+          onRetry?.();
+        }}
+      >
       <ContextCollector
         spec={spec}
         goal={goal}
@@ -194,15 +200,29 @@ export function GoalWidget({
         // as "PR closes a Jira ticket"). Errors propagate up to the
         // collector via the rejected promise so the inline banner
         // shows what went wrong.
-        onReclassify={async (pairs) => {
-          setReanalyzing(true);
-          try {
-            await runReclassify(spec, goal, pairs);
-          } finally {
-            setReanalyzing(false);
-          }
-        }}
+        //
+        // Withheld for a query-backed COMPOSED tracker: those context
+        // questions exist only to fill in `{{ctx:...}}` params for an
+        // auto field (which repo, which file) — answering "which repo"
+        // is not "re-scope this whole goal". Re-running the classifier
+        // here would replace the tracker the user already built/had
+        // approved with whatever the general classifier invents next,
+        // same reasoning the compose modal's own ContextPanel already
+        // applies (see compose-widget-modal.jsx).
+        onReclassify={
+          hasQueryBackedFields(spec)
+            ? undefined
+            : async (pairs) => {
+                setReanalyzing(true);
+                try {
+                  await runReclassify(spec, goal, pairs);
+                } finally {
+                  setReanalyzing(false);
+                }
+              }
+        }
       />
+      </WidgetErrorBoundary>
       {composeModal}
       </>
     );
@@ -298,6 +318,24 @@ export function GoalWidget({
       {editSetupModal}
     </>
   );
+}
+
+/**
+ * Does this spec have a field (top-level or inside any authored period)
+ * backed by an allowlisted provider query? Checked against the RAW field
+ * list, not `resolvePeriodContent`'s current-window slice, because the
+ * question a context answer feeds might belong to a period that isn't the
+ * active one right now — the reclassify guard has to hold for the whole
+ * spec, not just this week's fields.
+ */
+function hasQueryBackedFields(spec) {
+  const isAuto = (f) => !!(f && f.source && typeof f.source === "object" && f.source.query);
+  if (Array.isArray(spec?.fields) && spec.fields.some(isAuto)) return true;
+  const periods = spec?.composed?.periods;
+  if (Array.isArray(periods)) {
+    return periods.some((p) => Array.isArray(p?.fields) && p.fields.some(isAuto));
+  }
+  return false;
 }
 
 /**

@@ -66,6 +66,7 @@ import { apiPost } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
 import { useIsContextComplete } from "@/features/goal-context";
 import { ContextCollector } from "./state-shells/context-collector";
+import { WidgetErrorBoundary } from "./widget-error-boundary";
 // Namespace import for the same reason composed-fields.jsx uses one: the
 // plain-English sentence for a query belongs to the shared registry, and a
 // named import would make this modal fail to build against an older shared
@@ -761,6 +762,9 @@ function WarnBanner({ children }) {
  */
 function ContextPanel({ spec, goal, onSaved }) {
   const count = spec.context?.questions?.length || 0;
+  // Bumped on "try again" to remount the collector after a crash — its draft
+  // state is local, so a fresh mount is the only way back to a usable form.
+  const [retryKey, setRetryKey] = useState(0);
   return (
     <div className="flex flex-col gap-2.5">
       <div>
@@ -776,7 +780,18 @@ function ContextPanel({ spec, goal, onSaved }) {
           reuses them.
         </div>
       </div>
-      <ContextCollector spec={spec} goal={goal} variant="dark" onSaved={onSaved} />
+      {/* Unlike the mounted-widget body, this had no error boundary — a bug in
+          a single question's save path took down the whole modal instead of
+          just this panel. */}
+      <WidgetErrorBoundary onRetry={() => setRetryKey((k) => k + 1)}>
+        <ContextCollector
+          key={retryKey}
+          spec={spec}
+          goal={goal}
+          variant="dark"
+          onSaved={onSaved}
+        />
+      </WidgetErrorBoundary>
     </div>
   );
 }
