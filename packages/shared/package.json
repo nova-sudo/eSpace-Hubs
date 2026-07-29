@@ -28,7 +28,8 @@
     "src"
   ],
   "scripts": {
-    "build": "echo 'pure-source package; no build step' && exit 0"
+    "build": "echo 'pure-source package; no build step' && exit 0",
+    "test": "node --test src/goal-specs/periods.test.js"
   },
   "dependencies": {},
   "devDependencies": {}

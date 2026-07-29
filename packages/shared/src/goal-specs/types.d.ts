@@ -251,11 +251,57 @@ export interface SpecField {
   target?: { op: TargetOp; value: number };
 }
 
+/**
+ * One authored period of a COMPOSED widget — an ORDERED annotation of the
+ * cycle window at the same index.
+ *
+ * Positional, not keyed to a calendar string: periods line up 1:1 with the
+ * windows the goal's cadence already produces, so per-period content inherits
+ * the existing compliance / owed-state / stepper machinery rather than adding a
+ * second notion of "which period is this". `key` is stable authoring identity
+ * only — never the storage key.
+ *
+ * Everything but `label` is optional; whatever a period omits falls back to the
+ * widget-level `fields` / `composed.prompt`.
+ */
+export interface SpecComposedPeriod {
+  key: string;
+  label: string;
+  /** ISO YYYY-MM-DD. Drives overdue/upcoming styling, never bucketing. */
+  dueAt?: string;
+  prompt?: string;
+  fields?: SpecField[];
+}
+
 /** The cadence + prompt frame around a COMPOSED widget's fields. */
 export interface SpecComposed {
   cadence?: ManualCadence;
   prompt?: string;
+  /**
+   * Per-period content, for plans whose every period asks for something
+   * DIFFERENT (a 13-week rollout where week 3 wants a project constitution and
+   * week 8 a refined spec template). Absent = the flat, uniform tracker that
+   * every pre-existing COMPOSED spec describes. Requires `cadence`.
+   */
+  periods?: SpecComposedPeriod[];
 }
+
+/**
+ * Resolve what a given cycle window should ask for: the authored period at
+ * `windowIndex` merged over the widget-level defaults. Returns the flat spec
+ * content unchanged when the spec has no `composed.periods`.
+ */
+export function resolvePeriodContent(
+  spec: unknown,
+  windowIndex: number,
+): {
+  label: string | null;
+  prompt: string | null;
+  dueAt: string | null;
+  fields: SpecField[];
+  /** True when an authored period actually covered this window. */
+  authored: boolean;
+};
 
 export interface SpecApproval {
   status: "pending" | "approved" | "rejected";

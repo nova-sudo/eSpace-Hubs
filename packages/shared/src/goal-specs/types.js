@@ -227,6 +227,61 @@ export function specCadence(spec) {
   return spec?.manual?.cadence ?? spec?.composed?.cadence ?? null;
 }
 
+/**
+ * What a given cycle window should ask for.
+ *
+ * A COMPOSED spec may carry `composed.periods[]` — an ordered list annotating
+ * the cycle windows the goal's cadence produces, one entry per window. This
+ * merges the entry at `windowIndex` over the widget-level defaults, so a period
+ * can override just its prompt, just its fields, or both, and a mostly-uniform
+ * plan with two special weeks stays short.
+ *
+ * Positional lookup is the whole point: window i is period i. That keeps ONE
+ * notion of "which period is this" — the window key the stepper, the compliance
+ * math and the grader already agree on — instead of a parallel key space that
+ * could drift out of alignment with the calendar.
+ *
+ * Returns the flat spec content unchanged when there are no authored periods,
+ * so every pre-existing COMPOSED spec behaves exactly as before. A window past
+ * the end of the list (a plan shorter than its cycle) also falls back, rather
+ * than rendering an empty form.
+ */
+export function resolvePeriodContent(spec, windowIndex) {
+  const baseFields = Array.isArray(spec?.fields) ? spec.fields : [];
+  const basePrompt = spec?.composed?.prompt ?? null;
+  const periods = spec?.composed?.periods;
+  const period =
+    Array.isArray(periods) &&
+    Number.isInteger(windowIndex) &&
+    windowIndex >= 0 &&
+    windowIndex < periods.length
+      ? periods[windowIndex]
+      : null;
+
+  if (!period) {
+    return {
+      label: null,
+      prompt: basePrompt,
+      dueAt: null,
+      fields: baseFields,
+      authored: false,
+    };
+  }
+
+  return {
+    label: period.label ?? null,
+    prompt: period.prompt ?? basePrompt,
+    dueAt: period.dueAt ?? null,
+    // A period with no field override asks for the same things as every other
+    // period — only its prompt/label differ.
+    fields:
+      Array.isArray(period.fields) && period.fields.length > 0
+        ? period.fields
+        : baseFields,
+    authored: true,
+  };
+}
+
 export const TARGET_OPS = Object.freeze(["<=", ">=", "="]);
 
 export const CONTEXT_QUESTION_KINDS = Object.freeze([

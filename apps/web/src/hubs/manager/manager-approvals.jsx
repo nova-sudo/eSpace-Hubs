@@ -162,6 +162,54 @@ export function ManagerApprovals() {
                         ))}
                       </div>
                     ) : null}
+                    {/* A plan with per-period content is the thing most worth
+                        reviewing — approving "13 weeks of distinct
+                        deliverables" without seeing them is rubber-stamping. */}
+                    {item.periods?.length ? (
+                      <div className="border-t border-dashed border-border px-3 py-2.5">
+                        <div
+                          className="mb-1.5 uppercase text-dim-fg"
+                          style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.06em" }}
+                        >
+                          {item.periods.length} periods, each with its own ask
+                        </div>
+                        <ol className="grid gap-1">
+                          {item.periods.slice(0, 8).map((p, i) => (
+                            <li
+                              key={i}
+                              className="flex items-baseline gap-2 text-[12px] leading-snug"
+                            >
+                              <span
+                                className="flex-none text-dim-fg"
+                                style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
+                              >
+                                {String(i + 1).padStart(2, "0")}
+                              </span>
+                              <span className="min-w-0 flex-1 text-muted-fg">
+                                {p.label}
+                              </span>
+                              {p.dueAt ? (
+                                <span
+                                  className="flex-none text-dim-fg"
+                                  style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
+                                >
+                                  {p.dueAt}
+                                </span>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ol>
+                        {item.periods.length > 8 ? (
+                          <div
+                            className="mt-1.5 text-dim-fg"
+                            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
+                          >
+                            + {item.periods.length - 8} more
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+
                     {item.tiers ? (
                       <div
                         className="grid gap-px border-t border-dashed border-border"

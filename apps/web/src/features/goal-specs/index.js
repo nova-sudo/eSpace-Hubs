@@ -41,6 +41,7 @@ export {
   isSingleRecordWidget,
   isSpec,
   specCadence,
+  resolvePeriodContent,
   validateSpec,
 } from "@espace-devhub/shared/goal-specs";
 

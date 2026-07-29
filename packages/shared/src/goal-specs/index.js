@@ -26,6 +26,7 @@ export {
   SPEC_SCHEMA_VERSION,
   SPEC_VARIANTS,
   specCadence,
+  resolvePeriodContent,
   TARGET_OPS,
 } from "./types.js";
 

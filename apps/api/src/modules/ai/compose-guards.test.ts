@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  cleanComposedPeriods,
   dropPeriodEchoFields,
   findUngradeableTiers,
 } from "./controller.js";
@@ -138,4 +139,72 @@ test("stays quiet on ordinary per-period tiers", () => {
 
 test("handles a null tier set", () => {
   assert.deepEqual(findUngradeableTiers(null, STATUS_ONLY_FIELDS), []);
+});
+
+// ─── cleanComposedPeriods ────────────────────────────────────────────
+
+test("cleans a per-period list, slugging keys and keeping order", () => {
+  const out = cleanComposedPeriods([
+    { key: "W 1", label: "Week 1 — Team charter", dueAt: "2026-08-07" },
+    { key: "w2", label: "Week 2 — Norms doc", prompt: "Publish the doc" },
+  ]);
+  assert.equal(out.length, 2);
+  assert.equal(out[0].key, "w-1");
+  assert.equal(out[0].dueAt, "2026-08-07");
+  assert.equal(out[1].prompt, "Publish the doc");
+});
+
+test("an unusable entry becomes a labelled placeholder, never a gap", () => {
+  // Order IS meaning — entry i annotates window i. Dropping a bad entry would
+  // silently shift every later period onto the wrong week.
+  const out = cleanComposedPeriods([
+    { label: "Week 1" },
+    null,
+    { label: "Week 3" },
+  ]);
+  assert.equal(out.length, 3, "positions preserved");
+  assert.equal(out[1].label, "Period 2");
+  assert.equal(out[2].label, "Week 3");
+});
+
+test("duplicate keys are disambiguated rather than dropped", () => {
+  const out = cleanComposedPeriods([
+    { key: "w", label: "One" },
+    { key: "w", label: "Two" },
+  ]);
+  assert.equal(out.length, 2);
+  assert.notEqual(out[0].key, out[1].key);
+});
+
+test("a bad dueAt is dropped but the period survives", () => {
+  const out = cleanComposedPeriods([{ label: "Week 1", dueAt: "soon" }]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].dueAt, undefined);
+});
+
+test("an empty field override is omitted so the period inherits base fields", () => {
+  const out = cleanComposedPeriods([{ label: "Week 1", fields: [] }]);
+  assert.equal(out[0].fields, undefined);
+});
+
+test("caps the list rather than accepting an unbounded plan", () => {
+  const many = Array.from({ length: 80 }, (_, i) => ({ label: `W${i}` }));
+  assert.equal(cleanComposedPeriods(many).length, 53);
+});
+
+test("non-array input yields no periods", () => {
+  assert.deepEqual(cleanComposedPeriods(undefined), []);
+  assert.deepEqual(cleanComposedPeriods("weekly"), []);
+});
+
+test("authored periods stop the whole-cycle tier guard crying wolf", () => {
+  // The trackers that FIXED the gap must not be accused of having it.
+  const tiers = { roleModel: "All 13 weekly deliverables completed on time." };
+  const fields = [{ id: "s", kind: "select", label: "Status" }];
+  assert.equal(findUngradeableTiers(tiers, fields).length, 1, "flat: flagged");
+  assert.deepEqual(
+    findUngradeableTiers(tiers, fields, [{ key: "w1", label: "Week 1" }]),
+    [],
+    "with authored periods: not flagged",
+  );
 });

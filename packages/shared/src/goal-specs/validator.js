@@ -525,17 +525,107 @@ function validateFields(fields, errors) {
 }
 
 /**
- * Validate the optional `composed` block — the cadence + prompt that frame a
- * COMPOSED widget. Cadence drives how the widget is bucketed/labelled (the
- * "needed cadence" the AI picks); prompt is the one-line instruction shown
- * above the fields. Both optional; collapses to null when empty.
+ * Upper bound on authored periods. 53 covers a year of weekly windows (the
+ * longest cadence anyone realistically authors by hand) with room to spare;
+ * past that the document is describing a programme, not a goal.
  */
-function validateComposed(composed) {
+const COMPOSED_MAX_PERIODS = 53;
+
+/**
+ * Validate one authored period — an ORDERED annotation of the cycle window at
+ * the same index.
+ *
+ * Deliberately positional rather than keyed to a calendar string. Periods line
+ * up 1:1 with the windows `buildCycleWindows` already produces for the goal's
+ * cadence and cycle bounds, which means per-period content inherits the whole
+ * existing machine — compliance %, owed/filled state, the stepper, staleness —
+ * instead of introducing a second, parallel notion of "which period is this".
+ * `key` is a stable authoring identity (so re-ordering the list doesn't silently
+ * re-point logged data at a different week); it is NOT the storage key.
+ *
+ * Every part is optional except `label`: a period may override just the prompt,
+ * just the fields, or both. Whatever it omits falls back to the widget-level
+ * `spec.fields` / `composed.prompt`, so a mostly-uniform plan with two special
+ * weeks stays short.
+ */
+function validatePeriod(p, i, errors) {
+  if (!isObject(p)) {
+    errors.push(`composed.periods[${i}]: must be an object`);
+    return null;
+  }
+  if (!isNonEmptyString(p.label)) {
+    errors.push(`composed.periods[${i}].label: required string`);
+    return null;
+  }
+  const out = {
+    key: isNonEmptyString(p.key) ? p.key.trim() : `p${i + 1}`,
+    label: p.label.trim(),
+  };
+  if (isNonEmptyString(p.prompt)) out.prompt = p.prompt.trim();
+  // ISO date (YYYY-MM-DD) only — drives overdue/upcoming styling, never
+  // bucketing. Anything else is dropped rather than errored: a bad due date
+  // shouldn't cost the user the period's actual content.
+  if (isNonEmptyString(p.dueAt) && /^\d{4}-\d{2}-\d{2}$/.test(p.dueAt.trim())) {
+    out.dueAt = p.dueAt.trim();
+  }
+  if (p.fields !== undefined && p.fields !== null) {
+    const fields = validateFields(p.fields, errors);
+    if (fields) out.fields = fields;
+  }
+  return out;
+}
+
+/**
+ * Validate the optional `composed` block — the cadence + prompt that frame a
+ * COMPOSED widget, plus (optionally) per-period content.
+ *
+ * Cadence drives how the widget is bucketed/labelled (the "needed cadence" the
+ * AI picks); prompt is the one-line instruction shown above the fields.
+ *
+ * `periods` is the answer to plans whose every period asks for something
+ * DIFFERENT — a 13-week rollout where week 3 wants a project constitution and
+ * week 8 wants a refined spec template. Without it such a plan collapses to one
+ * generic "this period's status", and six months later nobody can reconstruct
+ * what "Done" referred to.
+ *
+ * Backward compatibility is by construction: absent `periods` means today's
+ * behaviour exactly, and every spec written before this existed has no
+ * `periods` key. `periods` is also ignored without a cadence — with no cycle
+ * there are no windows to annotate.
+ */
+function validateComposed(composed, errors) {
   if (!isObject(composed)) return null;
   const out = {};
   const cadence = normalizeCadence(composed.cadence);
   if (cadence) out.cadence = cadence;
   if (isNonEmptyString(composed.prompt)) out.prompt = composed.prompt.trim();
+
+  if (Array.isArray(composed.periods) && composed.periods.length > 0) {
+    if (!cadence) {
+      errors.push(
+        "composed.periods: requires composed.cadence — periods annotate cycle windows, and without a cadence there are none",
+      );
+    } else if (composed.periods.length > COMPOSED_MAX_PERIODS) {
+      errors.push(
+        `composed.periods: at most ${COMPOSED_MAX_PERIODS} periods`,
+      );
+    } else {
+      const seen = new Set();
+      const periods = [];
+      composed.periods.forEach((p, i) => {
+        const v = validatePeriod(p, i, errors);
+        if (!v) return;
+        if (seen.has(v.key)) {
+          errors.push(`composed.periods[${i}].key: duplicate key "${v.key}"`);
+          return;
+        }
+        seen.add(v.key);
+        periods.push(v);
+      });
+      if (periods.length) out.periods = periods;
+    }
+  }
+
   return Object.keys(out).length ? out : null;
 }
 
@@ -631,7 +721,7 @@ export function validateSpec(obj) {
       // COMPOSED owns its data through `fields[]`, not source/manual. Validate
       // the generated field schema + the optional cadence/prompt frame.
       fields = validateFields(obj.fields, errors);
-      composed = validateComposed(obj.composed);
+      composed = validateComposed(obj.composed, errors);
     } else if (isScorecard) {
       // SCORECARD owns its data through components — the top-level
       // source/manual are always null on a clean spec. The component
@@ -700,7 +790,10 @@ export function validateSpec(obj) {
       const collected = [];
       fields = validateFields(obj.fields, collected) || null;
     }
-    if (obj.composed != null) composed = validateComposed(obj.composed);
+    if (obj.composed != null) {
+      const collected = [];
+      composed = validateComposed(obj.composed, collected);
+    }
   }
 
   const context = validateContext(obj.context, errors);

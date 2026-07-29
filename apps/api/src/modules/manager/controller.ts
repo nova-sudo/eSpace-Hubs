@@ -607,6 +607,13 @@ interface ApprovalItem {
   submittedAt: number | null;
   cadence: string | null;
   fields: { kind: string; label: string }[];
+  /**
+   * Per-period content, when the tracker authored any. The manager is
+   * approving a PLAN, not just a form — without this a 13-week tracker with
+   * distinct weekly deliverables and a uniform one look identical in the
+   * queue, and the thing most worth reviewing is invisible.
+   */
+  periods: { label: string; dueAt: string | null }[];
   tiers: Record<string, string> | null;
 }
 
@@ -669,7 +676,21 @@ export async function listApprovalsHandler(
       if (!user || !meta) continue;
       const spec = s.spec;
       const approval = spec.approval as { submittedAt?: unknown } | undefined;
-      const composed = spec.composed as { cadence?: unknown } | undefined;
+      const composed = spec.composed as
+        | { cadence?: unknown; periods?: unknown }
+        | undefined;
+      // Labels + due dates only: enough to see the SHAPE of the plan without
+      // shipping every per-period field schema into a list view.
+      const periods = (Array.isArray(composed?.periods) ? composed.periods : [])
+        .map((p) => {
+          const o = p && typeof p === "object" ? (p as Record<string, unknown>) : {};
+          return {
+            label: typeof o.label === "string" ? o.label.slice(0, 160) : "",
+            dueAt: typeof o.dueAt === "string" ? o.dueAt : null,
+          };
+        })
+        .filter((p) => p.label)
+        .slice(0, 53);
       const rawFields = Array.isArray(spec.fields) ? spec.fields : [];
       const fields = rawFields
         .map((f) => {
@@ -705,6 +726,7 @@ export async function listApprovalsHandler(
             : null,
         cadence: typeof composed?.cadence === "string" ? composed.cadence : null,
         fields,
+        periods,
         tiers,
       });
     }

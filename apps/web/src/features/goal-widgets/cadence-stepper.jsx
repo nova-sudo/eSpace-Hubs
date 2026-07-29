@@ -22,7 +22,12 @@
 import { useMemo, useState } from "react";
 import { useGoalInputs, buildCycleWindows } from "@/features/goal-inputs";
 import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
-import { SPEC_KINDS, specCadence, isSingleRecordWidget } from "@/features/goal-specs";
+import {
+  SPEC_KINDS,
+  specCadence,
+  isSingleRecordWidget,
+  resolvePeriodContent,
+} from "@/features/goal-specs";
 import { isLocked, setLock, useGoalLocks } from "@/features/goal-locks";
 import { useGoalTier } from "@/features/goal-tiers";
 import { ComposedFields } from "./widgets/composed-fields.jsx";
@@ -155,7 +160,13 @@ export function CadenceStepper({ spec, variant = "light" }) {
   }
 
   const windows = data.windows || [];
-  const selected = selectedKey ? windows.find((w) => w.key === selectedKey) : null;
+  const selectedIndex = selectedKey
+    ? windows.findIndex((w) => w.key === selectedKey)
+    : -1;
+  const selected = selectedIndex >= 0 ? windows[selectedIndex] : null;
+  // Per-period content, if the spec authored any. Positional: window i is
+  // period i, the same alignment the widget body uses.
+  const selectedPeriod = selected ? resolvePeriodContent(spec, selectedIndex) : null;
   const settledOf = (w) =>
     isLocked(goalId, w.key) && w.state !== "filled" && w.state !== "future";
 
@@ -174,7 +185,9 @@ export function CadenceStepper({ spec, variant = "light" }) {
     >
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-          logging {selected.label}
+          logging {selectedPeriod?.authored && selectedPeriod.label
+            ? selectedPeriod.label
+            : selected.label}
         </span>
         <div className="flex items-center gap-3">
           {/* "Nothing to report" settle — the same goal-locks escape hatch the
@@ -219,13 +232,31 @@ export function CadenceStepper({ spec, variant = "light" }) {
         </div>
       </div>
       {isComposed ? (
-        <ComposedFields
-          goalId={goalId}
-          fields={spec.fields}
-          periodKey={selected.key}
-          writeTs={Math.floor((selected.start + selected.end) / 2)}
-          variant="dark"
-        />
+        <>
+          {/* What this specific period was for. Only rendered when the spec
+              authored it — a uniform tracker has nothing extra to say. */}
+          {selectedPeriod?.authored && selectedPeriod.prompt ? (
+            <div
+              className="mb-2"
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 10,
+                color: "var(--muted-fg)",
+                lineHeight: 1.5,
+              }}
+            >
+              {selectedPeriod.prompt}
+              {selectedPeriod.dueAt ? ` · due ${selectedPeriod.dueAt}` : ""}
+            </div>
+          ) : null}
+          <ComposedFields
+            goalId={goalId}
+            fields={selectedPeriod?.fields ?? spec.fields}
+            periodKey={selected.key}
+            writeTs={Math.floor((selected.start + selected.end) / 2)}
+            variant="dark"
+          />
+        </>
       ) : (
         <GoalManualEditor
           widget={spec.widget}

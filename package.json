@@ -34,6 +34,7 @@
     "admin:create": "npm run admin:create --workspace=@espace-devhub/api --",
     "admin:reset-password": "npm run admin:reset-password --workspace=@espace-devhub/api --",
     "test:api": "npm run test --workspace=@espace-devhub/api",
-    "test": "npm run test:regression && npm run test:api"
+    "test": "npm run test:regression && npm run test:shared && npm run test:api",
+    "test:shared": "npm run test --workspace=@espace-devhub/shared"
   }
 }
