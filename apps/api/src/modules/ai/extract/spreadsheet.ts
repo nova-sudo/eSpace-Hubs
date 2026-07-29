@@ -43,6 +43,36 @@ const DELIMITER_NAMES: Record<string, string> = {
   "|": "pipe-separated",
 };
 
+/**
+ * Join one row for the model, collapsing RUNS of empty cells.
+ *
+ * Real exports are full of padding. The growth-goals sheet this was built
+ * against pads every row out to 13 columns, so a single checkpoint reached the
+ * model as its text followed by eleven empty separators before the due date —
+ * tokens spent on nothing, and the row's actual shape buried in the noise.
+ *
+ * A run collapses to ONE empty cell rather than disappearing. Dropping gaps
+ * outright would turn a row like "Jan, 100, <blank>, 300" into "Jan | 100 |
+ * 300" and silently re-attribute that 300 to the wrong column; keeping a single
+ * marker says "there was a gap here" without the padding.
+ */
+function joinRow(cells: string[]): string {
+  const out: string[] = [];
+  let inBlankRun = false;
+  for (const cell of cells) {
+    if (cell === "") {
+      if (!inBlankRun) out.push("");
+      inBlankRun = true;
+      continue;
+    }
+    inBlankRun = false;
+    out.push(cell);
+  }
+  // Trailing blanks are formatting, never data.
+  while (out.length > 0 && out[out.length - 1] === "") out.pop();
+  return out.join(" | ");
+}
+
 export async function extractWorkbook(
   buffer: Buffer,
 ): Promise<{ text: string; warnings: string[]; info: string[] }> {
@@ -86,12 +116,9 @@ export async function extractWorkbook(
       for (let column = 1; column <= width; column += 1) {
         cells.push(cellToText(row.getCell(column).value));
       }
-      // Trailing blanks are formatting, not data — dropping them keeps the
-      // line readable without losing an interior gap, which is meaningful.
-      while (cells.length > 0 && cells[cells.length - 1] === "") cells.pop();
-      if (cells.length === 0) return;
+      if (cells.every((c) => c === "")) return;
 
-      lines.push(cells.join(" | "));
+      lines.push(joinRow(cells));
       rowsInSheet += 1;
     });
 
@@ -150,11 +177,7 @@ export function extractDelimitedText(buffer: Buffer): {
   const { rows, truncated } = parseDelimited(raw, delimiter, MAX_CSV_ROWS);
 
   const lines = rows
-    .map((row) => {
-      const cells = [...row];
-      while (cells.length > 0 && cells[cells.length - 1] === "") cells.pop();
-      return cells.join(" | ");
-    })
+    .map((row) => joinRow([...row]))
     .filter((line) => line.trim().length > 0);
 
   const warnings: string[] = [];

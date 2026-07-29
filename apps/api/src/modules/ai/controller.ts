@@ -683,9 +683,23 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   "                    see REFERENCE DOCUMENT below. Omit or [] otherwise>]",
   "}",
   "",
+  "DECIDE THIS FIRST — is the plan uniform, or does each period differ?",
+  "  Scan the input for a list of dated or numbered checkpoints: Month 1..6,",
+  "  Week 1..13, Q1..Q4, Milestone 1..N. If those entries carry DIFFERENT",
+  "  content from one another, you MUST emit `composed.periods` — one entry per",
+  "  checkpoint, in order, each labelled with THAT checkpoint's own deliverable.",
+  "  Do not summarise them into a single generic \"this period's status\" field.",
+  "  Losing them is the worst outcome this prompt can produce: the user is left",
+  "  with a tracker that cannot tell them what any given period was for.",
+  "  Only skip `periods` when every period genuinely asks the same thing",
+  '  ("log hours mentored each week").',
+  "",
   "RULES:",
   "  - 1 to 6 fields. Each field is ONE thing the user logs. Prefer the",
   "    SIMPLEST set that captures their intent — don't invent extra fields.",
+  "    When the input is a document, though, capture what it actually asks to",
+  "    be recorded each period (a deliverable link, a session held, a count) —",
+  "    a two-field tracker for a rich plan is under-serving it.",
   '  - If the user does something "every <period>" (e.g. "5 chapters every',
   '    quarter"), set composed.cadence to that period so they get ONE record',
   "    per period. For a one-time or open-ended goal, use null.",
@@ -733,6 +747,31 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   "  - This is how a plan with per-period deliverables gets tracked properly",
   "    instead of collapsing to one generic status — if you use it, that",
   "    content is REPRESENTED and does not belong in `unrepresented`.",
+  "",
+  "WORKED EXAMPLE — a document containing:",
+  "    Month 1 | Complete Part 1 and pass a concept review with the Lead | 01/08/2026",
+  "    Month 2 | Complete Part 2 and submit a written case study           | 01/09/2026",
+  "  produces (abridged):",
+  "  {",
+  '    "composed": {',
+  '      "cadence": "monthly",',
+  '      "prompt": "Log this month\'s checkpoint.",',
+  '      "periods": [',
+  '        { "key": "m1", "label": "Month 1 — Part 1 + concept review with the Lead",',
+  '          "dueAt": "2026-08-01" },',
+  '        { "key": "m2", "label": "Month 2 — Part 2 + written case study",',
+  '          "dueAt": "2026-09-01" }',
+  "      ]",
+  "    },",
+  '    "fields": [',
+  '      { "id": "done",     "kind": "checkbox", "label": "Checkpoint completed" },',
+  '      { "id": "evidence", "kind": "link",     "label": "Link to the deliverable" },',
+  '      { "id": "notes",    "kind": "text",     "label": "Notes / blockers" }',
+  "    ]",
+  "  }",
+  "  Note what did NOT happen: the six distinct checkpoints were not flattened",
+  '  into one "milestone completed" checkbox, and no "Which month" field was',
+  "  invented — the record already knows its own period.",
   "",
   "REFERENCE DOCUMENT (only when one appears in the message below):",
   "  - Everything between the BEGIN/END REFERENCE DOCUMENT markers is a file",
@@ -1092,7 +1131,6 @@ const WHOLE_CYCLE_TIER = new RegExp(
  */
 export function findUngradeableTiers(
   tiers: Record<string, string> | null,
-  fields: Array<Record<string, unknown>>,
   periods?: unknown,
 ): string[] {
   if (!tiers) return [];
@@ -1101,14 +1139,16 @@ export function findUngradeableTiers(
   // it. Without this, the very trackers that fixed the gap would be the ones
   // accused of it.
   if (Array.isArray(periods) && periods.length > 0) return [];
-  // Otherwise: a tracker that records WHICH item each period covered can
-  // legitimately be graded on a whole-cycle total; one that only records a
-  // status can't.
-  const capturesPerPeriodIdentity = fields.some((f) => {
-    const kind = typeof f.kind === "string" ? f.kind : "";
-    return kind === "text" || kind === "link" || kind === "date";
-  });
-  if (capturesPerPeriodIdentity) return [];
+  // Nothing else counts.
+  //
+  // An earlier version exempted any text/link/date field on the theory that it
+  // could carry which item the period covered. A real tracker disproved it:
+  // fields were [checkbox "This month's milestone completed", text "Notes /
+  // blockers"] against `achieved = "All 6 monthly milestones checked off"`, and
+  // the generic notes field silently bought the tier a pass. A free-text box is
+  // not a roster — it records what the user felt like typing, not which of six
+  // specific deliverables was due. Only authored periods actually pin that
+  // down, so only they exempt.
 
   const offenders = Object.entries(tiers)
     .filter(([, text]) => WHOLE_CYCLE_TIER.test(text))
@@ -1271,7 +1311,7 @@ export async function composeWidgetHandler(
     // whole-cycle one; they just can't grade it from this tracker. Checked for
     // hand-typed descriptions too, unlike the model's own `unrepresented`
     // list: an ungradeable tier is a defect however the tracker was described.
-    for (const note of findUngradeableTiers(tiers, fields, composed?.periods)) {
+    for (const note of findUngradeableTiers(tiers, composed?.periods)) {
       if (unrepresented.length >= 6 || unrepresented.includes(note)) break;
       unrepresented.push(note);
     }

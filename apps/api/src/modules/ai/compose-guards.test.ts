@@ -94,51 +94,49 @@ const STATUS_ONLY_FIELDS = [
   { id: "done", kind: "checkbox", label: "Courses completed" },
 ];
 
-test("flags a whole-cycle tier when nothing records per-period identity", () => {
-  const notes = findUngradeableTiers(
-    {
-      achieved: "Weekly deliverable completed.",
-      roleModel: "All 13 weekly deliverables completed on time.",
-    },
-    STATUS_ONLY_FIELDS,
-  );
+test("flags a whole-cycle tier when no authored periods pin down each period", () => {
+  const notes = findUngradeableTiers({
+    achieved: "Weekly deliverable completed.",
+    roleModel: "All 13 weekly deliverables completed on time.",
+  });
   assert.equal(notes.length, 1);
   assert.match(notes[0], /roleModel/);
   assert.match(notes[0], /can't be graded/);
 });
 
 test("flags the N-of-N phrasing too", () => {
-  const notes = findUngradeableTiers(
-    { achieved: "6 of 6 monthly checkpoints delivered." },
-    STATUS_ONLY_FIELDS,
-  );
+  const notes = findUngradeableTiers({
+    achieved: "6 of 6 monthly checkpoints delivered.",
+  });
   assert.equal(notes.length, 1);
 });
 
-test("stays quiet when a field DOES record what each period covered", () => {
-  // A text/link/date field can carry which deliverable the period was for, so
-  // a whole-cycle bar is at least arguably gradeable — don't cry wolf.
-  const notes = findUngradeableTiers(
-    { roleModel: "All 13 weekly deliverables completed on time." },
-    [...STATUS_ONLY_FIELDS, { id: "ev", kind: "link", label: "Evidence" }],
-  );
-  assert.deepEqual(notes, []);
+test("a generic free-text field does NOT buy a whole-cycle tier a pass", () => {
+  // Regression guard for a real shipped tracker: fields were
+  //   [checkbox "This month's milestone completed", text "Notes / blockers"]
+  // against achieved = "All 6 monthly milestones checked off". An earlier
+  // version of this guard exempted any text/link/date field on the theory it
+  // might record WHICH item the period covered — so the notes box silently
+  // waved the tier through. A free-text box records what the user felt like
+  // typing, not which of six specific deliverables was due.
+  const notes = findUngradeableTiers({
+    achieved:
+      "All 6 monthly milestones checked off and the framework published by Month 6.",
+  });
+  assert.equal(notes.length, 1, "a notes field must not exempt the tier");
 });
 
 test("stays quiet on ordinary per-period tiers", () => {
-  const notes = findUngradeableTiers(
-    {
-      notAchieved: "No deliverable logged this week.",
-      achieved: "Deliverable completed and coverage >= 80%.",
-      overAchieved: "Completed early with evidence linked.",
-    },
-    STATUS_ONLY_FIELDS,
-  );
+  const notes = findUngradeableTiers({
+    notAchieved: "No deliverable logged this week.",
+    achieved: "Deliverable completed and coverage >= 80%.",
+    overAchieved: "Completed early with evidence linked.",
+  });
   assert.deepEqual(notes, []);
 });
 
 test("handles a null tier set", () => {
-  assert.deepEqual(findUngradeableTiers(null, STATUS_ONLY_FIELDS), []);
+  assert.deepEqual(findUngradeableTiers(null), []);
 });
 
 // ─── cleanComposedPeriods ────────────────────────────────────────────
@@ -198,12 +196,12 @@ test("non-array input yields no periods", () => {
 });
 
 test("authored periods stop the whole-cycle tier guard crying wolf", () => {
-  // The trackers that FIXED the gap must not be accused of having it.
+  // The trackers that FIXED the gap must not be accused of having it: a period
+  // list IS the roster of what each period was for.
   const tiers = { roleModel: "All 13 weekly deliverables completed on time." };
-  const fields = [{ id: "s", kind: "select", label: "Status" }];
-  assert.equal(findUngradeableTiers(tiers, fields).length, 1, "flat: flagged");
+  assert.equal(findUngradeableTiers(tiers).length, 1, "flat: flagged");
   assert.deepEqual(
-    findUngradeableTiers(tiers, fields, [{ key: "w1", label: "Week 1" }]),
+    findUngradeableTiers(tiers, [{ key: "w1", label: "Week 1" }]),
     [],
     "with authored periods: not flagged",
   );
