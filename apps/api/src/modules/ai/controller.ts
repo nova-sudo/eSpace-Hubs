@@ -684,9 +684,25 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   '    "chapters", target {op:">=", value:5}); checkbox for yes/no; scale for a',
   "    1–5 rating; select for a fixed choice set (MUST include options); text",
   "    for notes; date for a date; link for a URL / evidence.",
+  "  - NEVER add a field that just restates which period this is (\"Plan Week\",",
+  "    \"Month number\", \"Which quarter\"). Every record is already stamped with",
+  "    its own period. Asking again is busywork AND creates a second, drifting",
+  "    answer to a question the system has already answered.",
+  "  - A checklist whose LENGTH varies by period (9 courses one week, none the",
+  "    next) must NOT collapse to one checkbox — \"did all 9\" and \"there were 0\"",
+  "    would look identical. Use counter/number with a unit (e.g. \"courses",
+  "    completed\"), so a light period and a finished heavy one stay",
+  "    distinguishable.",
   "  - tiers describe what not-achieved / achieved / over-achieved / role-model",
   "    look like FOR THIS tracker, in terms of the fields (e.g. achieved =",
   '    "logged >= 5 chapters this quarter"). Keep each under ~200 chars.',
+  "  - HARD RULE on tiers: each tier must be decidable from the fields you just",
+  "    defined, using only data this tracker collects. Do NOT write a tier that",
+  "    needs information you did not capture — \"all 13 weekly deliverables",
+  "    completed on time\" is INVALID unless a field records which deliverable",
+  "    each period. If the goal's real bar can't be judged from these fields,",
+  "    state the weaker bar the fields CAN support and put the richer version in",
+  "    `unrepresented`. A tier nothing can grade is worse than a modest one.",
   "  - Return ONLY the JSON object.",
   "",
   "REFERENCE DOCUMENT (only when one appears in the message below):",
@@ -876,6 +892,106 @@ function cleanUnrepresented(raw: unknown): string[] {
   return out;
 }
 
+/**
+ * A label that is really just "which period is this?" — the exact thing the
+ * record's own period stamp already answers.
+ *
+ * Deliberately tight. It matches a bare period noun with at most a bit of
+ * scaffolding ("Plan Week", "Which quarter", "Month #"), and nothing else, so
+ * a genuinely useful field that merely mentions a period ("Week of biggest
+ * blocker", "Weekly deliverable status") survives. False positives here delete
+ * real user data, so the rule errs heavily toward keeping fields.
+ */
+const PERIOD_ECHO_LABEL =
+  /^(the\s+|this\s+|current\s+|plan\s+|which\s+|what\s+)*(day|week|month|quarter|period|sprint)(\s*(number|no\.?|#|name|label|index))?$/i;
+
+/**
+ * Drop fields that only restate the period, when the tracker already HAS a
+ * cadence.
+ *
+ * A cadenced tracker stamps every record with its own period key, and that
+ * stamp is what the stepper, the compliance math and the grader all read.
+ * A separate "Plan Week" dropdown is therefore a second, hand-maintained
+ * answer to the same question — pure busywork that silently disagrees with the
+ * real one the moment someone logs Week 5's entry during Week 6.
+ *
+ * Enforced here rather than left to the prompt because a model that drifts on
+ * this produces a tracker that looks fine and rots quietly.
+ */
+export function dropPeriodEchoFields(
+  fields: Array<Record<string, unknown>>,
+  cadence: string | undefined,
+): { fields: Array<Record<string, unknown>>; dropped: string[] } {
+  if (!cadence) return { fields, dropped: [] };
+  const dropped: string[] = [];
+  const kept = fields.filter((f) => {
+    const label = typeof f.label === "string" ? f.label.trim() : "";
+    if (!label || !PERIOD_ECHO_LABEL.test(label)) return true;
+    dropped.push(label);
+    return false;
+  });
+  // Never strip the tracker down to nothing on the strength of a heuristic.
+  if (kept.length === 0) return { fields, dropped: [] };
+  return { fields: kept, dropped };
+}
+
+/**
+ * Whole-cycle claims a per-period tracker cannot actually settle — "all 13
+ * weekly deliverables", "6 of 6 monthly checkpoints", "every one of the 12
+ * months".
+ */
+const CYCLE_NOUN =
+  "(?:day|week|month|quarter|period|sprint|milestone|checkpoint|deliverable)s?";
+const WHOLE_CYCLE_TIER = new RegExp(
+  // "all 13 weekly deliverables", "every one of the 12 months"
+  `\\b(?:all|every|each)\\s+(?:one\\s+)?(?:of\\s+)?(?:the\\s+)?\\d{1,3}\\s+(?:\\w+\\s+)?${CYCLE_NOUN}\\b` +
+    // "6 of 6 monthly checkpoints", "13/13 weeks" — the optional adjective
+    // between the count and the noun is why this can't be one branch.
+    `|\\b\\d{1,3}\\s*(?:/|of)\\s*\\d{1,3}\\s+(?:\\w+\\s+)?${CYCLE_NOUN}\\b`,
+  "i",
+);
+
+/**
+ * Flag tiers that grade on something the tracker never records.
+ *
+ * The failure this catches, seen on a real 13-week plan: the model wrote
+ * `roleModel = "All 13 weekly deliverables completed on time"` for a tracker
+ * whose fields captured only a generic per-week status. Nothing stores which
+ * deliverable belonged to which week, so the top tier was undecidable from the
+ * collected data — the spec, the data and the grader had quietly stopped
+ * agreeing.
+ *
+ * We do NOT rewrite or delete the tier: the user's real bar genuinely is "all
+ * 13", and silently lowering it would misrepresent their goal. Instead the
+ * mismatch is surfaced through the same `unrepresented` channel as every other
+ * Phase 1 omission, so the user sees that this tracker can't grade that bar and
+ * can decide what to do about it.
+ *
+ * Only whole-cycle claims are detectable this way; a tier can still reference a
+ * field that doesn't exist in subtler ways. This is a floor, not a proof.
+ */
+export function findUngradeableTiers(
+  tiers: Record<string, string> | null,
+  fields: Array<Record<string, unknown>>,
+): string[] {
+  if (!tiers) return [];
+  // A tracker that records WHICH item each period covered can legitimately be
+  // graded on a whole-cycle total; one that only records a status can't.
+  const capturesPerPeriodIdentity = fields.some((f) => {
+    const kind = typeof f.kind === "string" ? f.kind : "";
+    return kind === "text" || kind === "link" || kind === "date";
+  });
+  if (capturesPerPeriodIdentity) return [];
+
+  const offenders = Object.entries(tiers)
+    .filter(([, text]) => WHOLE_CYCLE_TIER.test(text))
+    .map(([tier]) => tier);
+  if (offenders.length === 0) return [];
+  return [
+    `Achievement bar spanning the whole cycle (${offenders.join(", ")}) — this tracker logs one record per period and doesn't capture which item each period covered, so that total can't be graded from it.`,
+  ];
+}
+
 function cleanTiers(raw: unknown): Record<string, string> | null {
   if (!raw || typeof raw !== "object") return null;
   const t = raw as Record<string, unknown>;
@@ -977,11 +1093,33 @@ export async function composeWidgetHandler(
     const unrepresented = payload.attachment
       ? cleanUnrepresented(parsed?.unrepresented)
       : [];
-    let fields = cleanComposedFields(parsed?.fields);
+    let fields: Array<Record<string, unknown>> = cleanComposedFields(
+      parsed?.fields,
+    );
     let seeded = false;
     if (fields.length === 0) {
       fields = DEFAULT_COMPOSED_FIELDS.map((f) => ({ ...f }));
       seeded = true;
+    }
+
+    // Enforce the two rules the prompt states but a model can drift on. Both
+    // produce trackers that look correct and degrade quietly, so neither is
+    // safe to leave to instruction-following alone.
+    const periodEcho = dropPeriodEchoFields(fields, composed?.cadence);
+    fields = periodEcho.fields;
+    for (const label of periodEcho.dropped) {
+      logger.debug(
+        { userId: session.userId.toHexString(), goalId: payload.goalId, label },
+        "[ai] dropped a period-echo field from a composed tracker",
+      );
+    }
+    // Surfaced, never silently rewritten — the user's real bar may well be the
+    // whole-cycle one; they just can't grade it from this tracker. Checked for
+    // hand-typed descriptions too, unlike the model's own `unrepresented`
+    // list: an ungradeable tier is a defect however the tracker was described.
+    for (const note of findUngradeableTiers(tiers, fields)) {
+      if (unrepresented.length >= 6 || unrepresented.includes(note)) break;
+      unrepresented.push(note);
     }
 
     const built = buildSpec({
