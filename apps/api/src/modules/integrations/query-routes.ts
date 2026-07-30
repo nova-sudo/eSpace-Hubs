@@ -65,9 +65,10 @@ const queryFieldLimiterOptions: Partial<Options> = {
 const queryFieldLimiter = rateLimit(queryFieldLimiterOptions);
 
 /**
- * `periodKey` narrows the lookup to one authored period's field list —
- * per-period COMPOSED content can redefine `fields`, so the same field id
- * may exist twice with different sources.
+ * `periodKey` is accepted (the client always sends its current window key)
+ * but not yet used to resolve the field's source — see `findFieldSource`.
+ * Kept in the accepted shape so the client doesn't need to change once
+ * period-specific auto-field overrides are wired up server-side.
  */
 const queryFieldSchema = z
   .object({
@@ -88,29 +89,34 @@ function fieldList(container: unknown): FieldLike[] {
 }
 
 /**
- * Find the field by id — inside the named period when one is given, else
- * at the widget level with the periods as fallback. Deliberately returns
- * the FIRST match: duplicate ids inside one field list are rejected by
- * the spec validator, so a collision here can only be widget-vs-period,
- * where the period is the more specific answer.
+ * Find the field's query source on the widget-level `spec.fields` — the
+ * field's default definition, which is what every period reads unless a
+ * period explicitly redefines that field's own `fields` array (see
+ * `resolvePeriodContent` in packages/shared/src/goal-specs/types.js).
+ *
+ * `periodKey` deliberately plays no part in this lookup. It names a stored
+ * ENTRY's cadence window — a calendar-derived key like "2026-Q3", produced
+ * by apps/web's cadence-windows.js — while `composed.periods[].key` is an
+ * unrelated author-chosen slug the compose AI invents ("w1", "m2"; see the
+ * prompt in modules/ai/controller.ts). The two are different namespaces and
+ * essentially never coincide, so matching periods by key here always came up
+ * empty — and because the OLD code searched only the (empty) period match
+ * whenever a periodKey was present, it never fell back to the widget-level
+ * fields either. That's what turned "field isn't auto-filled" into the
+ * default outcome for every cadenced query-backed field, since ComposedWidget
+ * always sends a periodKey once a cadence is set.
+ *
+ * Resolving "which period is window N" requires the same positional
+ * windowIndex math the client uses (buildCycleWindows), which isn't ported to
+ * the server. Until it is, a period's field override is not consulted here at
+ * all rather than guessed at by key — a wrong guess would silently run a
+ * different period's query, which is worse than always using the field's
+ * base definition (correct for the — currently universal — case where a
+ * period doesn't redefine this specific field's source).
  */
-function findFieldSource(
-  spec: Record<string, unknown>,
-  fieldId: string,
-  periodKey: string | undefined,
-): unknown {
-  const periods = (spec?.["composed"] as { periods?: unknown } | undefined)
-    ?.periods;
-  const periodList = Array.isArray(periods) ? periods : [];
-
-  const search: unknown[] = periodKey
-    ? periodList.filter((p) => (p as { key?: unknown })?.key === periodKey)
-    : [spec, ...periodList];
-
-  for (const container of search) {
-    for (const field of fieldList(container)) {
-      if (field?.id === fieldId && field.source != null) return field.source;
-    }
+export function findFieldSource(spec: Record<string, unknown>, fieldId: string): unknown {
+  for (const field of fieldList(spec)) {
+    if (field?.id === fieldId && field.source != null) return field.source;
   }
   return null;
 }
@@ -125,7 +131,7 @@ export async function queryFieldHandler(
     if (!session) {
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
-    const { goalId, fieldId, periodKey } = queryFieldSchema.parse(req.body);
+    const { goalId, fieldId } = queryFieldSchema.parse(req.body);
 
     // Org-scoped AND user-scoped: a spec belongs to the dev who owns the
     // goal, and the token we are about to spend is theirs too.
@@ -139,7 +145,7 @@ export async function queryFieldHandler(
       throw new HttpError(404, "spec_not_found", "This tracker no longer exists.");
     }
 
-    const source = findFieldSource(specDoc.spec, fieldId, periodKey);
+    const source = findFieldSource(specDoc.spec, fieldId);
     if (!source) {
       throw new HttpError(
         400,
