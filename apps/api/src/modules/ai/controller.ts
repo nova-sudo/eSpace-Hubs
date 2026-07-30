@@ -710,6 +710,8 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   '  "composed": {',
   '    "cadence": <one of: daily, weekly, biweekly, monthly, quarterly — or null>,',
   '    "prompt":  <one short line shown above the form>,',
+  '    "cycleStart": <OPTIONAL "YYYY-MM-DD" — ONLY with periods. See CYCLE',
+  "                    START below. Omit if the document doesn't say>,",
   '    "periods": [<OPTIONAL — see PER-PERIOD CONTENT below. Omit for a plan',
   "                 where every period asks for the same thing>",
   "      {",
@@ -819,6 +821,19 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   "  - This is how a plan with per-period deliverables gets tracked properly",
   "    instead of collapsing to one generic status — if you use it, that",
   "    content is REPRESENTED and does not belong in `unrepresented`.",
+  "",
+  "CYCLE START (`composed.cycleStart`):",
+  "  - When `periods` is used, also set `cycleStart` to the date period 1",
+  "    actually begins, if the document says or clearly implies one — a",
+  '    quarter name ("Q3 2026" → the quarter\'s first calendar day), an',
+  '    explicit date ("starting September 1"), or a dated first checkpoint',
+  "    (period 1's own date, if it has one).",
+  "  - This matters because periods are POSITIONAL — period 1 is whatever",
+  "    window the cycle starts on. Without `cycleStart` the cycle defaults to",
+  "    the calendar year, so a 13-week Q3-only plan would count its weeks from",
+  "    January instead of from Q3 — period 1 lands in the wrong week entirely.",
+  "  - Omit it when the document gives no date to anchor on. Guessing a wrong",
+  "    date is worse than omitting it — the caller has its own fallback.",
   "",
   "WORKED EXAMPLE — a document containing:",
   "    Month 1 | Complete Part 1 and pass a concept review with the Lead | 01/08/2026",
@@ -1451,15 +1466,23 @@ export function cleanComposedPeriods(
   return out;
 }
 
-function cleanComposedBlock(
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function cleanComposedBlock(
   raw: unknown,
   ctx: ComposeCleanCtx = emptyCleanCtx(),
 ): {
   cadence?: string;
   prompt?: string;
   periods?: CleanPeriod[];
+  cycleStart?: string;
 } | null {
-  const out: { cadence?: string; prompt?: string; periods?: CleanPeriod[] } = {};
+  const out: {
+    cadence?: string;
+    prompt?: string;
+    periods?: CleanPeriod[];
+    cycleStart?: string;
+  } = {};
   if (raw && typeof raw === "object") {
     const c = raw as Record<string, unknown>;
     const cadence = normalizeCadence(
@@ -1475,6 +1498,21 @@ function cleanComposedBlock(
     if (cadence) {
       const periods = cleanComposedPeriods(c.periods, ctx);
       if (periods.length > 0) out.periods = periods;
+      // When did period 1 actually start? Without this, cycle windows default
+      // to the calendar year, so "week 1" of a Q3-only plan lands wherever
+      // week 1 of the calendar year falls (a real reported bug). The model is
+      // the only thing that read the document — a goal's own stored dates are
+      // frequently unset or describe a wider window (an annual goal containing
+      // a 13-week Q3 sub-plan) — so this is trusted over any client-side
+      // fallback when present. Malformed output is dropped, not fatal: the
+      // client's own goal-date fallback still applies.
+      if (
+        periods.length > 0 &&
+        typeof c.cycleStart === "string" &&
+        ISO_DATE_RE.test(c.cycleStart.trim())
+      ) {
+        out.cycleStart = c.cycleStart.trim();
+      }
     }
   }
   return Object.keys(out).length ? out : null;

@@ -83,7 +83,15 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
     const composed = spec?.composed;
     const periodCount = composed?.periods?.length || 0;
     if (periodCount === 0 || !composed?.cadence) return;
-    const cycleStart = composed.cycleStart || goal?.startDate;
+    // Last-resort anchor when the goal itself has no startDate (common —
+    // many goals never get one): period 1's own authored `dueAt`, if the AI
+    // gave it one. Not precise (a due date isn't a start date), but landing
+    // period 1 in roughly the right week/month beats the calendar-year
+    // default by every measure that matters here, and it needs no further
+    // action from the user — a tracker composed before the AI knew about
+    // cycleStart has no more precise anchor available to self-heal from.
+    const cycleStart =
+      composed.cycleStart || goal?.startDate || composed.periods[0]?.dueAt || null;
     if (!cycleStart) return;
     const cycleEnd = deriveCycleEndIso(cycleStart, composed.cadence, periodCount);
     if (!cycleEnd) return;

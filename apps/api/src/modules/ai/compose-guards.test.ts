@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  cleanComposedBlock,
   cleanComposedPeriods,
   dropPeriodEchoFields,
   findUngradeableTiers,
@@ -205,4 +206,55 @@ test("authored periods stop the whole-cycle tier guard crying wolf", () => {
     [],
     "with authored periods: not flagged",
   );
+});
+
+// ─── cleanComposedBlock: composed.cycleStart ──────────────────────────
+//
+// Regression cover for a real bug: a 13-week Q3-only plan rendered as a
+// 53-week cycle because nothing ever anchored composed.cycleStart to the
+// document's own dates — the AI wasn't asked for one. cleanComposedBlock is
+// the gate between what the model returns and what lands on the spec.
+
+test("carries a valid cycleStart when periods are present", () => {
+  const out = cleanComposedBlock({
+    cadence: "weekly",
+    cycleStart: "2026-07-01",
+    periods: [{ key: "w1", label: "Week 1" }],
+  });
+  assert.equal(out?.cycleStart, "2026-07-01");
+});
+
+test("drops a malformed cycleStart rather than failing the whole compose", () => {
+  const out = cleanComposedBlock({
+    cadence: "weekly",
+    cycleStart: "not-a-date",
+    periods: [{ key: "w1", label: "Week 1" }],
+  });
+  assert.equal(out?.cycleStart, undefined);
+  assert.equal(out?.periods?.length, 1, "the periods themselves still survive");
+});
+
+test("drops cycleStart when there are no periods to anchor — it's meaningless alone", () => {
+  const out = cleanComposedBlock({
+    cadence: "weekly",
+    cycleStart: "2026-07-01",
+  });
+  assert.equal(out?.cycleStart, undefined);
+});
+
+test("drops cycleStart when there's no cadence — periods themselves get rejected first", () => {
+  const out = cleanComposedBlock({
+    cycleStart: "2026-07-01",
+    periods: [{ key: "w1", label: "Week 1" }],
+  });
+  assert.equal(out?.cycleStart, undefined);
+  assert.equal(out?.periods, undefined);
+});
+
+test("omits cycleStart entirely when the model doesn't supply one", () => {
+  const out = cleanComposedBlock({
+    cadence: "weekly",
+    periods: [{ key: "w1", label: "Week 1" }],
+  });
+  assert.equal(out?.cycleStart, undefined);
 });
