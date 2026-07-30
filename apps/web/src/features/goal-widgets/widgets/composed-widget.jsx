@@ -31,7 +31,12 @@
 
 import { useEffect, useMemo } from "react";
 import { WidgetShell } from "../widget-shell";
-import { buildCycleWindows, composedCycleBounds, currentPeriodKey } from "@/features/goal-inputs";
+import {
+  buildCycleWindows,
+  composedCycleBounds,
+  currentPeriodKey,
+  deriveCycleEndIso,
+} from "@/features/goal-inputs";
 import { resolvePeriodContent, saveSpec } from "@/features/goal-specs";
 import { ComposedFields } from "./composed-fields.jsx";
 
@@ -61,21 +66,30 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
   // Self-heal: a spec authored with periods[] but no cycle bounds (every
   // tracker composed before this existed) silently mis-anchors every window
   // to the calendar year — "week 13" lands in April instead of wherever the
-  // plan's own 13th week actually falls. If the goal itself carries real
-  // dates, adopt them onto the spec once so buildCycleWindows/currentPeriodKey
-  // (and the grader, which reads the same composed.cycleStart/cycleEnd) get
-  // it right from here on. Guarded on cycleStart already being set, so this
-  // fires at most once per spec and never fights an intentionally-authored
-  // pair.
+  // plan's own 13th week actually falls. If the goal itself carries a real
+  // start date, adopt it onto the spec once so buildCycleWindows/
+  // currentPeriodKey (and the grader, reading the same composed.cycleStart/
+  // cycleEnd) get it right from here on.
+  //
+  // Also RE-derives cycleEnd even when cycleStart is already set: an earlier
+  // version of this self-heal borrowed the goal's own `dueDate` for the end,
+  // which is the goal's overall due date, not the document's actual plan
+  // length — a 13-week Q3 sub-plan inside a goal due a year out got stretched
+  // into a 53-week cycle. Comparing against the value deriveCycleEndIso would
+  // produce now (from periods.length, not the goal's date) both fixes that
+  // for existing mis-anchored specs and keeps this a no-op once correct, so
+  // it converges rather than looping.
   useEffect(() => {
-    if (!spec?.composed?.periods?.length) return;
-    if (spec.composed.cycleStart) return;
-    if (!goal?.startDate || !goal?.dueDate) return;
-    saveSpec({
-      ...spec,
-      composed: { ...spec.composed, cycleStart: goal.startDate, cycleEnd: goal.dueDate },
-    });
-  }, [spec, goal?.startDate, goal?.dueDate]);
+    const composed = spec?.composed;
+    const periodCount = composed?.periods?.length || 0;
+    if (periodCount === 0 || !composed?.cadence) return;
+    const cycleStart = composed.cycleStart || goal?.startDate;
+    if (!cycleStart) return;
+    const cycleEnd = deriveCycleEndIso(cycleStart, composed.cadence, periodCount);
+    if (!cycleEnd) return;
+    if (composed.cycleStart === cycleStart && composed.cycleEnd === cycleEnd) return;
+    saveSpec({ ...spec, composed: { ...composed, cycleStart, cycleEnd } });
+  }, [spec, goal?.startDate]);
 
   const period = useMemo(
     () => resolvePeriodContent(spec, windowIndex),

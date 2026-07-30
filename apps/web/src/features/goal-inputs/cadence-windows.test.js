@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildCycleWindows, currentPeriodKey, composedCycleBounds } from "./cadence-windows.js";
+import {
+  buildCycleWindows,
+  currentPeriodKey,
+  composedCycleBounds,
+  deriveCycleEndIso,
+} from "./cadence-windows.js";
 
 /**
  * Regression cover for cycle-bounded calendar windows.
@@ -203,4 +208,48 @@ test("a weekly plan anchored to composedCycleBounds numbers week 1 from ITS OWN 
     key,
     "sanity check: the un-anchored default really does disagree",
   );
+});
+
+/**
+ * Regression cover for a real reported bug: a 13-week Q3 sub-plan authored
+ * inside a goal whose own `dueDate` is roughly a year out got its cycle
+ * stretched to however many weeks separated the goal's start and due date
+ * (53, in the report) instead of the 13 the document actually described,
+ * because cycleEnd was borrowed from the goal's own dueDate. deriveCycleEndIso
+ * is the fix — it derives the end from the period COUNT instead.
+ */
+test("deriveCycleEndIso gives a 13-week plan exactly 13 windows, not however far the goal's dueDate is", () => {
+  const end = deriveCycleEndIso("2026-07-01", "weekly", 13);
+  // 13 weeks after July 1 → last (13th) window is Sep 23–30, so the stored
+  // (inclusive) end is Sep 29 — one day before that window's exclusive end.
+  assert.equal(end, "2026-09-29");
+
+  const cycle = buildCycleWindows({
+    entries: [],
+    cadence: "weekly",
+    now: Date.UTC(2026, 6, 1),
+    ...composedCycleBounds({ composed: { cycleStart: "2026-07-01", cycleEnd: end } }),
+  });
+  assert.equal(cycle.total, 13, "exactly as many windows as periods, no unlabeled tail");
+});
+
+test("deriveCycleEndIso agrees with buildCycleWindows across monthly/quarterly too", () => {
+  for (const cadence of ["monthly", "quarterly", "daily", "biweekly"]) {
+    const count = cadence === "quarterly" ? 3 : 6;
+    const end = deriveCycleEndIso("2026-07-01", cadence, count);
+    const cycle = buildCycleWindows({
+      entries: [],
+      cadence,
+      now: Date.UTC(2026, 6, 1),
+      ...composedCycleBounds({ composed: { cycleStart: "2026-07-01", cycleEnd: end } }),
+    });
+    assert.equal(cycle.total, count, `${cadence}: expected exactly ${count} windows`);
+  }
+});
+
+test("deriveCycleEndIso returns null for bad input rather than a wrong date", () => {
+  assert.equal(deriveCycleEndIso("not-a-date", "weekly", 13), null);
+  assert.equal(deriveCycleEndIso("2026-07-01", "milestone", 13), null, "non-bucketing cadence");
+  assert.equal(deriveCycleEndIso("2026-07-01", "weekly", 0), null);
+  assert.equal(deriveCycleEndIso("2026-07-01", "weekly", -1), null);
 });

@@ -17,4 +17,5 @@ export {
   currentPeriodKey,
   cadenceConsistency,
   composedCycleBounds,
+  deriveCycleEndIso,
 } from "./cadence-windows";

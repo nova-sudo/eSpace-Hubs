@@ -60,7 +60,7 @@ import {
   extractComposeAttachment,
 } from "@/features/analyst";
 import { saveSpec } from "@/features/goal-specs";
-import { clearGoalEntries } from "@/features/goal-inputs";
+import { clearGoalEntries, deriveCycleEndIso } from "@/features/goal-inputs";
 import { clearGoalLocks } from "@/features/goal-locks";
 import { apiPost } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
@@ -340,19 +340,25 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
     // (bypasses saveSpec's locked-tiers preserve) so it keeps the previewed
     // tiers.
     //
-    // Anchor authored periods to the goal's REAL dates. The AI has no idea
-    // when this goal actually starts — a 13-week plan it produces is just 13
-    // labelled entries — so without this, buildCycleWindows falls back to
-    // the calendar year and "week 13" lands wherever week 13 of THAT YEAR
-    // falls, not wherever the plan's own week 13 actually is. Only applied
-    // when periods exist (composed.cycleStart is meaningless without them)
-    // and the goal has both dates; a goal missing either keeps today's
-    // calendar-year default exactly as before.
+    // Anchor authored periods to the goal's real START — the AI has no idea
+    // when this goal actually begins, so without this buildCycleWindows falls
+    // back to the calendar year and "week 13" lands wherever week 13 of THAT
+    // YEAR falls, not wherever the plan's own week 13 actually is. The END is
+    // deliberately NOT the goal's own `dueDate`: a document can describe a
+    // 13-week Q3 sub-plan inside a goal whose own due date is a year out, and
+    // the goal's date would stretch the cycle to however many weeks separate
+    // them — real bug, produced a 53-week cycle for a 13-week plan. Derived
+    // instead from the period COUNT, which makes an unlabeled tail past the
+    // last authored period structurally impossible.
     const previewSpec = preview.spec;
-    const composed =
-      previewSpec.composed?.periods?.length && goal?.startDate && goal?.dueDate
-        ? { ...previewSpec.composed, cycleStart: goal.startDate, cycleEnd: goal.dueDate }
-        : previewSpec.composed;
+    const periodCount = previewSpec.composed?.periods?.length || 0;
+    const cycleEnd =
+      periodCount > 0 && goal?.startDate
+        ? deriveCycleEndIso(goal.startDate, previewSpec.composed.cadence, periodCount)
+        : null;
+    const composed = cycleEnd
+      ? { ...previewSpec.composed, cycleStart: goal.startDate, cycleEnd }
+      : previewSpec.composed;
     const pendingSpec = {
       ...previewSpec,
       composed,

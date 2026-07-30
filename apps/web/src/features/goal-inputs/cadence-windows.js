@@ -195,6 +195,60 @@ export function composedCycleBounds(spec) {
   return { cycleStart: start, cycleEnd: endDay + DAY };
 }
 
+/** Generous per-window upper bound (days) — just needs to exceed the real window length. */
+const CADENCE_MAX_WINDOW_DAYS = {
+  daily: 1,
+  weekly: 7,
+  biweekly: 14,
+  monthly: 31,
+  quarterly: 93,
+};
+
+/**
+ * ISO date (inclusive last day) for the end of the Nth cadence window
+ * starting at `cycleStartIso` — i.e. the cycle bound that makes
+ * buildCycleWindows produce EXACTLY `periodCount` windows, matching however
+ * many periods were actually authored. Returns null for an unparseable
+ * start, an unrecognised cadence, or a non-positive count.
+ *
+ * This is deliberately what anchors a plan's END, not the underlying goal's
+ * own `dueDate`: a document can describe a 13-week Q3 sub-plan inside a goal
+ * whose own due date is a year out, and borrowing the goal's date stretched
+ * the cycle to however many weeks separated them (53, in the bug this fixed)
+ * — window 14 onward existed but had no authored content, an unlabeled tail
+ * the widget had no business rendering. Deriving from `periodCount` instead
+ * makes that tail structurally impossible: the cycle can only ever be as
+ * long as there are periods to fill it.
+ */
+export function deriveCycleEndIso(cycleStartIso, cadence, periodCount) {
+  const startMs = typeof cycleStartIso === "string" ? Date.parse(cycleStartIso) : NaN;
+  const perWindowDays = CADENCE_MAX_WINDOW_DAYS[cadence];
+  if (
+    Number.isNaN(startMs) ||
+    !perWindowDays ||
+    !Number.isInteger(periodCount) ||
+    periodCount <= 0
+  ) {
+    return null;
+  }
+  const DAY = 86_400_000;
+  // +1 window of margin: enumerateWindows snaps a mid-period start back to
+  // its calendar boundary (see the quarterly/monthly branch), which can push
+  // the Nth window's end slightly past a bound sized on raw days alone.
+  const generousEnd = startMs + (periodCount + 1) * perWindowDays * DAY;
+  const cycle = buildCycleWindows({
+    entries: [],
+    cadence,
+    now: startMs,
+    cycleStart: startMs,
+    cycleEnd: generousEnd,
+  });
+  const w = cycle.windows?.[periodCount - 1];
+  if (!w) return null;
+  // `w.end` is exclusive; the stored field is the inclusive last day.
+  return new Date(w.end - DAY).toISOString().slice(0, 10);
+}
+
 export function buildCycleWindows({
   entries,
   cadence,
