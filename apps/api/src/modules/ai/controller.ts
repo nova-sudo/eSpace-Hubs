@@ -719,7 +719,10 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   '        "label":  <what THIS period is for, e.g. "Week 3 — Project constitution">,',
   '        "dueAt":  <optional "YYYY-MM-DD">,',
   '        "prompt": <optional, overrides composed.prompt for this period>,',
-  '        "fields": <optional, overrides the top-level fields for this period>',
+  '        "fields": <optional, overrides the top-level fields for this period>,',
+  '        "nested": <OPTIONAL — see NESTED CADENCES below. A whole SECOND',
+  "                    composed block (cadence/prompt/cycleStart/fields/periods)",
+  '                    living INSIDE this one window, e.g. weeks inside a quarter>',
   "      }",
   "    ]",
   "  },",
@@ -835,6 +838,35 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   "  - Omit it when the document gives no date to anchor on. Guessing a wrong",
   "    date is worse than omitting it — the caller has its own fallback.",
   "",
+  "NESTED CADENCES (`composed.periods[].nested`):",
+  "  - Use it when a plan genuinely has TWO cadences at once — a quarterly",
+  '    rollup with a weekly (or monthly) form living INSIDE each quarter. A',
+  '    document phrased like "each quarter, log an overall rating; each week',
+  '    within it, log that week\'s deliverable" needs BOTH levels represented,',
+  "    not collapsed into one.",
+  "  - `nested` is a WHOLE SECOND composed block — it can carry its own",
+  "    `cadence`, `prompt`, `cycleStart`, `fields` (the default fields for ITS",
+  "    periods — the nested equivalent of the top-level `fields` array), and",
+  "    its own `periods[]`, which can THEMSELVES carry `nested` again. Nest as",
+  "    many levels as the document genuinely describes (quarter > month > week",
+  "    is as deep as any real document has needed so far) — don't invent extra",
+  "    levels a document doesn't ask for.",
+  "  - The OUTER period's own `fields` (if any) are that window's rollup —",
+  '    e.g. a quarter\'s own "overall quarter rating". Leave `fields` off an',
+  "    outer period entirely when it's purely a container framing what's",
+  "    nested inside it, with nothing to log at that level itself.",
+  "  - Do NOT reach for this just because a plan has weeks inside a quarter",
+  "    calendar-wise — that's true of every quarterly plan and needs no nested",
+  "    block. Only nest when the document actually wants DATA CAPTURED at both",
+  "    levels (a quarterly review form AND a weekly check-in form), not just",
+  "    when weeks happen to fall inside quarters chronologically.",
+  "  - A nested block's own `cycleStart` follows the same rule as the top",
+  "    level's: set it when the document says or implies when period 1 of",
+  "    THAT nested cadence begins. If omitted, it inherits whichever outer",
+  "    window it lives inside of (e.g. Q1's weeks default to starting when Q1",
+  "    starts) — usually the right call, so only set it when the nested cadence",
+  "    genuinely starts on a different date than its containing window.",
+  "",
   "WORKED EXAMPLE — a document containing:",
   "    Month 1 | Complete Part 1 and pass a concept review with the Lead | 01/08/2026",
   "    Month 2 | Complete Part 2 and submit a written case study           | 01/09/2026",
@@ -859,6 +891,33 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   "  Note what did NOT happen: the six distinct checkpoints were not flattened",
   '  into one "milestone completed" checkbox, and no "Which month" field was',
   "  invented — the record already knows its own period.",
+  "",
+  "WORKED EXAMPLE (nested) — a document containing:",
+  '    "Each quarter, rate overall progress 1-5. Within each quarter, log a',
+  '    short weekly status update — what shipped, any blockers."',
+  "  produces (abridged, one quarter shown):",
+  "  {",
+  '    "composed": {',
+  '      "cadence": "quarterly",',
+  '      "periods": [',
+  "        {",
+  '          "key": "q1", "label": "Q1",',
+  '          "fields": [{ "id": "rating", "kind": "scale", "label": "Overall progress rating" }],',
+  '          "nested": {',
+  '            "cadence": "weekly",',
+  '            "fields": [',
+  '              { "id": "shipped",  "kind": "text", "label": "What shipped this week" },',
+  '              { "id": "blockers", "kind": "text", "label": "Blockers", "optional": true }',
+  "            ]",
+  "          }",
+  "        }",
+  "      ]",
+  "    }",
+  "  }",
+  '  Note the nested block has NO `periods` — every week within Q1 asks the',
+  "  same two questions, so it stays flat, same rule as the top level. Q1's",
+  '  OWN `fields` (the rating) are separate from — not a substitute for — the',
+  "  weekly fields nested inside it; both get captured, at their own cadence.",
   "",
   "AUTOMATIC FIELDS (`source`) — evidence the tools already hold:",
   "  Some goals are graded on something nobody should have to retype: a file",
@@ -1401,13 +1460,31 @@ const COMPOSE_MAX_TOKENS = 4_000;
  */
 const COMPOSE_TIMEOUT_MS = 25_000;
 
+interface CleanComposedBlock {
+  cadence?: string;
+  prompt?: string;
+  periods?: CleanPeriod[];
+  cycleStart?: string;
+  fields?: Array<Record<string, unknown>>;
+}
+
 interface CleanPeriod {
   key: string;
   label: string;
   dueAt?: string;
   prompt?: string;
   fields?: Array<Record<string, unknown>>;
+  nested?: CleanComposedBlock;
 }
+
+/**
+ * Safety ceiling mirroring the shared validator's COMPOSED_MAX_NEST_DEPTH — a
+ * cadence nesting a cadence nesting a cadence. Not a product limit; it exists
+ * so a model that goes recursion-happy on a document can't produce output
+ * that recurses this cleaner (or, later, the validator/renderer) unreasonably
+ * deep.
+ */
+const COMPOSED_MAX_NEST_DEPTH = 8;
 
 /**
  * Coerce the model's `composed.periods` into shapes the shared validator will
@@ -1418,10 +1495,16 @@ interface CleanPeriod {
  * use is kept as a LABEL-ONLY placeholder rather than dropped, because dropping
  * it would silently shift every later period onto the wrong week. A period with
  * nothing usable at all still gets a generated label for the same reason.
+ *
+ * `depth` threads through `period.nested` (see `cleanComposedBlock`) — a
+ * period may frame a whole second cadence living inside that one window (a
+ * quarter containing weeks). Mutually recursive with `cleanComposedBlock`,
+ * gated by COMPOSED_MAX_NEST_DEPTH so neither can recurse unboundedly.
  */
 export function cleanComposedPeriods(
   raw: unknown,
   ctx: ComposeCleanCtx = emptyCleanCtx(),
+  depth = 0,
 ): CleanPeriod[] {
   if (!Array.isArray(raw)) return [];
   const out: CleanPeriod[] = [];
@@ -1461,6 +1544,13 @@ export function cleanComposedPeriods(
       const fields = cleanComposedFields(p.fields, ctx);
       if (fields.length > 0) period.fields = fields;
     }
+    // A nested cadence — dropped silently past the depth ceiling rather than
+    // failing the whole compose; the flat/shallower tracker underneath it is
+    // still perfectly usable.
+    if (p.nested !== undefined && p.nested !== null && depth + 1 < COMPOSED_MAX_NEST_DEPTH) {
+      const nested = cleanComposedBlock(p.nested, ctx, depth + 1);
+      if (nested) period.nested = nested;
+    }
     out.push(period);
   }
   return out;
@@ -1468,21 +1558,18 @@ export function cleanComposedPeriods(
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * `depth` mirrors the shared validator's: 0 is the top-level `composed`
+ * block (where `fields` is intentionally NOT read — `spec.fields` already
+ * owns that role there), depth > 0 is a nested block, where `fields` is the
+ * default field set for ITS periods (the nested equivalent of `spec.fields`).
+ */
 export function cleanComposedBlock(
   raw: unknown,
   ctx: ComposeCleanCtx = emptyCleanCtx(),
-): {
-  cadence?: string;
-  prompt?: string;
-  periods?: CleanPeriod[];
-  cycleStart?: string;
-} | null {
-  const out: {
-    cadence?: string;
-    prompt?: string;
-    periods?: CleanPeriod[];
-    cycleStart?: string;
-  } = {};
+  depth = 0,
+): CleanComposedBlock | null {
+  const out: CleanComposedBlock = {};
   if (raw && typeof raw === "object") {
     const c = raw as Record<string, unknown>;
     const cadence = normalizeCadence(
@@ -1496,8 +1583,16 @@ export function cleanComposedBlock(
     // annotate and the validator would reject them. Drop rather than fail: the
     // flat tracker underneath is still perfectly usable.
     if (cadence) {
-      const periods = cleanComposedPeriods(c.periods, ctx);
-      if (periods.length > 0) out.periods = periods;
+      const periods = cleanComposedPeriods(c.periods, ctx, depth);
+      if (periods.length > 0) {
+        out.periods = periods;
+        // Default fields for a NESTED level's periods — mirrors `spec.fields`
+        // at the top, which already covers depth 0.
+        if (depth > 0 && c.fields !== undefined) {
+          const fields = cleanComposedFields(c.fields, ctx);
+          if (fields.length > 0) out.fields = fields;
+        }
+      }
       // When did period 1 actually start? Without this, cycle windows default
       // to the calendar year, so "week 1" of a Q3-only plan lands wherever
       // week 1 of the calendar year falls (a real reported bug). The model is

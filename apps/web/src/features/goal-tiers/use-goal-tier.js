@@ -24,6 +24,7 @@ import {
 } from "@/features/goal-inputs";
 import { useGoalContext, useIsContextComplete } from "@/features/goal-context";
 import { SPEC_KINDS, specCadence, isSingleRecordWidget } from "@/features/goal-specs";
+import { fieldsForPeriodKey } from "./composed-field-resolution.js";
 import { readLocks, useGoalLocks } from "@/features/goal-locks";
 import { getAiProvider } from "@/features/analyst";
 import {
@@ -225,8 +226,13 @@ function buildCurrentData(spec, entries, reading, liveReading) {
       }
       if (byPeriod.size === 0) return readingToText(reading);
 
-      const required = fields.filter((f) => !f.optional);
-      const recComplete = (rec) => {
+      // Field set PER PERIOD, not one fixed list — a nested-cadence entry
+      // (compound periodKey "2026-Q1::2026-W3") stores values keyed by the
+      // NESTED level's field ids, not the top-level `fields` above. See
+      // `fieldsForPeriodKey`. A non-nested key just gets `fields` back.
+      const recComplete = (rec, pk) => {
+        const recFields = fieldsForPeriodKey(spec, pk);
+        const required = recFields.filter((f) => !f.optional);
         const vals = rec?.values && typeof rec.values === "object" ? rec.values : {};
         return (
           required.length > 0 &&
@@ -237,13 +243,14 @@ function buildCurrentData(spec, entries, reading, liveReading) {
         );
       };
       const renderPeriod = (pk, rec) => {
+        const recFields = fieldsForPeriodKey(spec, pk);
         const vals = rec?.values && typeof rec.values === "object" ? rec.values : {};
         const ev = rec?.evidence && typeof rec.evidence === "object" ? rec.evidence : {};
-        const filled = fields.filter((f) => {
+        const filled = recFields.filter((f) => {
           const v = vals[f.id];
           return f.kind === "checkbox" ? v === true : v != null && v !== "";
         }).length;
-        const lines = fields.map((f) => {
+        const lines = recFields.map((f) => {
           const v = vals[f.id];
           const blank = v == null || v === "";
           const shown = blank
@@ -258,8 +265,8 @@ function buildCurrentData(spec, entries, reading, liveReading) {
         });
         const tag =
           pk === "__single__" ? "record" : `${pk}${pk === curKey ? " (current period)" : ""}`;
-        return `• ${tag} — ${filled}/${fields.length} fields, ${
-          recComplete(rec) ? "COMPLETE" : "incomplete"
+        return `• ${tag} — ${filled}/${recFields.length} fields, ${
+          recComplete(rec, pk) ? "COMPLETE" : "incomplete"
         }: ${lines.join("; ")}`;
       };
 
@@ -268,10 +275,10 @@ function buildCurrentData(spec, entries, reading, liveReading) {
       const CAP = 8;
       const keys = [...byPeriod.keys()].sort().reverse();
       const blocks = keys.slice(0, CAP).map((pk) => renderPeriod(pk, byPeriod.get(pk)));
-      const completeCount = keys.filter((pk) => recComplete(byPeriod.get(pk))).length;
+      const completeCount = keys.filter((pk) => recComplete(byPeriod.get(pk), pk)).length;
       let streak = 0;
       for (const pk of keys) {
-        if (recComplete(byPeriod.get(pk))) streak += 1;
+        if (recComplete(byPeriod.get(pk), pk)) streak += 1;
         else break;
       }
 

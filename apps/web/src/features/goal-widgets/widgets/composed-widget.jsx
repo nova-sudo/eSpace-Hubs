@@ -22,6 +22,23 @@
  * us that index, which keeps this widget and the stepper reading the same
  * period as the compliance math.
  *
+ * NESTED CADENCES. A period may itself frame a whole second cadence living
+ * INSIDE that one window — a quarter containing weeks, each with their own
+ * form (`period.nested`, a full `composed` block; see resolveNestedPeriodContent
+ * in @espace-devhub/shared/goal-specs). Recursive: a nested block can nest
+ * again, arbitrarily deep. <NestedCadenceLevel> renders one level and renders
+ * itself again for whatever the resolved period nests, so this component
+ * doesn't need to know how deep a given spec actually goes.
+ *
+ * Storage for a nested level reuses the exact same `{periodKey, values,
+ * evidence}` entry shape — no schema change. A nested level's periodKey is
+ * the containing level's key plus its own, joined with "::" (e.g.
+ * "2026-Q1::2026-W3"), which the calendar-derived key formats ("2026-Q1",
+ * "2026-W5", …) never themselves contain, so it's an unambiguous separator.
+ * Every existing consumer that matches entries by exact periodKey string
+ * (the grader, Evidence, the manager projection) keeps working unmodified —
+ * a nested entry is just an entry whose periodKey happens to be compound.
+ *
  * Some fields answer themselves: a field carrying `source` is read from GitHub
  * or GitLab instead of typed (see <ComposedFields>). We say so above the fields
  * rather than leaving the user to infer it from a greyed-out box — "3 of these
@@ -37,8 +54,156 @@ import {
   currentPeriodKey,
   deriveCycleEndIso,
 } from "@/features/goal-inputs";
-import { resolvePeriodContent, saveSpec } from "@/features/goal-specs";
+import { resolvePeriodContent, resolveNestedPeriodContent, saveSpec } from "@/features/goal-specs";
 import { ComposedFields } from "./composed-fields.jsx";
+
+/** Mirrors the shared validator's COMPOSED_MAX_NEST_DEPTH — a safety ceiling,
+ * not a product limit, so a malformed spec can't recurse this component into
+ * a stack overflow even if it somehow slipped past validation. */
+const MAX_NEST_DEPTH = 8;
+
+function autoFieldCount(fields) {
+  return (Array.isArray(fields) ? fields : []).filter(
+    (f) => f?.source && typeof f.source === "object" && f.source.query,
+  ).length;
+}
+
+/**
+ * This level's `{cycleStart, cycleEnd}` (epoch ms) plus the current window's
+ * own bounds — the latter is what a nested child inherits as ITS fallback
+ * when it doesn't author explicit dates of its own. One buildCycleWindows
+ * call serves both the current-window index and its start/end, rather than
+ * computing the cycle twice.
+ */
+function useLevelWindow(cadence, explicitBounds, fallbackStart, fallbackEnd) {
+  const cycleStart = explicitBounds.cycleStart ?? fallbackStart ?? undefined;
+  const cycleEnd = explicitBounds.cycleEnd ?? fallbackEnd ?? undefined;
+  const hasBounds = cycleStart != null && cycleEnd != null;
+
+  const cycle = useMemo(() => {
+    if (!cadence) return null;
+    return buildCycleWindows({
+      entries: [],
+      cadence,
+      now: Date.now(),
+      ...(hasBounds ? { cycleStart, cycleEnd } : {}),
+    });
+  }, [cadence, cycleStart, cycleEnd, hasBounds]);
+
+  const windowIndex = cycle?.currentIndex ?? -1;
+  const currentWindow = windowIndex >= 0 ? cycle?.windows?.[windowIndex] : null;
+  const key = cadence
+    ? currentPeriodKey(cadence, Date.now(), cycleStart, cycleEnd)
+    : null;
+
+  return {
+    windowIndex,
+    key,
+    // This window's own [start,end) — handed to a nested child as its
+    // fallback bounds when it has no explicit cycleStart/cycleEnd itself.
+    windowStart: currentWindow?.start ?? null,
+    windowEnd: currentWindow?.end ?? null,
+  };
+}
+
+/**
+ * One nested cadence level — a period's `nested` block. Resolves the current
+ * window the same way the top level does, renders that window's own fields
+ * (if it defines any) under a compound periodKey, and recurses into whatever
+ * that window itself nests.
+ *
+ * `fallbackStart`/`fallbackEnd` (epoch ms) are the CONTAINING window's own
+ * bounds — used only when this level authors no explicit cycleStart/cycleEnd
+ * of its own, so a nested block doesn't need one just to inherit "whatever
+ * window it lives inside of".
+ */
+function NestedCadenceLevel({
+  goalId,
+  composedBlock,
+  periodKeyPrefix,
+  fallbackStart,
+  fallbackEnd,
+  variant,
+  depth,
+}) {
+  const cadence = composedBlock?.cadence || null;
+  const explicitBounds = useMemo(
+    () => composedCycleBounds({ composed: composedBlock }),
+    [composedBlock],
+  );
+  const { windowIndex, key, windowStart, windowEnd } = useLevelWindow(
+    cadence,
+    explicitBounds,
+    fallbackStart,
+    fallbackEnd,
+  );
+
+  const period = useMemo(
+    () => resolveNestedPeriodContent(composedBlock, windowIndex),
+    [composedBlock, windowIndex],
+  );
+
+  const isLight = variant === "light";
+  const muted = isLight ? "rgba(255,255,255,0.68)" : "var(--muted-fg)";
+
+  // Nothing sane to render: no cadence, or the cycle can't resolve a key —
+  // rather than guess, this level (and anything nested inside it) is skipped.
+  if (!cadence || !key || depth > MAX_NEST_DEPTH) return null;
+
+  const fullKey = periodKeyPrefix ? `${periodKeyPrefix}::${key}` : key;
+  const fields = period.fields;
+  const autoCount = autoFieldCount(fields);
+
+  return (
+    <div
+      className="mt-3 flex flex-col gap-2"
+      style={{ borderTop: `1px dashed ${isLight ? "rgba(255,255,255,0.22)" : "var(--border)"}`, paddingTop: 10 }}
+    >
+      {period.authored && period.label ? (
+        <div
+          className="flex flex-wrap items-baseline gap-x-2"
+          style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
+        >
+          <span style={{ color: isLight ? "#ffffff" : "var(--fg)", fontWeight: 700 }}>
+            {period.label}
+          </span>
+          {period.dueAt ? <span style={{ color: muted }}>due {period.dueAt}</span> : null}
+        </div>
+      ) : null}
+      {period.prompt ? (
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: muted }}>
+          {period.prompt}
+          {autoCount > 0 ? (
+            <span style={{ opacity: 0.85 }}>
+              {" "}
+              · {autoCount} read {autoCount === 1 ? "itself" : "themselves"} from your repos
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+      {fields.length > 0 ? (
+        <ComposedFields
+          goalId={goalId}
+          fields={fields}
+          periodKey={fullKey}
+          variant={variant}
+          showHeadline={false}
+        />
+      ) : null}
+      {period.nested ? (
+        <NestedCadenceLevel
+          goalId={goalId}
+          composedBlock={period.nested}
+          periodKeyPrefix={fullKey}
+          fallbackStart={windowStart}
+          fallbackEnd={windowEnd}
+          variant={variant}
+          depth={depth + 1}
+        />
+      ) : null}
+    </div>
+  );
+}
 
 export function ComposedWidget({ spec, goal, variant = "light", className, onRetry }) {
   const cadence = spec.composed?.cadence || null;
@@ -47,21 +212,12 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
   // one (composed.cycleStart/cycleEnd) — otherwise {} and every call below
   // keeps defaulting to the calendar year of "now", exactly as before.
   const bounds = useMemo(() => composedCycleBounds(spec), [spec]);
-
-  const currentKey = useMemo(
-    () => currentPeriodKey(cadence, Date.now(), bounds.cycleStart, bounds.cycleEnd),
-    [cadence, bounds],
+  const { windowIndex, key: currentKey, windowStart, windowEnd } = useLevelWindow(
+    cadence,
+    bounds,
+    null,
+    null,
   );
-
-  // Which window of the cycle "now" falls in — the index authored periods are
-  // keyed by. Entries aren't needed to locate the window, only to colour it,
-  // so this pass is cheap. -1 (no cadence / non-bucketing) resolves to the
-  // flat spec content, which is exactly right for a one-time tracker.
-  const windowIndex = useMemo(() => {
-    if (!cadence) return -1;
-    return buildCycleWindows({ entries: [], cadence, now: Date.now(), ...bounds })
-      .currentIndex;
-  }, [cadence, bounds]);
 
   // Self-heal: a spec authored with periods[] but no cycle bounds (every
   // tracker composed before this existed) silently mis-anchors every window
@@ -79,6 +235,11 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
   // produce now (from periods.length, not the goal's date) both fixes that
   // for existing mis-anchored specs and keeps this a no-op once correct, so
   // it converges rather than looping.
+  //
+  // Top-level only: a nested block that authors no cycleStart/cycleEnd of its
+  // own simply inherits its containing window's bounds at render time (see
+  // NestedCadenceLevel) — correct behaviour, not a gap, so there's nothing to
+  // self-heal there.
   useEffect(() => {
     const composed = spec?.composed;
     const periodCount = composed?.periods?.length || 0;
@@ -105,14 +266,7 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
   );
   const fields = period.fields;
   const promptCopy = period.prompt || "Track this goal's data below.";
-
-  const autoCount = useMemo(
-    () =>
-      (Array.isArray(fields) ? fields : []).filter(
-        (f) => f?.source && typeof f.source === "object" && f.source.query,
-      ).length,
-    [fields],
-  );
+  const autoCount = useMemo(() => autoFieldCount(fields), [fields]);
 
   const isLight = variant === "light";
   const muted = isLight ? "rgba(255,255,255,0.68)" : "var(--muted-fg)";
@@ -159,6 +313,17 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
             periodKey={currentKey}
             variant={variant}
           />
+          {period.nested ? (
+            <NestedCadenceLevel
+              goalId={goal?.id}
+              composedBlock={period.nested}
+              periodKeyPrefix={currentKey}
+              fallbackStart={windowStart}
+              fallbackEnd={windowEnd}
+              variant={variant}
+              depth={1}
+            />
+          ) : null}
         </div>
       </div>
     </WidgetShell>

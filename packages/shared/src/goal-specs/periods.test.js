@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { resolvePeriodContent } from "./types.js";
+import { resolvePeriodContent, resolveNestedPeriodContent } from "./types.js";
 import { buildSpec } from "./validator.js";
 
 /**
@@ -219,4 +219,156 @@ test("a select field inside a period still requires options", () => {
   });
   assert.equal(built.ok, false);
   assert.ok(built.errors.some((e) => e.includes("options")));
+});
+
+// ─── nested cadences (composed.periods[].nested) ──────────────────────
+//
+// A quarter's period can itself frame a whole second cadence — weeks living
+// inside that quarter, each with their own form. Recursive: a nested block
+// can nest again, arbitrarily deep (gated only by a safety ceiling).
+
+const NESTED_FIELD = { id: "shipped", kind: "checkbox", label: "Deliverable shipped" };
+
+test("a period's nested cadence round-trips through buildSpec", () => {
+  const built = composedSpec({
+    composed: {
+      cadence: "quarterly",
+      cycleStart: "2026-01-01",
+      cycleEnd: "2026-12-31",
+      periods: [
+        {
+          key: "q1",
+          label: "Q1",
+          fields: [{ id: "quarter_rating", kind: "scale", label: "Overall quarter rating" }],
+          nested: {
+            cadence: "weekly",
+            cycleStart: "2026-01-01",
+            cycleEnd: "2026-03-29",
+            fields: [NESTED_FIELD],
+            periods: [
+              { key: "w1", label: "Week 1 — Kickoff" },
+              { key: "w2", label: "Week 2 — Design" },
+            ],
+          },
+        },
+      ],
+    },
+  });
+  assert.ok(built.ok, JSON.stringify(built.errors));
+  const q1 = built.spec.composed.periods[0];
+  assert.equal(q1.fields[0].id, "quarter_rating");
+  assert.equal(q1.nested.cadence, "weekly");
+  assert.equal(q1.nested.periods.length, 2);
+  assert.equal(q1.nested.periods[1].label, "Week 2 — Design");
+});
+
+test("resolveNestedPeriodContent resolves a window inside a nested block, falling back to composed.fields", () => {
+  const nested = {
+    cadence: "weekly",
+    fields: [NESTED_FIELD],
+    periods: [
+      { key: "w1", label: "Week 1 — Kickoff", fields: [{ id: "kickoff_notes", kind: "text", label: "Notes" }] },
+      { key: "w2", label: "Week 2 — Design" }, // no field override → falls back to nested.fields
+    ],
+  };
+  const w1 = resolveNestedPeriodContent(nested, 0);
+  assert.equal(w1.authored, true);
+  assert.equal(w1.fields[0].id, "kickoff_notes");
+
+  const w2 = resolveNestedPeriodContent(nested, 1);
+  assert.equal(w2.authored, true);
+  assert.equal(w2.fields[0].id, "shipped", "falls back to nested.fields, not the outer spec's fields");
+});
+
+test("resolvePeriodContent exposes a period's nested block for the caller to recurse into", () => {
+  const built = composedSpec({
+    composed: {
+      cadence: "quarterly",
+      periods: [
+        {
+          key: "q1",
+          label: "Q1",
+          nested: { cadence: "weekly", fields: [NESTED_FIELD], periods: [{ key: "w1", label: "Week 1" }] },
+        },
+        { key: "q2", label: "Q2" }, // no nested block
+      ],
+    },
+  });
+  assert.ok(built.ok, JSON.stringify(built.errors));
+  const q1 = resolvePeriodContent(built.spec, 0);
+  assert.ok(q1.nested, "Q1 exposes its nested weekly cadence");
+  assert.equal(q1.nested.cadence, "weekly");
+
+  const q2 = resolvePeriodContent(built.spec, 1);
+  assert.equal(q2.nested, null, "Q2 authored no nested cadence");
+});
+
+test("nesting recurses arbitrarily deep (quarter > month > week)", () => {
+  const built = composedSpec({
+    composed: {
+      cadence: "quarterly",
+      periods: [
+        {
+          key: "q1",
+          label: "Q1",
+          nested: {
+            cadence: "monthly",
+            fields: [{ id: "month_notes", kind: "text", label: "Month notes" }],
+            periods: [
+              {
+                key: "m1",
+                label: "Month 1",
+                nested: {
+                  cadence: "weekly",
+                  fields: [NESTED_FIELD],
+                  periods: [{ key: "w1", label: "Week 1" }],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    },
+  });
+  assert.ok(built.ok, JSON.stringify(built.errors));
+  const month = built.spec.composed.periods[0].nested.periods[0];
+  assert.equal(month.nested.cadence, "weekly");
+  assert.equal(month.nested.periods[0].label, "Week 1");
+});
+
+test("nesting past the safety ceiling is rejected, not silently truncated", () => {
+  // Build 9 levels deep (ceiling is 8) so the deepest level itself is rejected.
+  let deepest = { cadence: "daily", periods: [{ key: "d1", label: "Day 1" }] };
+  for (let i = 0; i < 8; i += 1) {
+    deepest = { cadence: "weekly", periods: [{ key: "w1", label: `Level ${i}`, nested: deepest }] };
+  }
+  const built = composedSpec({ composed: deepest });
+  assert.equal(built.ok, false);
+  assert.ok(built.errors.some((e) => e.includes("nesting depth")));
+});
+
+test("composed.fields on a NESTED block must be non-empty when present", () => {
+  const built = composedSpec({
+    composed: {
+      cadence: "quarterly",
+      periods: [
+        {
+          key: "q1",
+          label: "Q1",
+          nested: { cadence: "weekly", fields: [], periods: [{ key: "w1", label: "Week 1" }] },
+        },
+      ],
+    },
+  });
+  assert.equal(built.ok, false);
+  assert.ok(built.errors.some((e) => e.includes("composed.fields")));
+});
+
+test("a top-level composed.fields is accepted but plays no role — spec.fields already owns that job", () => {
+  // Not an error, just inert: validateComposed only stores `fields` for depth > 0.
+  const built = composedSpec({
+    composed: { cadence: "weekly", fields: [NESTED_FIELD], periods: [{ key: "w1", label: "Week 1" }] },
+  });
+  assert.ok(built.ok, JSON.stringify(built.errors));
+  assert.equal(built.spec.composed.fields, undefined);
 });

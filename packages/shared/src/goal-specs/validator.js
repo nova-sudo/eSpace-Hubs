@@ -547,6 +547,69 @@ function validateFields(fields, errors) {
 const COMPOSED_MAX_PERIODS = 53;
 
 /**
+ * Safety ceiling on how deep `composed.periods[].nested` may recurse — a
+ * cadence nesting a cadence nesting a cadence (year > quarter > month > week
+ * > day realistically tops out around 5). Not a product limit anyone is
+ * expected to hit; it exists so a malformed or adversarial spec can't recurse
+ * the validator (or, later, the recursive renderer) into a stack overflow.
+ */
+const COMPOSED_MAX_NEST_DEPTH = 8;
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * The cycle's real calendar bounds (e.g. a 13-week plan starting in
+ * September, not January) — what buildCycleWindows anchors on so window
+ * dates/labels and cadence-consistency grading match when the goal doesn't
+ * start Jan 1. Optional and paired: a spec/nested-block that predates this
+ * (or a document with no dates to anchor on) has neither key, and
+ * buildCycleWindows keeps defaulting to the calendar year exactly as it
+ * always has. A malformed or inverted pair is dropped rather than erroring
+ * the whole spec — worth losing the anchor, not worth failing a save over a
+ * bad date. Shared by every nesting level, not just the top one.
+ */
+function validateCycleBounds(cycleStart, cycleEnd) {
+  if (!isNonEmptyString(cycleStart) || !isNonEmptyString(cycleEnd)) return null;
+  const cs = cycleStart.trim();
+  const ce = cycleEnd.trim();
+  if (!ISO_DATE_RE.test(cs) || !ISO_DATE_RE.test(ce) || cs >= ce) return null;
+  return { cycleStart: cs, cycleEnd: ce };
+}
+
+/**
+ * A `fields` array that's OPTIONAL to have at all (unlike the top-level
+ * `spec.fields`, which COMPOSED requires), but must be non-empty and valid
+ * when present. This is the default field set for a NESTED cadence level's
+ * periods — the same role `spec.fields` plays at the top level, which is why
+ * it's only meaningful (and only validated/stored) below depth 0; see
+ * `validateComposed`.
+ */
+function validateOptionalFields(fields, errors, label) {
+  if (fields === undefined || fields === null) return null;
+  if (!Array.isArray(fields) || fields.length === 0) {
+    errors.push(`${label}: must be a non-empty array when present`);
+    return null;
+  }
+  if (fields.length > COMPOSED_MAX_FIELDS) {
+    errors.push(`${label}: at most ${COMPOSED_MAX_FIELDS} fields`);
+    return null;
+  }
+  const seen = new Set();
+  const out = [];
+  fields.forEach((f, i) => {
+    const v = validateField(f, i, errors);
+    if (!v) return;
+    if (seen.has(v.id)) {
+      errors.push(`${label}[${i}].id: duplicate id "${v.id}"`);
+      return;
+    }
+    seen.add(v.id);
+    out.push(v);
+  });
+  return out.length ? out : null;
+}
+
+/**
  * Validate one authored period — an ORDERED annotation of the cycle window at
  * the same index.
  *
@@ -562,8 +625,14 @@ const COMPOSED_MAX_PERIODS = 53;
  * just the fields, or both. Whatever it omits falls back to the widget-level
  * `spec.fields` / `composed.prompt`, so a mostly-uniform plan with two special
  * weeks stays short.
+ *
+ * A period may also carry `nested` — a whole second `composed` block whose own
+ * cadence/periods live INSIDE this one window (a quarter containing weeks,
+ * each with their own form). Recursion, not a second mechanism: `nested` is
+ * validated by `validateComposed` at `depth + 1`, so a nested block can itself
+ * nest another one, arbitrarily deep, gated only by COMPOSED_MAX_NEST_DEPTH.
  */
-function validatePeriod(p, i, errors) {
+function validatePeriod(p, i, errors, depth) {
   if (!isObject(p)) {
     errors.push(`composed.periods[${i}]: must be an object`);
     return null;
@@ -580,19 +649,32 @@ function validatePeriod(p, i, errors) {
   // ISO date (YYYY-MM-DD) only — drives overdue/upcoming styling, never
   // bucketing. Anything else is dropped rather than errored: a bad due date
   // shouldn't cost the user the period's actual content.
-  if (isNonEmptyString(p.dueAt) && /^\d{4}-\d{2}-\d{2}$/.test(p.dueAt.trim())) {
+  if (isNonEmptyString(p.dueAt) && ISO_DATE_RE.test(p.dueAt.trim())) {
     out.dueAt = p.dueAt.trim();
   }
   if (p.fields !== undefined && p.fields !== null) {
     const fields = validateFields(p.fields, errors);
     if (fields) out.fields = fields;
   }
+  if (p.nested !== undefined && p.nested !== null) {
+    if (depth + 1 >= COMPOSED_MAX_NEST_DEPTH) {
+      errors.push(
+        `composed.periods[${i}].nested: exceeds the maximum nesting depth (${COMPOSED_MAX_NEST_DEPTH})`,
+      );
+    } else {
+      const nested = validateComposed(p.nested, errors, depth + 1);
+      if (nested) out.nested = nested;
+    }
+  }
   return out;
 }
 
 /**
  * Validate the optional `composed` block — the cadence + prompt that frame a
- * COMPOSED widget, plus (optionally) per-period content.
+ * COMPOSED widget, plus (optionally) per-period content. Also the shape of a
+ * NESTED cadence living inside one period of an outer cadence (see
+ * `validatePeriod`'s `nested`), which is why this takes a `depth` and is
+ * mutually recursive with `validatePeriod`.
  *
  * Cadence drives how the widget is bucketed/labelled (the "needed cadence" the
  * AI picks); prompt is the one-line instruction shown above the fields.
@@ -608,29 +690,25 @@ function validatePeriod(p, i, errors) {
  * `periods` key. `periods` is also ignored without a cadence — with no cycle
  * there are no windows to annotate.
  */
-function validateComposed(composed, errors) {
+function validateComposed(composed, errors, depth = 0) {
   if (!isObject(composed)) return null;
   const out = {};
   const cadence = normalizeCadence(composed.cadence);
   if (cadence) out.cadence = cadence;
   if (isNonEmptyString(composed.prompt)) out.prompt = composed.prompt.trim();
 
-  // The cycle's real calendar bounds (e.g. a 13-week plan starting in
-  // September, not January) — what buildCycleWindows anchors on so window
-  // dates/labels and cadence-consistency grading match when the goal doesn't
-  // start Jan 1. Optional and paired: a spec that started life before this
-  // existed has neither key, and buildCycleWindows keeps defaulting to the
-  // calendar year exactly as it always has. A malformed or inverted pair is
-  // dropped rather than erroring the whole spec — worth losing the anchor,
-  // not worth failing a save over a bad date.
-  const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-  if (isNonEmptyString(composed.cycleStart) && isNonEmptyString(composed.cycleEnd)) {
-    const cs = composed.cycleStart.trim();
-    const ce = composed.cycleEnd.trim();
-    if (ISO_DATE_RE.test(cs) && ISO_DATE_RE.test(ce) && cs < ce) {
-      out.cycleStart = cs;
-      out.cycleEnd = ce;
-    }
+  const bounds = validateCycleBounds(composed.cycleStart, composed.cycleEnd);
+  if (bounds) {
+    out.cycleStart = bounds.cycleStart;
+    out.cycleEnd = bounds.cycleEnd;
+  }
+
+  // Default fields for THIS cadence level's periods — meaningful only below
+  // the top level, which already has `spec.fields` playing this exact role;
+  // storing a second, unused copy of it there would just be spec bloat.
+  if (depth > 0) {
+    const fields = validateOptionalFields(composed.fields, errors, "composed.fields");
+    if (fields) out.fields = fields;
   }
 
   if (Array.isArray(composed.periods) && composed.periods.length > 0) {
@@ -646,7 +724,7 @@ function validateComposed(composed, errors) {
       const seen = new Set();
       const periods = [];
       composed.periods.forEach((p, i) => {
-        const v = validatePeriod(p, i, errors);
+        const v = validatePeriod(p, i, errors, depth);
         if (!v) return;
         if (seen.has(v.key)) {
           errors.push(`composed.periods[${i}].key: duplicate key "${v.key}"`);

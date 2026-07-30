@@ -42,6 +42,7 @@ export {
   isSpec,
   specCadence,
   resolvePeriodContent,
+  resolveNestedPeriodContent,
   validateSpec,
 } from "@espace-devhub/shared/goal-specs";
 

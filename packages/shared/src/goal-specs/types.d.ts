@@ -288,6 +288,15 @@ export interface SpecComposedPeriod {
   dueAt?: string;
   prompt?: string;
   fields?: SpecField[];
+  /**
+   * A whole second cadence living INSIDE this one window (a quarter
+   * containing weeks, each with their own form). Recursive — `nested` can
+   * itself carry periods whose own periods nest again, gated only by a safety
+   * depth ceiling (COMPOSED_MAX_NEST_DEPTH in the validator, not a product
+   * limit). Absent means this window has no sub-cadence, which is every
+   * pre-existing COMPOSED spec.
+   */
+  nested?: SpecComposed;
 }
 
 /** The cadence + prompt frame around a COMPOSED widget's fields. */
@@ -309,6 +318,26 @@ export interface SpecComposed {
    */
   cycleStart?: string;
   cycleEnd?: string;
+  /**
+   * Default fields for THIS cadence level's periods when a period doesn't
+   * specify its own — the nested-level equivalent of top-level `spec.fields`.
+   * Only meaningful (and only ever stored) on a NESTED block; the top-level
+   * `composed` ignores this in favour of `spec.fields`, which already plays
+   * the identical role there.
+   */
+  fields?: SpecField[];
+}
+
+/** What `resolvePeriodContent`/`resolveNestedPeriodContent` resolve a window to. */
+export interface ResolvedPeriodContent {
+  label: string | null;
+  prompt: string | null;
+  dueAt: string | null;
+  fields: SpecField[];
+  /** True when an authored period actually covered this window. */
+  authored: boolean;
+  /** The window's nested sub-cadence, if it authored one — see SpecComposedPeriod.nested. */
+  nested: SpecComposed | null;
 }
 
 /**
@@ -319,14 +348,17 @@ export interface SpecComposed {
 export function resolvePeriodContent(
   spec: unknown,
   windowIndex: number,
-): {
-  label: string | null;
-  prompt: string | null;
-  dueAt: string | null;
-  fields: SpecField[];
-  /** True when an authored period actually covered this window. */
-  authored: boolean;
-};
+): ResolvedPeriodContent;
+
+/**
+ * Same resolution as `resolvePeriodContent`, but starting from a NESTED
+ * `composed` block (`period.nested`) rather than a full spec — used to
+ * recurse into however many levels a spec actually authors.
+ */
+export function resolveNestedPeriodContent(
+  nestedComposed: unknown,
+  windowIndex: number,
+): ResolvedPeriodContent;
 
 export interface SpecApproval {
   status: "pending" | "approved" | "rejected";

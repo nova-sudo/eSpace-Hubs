@@ -17,20 +17,39 @@
  * State is never colour-only (a11y): each cell carries shape + glyph + a
  * `title` tooltip (`Q2 · current`). `prefers-reduced-motion` is respected by
  * using no animation at all here.
+ *
+ * NESTED CADENCES. A COMPOSED period can itself frame a whole second cadence
+ * (`period.nested` — see composed-widget.jsx's header comment for the full
+ * design). Opening a period whose resolved content carries `.nested` shows a
+ * SECOND, recursive stepper (<NestedStepperLevel>) inside that period's editor
+ * panel, bounded to that period's own [start,end) unless the nested block
+ * authors its own explicit cycleStart/cycleEnd. Grading (useGoalTier, the
+ * "Save & grade" action) stays a TOP-LEVEL-ONLY concern — a nested level's
+ * fields are already live-persisted the instant they're typed (ComposedFields
+ * writes on every change), so there is nothing for a nested "save" to do
+ * beyond closing back up to the level above it.
  */
 
 import { useMemo, useState } from "react";
-import { useGoalInputs, buildCycleWindows, composedCycleBounds } from "@/features/goal-inputs";
+import {
+  useGoalInputs,
+  buildCycleWindows,
+  composedCycleBounds,
+} from "@/features/goal-inputs";
 import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
 import {
   SPEC_KINDS,
   specCadence,
   isSingleRecordWidget,
   resolvePeriodContent,
+  resolveNestedPeriodContent,
 } from "@/features/goal-specs";
 import { isLocked, setLock, useGoalLocks } from "@/features/goal-locks";
 import { useGoalTier } from "@/features/goal-tiers";
 import { ComposedFields } from "./widgets/composed-fields.jsx";
+
+/** Mirrors the shared validator's COMPOSED_MAX_NEST_DEPTH — a safety ceiling. */
+const MAX_NEST_DEPTH = 8;
 
 const STATE_LABEL = {
   filled: "filled",
@@ -92,6 +111,258 @@ function cellVisual(state, p) {
     default: // future
       return { background: "transparent", border: `1px solid ${p.futureBorder}`, glyph: null, faint: true };
   }
+}
+
+/**
+ * The header + selectable grid (heatmap or stepper cells) for one cadence
+ * level. Shared between the top-level stepper and every nested level so the
+ * two don't drift into two different rendering rules for the same states.
+ * Does NOT render the editor panel below it — each caller owns that, since
+ * what goes in it (grading controls vs. not) differs by level.
+ */
+function WindowsGrid({ goalId, data, variant, fillable, selectedKey, onSelect }) {
+  const p = palette(variant);
+  const windows = data.windows || [];
+  const settledOf = (w) =>
+    isLocked(goalId, w.key) && w.state !== "filled" && w.state !== "future";
+
+  const header = (
+    <div className="mb-1.5 flex items-center justify-between" style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: p.label }}>
+      <span style={{ textTransform: "uppercase", letterSpacing: "0.5px" }}>{data.cadence} · cycle</span>
+      <span>{data.filledCount}/{data.total} filled</span>
+    </div>
+  );
+
+  if (data.mode === "heatmap") {
+    return (
+      <>
+        {header}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(11px, 1fr))", gap: 3 }}>
+          {windows.map((w) => {
+            const effState = settledOf(w) ? "settled" : w.state;
+            const v = cellVisual(effState, p);
+            const isSelected = w.key === selectedKey;
+            const canFill = fillable && w.state !== "future";
+            const cellStyle = {
+              aspectRatio: "1 / 1",
+              width: "100%",
+              borderRadius: 2,
+              background: v.background,
+              border: v.border,
+              opacity: v.faint ? 0.5 : 1,
+              boxShadow: isSelected ? `0 0 0 2px ${p.currentBorder}` : "none",
+              padding: 0,
+            };
+            return canFill ? (
+              <button
+                key={w.key}
+                type="button"
+                onClick={() => onSelect(isSelected ? null : w.key)}
+                aria-pressed={isSelected}
+                aria-label={`${isSelected ? "Close" : "Log"} ${w.label} (${STATE_LABEL[effState]})`}
+                title={`${w.label} · ${STATE_LABEL[effState]}`}
+                style={{ ...cellStyle, cursor: "pointer" }}
+              />
+            ) : (
+              <div key={w.key} title={`${w.label} · ${STATE_LABEL[effState]}`} style={cellStyle} />
+            );
+          })}
+        </div>
+      </>
+    );
+  }
+
+  // stepper
+  return (
+    <>
+      {header}
+      <div className="flex items-start gap-1.5">
+        {windows.map((w) => {
+          const settled = settledOf(w);
+          const effState = settled ? "settled" : w.state;
+          const v = cellVisual(effState, p);
+          const isCurrent = w.state === "current";
+          const isSelected = w.key === selectedKey;
+          const canFill = fillable && w.state !== "future";
+          const sz = isCurrent ? 40 : 34;
+          const cell = (
+            <div
+              title={`${w.label} · ${STATE_LABEL[effState]}`}
+              style={{
+                width: "100%",
+                maxWidth: sz + 8,
+                height: sz,
+                borderRadius: 8,
+                background: v.background,
+                border: v.border,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: v.faint ? 0.45 : 1,
+                boxShadow: isSelected
+                  ? `0 0 0 2px ${p.currentBorder}`
+                  : isCurrent
+                    ? `0 0 0 3px ${p.currentBg}`
+                    : "none",
+              }}
+            >
+              {v.glyph}
+            </div>
+          );
+          return (
+            <div key={w.key} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+              {canFill ? (
+                <button
+                  type="button"
+                  onClick={() => onSelect(isSelected ? null : w.key)}
+                  aria-pressed={isSelected}
+                  aria-label={`${isSelected ? "Close" : "Log"} ${w.label} (${STATE_LABEL[w.state]})`}
+                  style={{ width: "100%", maxWidth: sz + 8, padding: 0, border: "none", background: "transparent", cursor: "pointer" }}
+                >
+                  {cell}
+                </button>
+              ) : (
+                cell
+              )}
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 8.5,
+                  color: isCurrent || isSelected ? p.currentFg : p.dim,
+                  fontWeight: isCurrent || isSelected ? 500 : 400,
+                }}
+              >
+                {w.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+/**
+ * One NESTED cadence level — a selected period's `.nested` block. Its own
+ * pip/heatmap/stepper, its own selection state, bounded to the containing
+ * window's [start,end) unless it authors its own explicit cycle bounds.
+ *
+ * No grading controls here (see module header) — just settle/reopen (keyed by
+ * the full compound periodKey, same mechanism as the top level) and close.
+ */
+function NestedStepperLevel({
+  goalId,
+  entries,
+  composedBlock,
+  periodKeyPrefix,
+  fallbackStart,
+  fallbackEnd,
+  variant,
+  fillable,
+  depth,
+}) {
+  const [selectedKey, setSelectedKey] = useState(null);
+  const cadence = composedBlock?.cadence || null;
+  const explicitBounds = useMemo(
+    () => composedCycleBounds({ composed: composedBlock }),
+    [composedBlock],
+  );
+  const cycleStart = explicitBounds.cycleStart ?? fallbackStart ?? undefined;
+  const cycleEnd = explicitBounds.cycleEnd ?? fallbackEnd ?? undefined;
+  const hasBounds = cycleStart != null && cycleEnd != null;
+
+  const data = useMemo(
+    () =>
+      buildCycleWindows({
+        entries,
+        cadence,
+        now: Date.now(),
+        ...(hasBounds ? { cycleStart, cycleEnd } : {}),
+      }),
+    [entries, cadence, cycleStart, cycleEnd, hasBounds],
+  );
+
+  if (!cadence || data.mode === "pip" || depth > MAX_NEST_DEPTH) return null;
+
+  const windows = data.windows || [];
+  const selectedIndex = selectedKey ? windows.findIndex((w) => w.key === selectedKey) : -1;
+  const selected = selectedIndex >= 0 ? windows[selectedIndex] : null;
+  const selectedPeriod = selected
+    ? resolveNestedPeriodContent(composedBlock, selectedIndex)
+    : null;
+  const fullSelectedKey = selected ? `${periodKeyPrefix}::${selected.key}` : null;
+
+  const editorPanel = selected ? (
+    <div
+      className="mt-2 rounded-[var(--radius-sub)] p-2.5"
+      style={{ background: "var(--card)", color: "var(--fg)", border: "1px solid var(--border)" }}
+    >
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+          logging {selectedPeriod?.authored && selectedPeriod.label ? selectedPeriod.label : selected.label}
+        </span>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setLock(goalId, fullSelectedKey, !isLocked(goalId, fullSelectedKey))}
+            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", border: "none", background: "transparent", cursor: "pointer" }}
+            title="Settle this period — nothing happened, stop flagging it as owed"
+          >
+            {isLocked(goalId, fullSelectedKey) ? "reopen" : "nothing to report"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedKey(null)}
+            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", border: "none", background: "transparent", cursor: "pointer" }}
+          >
+            close
+          </button>
+        </div>
+      </div>
+      {selectedPeriod?.authored && selectedPeriod.prompt ? (
+        <div className="mb-2" style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted-fg)", lineHeight: 1.5 }}>
+          {selectedPeriod.prompt}
+          {selectedPeriod.dueAt ? ` · due ${selectedPeriod.dueAt}` : ""}
+        </div>
+      ) : null}
+      {selectedPeriod?.fields?.length > 0 ? (
+        <ComposedFields
+          goalId={goalId}
+          fields={selectedPeriod.fields}
+          periodKey={fullSelectedKey}
+          writeTs={Math.floor((selected.start + selected.end) / 2)}
+          variant="dark"
+        />
+      ) : null}
+      {selectedPeriod?.nested ? (
+        <NestedStepperLevel
+          goalId={goalId}
+          entries={entries}
+          composedBlock={selectedPeriod.nested}
+          periodKeyPrefix={fullSelectedKey}
+          fallbackStart={selected.start}
+          fallbackEnd={selected.end}
+          variant={variant}
+          fillable={fillable}
+          depth={depth + 1}
+        />
+      ) : null}
+    </div>
+  ) : null;
+
+  return (
+    <div className="mt-3" style={{ borderTop: "1px dashed var(--border)", paddingTop: 10 }}>
+      <WindowsGrid
+        goalId={goalId}
+        data={data}
+        variant={variant}
+        fillable={fillable}
+        selectedKey={selectedKey}
+        onSelect={setSelectedKey}
+      />
+      {editorPanel}
+    </div>
+  );
 }
 
 export function CadenceStepper({ spec, variant = "light" }) {
@@ -167,16 +438,6 @@ export function CadenceStepper({ spec, variant = "light" }) {
   // Per-period content, if the spec authored any. Positional: window i is
   // period i, the same alignment the widget body uses.
   const selectedPeriod = selected ? resolvePeriodContent(spec, selectedIndex) : null;
-  const settledOf = (w) =>
-    isLocked(goalId, w.key) && w.state !== "filled" && w.state !== "future";
-
-  // Header + inline editor panel are shared by stepper and heatmap modes.
-  const header = (
-    <div className="mb-1.5 flex items-center justify-between" style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: p.label }}>
-      <span style={{ textTransform: "uppercase", letterSpacing: "0.5px" }}>{data.cadence} · cycle</span>
-      <span>{data.filledCount}/{data.total} filled</span>
-    </div>
-  );
 
   const editorPanel = selected ? (
     <div
@@ -256,6 +517,19 @@ export function CadenceStepper({ spec, variant = "light" }) {
             writeTs={Math.floor((selected.start + selected.end) / 2)}
             variant="dark"
           />
+          {selectedPeriod?.nested ? (
+            <NestedStepperLevel
+              goalId={goalId}
+              entries={entries}
+              composedBlock={selectedPeriod.nested}
+              periodKeyPrefix={selected.key}
+              fallbackStart={selected.start}
+              fallbackEnd={selected.end}
+              variant="dark"
+              fillable={fillable}
+              depth={1}
+            />
+          ) : null}
         </>
       ) : (
         <GoalManualEditor
@@ -271,117 +545,16 @@ export function CadenceStepper({ spec, variant = "light" }) {
     </div>
   ) : null;
 
-  if (data.mode === "heatmap") {
-    return (
-      <div className="mt-3">
-        {header}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(11px, 1fr))", gap: 3 }}>
-          {windows.map((w) => {
-            const effState = settledOf(w) ? "settled" : w.state;
-            const v = cellVisual(effState, p);
-            const isSelected = w.key === selectedKey;
-            const canFill = fillable && w.state !== "future";
-            const cellStyle = {
-              aspectRatio: "1 / 1",
-              width: "100%",
-              borderRadius: 2,
-              background: v.background,
-              border: v.border,
-              opacity: v.faint ? 0.5 : 1,
-              boxShadow: isSelected ? `0 0 0 2px ${p.currentBorder}` : "none",
-              padding: 0,
-            };
-            return canFill ? (
-              <button
-                key={w.key}
-                type="button"
-                onClick={() => setSelectedKey(isSelected ? null : w.key)}
-                aria-pressed={isSelected}
-                aria-label={`${isSelected ? "Close" : "Log"} ${w.label} (${STATE_LABEL[effState]})`}
-                title={`${w.label} · ${STATE_LABEL[effState]}`}
-                style={{ ...cellStyle, cursor: "pointer" }}
-              />
-            ) : (
-              <div key={w.key} title={`${w.label} · ${STATE_LABEL[effState]}`} style={cellStyle} />
-            );
-          })}
-        </div>
-        {editorPanel}
-      </div>
-    );
-  }
-
-  // stepper
   return (
     <div className="mt-3">
-      {header}
-      <div className="flex items-start gap-1.5">
-        {windows.map((w) => {
-          // A "nothing to report" lock overlays owed/current windows as settled
-          // (filled windows already count; the future can't be settled).
-          const settled =
-            isLocked(goalId, w.key) && w.state !== "filled" && w.state !== "future";
-          const effState = settled ? "settled" : w.state;
-          const v = cellVisual(effState, p);
-          const isCurrent = w.state === "current";
-          const isSelected = w.key === selectedKey;
-          // Interactive only for inline-fillable widgets, and only for windows
-          // that have started (you can't log the future).
-          const canFill = fillable && w.state !== "future";
-          const sz = isCurrent ? 40 : 34;
-          const cell = (
-            <div
-              title={`${w.label} · ${STATE_LABEL[effState]}`}
-              style={{
-                width: "100%",
-                maxWidth: sz + 8,
-                height: sz,
-                borderRadius: 8,
-                background: v.background,
-                border: v.border,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: v.faint ? 0.45 : 1,
-                boxShadow: isSelected
-                  ? `0 0 0 2px ${p.currentBorder}`
-                  : isCurrent
-                    ? `0 0 0 3px ${p.currentBg}`
-                    : "none",
-              }}
-            >
-              {v.glyph}
-            </div>
-          );
-          return (
-            <div key={w.key} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-              {canFill ? (
-                <button
-                  type="button"
-                  onClick={() => setSelectedKey(isSelected ? null : w.key)}
-                  aria-pressed={isSelected}
-                  aria-label={`${isSelected ? "Close" : "Log"} ${w.label} (${STATE_LABEL[w.state]})`}
-                  style={{ width: "100%", maxWidth: sz + 8, padding: 0, border: "none", background: "transparent", cursor: "pointer" }}
-                >
-                  {cell}
-                </button>
-              ) : (
-                cell
-              )}
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 8.5,
-                  color: isCurrent || isSelected ? p.currentFg : p.dim,
-                  fontWeight: isCurrent || isSelected ? 500 : 400,
-                }}
-              >
-                {w.label}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+      <WindowsGrid
+        goalId={goalId}
+        data={data}
+        variant={variant}
+        fillable={fillable}
+        selectedKey={selectedKey}
+        onSelect={setSelectedKey}
+      />
       {editorPanel}
     </div>
   );

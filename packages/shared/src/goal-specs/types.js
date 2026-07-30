@@ -228,6 +228,60 @@ export function specCadence(spec) {
 }
 
 /**
+ * Core of `resolvePeriodContent` / `resolveNestedPeriodContent` — resolve
+ * window `windowIndex` of one `composed`-shaped block against its own
+ * `periods[]`, falling back to `baseFields`/the block's own `prompt` when the
+ * window has no authored period (or none at all).
+ *
+ * Split out so the TOP-level entry point (`spec.fields` as the fallback) and
+ * the NESTED entry point (`composed.fields` as the fallback — see
+ * `validateComposed`'s depth>0 handling) share one resolution rule instead of
+ * two copies that could drift.
+ */
+function resolveWindowContent(baseFields, composedBlock, windowIndex) {
+  const basePrompt = composedBlock?.prompt ?? null;
+  const periods = composedBlock?.periods;
+  const period =
+    Array.isArray(periods) &&
+    Number.isInteger(windowIndex) &&
+    windowIndex >= 0 &&
+    windowIndex < periods.length
+      ? periods[windowIndex]
+      : null;
+
+  if (!period) {
+    return {
+      label: null,
+      prompt: basePrompt,
+      dueAt: null,
+      fields: baseFields,
+      authored: false,
+      // No authored period at this window → nothing to nest into either.
+      nested: null,
+    };
+  }
+
+  return {
+    label: period.label ?? null,
+    prompt: period.prompt ?? basePrompt,
+    dueAt: period.dueAt ?? null,
+    // A period with no field override asks for the same things as every other
+    // period — only its prompt/label differ.
+    fields:
+      Array.isArray(period.fields) && period.fields.length > 0
+        ? period.fields
+        : baseFields,
+    authored: true,
+    // A period may itself frame a whole second cadence (a quarter containing
+    // weeks, each with their own form) — see validatePeriod's `nested`. Passed
+    // through as-is (or null); the caller decides whether/how to recurse into
+    // it (composed-widget.jsx and cadence-stepper.jsx both do, via
+    // resolveNestedPeriodContent).
+    nested: period.nested ?? null,
+  };
+}
+
+/**
  * What a given cycle window should ask for.
  *
  * A COMPOSED spec may carry `composed.periods[]` — an ordered list annotating
@@ -248,38 +302,20 @@ export function specCadence(spec) {
  */
 export function resolvePeriodContent(spec, windowIndex) {
   const baseFields = Array.isArray(spec?.fields) ? spec.fields : [];
-  const basePrompt = spec?.composed?.prompt ?? null;
-  const periods = spec?.composed?.periods;
-  const period =
-    Array.isArray(periods) &&
-    Number.isInteger(windowIndex) &&
-    windowIndex >= 0 &&
-    windowIndex < periods.length
-      ? periods[windowIndex]
-      : null;
+  return resolveWindowContent(baseFields, spec?.composed, windowIndex);
+}
 
-  if (!period) {
-    return {
-      label: null,
-      prompt: basePrompt,
-      dueAt: null,
-      fields: baseFields,
-      authored: false,
-    };
-  }
-
-  return {
-    label: period.label ?? null,
-    prompt: period.prompt ?? basePrompt,
-    dueAt: period.dueAt ?? null,
-    // A period with no field override asks for the same things as every other
-    // period — only its prompt/label differ.
-    fields:
-      Array.isArray(period.fields) && period.fields.length > 0
-        ? period.fields
-        : baseFields,
-    authored: true,
-  };
+/**
+ * Same resolution as `resolvePeriodContent`, but for a NESTED cadence block
+ * (`period.nested`) rather than the top-level spec — used to recurse into
+ * however many nesting levels a spec actually authors. The fallback field set
+ * is the nested block's own `composed.fields` (there's no `spec.fields`
+ * equivalent once you're inside a nested block), which is exactly what
+ * `validateComposed` stores it for at depth > 0.
+ */
+export function resolveNestedPeriodContent(nestedComposed, windowIndex) {
+  const baseFields = Array.isArray(nestedComposed?.fields) ? nestedComposed.fields : [];
+  return resolveWindowContent(baseFields, nestedComposed, windowIndex);
 }
 
 export const TARGET_OPS = Object.freeze(["<=", ">=", "="]);

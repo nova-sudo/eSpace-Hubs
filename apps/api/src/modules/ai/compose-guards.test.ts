@@ -258,3 +258,99 @@ test("omits cycleStart entirely when the model doesn't supply one", () => {
   });
   assert.equal(out?.cycleStart, undefined);
 });
+
+// ─── cleanComposedBlock / cleanComposedPeriods: nested cadences ───────
+//
+// A period's `nested` is a whole second composed block — mutually recursive
+// cleaning with the same defensiveness as everything else here: untrusted
+// model output, capped depth, silently dropped past the ceiling rather than
+// failing the whole compose.
+
+const NESTED_FIELD = { id: "shipped", kind: "text", label: "What shipped" };
+
+test("a period's nested cadence is cleaned and carried through", () => {
+  const out = cleanComposedBlock({
+    cadence: "quarterly",
+    periods: [
+      {
+        key: "q1",
+        label: "Q1",
+        fields: [field("Quarter rating", "scale")],
+        nested: {
+          cadence: "weekly",
+          fields: [NESTED_FIELD],
+          periods: [{ key: "w1", label: "Week 1" }, { key: "w2", label: "Week 2" }],
+        },
+      },
+    ],
+  });
+  const q1 = out?.periods?.[0];
+  assert.ok(q1?.fields?.length, "the outer period keeps its own rollup fields");
+  assert.equal(q1?.nested?.cadence, "weekly");
+  assert.equal(q1?.nested?.fields?.[0]?.id, "shipped");
+  assert.equal(q1?.nested?.periods?.length, 2);
+});
+
+test("nested.fields is only read at depth > 0 — the top level ignores it", () => {
+  const out = cleanComposedBlock({
+    cadence: "weekly",
+    fields: [NESTED_FIELD],
+    periods: [{ key: "w1", label: "Week 1" }],
+  });
+  assert.equal(out?.fields, undefined);
+});
+
+test("a malformed nested block degrades to no nesting, not a failed compose", () => {
+  const out = cleanComposedBlock({
+    cadence: "quarterly",
+    periods: [
+      { key: "q1", label: "Q1", nested: { cadence: "not-a-real-cadence" } },
+      { key: "q2", label: "Q2", nested: "not even an object" },
+    ],
+  });
+  assert.equal(out?.periods?.[0]?.nested, undefined);
+  assert.equal(out?.periods?.[1]?.nested, undefined);
+  assert.equal(out?.periods?.length, 2, "both periods still survive");
+});
+
+test("nesting recurses arbitrarily deep through cleanComposedPeriods", () => {
+  const out = cleanComposedBlock({
+    cadence: "quarterly",
+    periods: [
+      {
+        key: "q1",
+        label: "Q1",
+        nested: {
+          cadence: "monthly",
+          periods: [
+            {
+              key: "m1",
+              label: "Month 1",
+              nested: { cadence: "weekly", fields: [NESTED_FIELD], periods: [{ key: "w1", label: "Week 1" }] },
+            },
+          ],
+        },
+      },
+    ],
+  });
+  const month = out?.periods?.[0]?.nested?.periods?.[0];
+  assert.equal(month?.nested?.cadence, "weekly");
+  assert.equal(month?.nested?.periods?.[0]?.label, "Week 1");
+});
+
+test("nesting past the depth ceiling is dropped, not carried through", () => {
+  // 9 levels deep — one past the ceiling (8) — so the innermost is dropped.
+  let deepest: Record<string, unknown> = { cadence: "daily", periods: [{ key: "d1", label: "Day 1" }] };
+  for (let i = 0; i < 8; i += 1) {
+    deepest = { cadence: "weekly", periods: [{ key: "w1", label: `Level ${i}`, nested: deepest }] };
+  }
+  const out = cleanComposedBlock(deepest);
+  // Walk down until nested stops appearing — should happen before depth 9.
+  let node: any = out;
+  let depth = 0;
+  while (node?.periods?.[0]?.nested) {
+    node = node.periods[0].nested;
+    depth += 1;
+  }
+  assert.ok(depth < 9, `expected nesting to stop before depth 9, got ${depth}`);
+});

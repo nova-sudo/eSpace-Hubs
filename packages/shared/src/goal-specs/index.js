@@ -27,6 +27,7 @@ export {
   SPEC_VARIANTS,
   specCadence,
   resolvePeriodContent,
+  resolveNestedPeriodContent,
   TARGET_OPS,
 } from "./types.js";
 
