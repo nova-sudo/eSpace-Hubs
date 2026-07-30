@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
-import { GoalWidgetsGrid, useGoalWidgetItems } from "@/features/goal-widgets";
+import { ComposeWidgetModal, GoalWidgetsGrid, useGoalWidgetItems } from "@/features/goal-widgets";
 import { clearSpecs, removeSpec } from "@/features/goal-specs";
 import { useAnalyst, ANALYST_MODES } from "./analyst-provider";
 import { AnalysisStream } from "./analysis-stream";
@@ -264,7 +264,7 @@ export function AnalystPage() {
               items={items}
               hasGoals={hasGoals}
               hasSpecs={hasSpecs}
-              unclassifiedCount={unclassifiedGoals.length}
+              unclassifiedGoals={unclassifiedGoals}
               onAnalyzeAll={handleAnalyzeAll}
               onAnalyzeRemaining={handleAnalyzeRemaining}
               onReAnalyzeGoal={handleReAnalyzeGoal}
@@ -645,11 +645,28 @@ function WidgetsMode({
   items,
   hasGoals,
   hasSpecs,
-  unclassifiedCount,
+  unclassifiedGoals,
   onAnalyzeAll,
   onAnalyzeRemaining,
   onReAnalyzeGoal,
 }) {
+  // A goal the user picked "Build my own" for — bypasses the classifier
+  // entirely. `ComposeWidgetModal` only ever reads `spec?.goalId` /
+  // `spec?.title` off its `spec` prop (nothing else, checked against the
+  // component directly), so a bare `{ goalId }` stub is enough to drive it
+  // for a goal that has never been classified — no placeholder spec needs
+  // to exist first.
+  const [composeGoal, setComposeGoal] = useState(null);
+  const composeModal = (
+    <ComposeWidgetModal
+      open={Boolean(composeGoal)}
+      onClose={() => setComposeGoal(null)}
+      spec={composeGoal ? { goalId: composeGoal.id } : null}
+      goal={composeGoal}
+      onSaved={() => setComposeGoal(null)}
+    />
+  );
+
   if (!hasGoals) {
     return (
       <Launch
@@ -662,13 +679,19 @@ function WidgetsMode({
   }
   if (!hasSpecs) {
     return (
-      <Launch
-        title="Classify your goals"
-        body="Glyph reads every L1 and L2 goal and assigns each a live dashboard widget — automatic where your code hosts can measure it, manual where you self-report. You review everything before it lands."
-        ctaLabel="Analyze my goals →"
-        onCta={onAnalyzeAll}
-        showSteps
-      />
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto">
+        <Launch
+          title="Classify your goals"
+          body="Glyph reads every L1 and L2 goal and assigns each a live dashboard widget — automatic where your code hosts can measure it, manual where you self-report. You review everything before it lands. Already have a plan for one of these? Skip straight to Build my own below instead of waiting on the classifier."
+          ctaLabel="Analyze my goals →"
+          onCta={onAnalyzeAll}
+          showSteps
+        />
+        {unclassifiedGoals.length > 0 ? (
+          <UnclassifiedGoals goals={unclassifiedGoals} onBuildOwn={setComposeGoal} />
+        ) : null}
+        {composeModal}
+      </div>
     );
   }
   const annotatedItems = items.map((it) => ({
@@ -677,22 +700,85 @@ function WidgetsMode({
   }));
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3.5">
-      {unclassifiedCount > 0 ? (
-        <div
-          className="flex items-center justify-between gap-3 rounded-[var(--radius-tile)] px-4 py-2.5"
-          style={{ background: "var(--accent-dim)", border: "1px solid var(--accent)" }}
-        >
-          <span
-            className="uppercase"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1px", color: "var(--fg)" }}
-          >
-            {unclassifiedCount} goal{unclassifiedCount === 1 ? "" : "s"} unclassified
-          </span>
-          <AccentBtn onClick={onAnalyzeRemaining}>Analyze remaining</AccentBtn>
-        </div>
+      {unclassifiedGoals.length > 0 ? (
+        <UnclassifiedGoals
+          goals={unclassifiedGoals}
+          onAnalyzeRemaining={onAnalyzeRemaining}
+          onBuildOwn={setComposeGoal}
+        />
       ) : null}
       <div className="min-h-0 flex-1">
         <GoalWidgetsGrid items={annotatedItems} variant="dark" />
+      </div>
+      {composeModal}
+    </div>
+  );
+}
+
+/**
+ * Every not-yet-classified goal, one row each, with two ways forward:
+ * the bulk "Analyze remaining" (when provided — omitted pre-first-run,
+ * where the hero's own CTA already covers it) and a per-goal "Build my
+ * own →", for a goal the user already has their own plan for and doesn't
+ * want Glyph to guess at. Picking it skips classification entirely — the
+ * goal never gets an AI-assigned spec, just the one the user composes.
+ */
+function UnclassifiedGoals({ goals, onAnalyzeRemaining, onBuildOwn }) {
+  return (
+    <div
+      className="flex flex-col rounded-[var(--radius-tile)]"
+      style={{ border: "1px solid var(--border)", background: "var(--card)" }}
+    >
+      <div
+        className="flex items-center justify-between gap-3 px-4 py-2.5"
+        style={{ borderBottom: "1px dashed var(--border)" }}
+      >
+        <span
+          className="uppercase"
+          style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1px", color: "var(--fg)" }}
+        >
+          {goals.length} goal{goals.length === 1 ? "" : "s"} not yet classified
+        </span>
+        {onAnalyzeRemaining ? (
+          <AccentBtn onClick={onAnalyzeRemaining}>Analyze remaining</AccentBtn>
+        ) : null}
+      </div>
+      <div className="flex max-h-[280px] flex-col overflow-y-auto">
+        {goals.map((g) => (
+          <div
+            key={g.id}
+            className="flex min-w-0 items-center justify-between gap-3 px-4 py-2.5"
+            style={{ borderBottom: "1px dashed var(--border)" }}
+          >
+            <div className="min-w-0">
+              {g.parentL1Title ? (
+                <div
+                  className="truncate uppercase tracking-[0.5px]"
+                  style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--dim-fg)" }}
+                  title={g.parentL1Title}
+                >
+                  {g.parentL1Title}
+                </div>
+              ) : null}
+              <div
+                className="truncate"
+                style={{ fontFamily: "var(--font-sans)", fontSize: 13, color: "var(--fg)" }}
+                title={g.title}
+              >
+                {g.title || "(untitled)"}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onBuildOwn(g)}
+              className="shrink-0 uppercase tracking-[0.4px] transition-opacity hover:opacity-80"
+              style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--accent)", background: "transparent" }}
+              title="Already know how you want to track this? Skip the classifier and describe your own tracker."
+            >
+              Build my own →
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -47,6 +47,7 @@ export {
 
 export {
   clearSpecs,
+  fetchSpecs,
   getSpecsState,
   markAnalyzedAt,
   readSpecs,

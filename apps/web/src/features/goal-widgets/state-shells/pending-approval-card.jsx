@@ -10,7 +10,22 @@
  * re-opens the compose modal and resubmits as pending.
  */
 
+import { useEffect } from "react";
 import { WidgetShell } from "../widget-shell";
+import { fetchSpecs } from "@/features/goal-specs";
+
+/**
+ * Nothing pushes this tile a signal when the manager decides. Notifications
+ * are fetch-on-open, not push (see notifications-store.js), and the
+ * goal-specs store hydrates exactly once per session (specs-store.js /
+ * use-goal-specs.js) — so a report who has the dashboard open when their
+ * manager approves sees "Pending approval" forever, until a full page
+ * reload flushes the module state. Polling is the cheap fix: while this
+ * card is genuinely pending, re-fetch specs periodically; the instant
+ * approval/rejection lands, `spec.approval.status` changes, GoalWidget stops
+ * rendering this card, and the poll stops with it.
+ */
+const PENDING_POLL_MS = 30_000;
 
 export function PendingApprovalCard({
   spec,
@@ -23,6 +38,16 @@ export function PendingApprovalCard({
   const rejected = spec?.approval?.status === "rejected";
   const note = spec?.approval?.note;
   const reviewer = spec?.approval?.reviewedByName;
+
+  // Only while pending — "rejected" is waiting on the DEV to revise, not the
+  // manager, so there's nothing new to poll for until they act.
+  useEffect(() => {
+    if (rejected) return undefined;
+    const id = setInterval(() => {
+      void fetchSpecs();
+    }, PENDING_POLL_MS);
+    return () => clearInterval(id);
+  }, [rejected]);
 
   const strong = variant === "light" ? "#ffffff" : "var(--fg)";
   const body = variant === "light" ? "rgba(255,255,255,0.82)" : "var(--muted-fg)";

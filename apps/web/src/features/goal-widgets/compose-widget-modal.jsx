@@ -64,6 +64,7 @@ import { clearGoalEntries } from "@/features/goal-inputs";
 import { clearGoalLocks } from "@/features/goal-locks";
 import { apiPost } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
+import { DitherDisc } from "@/components/ui";
 import { useIsContextComplete } from "@/features/goal-context";
 import { ContextCollector } from "./state-shells/context-collector";
 import { WidgetErrorBoundary } from "./widget-error-boundary";
@@ -487,6 +488,8 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
             <SpecPreview preview={preview} needsContext={needsContext} />
           ) : phase === PHASE.EXTRACTING ? (
             <ExtractingPanel filename={file?.name} />
+          ) : phase === PHASE.BUSY ? (
+            <DesigningPanel />
           ) : phase === PHASE.EXTRACT_REVIEW ? (
             <ExtractReview
               headingRef={reviewHeadingRef}
@@ -903,6 +906,52 @@ function ExtractingPanel({ filename }) {
         We pull the text out on the server and throw the file away — it's never
         stored. You'll get to read and edit the text before anything is sent to
         the AI.
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What the primary button just called "Designing…" used to hand back —
+ * nothing. The body kept showing the (disabled) description box, so a slow
+ * compose call looked like the click hadn't registered. This owns the wait:
+ * the compose call runs one AI turn end-to-end with no intermediate progress
+ * to report, so the cycling line is honest about that — it names what the
+ * model is DECIDING, not a fake multi-step progress bar.
+ */
+const DESIGNING_STEPS = [
+  "Reading what you described…",
+  "Choosing a cadence…",
+  "Picking the fields that measure it…",
+  "Drafting achievement tiers…",
+];
+
+function DesigningPanel() {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    const id = setInterval(
+      () => setStep((s) => (s + 1) % DESIGNING_STEPS.length),
+      1800,
+    );
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <div className="flex flex-col items-center gap-3 py-10 text-center">
+      <div className="h-14 w-14 animate-pulse text-accent">
+        <DitherDisc size={56} cell={4} density={0.9} />
+      </div>
+      <div style={{ fontFamily: "var(--font-display)", fontSize: 15, letterSpacing: "-0.2px" }}>
+        Designing your tracker…
+      </div>
+      <div
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 10,
+          color: "var(--muted-fg)",
+          minHeight: 14,
+        }}
+      >
+        {DESIGNING_STEPS[step]}
       </div>
     </div>
   );

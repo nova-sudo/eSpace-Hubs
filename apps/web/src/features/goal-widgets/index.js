@@ -13,6 +13,7 @@ import "./widgets/_register.jsx";
 
 export { GoalWidget } from "./goal-widget";
 export { GoalWidgetModal } from "./goal-widget-modal";
+export { ComposeWidgetModal } from "./compose-widget-modal";
 export { GoalWidgetsGrid } from "./goal-widgets-grid";
 export { WidgetShell, TargetChip } from "./widget-shell";
 export { WidgetErrorBoundary } from "./widget-error-boundary";
