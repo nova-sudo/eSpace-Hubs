@@ -1,25 +1,15 @@
 /**
  * goal_tier_verdicts collection — Mongo $jsonSchema validator.
  *
- * A durable CACHE of the AI achievement-tier verdict per goal (or per goal
- * PER CADENCE WINDOW — see `periodKey`), keyed by a `tierHash` (the
- * frontend's hash of tiers + graded prose + reading). One row per
- * (orgId, userId, goalId, periodKey): a data change bumps the hash and the
- * controller upserts the new verdict, replacing the old. A 180-day TTL on
- * `gradedAt` evicts verdicts for goals the user has abandoned.
+ * A durable CACHE of the AI achievement-tier verdict per goal, keyed by a
+ * `tierHash` (the frontend's hash of tiers + graded prose + reading). One row
+ * per (orgId, userId, goalId): a data change bumps the hash and the controller
+ * upserts the new verdict, replacing the old. A 180-day TTL on `gradedAt`
+ * evicts verdicts for goals the user has abandoned.
  *
  * This replaces the per-device localStorage-only cache: grade once, persist,
  * and share the verdict across the user's devices/sessions, re-grading only
  * when the goal's data actually changes.
- *
- * `periodKey`: the WHOLE-GOAL verdict (grading pooled across every submitted
- * period, same as always) is stored under the reserved sentinel "__goal__" —
- * an explicit value rather than an absent/null field, so the unique index
- * below has one unambiguous shape at every row instead of two ("has a real
- * periodKey" vs "has none"). A per-window verdict (Q1 graded on its own,
- * separately from Q2) uses that window's actual periodKey — the same string
- * goal-inputs entries are stored under (see composed-widget.jsx's header
- * comment on the "::" compound-key convention for nested cadences).
  */
 
 import type { Document } from "mongodb";
@@ -31,7 +21,6 @@ export const goalTierVerdictsValidator: Document = {
       "orgId",
       "userId",
       "goalId",
-      "periodKey",
       "tierHash",
       "verdict",
       "gradedAt",
@@ -44,9 +33,6 @@ export const goalTierVerdictsValidator: Document = {
       orgId: { bsonType: "objectId" },
       userId: { bsonType: "objectId" },
       goalId: { bsonType: "string", minLength: 1, maxLength: 200 },
-      // "__goal__" for the whole-goal verdict; a (possibly "::"-compound)
-      // cadence-window key for a per-window verdict.
-      periodKey: { bsonType: "string", minLength: 1, maxLength: 400 },
       // Frontend hashStr() digest — base36, but keep the bound loose so a
       // future hash scheme doesn't trip the validator.
       tierHash: {

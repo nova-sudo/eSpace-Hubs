@@ -1,28 +1,21 @@
 "use client";
 
 /**
- * AI goal-tier verdict cache (Phase 2 + per-window Phase 3).
+ * AI goal-tier verdict cache (Phase 2).
  *
- * Caches the result of `POST /api/v1/ai/grade-goal-tier` per goal, and
- * optionally per cadence window within that goal. Each cached verdict
- * carries a `criteriaKey` (hash of the tier criteria + numeric ladder), a
- * data `key` (hash of the live reading / prose), and a `gradedDay` (local
- * YYYY-MM-DD). The hook re-grades qualitative goals at most once per day —
- * or immediately when the criteria change (edit / re-analyze) or the user
- * hits "re-grade" (force). localStorage-backed so it survives reloads; reset
- * on auth transition.
+ * Caches the result of `POST /api/v1/ai/grade-goal-tier` per goal. Each
+ * cached verdict carries a `criteriaKey` (hash of the tier criteria + numeric
+ * ladder), a data `key` (hash of the live reading / prose), and a `gradedDay`
+ * (local YYYY-MM-DD). The hook re-grades qualitative goals at most once per day
+ * — or immediately when the criteria change (edit / re-analyze) or the user
+ * hits "re-grade" (force). localStorage-backed so it survives reloads; reset on
+ * auth transition.
  *
- * NOT server-persisted (beyond the durable-cache hydration below): a tier
- * verdict is a cheap derived read of the goal's tiers + current metrics, so
- * a per-device daily cache is enough (mirrors the review-timing cache, not
- * the grading-verdicts collection). The AI call is the expensive part —
- * caching avoids re-spending tokens on every page view.
- *
- * Keying: the whole-goal verdict (the ladder that's always existed) is
- * stored under the bare `goalId`, unchanged — this keeps every pre-existing
- * cache entry and call site working with no migration. A per-window verdict
- * (one cadence window's own tier, e.g. one quarter) is stored under a
- * composite `${goalId}::${periodKey}` key instead. See `tierKey`.
+ * NOT server-persisted: a tier verdict is a cheap derived read of the
+ * goal's tiers + current metrics, so a per-device daily cache is enough
+ * (mirrors the review-timing cache, not the grading-verdicts
+ * collection). The AI call is the expensive part — caching avoids
+ * re-spending tokens on every page view.
  */
 
 import { fetchWithRateLimitRetry } from "@/lib/rate-limit";
@@ -31,21 +24,7 @@ import { startJob, endJob } from "@/lib/jobs-store";
 const STORAGE_KEY = "espace-devhub:goal-tiers";
 const CHANGE_EVENT = "goal-tiers:change";
 
-/** Sentinel `periodKey` for the whole-goal verdict — mirrors the server's
- *  WHOLE_GOAL_TIER_KEY (apps/api/src/db/types.ts). Duplicated here rather
- *  than imported: the web app doesn't depend on apps/api. */
-export const WHOLE_GOAL_TIER_KEY = "__goal__";
-
-/** Storage key for a goal's verdict: the bare goalId for the whole-goal
- *  verdict (any nullish/omitted/sentinel periodKey), or a composite
- *  `goalId::periodKey` for a single cadence window's own verdict. */
-function tierKey(goalId, periodKey) {
-  return periodKey && periodKey !== WHOLE_GOAL_TIER_KEY
-    ? `${goalId}::${periodKey}`
-    : goalId;
-}
-
-/** { [goalId | `${goalId}::${periodKey}`]: { tier, reasoning, confidence, key } } */
+/** { [goalId]: { tier, reasoning, confidence, key } } */
 let state = {};
 let tick = 0;
 let loaded = false;
@@ -99,13 +78,10 @@ export function getGoalTiersServerSnapshot() {
   return 0;
 }
 
-/** Current cached verdict for a goal (any key), or null. Pass `periodKey`
- *  to read a single cadence window's own verdict instead of the whole-goal
- *  one. */
-export function readGoalTier(goalId, periodKey) {
+/** Current cached verdict for a goal (any key), or null. */
+export function readGoalTier(goalId) {
   load();
-  if (!goalId) return null;
-  return state[tierKey(goalId, periodKey)] || null;
+  return (goalId && state[goalId]) || null;
 }
 
 /**
@@ -124,14 +100,12 @@ export async function gradeGoalTier({
   criteriaKey,
   gradedDay,
   aiProvider,
-  periodKey,
   force = false,
 }) {
   load();
   if (!goalId || !tiers || !key) return;
-  const storeKey = tierKey(goalId, periodKey);
   if (!force) {
-    const existing = state[storeKey];
+    const existing = state[goalId];
     // Already graded today against these exact criteria — the verdict is a
     // pure function of (criteria, data), so re-running the model would just
     // reproduce it. The hook's effect is the primary throttle; this guards the
@@ -147,14 +121,13 @@ export async function gradeGoalTier({
     ) {
       return;
     }
-    if (inflight.has(storeKey)) return;
+    if (inflight.has(goalId)) return;
   }
-  inflight.add(storeKey);
+  inflight.add(goalId);
   // Surface the grade in the shell "running jobs" toast. The request already
   // survives navigation (it writes straight into this module store), so this
-  // just makes it visible — and keyed per goal (+ window) so the toast can
-  // count them.
-  startJob(`grading:${storeKey}`, { kind: "grading", label: goalTitle || "" });
+  // just makes it visible — and keyed per goal so the toast can count them.
+  startJob(`grading:${goalId}`, { kind: "grading", label: goalTitle || "" });
   try {
     const res = await fetchWithRateLimitRetry(
       "/api/v1/ai/grade-goal-tier",
@@ -172,10 +145,9 @@ export async function gradeGoalTier({
           provider: aiProvider || undefined,
           // Durable-cache coordinates: the server returns a persisted verdict
           // for a matching hash instead of re-calling the model, and persists
-          // fresh grades under (goalId, periodKey, tierHash). `force` bypasses it.
+          // fresh grades under (goalId, tierHash). `force` bypasses it.
           goalId,
           tierHash: key,
-          periodKey: periodKey || undefined,
           force: force || undefined,
         }),
       },
@@ -185,7 +157,7 @@ export async function gradeGoalTier({
     if (res.ok && body?.verdict?.tier) {
       state = {
         ...state,
-        [storeKey]: { ...body.verdict, key, criteriaKey, gradedDay },
+        [goalId]: { ...body.verdict, key, criteriaKey, gradedDay },
       };
       persist();
       notify();
@@ -193,8 +165,8 @@ export async function gradeGoalTier({
   } catch {
     /* network / abort — keep any prior verdict */
   } finally {
-    inflight.delete(storeKey);
-    endJob(`grading:${storeKey}`);
+    inflight.delete(goalId);
+    endJob(`grading:${goalId}`);
   }
 }
 
@@ -205,11 +177,10 @@ export async function gradeGoalTier({
  * already equal, so callers can safely invoke it from a render effect without
  * looping.
  */
-export function setGoalTierVerdict(goalId, verdict, key, criteriaKey, periodKey) {
+export function setGoalTierVerdict(goalId, verdict, key, criteriaKey) {
   load();
   if (!goalId || !verdict || !key) return;
-  const storeKey = tierKey(goalId, periodKey);
-  const existing = state[storeKey];
+  const existing = state[goalId];
   if (
     existing &&
     existing.key === key &&
@@ -225,7 +196,7 @@ export function setGoalTierVerdict(goalId, verdict, key, criteriaKey, periodKey)
   // first real grade of the day would be throttled away.
   state = {
     ...state,
-    [storeKey]: { ...verdict, key, ...(criteriaKey != null ? { criteriaKey } : {}) },
+    [goalId]: { ...verdict, key, ...(criteriaKey != null ? { criteriaKey } : {}) },
   };
   persist();
   notify();
@@ -255,9 +226,8 @@ export async function hydrateGoalTiers() {
     let changed = false;
     for (const r of rows) {
       if (!r?.goalId || !r?.tierHash || !r?.verdict) continue;
-      const storeKey = tierKey(r.goalId, r.periodKey);
-      if (state[storeKey]) continue; // keep the local (≥ as fresh) entry
-      state = { ...state, [storeKey]: { ...r.verdict, key: r.tierHash } };
+      if (state[r.goalId]) continue; // keep the local (≥ as fresh) entry
+      state = { ...state, [r.goalId]: { ...r.verdict, key: r.tierHash } };
       changed = true;
     }
     if (changed) {

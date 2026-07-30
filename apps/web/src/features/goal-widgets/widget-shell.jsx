@@ -23,6 +23,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { useWidgetControls } from "./widget-controls-context";
+import { GoalTierLadder } from "@/features/goal-tiers";
 import { SPEC_KIND_META, SPEC_VARIANTS } from "@/features/goal-specs";
 import { useIsContextComplete } from "@/features/goal-context";
 import { CadenceStepper } from "./cadence-stepper";
@@ -156,6 +157,11 @@ export function WidgetShell({
       isGoalReady(spec, contextComplete) ? (
         <CadenceStepper spec={spec} variant={variant} />
       ) : null}
+
+      {/* Achievement-tier ladder (AI-graded). Renders only once the goal
+          has been re-analyzed with the four `tiers` — shows the dev where
+          they stand against not-achieved / achieved / over / role-model. */}
+      {spec?.tiers ? <GoalTierLadder spec={spec} variant={variant} /> : null}
 
       {(spec?.reasoning || onRetry || onReanalyze || footer || onMarkDelegated || onEditContext || onComposeOwn || onEditSetup) ? (
         <div

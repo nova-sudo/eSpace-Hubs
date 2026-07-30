@@ -81,13 +81,6 @@ export const gradeGoalTierSchema = z.object({
     .max(128)
     .regex(/^[A-Za-z0-9_-]+$/)
     .optional(),
-  // Which cadence window this grades. Omitted (or absent) means the
-  // whole-goal verdict — pooled across every submitted period, same as the
-  // tier system has always worked; the handler defaults it to the
-  // WHOLE_GOAL_TIER_KEY sentinel. A real (possibly "::"-compound) periodKey
-  // grades that ONE window on its own, independent of every other window's
-  // verdict.
-  periodKey: z.string().min(1).max(400).optional(),
   // Bypass the server cache (the "re-analyze" affordance).
   force: z.boolean().optional(),
 });

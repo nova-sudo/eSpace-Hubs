@@ -27,7 +27,6 @@ import {
 } from "../../db/collections.js";
 import {
   DEFAULT_ENGAGEMENT,
-  WHOLE_GOAL_TIER_KEY,
   type Engagement,
   type GoalTierVerdictBody,
 } from "../../db/types.js";
@@ -502,10 +501,6 @@ export async function gradeGoalTierHandler(
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
     const payload = gradeGoalTierSchema.parse(req.body);
-    // Omitted → the whole-goal verdict, pooled across every submitted
-    // period, exactly how grading has always worked. A real periodKey grades
-    // that one cadence window on its own.
-    const periodKey = payload.periodKey || WHOLE_GOAL_TIER_KEY;
 
     // Durable cache: when the client supplies goalId + tierHash, a matching
     // persisted verdict is returned WITHOUT calling the model — grade once per
@@ -517,7 +512,6 @@ export async function gradeGoalTierHandler(
         orgId: session.orgId,
         userId: session.userId,
         goalId: payload.goalId,
-        periodKey,
       });
       if (hit && hit.tierHash === payload.tierHash) {
         res.json({
@@ -525,7 +519,6 @@ export async function gradeGoalTierHandler(
           model: hit.model,
           provider: hit.provider,
           cached: true,
-          periodKey,
         });
         return;
       }
@@ -601,16 +594,14 @@ export async function gradeGoalTierHandler(
         : "low") as GoalTierVerdictBody["confidence"],
     };
 
-    // Persist the fresh verdict under (user, goal, window) keyed by tierHash.
-    // Upsert so a data change (new hash) replaces the prior row — only the
-    // latest per window is kept.
+    // Persist the fresh verdict under (user, goal) keyed by tierHash. Upsert so
+    // a data change (new hash) replaces the prior row — only the latest is kept.
     if (cacheable) {
       await verdicts.updateOne(
         {
           orgId: session.orgId,
           userId: session.userId,
           goalId: payload.goalId!,
-          periodKey,
         },
         {
           $set: {
@@ -624,14 +615,13 @@ export async function gradeGoalTierHandler(
             orgId: session.orgId,
             userId: session.userId,
             goalId: payload.goalId!,
-            periodKey,
           },
         },
         { upsert: true },
       );
     }
 
-    res.json({ verdict, model: modelName, provider: providerId, cached: false, periodKey });
+    res.json({ verdict, model: modelName, provider: providerId, cached: false });
   } catch (err) {
     next(err);
   }
@@ -658,11 +648,6 @@ export async function listGoalTierVerdictsHandler(
     res.json({
       verdicts: rows.map((r) => ({
         goalId: r.goalId,
-        // Older rows written before per-window grading existed have no
-        // periodKey — treat them as the whole-goal verdict rather than
-        // dropping them, so this deploy doesn't cold-start every existing
-        // cached verdict.
-        periodKey: r.periodKey || WHOLE_GOAL_TIER_KEY,
         tierHash: r.tierHash,
         verdict: r.verdict,
         gradedAt: r.gradedAt,
