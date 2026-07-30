@@ -12,7 +12,7 @@
  *               reasoning, confidence } | null
  */
 
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useSnapshots } from "@/features/snapshots";
 import {
   useGoalInputs,
@@ -397,6 +397,95 @@ function buildCurrentData(spec, entries, reading, liveReading) {
       // before any snapshot is captured); fall back to the snapshot reading.
       return liveReadingToText(liveReading) || readingToText(reading);
   }
+}
+
+/**
+ * Build the "current data" prose for grading ONE cadence window on its own —
+ * e.g. just Q1, independent of every other submitted quarter — rather than
+ * the whole-goal pooled-across-all-periods summary `buildCurrentData`
+ * returns. Same tier criteria, narrower data: the grader sees only what was
+ * submitted for this one window.
+ *
+ * COMPOSED and RECURRING_MILESTONE store one record PER periodKey, so those
+ * get a dedicated single-period render (reusing the same per-field / per-item
+ * line format the whole-goal summary uses, so the two verdicts are legible
+ * side by side). Every other widget kind writes plain timestamped entries —
+ * for those, filtering `entries` to the window's [start, end) range and
+ * re-running the existing whole-goal renderer naturally scopes it, since
+ * every one of those cases derives its summary directly from the entry list.
+ */
+function buildWindowCurrentData(spec, entries, periodKey, windowStart, windowEnd) {
+  const widget = spec?.widget;
+  const list = Array.isArray(entries) ? entries : [];
+
+  if (widget === SPEC_KINDS.COMPOSED) {
+    const fields = fieldsForPeriodKey(spec, periodKey);
+    if (fields.length === 0) return "";
+    let rec = null;
+    for (const e of list) {
+      const v = e?.value;
+      if (v && typeof v === "object" && (v.periodKey ?? "__single__") === periodKey) rec = v;
+    }
+    if (!rec) return "no data submitted for this window yet";
+    const vals = rec.values && typeof rec.values === "object" ? rec.values : {};
+    const ev = rec.evidence && typeof rec.evidence === "object" ? rec.evidence : {};
+    const filled = fields.filter((f) => {
+      const v = vals[f.id];
+      return f.kind === "checkbox" ? v === true : v != null && v !== "";
+    }).length;
+    const required = fields.filter((f) => !f.optional);
+    const complete =
+      required.length > 0 &&
+      required.every((f) => {
+        const v = vals[f.id];
+        return f.kind === "checkbox" ? v === true : v != null && v !== "";
+      });
+    const lines = fields.map((f) => {
+      const v = vals[f.id];
+      const blank = v == null || v === "";
+      const shown = blank
+        ? "—"
+        : f.kind === "checkbox"
+          ? v
+            ? "yes"
+            : "no"
+          : `${v}${f.unit ? ` ${f.unit}` : ""}`;
+      const proof = ev[f.id] ? ` [evidence: ${ev[f.id]}]` : "";
+      return `${f.label}: ${shown}${proof}`;
+    });
+    return [
+      `this window only — ${filled}/${fields.length} fields, ${complete ? "COMPLETE" : "incomplete"}`,
+      lines.join("; "),
+    ].join(". ");
+  }
+
+  if (widget === SPEC_KINDS.RECURRING_MILESTONE) {
+    let latest = null;
+    for (const e of list) {
+      if (e?.value?.periodKey === periodKey) latest = e;
+    }
+    const items = Array.isArray(latest?.value?.items) ? latest.value.items : [];
+    if (items.length === 0) return "no data submitted for this window yet";
+    const done = items.filter((it) => it && it.done).length;
+    const total = items.length;
+    const pct = Math.round((done / total) * 100);
+    const open = items.filter((it) => it && !it.done).map((it) => it.label).filter(Boolean);
+    const evidence = evidenceLines(items);
+    return [
+      `this window only — ${done}/${total} checklist items complete (${pct}%)`,
+      open.length ? `incomplete: ${open.slice(0, 8).join("; ")}` : "all items complete",
+      evidence ? `evidence provided — ${evidence}` : "no evidence attached",
+    ].join("; ");
+  }
+
+  // Generic entries: scope to this window's timestamp range, then reuse the
+  // whole-goal renderer — it derives its summary purely from the entry list.
+  const hasBounds = Number.isFinite(windowStart) && Number.isFinite(windowEnd);
+  const windowed = hasBounds
+    ? list.filter((e) => Number.isFinite(e?.ts) && e.ts >= windowStart && e.ts < windowEnd)
+    : list;
+  if (windowed.length === 0) return "no data submitted for this window yet";
+  return buildCurrentData(spec, windowed, null, null);
 }
 
 /**
@@ -844,6 +933,76 @@ export function useGoalTier(goalId, spec) {
         force: true,
       }),
   };
+}
+
+/**
+ * AI tier verdict for ONE cadence window on its own (e.g. just Q1 of a
+ * quarterly goal), independent of every other submitted window — same tier
+ * ladder + criteria text as the whole-goal verdict (`useGoalTier`), graded
+ * against only that window's data.
+ *
+ * On-demand only, by design: unlike the whole-goal verdict there is no
+ * automatic grading effect here — filling a window's fields does NOT spend
+ * an AI call on its own. The caller (the cadence stepper's "Save & grade")
+ * triggers `grade()` explicitly, matching the existing on-demand pattern.
+ *
+ *   const { hasTiers, verdict, grading, grade } =
+ *     useGoalWindowTier(goalId, spec, periodKey, windowStart, windowEnd);
+ */
+export function useGoalWindowTier(goalId, spec, periodKey, windowStart, windowEnd) {
+  useSyncExternalStore(
+    subscribeGoalTiers,
+    getGoalTiersSnapshot,
+    getGoalTiersServerSnapshot,
+  );
+  const { entries } = useGoalInputs(goalId);
+  const [grading, setGrading] = useState(false);
+  const tiers = spec?.tiers || null;
+
+  const currentData = useMemo(() => {
+    if (!periodKey) return "";
+    return buildWindowCurrentData(spec, entries, periodKey, windowStart, windowEnd);
+  }, [spec, entries, periodKey, windowStart, windowEnd]);
+
+  const key = useMemo(() => {
+    if (!tiers || !periodKey) return null;
+    return hashStr(JSON.stringify(tiers) + "|" + currentData);
+  }, [tiers, currentData, periodKey]);
+
+  const criteriaKey = useMemo(() => {
+    if (!tiers) return null;
+    return hashStr(JSON.stringify(tiers));
+  }, [tiers]);
+
+  const stored = periodKey ? readGoalTier(goalId, periodKey) : null;
+  // Valid only while the criteria basis is unchanged — same rule as the
+  // whole-goal verdict. A stale window verdict (data changed since the last
+  // on-demand grade) still shows until the user re-grades; there's no
+  // automatic re-grade to correct it.
+  const verdict = stored && stored.criteriaKey === criteriaKey ? stored : null;
+
+  async function grade() {
+    if (!goalId || !periodKey || !tiers || !key || grading) return;
+    setGrading(true);
+    try {
+      await gradeGoalTier({
+        goalId,
+        goalTitle: spec?.title,
+        tiers,
+        currentData,
+        key,
+        criteriaKey,
+        gradedDay: localDayStamp(),
+        aiProvider: getAiProvider(),
+        periodKey,
+        force: true,
+      });
+    } finally {
+      setGrading(false);
+    }
+  }
+
+  return { hasTiers: !!tiers, verdict, grading, grade };
 }
 
 /**

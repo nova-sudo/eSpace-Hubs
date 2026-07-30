@@ -600,15 +600,25 @@ export interface GoalTierVerdictBody {
 }
 
 /**
- * Durable cache of a goal's AI achievement-tier verdict, keyed per goal by a
- * `tierHash` of the graded inputs. One row per (orgId, userId, goalId) — a data
- * change bumps the hash and the row is upserted. 180-day TTL on `gradedAt`.
+ * The whole-goal verdict's `periodKey` — grading pooled across every
+ * submitted period, same as the tier system has always worked. A per-window
+ * verdict (Q1 graded on its own) uses that window's real periodKey instead.
+ */
+export const WHOLE_GOAL_TIER_KEY = "__goal__";
+
+/**
+ * Durable cache of a goal's AI achievement-tier verdict, keyed per goal (or
+ * per goal PER CADENCE WINDOW) by a `tierHash` of the graded inputs. One row
+ * per (orgId, userId, goalId, periodKey) — a data change bumps the hash and
+ * the row is upserted. 180-day TTL on `gradedAt`. See
+ * db/schemas/goal-tier-verdicts.schema.ts for the periodKey convention.
  */
 export interface GoalTierVerdict {
   _id: ObjectId;
   orgId: ObjectId;
   userId: ObjectId;
   goalId: string;
+  periodKey: string;
   tierHash: string;
   verdict: GoalTierVerdictBody;
   gradedAt: Date;

@@ -1,10 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { BentoTile, Pill, TileState } from "@/components/ui";
 import { useGoals } from "@/features/goals";
 import { useGoalSpecs } from "@/features/goal-specs";
-import { GoalTierBadge } from "@/features/goal-tiers";
+import { GoalTierBadge, GoalTierLadder } from "@/features/goal-tiers";
 import { useHubLink } from "@/features/hubs";
 
 /**
@@ -172,30 +173,40 @@ const PRIORITY_TONE = {
 
 function L2Row({ l2, getSpec }) {
   const spec = getSpec?.(l2.id);
+  const hasTiers = !!spec?.tiers;
+  const [expanded, setExpanded] = useState(false);
+
   return (
-    <li
-      className="grid grid-cols-[1fr_auto] items-start gap-2 rounded-[var(--radius-sub)] border border-border bg-card px-2 py-1.5"
-      title={l2.description || l2.title || ""}
-    >
-      <div className="min-w-0">
-        <div className="line-clamp-1 text-[11.5px]">
-          {l2.title || "(untitled)"}
+    <li className="rounded-[var(--radius-sub)] border border-border bg-card px-2 py-1.5">
+      <button
+        type="button"
+        onClick={() => hasTiers && setExpanded((v) => !v)}
+        className={`grid w-full grid-cols-[1fr_auto] items-start gap-2 text-left ${hasTiers ? "cursor-pointer" : "cursor-default"}`}
+        title={l2.description || l2.title || ""}
+      >
+        <div className="min-w-0">
+          <div className="line-clamp-1 text-[11.5px]">
+            {l2.title || "(untitled)"}
+          </div>
+          <L2MetaLine l2={l2} />
         </div>
-        <L2MetaLine l2={l2} />
-      </div>
-      <div className="flex shrink-0 items-center gap-1">
-        {/* AI achievement tier — only renders once the goal's been
-            re-analyzed with the four tiers (else nothing). */}
-        <GoalTierBadge goalId={l2.id} spec={spec} />
-        {Number(l2.weightage) > 0 ? (
-          <Pill tone="muted">{l2.weightage}%</Pill>
-        ) : null}
-        {l2.priority ? (
-          <Pill tone={PRIORITY_TONE[l2.priority] || "muted"}>
-            {l2.priority}
-          </Pill>
-        ) : null}
-      </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {/* AI achievement tier — only renders once the goal's been
+              re-analyzed with the four tiers (else nothing). Click the row
+              to expand the full ladder below (whole-goal verdict, pooled
+              across every submitted period). */}
+          <GoalTierBadge goalId={l2.id} spec={spec} />
+          {Number(l2.weightage) > 0 ? (
+            <Pill tone="muted">{l2.weightage}%</Pill>
+          ) : null}
+          {l2.priority ? (
+            <Pill tone={PRIORITY_TONE[l2.priority] || "muted"}>
+              {l2.priority}
+            </Pill>
+          ) : null}
+        </div>
+      </button>
+      {expanded && hasTiers ? <GoalTierLadder spec={spec} variant="dark" /> : null}
     </li>
   );
 }

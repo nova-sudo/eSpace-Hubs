@@ -393,14 +393,29 @@ async function ensureIndexes(): Promise<void> {
   ]);
 
   const goalTierVerdicts = await getGoalTierVerdictsCollection();
+  // One-time migration: the original unique index covered only
+  // (org,user,goal), which is exactly ONE row per goal — the whole-goal
+  // verdict. Per-window verdicts (Q1 graded separately from Q2) need
+  // periodKey in the key too, or inserting a second row for the same goal
+  // would collide with that old constraint. Drop blind: succeeds once, then
+  // no-ops (already gone) on every later boot — same idempotent pattern this
+  // function already relies on for `createIndex`.
+  try {
+    await goalTierVerdicts.dropIndex("goal_tier_verdicts_org_user_goal_uniq");
+  } catch {
+    // Already dropped, or never existed on a fresh database.
+  }
   await goalTierVerdicts.createIndexes([
     {
-      // Cache key: one verdict per goal per user. A goal's data change bumps
-      // the tierHash and the controller upserts by this key, so only the
-      // latest verdict is kept (no history bloat).
-      key: { orgId: 1, userId: 1, goalId: 1 },
+      // Cache key: one verdict per (goal, cadence window) per user. A
+      // data change bumps the tierHash and the controller upserts by this
+      // key, so only the latest verdict per window is kept (no history
+      // bloat). periodKey is "__goal__" for the whole-goal verdict, or a
+      // real cadence-window key for a per-window one — see
+      // db/types.ts's WHOLE_GOAL_TIER_KEY.
+      key: { orgId: 1, userId: 1, goalId: 1, periodKey: 1 },
       unique: true,
-      name: "goal_tier_verdicts_org_user_goal_uniq",
+      name: "goal_tier_verdicts_org_user_goal_period_uniq",
     },
     {
       // Hot path on page load: "all tier verdicts for me" to hydrate the
