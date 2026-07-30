@@ -29,6 +29,7 @@ import type {
   User,
   UserRole,
 } from "../../db/types.js";
+import { WHOLE_GOAL_TIER_KEY } from "../../db/types.js";
 import {
   getManagerVerdictMap,
   listManagerVerdictsForSubjects,
@@ -189,7 +190,22 @@ export async function getReportGoalHealthHandler(
         getGoalsCollection().then((c) => c.findOne(scope)),
         getGoalSpecsCollection().then((c) => c.find(scope).toArray()),
         getGoalContextCollection().then((c) => c.find(scope).toArray()),
-        getGoalTierVerdictsCollection().then((c) => c.find(scope).toArray()),
+        // Whole-goal verdicts only — per-window verdicts (a single quarter
+        // graded on its own) now live in this same collection, and a manager
+        // summary needs the pooled, whole-goal one, not an arbitrary window's.
+        // `$exists: false` also matches rows written before per-window
+        // grading existed, which never got a periodKey at all.
+        getGoalTierVerdictsCollection().then((c) =>
+          c
+            .find({
+              ...scope,
+              $or: [
+                { periodKey: WHOLE_GOAL_TIER_KEY },
+                { periodKey: { $exists: false } },
+              ],
+            })
+            .toArray(),
+        ),
         getGoalInputsCollection().then((c) =>
           c
             .aggregate<{ _id: string; count: number; lastTs: Date }>([
@@ -327,8 +343,19 @@ export async function getReportGoalDetailHandler(
       await Promise.all([
         getGoalsCollection().then((c) => c.findOne(scope)),
         getGoalSpecsCollection().then((c) => c.findOne({ ...scope, goalId })),
+        // Whole-goal verdict only — see the identical guard in
+        // getReportGoalHealthHandler above. Without the periodKey filter,
+        // `findOne` on a collection that can now hold multiple rows per
+        // goalId (whole-goal + per-window) returns an ARBITRARY match.
         getGoalTierVerdictsCollection().then((c) =>
-          c.findOne({ ...scope, goalId }),
+          c.findOne({
+            ...scope,
+            goalId,
+            $or: [
+              { periodKey: WHOLE_GOAL_TIER_KEY },
+              { periodKey: { $exists: false } },
+            ],
+          }),
         ),
         getManagerVerdictMap(session.orgId, target._id),
         getGoalInputsCollection().then((c) =>

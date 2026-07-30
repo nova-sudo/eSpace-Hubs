@@ -45,7 +45,7 @@ import {
   resolveNestedPeriodContent,
 } from "@/features/goal-specs";
 import { isLocked, setLock, useGoalLocks } from "@/features/goal-locks";
-import { useGoalTier } from "@/features/goal-tiers";
+import { useGoalTier, useGoalWindowTier, TIER_LABELS } from "@/features/goal-tiers";
 import { ComposedFields } from "./widgets/composed-fields.jsx";
 
 /** Mirrors the shared validator's COMPOSED_MAX_NEST_DEPTH — a safety ceiling. */
@@ -365,6 +365,73 @@ function NestedStepperLevel({
   );
 }
 
+const WINDOW_TIER_COLOR = {
+  not_achieved: "#b91c1c",
+  achieved: "#1D4ED8",
+  over_achieved: "#00c48a",
+  role_model: "#f59e0b",
+};
+
+/**
+ * This ONE window's own achievement tier — same criteria as the whole-goal
+ * ladder (section 01), graded against only this window's data. On demand
+ * only: no cached verdict shows "not graded yet" with a "grade this window"
+ * button, rather than auto-grading the moment the fields are filled.
+ */
+function WindowTierPanel({ goalId, spec, periodKey, windowStart, windowEnd, variant }) {
+  const { hasTiers, verdict, grading, grade } = useGoalWindowTier(
+    goalId,
+    spec,
+    periodKey,
+    windowStart,
+    windowEnd,
+  );
+  if (!hasTiers) return null;
+  const isLight = variant === "light";
+  const muted = isLight ? "rgba(255,255,255,0.62)" : "var(--muted-fg)";
+  const fg = isLight ? "#ffffff" : "var(--fg)";
+  const color = verdict?.tier ? WINDOW_TIER_COLOR[verdict.tier] : muted;
+
+  return (
+    <div
+      className="mt-2 flex items-center justify-between gap-2 border-t pt-2"
+      style={{ borderColor: isLight ? "rgba(255,255,255,0.15)" : "var(--border)" }}
+    >
+      <div className="min-w-0">
+        <span
+          className="uppercase tracking-[0.5px]"
+          style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: muted }}
+        >
+          This window&apos;s tier —{" "}
+        </span>
+        {verdict?.tier ? (
+          <span
+            className="font-bold uppercase"
+            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color }}
+            title={verdict.reasoning || ""}
+          >
+            {TIER_LABELS[verdict.tier]}
+          </span>
+        ) : (
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: muted }}>
+            not graded yet
+          </span>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={grade}
+        disabled={grading}
+        className="shrink-0 uppercase tracking-[0.5px] hover:opacity-100 disabled:opacity-40"
+        style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: fg, opacity: 0.8 }}
+        title="Grade this window against the tier criteria"
+      >
+        {grading ? "grading…" : verdict?.tier ? "re-grade window" : "grade window"}
+      </button>
+    </div>
+  );
+}
+
 export function CadenceStepper({ spec, variant = "light" }) {
   const goalId = spec?.goalId;
   const { entries } = useGoalInputs(goalId);
@@ -542,6 +609,16 @@ export function CadenceStepper({ spec, variant = "light" }) {
           writeTs={Math.floor((selected.start + selected.end) / 2)}
         />
       )}
+      {spec?.tiers ? (
+        <WindowTierPanel
+          goalId={goalId}
+          spec={spec}
+          periodKey={selected.key}
+          windowStart={selected.start}
+          windowEnd={selected.end}
+          variant="dark"
+        />
+      ) : null}
     </div>
   ) : null;
 

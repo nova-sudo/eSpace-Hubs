@@ -1,6 +1,7 @@
 // Public surface of the goal-tiers feature (AI achievement-tier grading).
 export {
   useGoalTier,
+  useGoalWindowTier,
   readCappedGoalTier,
   TIER_ORDER,
   TIER_LABELS,
