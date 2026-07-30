@@ -35,7 +35,7 @@ import {
   specCadence,
   isSingleRecordWidget,
 } from "@/features/goal-specs";
-import { computeCompliance, buildCycleWindows } from "@/features/goal-inputs";
+import { computeCompliance, buildCycleWindows, composedCycleBounds } from "@/features/goal-inputs";
 import { goalReadiness, GOAL_READINESS } from "@/features/goal-widgets";
 
 export const HEALTH = Object.freeze({
@@ -162,7 +162,12 @@ export function deriveGoalHealth({
   // tracked, same as before. There's no real "window" concept for those, but
   // the footer's "last logged" line still needs lastEntryTs, so `fill` stays
   // a minimal object rather than null (FillStrip no-ops on total:0).
-  const cycle = buildCycleWindows({ entries: list, cadence, now: Date.now() });
+  const cycle = buildCycleWindows({
+    entries: list,
+    cadence,
+    now: Date.now(),
+    ...composedCycleBounds(spec),
+  });
   if (cycle.mode === "pip") {
     return {
       status: HEALTH.ON_PACE,

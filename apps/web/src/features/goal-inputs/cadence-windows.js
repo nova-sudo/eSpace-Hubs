@@ -124,12 +124,22 @@ function enumerateWindows(cadence, year, cycleStart, cycleEnd) {
  * for non-bucketing / cadence-less goals. Shares the exact key scheme of
  * `buildCycleWindows`, so a COMPOSED widget's "current period" record lines up
  * with the stepper cell the user clicks and with the grader's reading.
+ *
+ * `cycleStart`/`cycleEnd` (epoch ms, from `composedCycleBounds`) default to
+ * the calendar year of `now`, same as `buildCycleWindows` — but passing them
+ * matters here specifically for weekly/biweekly/daily: unlike month/quarter
+ * keys (pure calendar labels, unaffected by where the stride starts), a
+ * weekly key is `${year}-W${i+1}` where `i` is the STRIDE INDEX from
+ * `cycleStart`. Defaulting to Jan 1 for a plan that actually starts in
+ * September would number its first week "W37" instead of "W1" — the wrong
+ * key for that plan's own window enumeration, so nothing written under it
+ * would ever match up with the widget's cycle-anchored windows.
  */
-export function currentPeriodKey(cadence, now) {
+export function currentPeriodKey(cadence, now, cycleStart, cycleEnd) {
   if (!cadence || NON_BUCKETING.has(cadence)) return null;
   const year = new Date(now).getUTCFullYear();
-  const start = Date.UTC(year, 0, 1);
-  const end = Date.UTC(year + 1, 0, 1);
+  const start = cycleStart ?? Date.UTC(year, 0, 1);
+  const end = cycleEnd ?? Date.UTC(year + 1, 0, 1);
   const w = enumerateWindows(cadence, year, start, end).find(
     (x) => now >= x.start && now < x.end,
   );
@@ -163,6 +173,26 @@ export function cadenceConsistency(cycle) {
   const due = satisfied + missed;
   if (due === 0) return null;
   return { satisfied, missed, due, ratio: satisfied / due };
+}
+
+/**
+ * `{cycleStart, cycleEnd}` (epoch ms, exclusive end) from `spec.composed`'s
+ * ISO date pair — or `{}` when either is absent/malformed, so callers can
+ * always spread this into `buildCycleWindows({ ...composedCycleBounds(spec) })`
+ * and get today's calendar-year default for any spec that predates this
+ * field. `cycleEnd` is the day AFTER the stored date: the stored value is the
+ * plan's last inclusive day, but window enumeration wants an exclusive
+ * upper bound.
+ */
+export function composedCycleBounds(spec) {
+  const cs = spec?.composed?.cycleStart;
+  const ce = spec?.composed?.cycleEnd;
+  if (typeof cs !== "string" || typeof ce !== "string") return {};
+  const start = Date.parse(cs);
+  const endDay = Date.parse(ce);
+  if (Number.isNaN(start) || Number.isNaN(endDay) || endDay <= start) return {};
+  const DAY = 86_400_000;
+  return { cycleStart: start, cycleEnd: endDay + DAY };
 }
 
 export function buildCycleWindows({

@@ -338,8 +338,23 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
     // manager approves. `replace: true` is a deliberate whole-widget swap
     // (bypasses saveSpec's locked-tiers preserve) so it keeps the previewed
     // tiers.
+    //
+    // Anchor authored periods to the goal's REAL dates. The AI has no idea
+    // when this goal actually starts — a 13-week plan it produces is just 13
+    // labelled entries — so without this, buildCycleWindows falls back to
+    // the calendar year and "week 13" lands wherever week 13 of THAT YEAR
+    // falls, not wherever the plan's own week 13 actually is. Only applied
+    // when periods exist (composed.cycleStart is meaningless without them)
+    // and the goal has both dates; a goal missing either keeps today's
+    // calendar-year default exactly as before.
+    const previewSpec = preview.spec;
+    const composed =
+      previewSpec.composed?.periods?.length && goal?.startDate && goal?.dueDate
+        ? { ...previewSpec.composed, cycleStart: goal.startDate, cycleEnd: goal.dueDate }
+        : previewSpec.composed;
     const pendingSpec = {
-      ...preview.spec,
+      ...previewSpec,
+      composed,
       approval: { status: "pending", submittedAt: Date.now() },
     };
     const result = saveSpec(pendingSpec, { replace: true });

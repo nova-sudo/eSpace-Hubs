@@ -35,6 +35,7 @@ import { useGoalSpecs, SPEC_KINDS } from "@/features/goal-specs";
 import {
   cadenceWindowLabel,
   computeCompliance,
+  composedCycleBounds,
   currentPeriodKey,
   readInputs,
   useAllGoalInputs,
@@ -719,7 +720,8 @@ function readComposed(spec, goal, { allInputs }) {
   if (fields.length === 0) return empty("Not started");
 
   const cadence = spec.composed?.cadence || null;
-  const periodKey = currentPeriodKey(cadence, Date.now());
+  const cycleBounds = composedCycleBounds(spec);
+  const periodKey = currentPeriodKey(cadence, Date.now(), cycleBounds.cycleStart, cycleBounds.cycleEnd);
   const entries = allInputs[goal.id] || [];
   const matching = entries.filter((e) =>
     periodKey == null

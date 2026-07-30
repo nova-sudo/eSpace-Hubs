@@ -301,6 +301,14 @@ export interface SpecComposed {
    * every pre-existing COMPOSED spec describes. Requires `cadence`.
    */
   periods?: SpecComposedPeriod[];
+  /**
+   * The cycle's real calendar bounds (ISO YYYY-MM-DD), paired — a plan that
+   * doesn't run Jan–Dec (a 13-week plan starting in September). Absent means
+   * `buildCycleWindows` keeps defaulting to the calendar year of "now", which
+   * is only correct for a goal that actually starts January 1.
+   */
+  cycleStart?: string;
+  cycleEnd?: string;
 }
 
 /**

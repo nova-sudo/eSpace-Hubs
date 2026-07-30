@@ -20,7 +20,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { useGoalInputs, buildCycleWindows } from "@/features/goal-inputs";
+import { useGoalInputs, buildCycleWindows, composedCycleBounds } from "@/features/goal-inputs";
 import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
 import {
   SPEC_KINDS,
@@ -129,8 +129,8 @@ export function CadenceStepper({ spec, variant = "light" }) {
   }
 
   const data = useMemo(
-    () => buildCycleWindows({ entries, cadence, now: Date.now() }),
-    [entries, cadence],
+    () => buildCycleWindows({ entries, cadence, now: Date.now(), ...composedCycleBounds(spec) }),
+    [entries, cadence, spec],
   );
 
   const p = palette(variant);

@@ -151,6 +151,38 @@ test("duplicate period keys are rejected", () => {
   assert.ok(built.errors.some((e) => e.includes("duplicate")));
 });
 
+// ─── composed.cycleStart / cycleEnd ───────────────────────────────────
+
+test("a valid cycleStart/cycleEnd pair round-trips", () => {
+  const built = composedSpec({
+    composed: { cadence: "weekly", cycleStart: "2026-09-07", cycleEnd: "2026-11-29" },
+  });
+  assert.ok(built.ok, JSON.stringify(built.errors));
+  assert.equal(built.spec.composed.cycleStart, "2026-09-07");
+  assert.equal(built.spec.composed.cycleEnd, "2026-11-29");
+});
+
+test("cycleStart/cycleEnd is dropped (not fatal) when only one side is present", () => {
+  const built = composedSpec({
+    composed: { cadence: "weekly", cycleStart: "2026-09-07" },
+  });
+  assert.ok(built.ok, JSON.stringify(built.errors));
+  assert.equal(built.spec.composed.cycleStart, undefined);
+});
+
+test("cycleStart/cycleEnd is dropped when malformed or inverted", () => {
+  for (const composed of [
+    { cadence: "weekly", cycleStart: "not-a-date", cycleEnd: "2026-11-29" },
+    { cadence: "weekly", cycleStart: "2026-11-29", cycleEnd: "2026-09-07" },
+    { cadence: "weekly", cycleStart: "09/07/2026", cycleEnd: "11/29/2026" },
+  ]) {
+    const built = composedSpec({ composed });
+    assert.ok(built.ok, JSON.stringify(built.errors));
+    assert.equal(built.spec.composed.cycleStart, undefined);
+    assert.equal(built.spec.composed.cycleEnd, undefined);
+  }
+});
+
 test("a malformed dueAt is dropped, not fatal — content matters more than styling", () => {
   const built = composedSpec({
     composed: {

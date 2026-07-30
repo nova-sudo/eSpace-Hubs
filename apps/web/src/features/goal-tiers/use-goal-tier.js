@@ -20,6 +20,7 @@ import {
   currentPeriodKey,
   buildCycleWindows,
   cadenceConsistency,
+  composedCycleBounds,
 } from "@/features/goal-inputs";
 import { useGoalContext, useIsContextComplete } from "@/features/goal-context";
 import { SPEC_KINDS, specCadence, isSingleRecordWidget } from "@/features/goal-specs";
@@ -207,7 +208,13 @@ function buildCurrentData(spec, entries, reading, liveReading) {
     case SPEC_KINDS.COMPOSED: {
       const fields = Array.isArray(spec.fields) ? spec.fields : [];
       if (fields.length === 0) return readingToText(reading);
-      const curKey = currentPeriodKey(spec.composed?.cadence, Date.now());
+      const composedBounds = composedCycleBounds(spec);
+      const curKey = currentPeriodKey(
+        spec.composed?.cadence,
+        Date.now(),
+        composedBounds.cycleStart,
+        composedBounds.cycleEnd,
+      );
 
       // Latest record per period (entries are ts-ascending → last write wins).
       const byPeriod = new Map();
@@ -590,10 +597,16 @@ export function useGoalTier(goalId, spec) {
     for (const k of Object.keys(all)) {
       if (all[k] && k.startsWith(prefix)) lockedKeys.add(k.slice(prefix.length));
     }
-    const cycle = buildCycleWindows({ entries, cadence, now: Date.now(), lockedKeys });
+    const cycle = buildCycleWindows({
+      entries,
+      cadence,
+      now: Date.now(),
+      lockedKeys,
+      ...composedCycleBounds(spec),
+    });
     return cadenceConsistency(cycle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cadence, goalId, entries, lockTick]);
+  }, [cadence, goalId, entries, lockTick, spec]);
 
   const snapReading = useMemo(
     () => latestReadingFor(snapshots, goalId),
@@ -868,7 +881,13 @@ export function readCappedGoalTier(goalId, spec, entries, lockedKeys, snapReadin
   const tiers = spec?.tiers || null;
   const cadence = tiers ? (isSingleRecordWidget(spec?.widget) ? null : specCadence(spec)) : null;
   if (!cadence) return { tier: stored.tier, reasoning: stored.reasoning || "" };
-  const cycle = buildCycleWindows({ entries, cadence, now: Date.now(), lockedKeys });
+  const cycle = buildCycleWindows({
+    entries,
+    cadence,
+    now: Date.now(),
+    lockedKeys,
+    ...composedCycleBounds(spec),
+  });
   const consistency = cadenceConsistency(cycle);
   const capped = capVerdictByConsistency(stored, consistency, cadence);
   return { tier: capped.tier, reasoning: capped.reasoning || "" };

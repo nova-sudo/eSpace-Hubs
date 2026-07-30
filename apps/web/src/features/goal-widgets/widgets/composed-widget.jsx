@@ -29,18 +29,23 @@
  * one that's doing work on your behalf.
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { WidgetShell } from "../widget-shell";
-import { buildCycleWindows, currentPeriodKey } from "@/features/goal-inputs";
-import { resolvePeriodContent } from "@/features/goal-specs";
+import { buildCycleWindows, composedCycleBounds, currentPeriodKey } from "@/features/goal-inputs";
+import { resolvePeriodContent, saveSpec } from "@/features/goal-specs";
 import { ComposedFields } from "./composed-fields.jsx";
 
 export function ComposedWidget({ spec, goal, variant = "light", className, onRetry }) {
   const cadence = spec.composed?.cadence || null;
 
+  // Anchors the cycle to the plan's ACTUAL start/end when the spec carries
+  // one (composed.cycleStart/cycleEnd) — otherwise {} and every call below
+  // keeps defaulting to the calendar year of "now", exactly as before.
+  const bounds = useMemo(() => composedCycleBounds(spec), [spec]);
+
   const currentKey = useMemo(
-    () => currentPeriodKey(cadence, Date.now()),
-    [cadence],
+    () => currentPeriodKey(cadence, Date.now(), bounds.cycleStart, bounds.cycleEnd),
+    [cadence, bounds],
   );
 
   // Which window of the cycle "now" falls in — the index authored periods are
@@ -49,9 +54,28 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
   // flat spec content, which is exactly right for a one-time tracker.
   const windowIndex = useMemo(() => {
     if (!cadence) return -1;
-    return buildCycleWindows({ entries: [], cadence, now: Date.now() })
+    return buildCycleWindows({ entries: [], cadence, now: Date.now(), ...bounds })
       .currentIndex;
-  }, [cadence]);
+  }, [cadence, bounds]);
+
+  // Self-heal: a spec authored with periods[] but no cycle bounds (every
+  // tracker composed before this existed) silently mis-anchors every window
+  // to the calendar year — "week 13" lands in April instead of wherever the
+  // plan's own 13th week actually falls. If the goal itself carries real
+  // dates, adopt them onto the spec once so buildCycleWindows/currentPeriodKey
+  // (and the grader, which reads the same composed.cycleStart/cycleEnd) get
+  // it right from here on. Guarded on cycleStart already being set, so this
+  // fires at most once per spec and never fights an intentionally-authored
+  // pair.
+  useEffect(() => {
+    if (!spec?.composed?.periods?.length) return;
+    if (spec.composed.cycleStart) return;
+    if (!goal?.startDate || !goal?.dueDate) return;
+    saveSpec({
+      ...spec,
+      composed: { ...spec.composed, cycleStart: goal.startDate, cycleEnd: goal.dueDate },
+    });
+  }, [spec, goal?.startDate, goal?.dueDate]);
 
   const period = useMemo(
     () => resolvePeriodContent(spec, windowIndex),

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildCycleWindows, currentPeriodKey } from "./cadence-windows.js";
+import { buildCycleWindows, currentPeriodKey, composedCycleBounds } from "./cadence-windows.js";
 
 /**
  * Regression cover for cycle-bounded calendar windows.
@@ -148,4 +148,59 @@ test("weekly bounds still honoured and unaffected by the calendar-branch change"
   });
   assert.equal(cycle.total, 4);
   assert.deepEqual(labelsOf(cycle), ["W1", "W2", "W3", "W4"]);
+});
+
+/**
+ * Regression cover for a real reported bug: a 13-week plan (composed.periods)
+ * that doesn't start January 1 rendered "week 13" against the calendar year
+ * instead of the plan's own week 13, because buildCycleWindows/currentPeriodKey
+ * always defaulted cycleStart to Jan 1 of `now`'s year — composedCycleBounds
+ * is the fix, reading the pair the spec now optionally carries.
+ */
+test("composedCycleBounds reads a valid ISO pair off composed.cycleStart/cycleEnd", () => {
+  const spec = { composed: { cadence: "weekly", cycleStart: "2026-09-01", cycleEnd: "2026-11-30" } };
+  const bounds = composedCycleBounds(spec);
+  assert.equal(bounds.cycleStart, Date.UTC(2026, 8, 1));
+  // Exclusive end = the day AFTER the stored (inclusive) last day.
+  assert.equal(bounds.cycleEnd, Date.UTC(2026, 10, 30) + 86_400_000);
+});
+
+test("composedCycleBounds returns {} for an absent, malformed, or inverted pair", () => {
+  assert.deepEqual(composedCycleBounds({}), {});
+  assert.deepEqual(composedCycleBounds({ composed: { cadence: "weekly" } }), {});
+  assert.deepEqual(
+    composedCycleBounds({ composed: { cycleStart: "2026-09-01" } }),
+    {},
+    "cycleEnd missing",
+  );
+  assert.deepEqual(
+    composedCycleBounds({ composed: { cycleStart: "not-a-date", cycleEnd: "2026-11-30" } }),
+    {},
+  );
+  assert.deepEqual(
+    composedCycleBounds({ composed: { cycleStart: "2026-11-30", cycleEnd: "2026-09-01" } }),
+    {},
+    "end before start",
+  );
+});
+
+test("a weekly plan anchored to composedCycleBounds numbers week 1 from ITS OWN start, not Jan 1", () => {
+  const spec = { composed: { cadence: "weekly", cycleStart: "2026-09-07", cycleEnd: "2026-11-29" } };
+  const bounds = composedCycleBounds(spec);
+  const now = Date.UTC(2026, 8, 10); // a few days into the plan's actual week 1
+  const cycle = buildCycleWindows({ entries: [], cadence: "weekly", now, ...bounds });
+  assert.deepEqual(labelsOf(cycle).slice(0, 3), ["W1", "W2", "W3"]);
+  assert.equal(cycle.currentIndex, 0);
+
+  // currentPeriodKey must agree with buildCycleWindows' own key for that same
+  // window — without passing the bounds through, this used to compute "W2"
+  // (the 2nd week counting from Jan 1 of that year) instead of "W1", so a
+  // saved entry would never match any window the widget actually renders.
+  const key = currentPeriodKey("weekly", now, bounds.cycleStart, bounds.cycleEnd);
+  assert.equal(key, cycle.windows[0].key);
+  assert.notEqual(
+    currentPeriodKey("weekly", now),
+    key,
+    "sanity check: the un-anchored default really does disagree",
+  );
 });

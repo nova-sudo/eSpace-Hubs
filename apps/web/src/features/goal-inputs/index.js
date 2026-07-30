@@ -12,4 +12,9 @@ export {
 } from "./inputs-store";
 export { useGoalInputs, useAllGoalInputs } from "./use-goal-inputs";
 export { computeCompliance, cadenceWindowLabel } from "./compliance";
-export { buildCycleWindows, currentPeriodKey, cadenceConsistency } from "./cadence-windows";
+export {
+  buildCycleWindows,
+  currentPeriodKey,
+  cadenceConsistency,
+  composedCycleBounds,
+} from "./cadence-windows";

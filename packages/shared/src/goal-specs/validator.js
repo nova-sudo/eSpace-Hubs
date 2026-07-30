@@ -615,6 +615,24 @@ function validateComposed(composed, errors) {
   if (cadence) out.cadence = cadence;
   if (isNonEmptyString(composed.prompt)) out.prompt = composed.prompt.trim();
 
+  // The cycle's real calendar bounds (e.g. a 13-week plan starting in
+  // September, not January) — what buildCycleWindows anchors on so window
+  // dates/labels and cadence-consistency grading match when the goal doesn't
+  // start Jan 1. Optional and paired: a spec that started life before this
+  // existed has neither key, and buildCycleWindows keeps defaulting to the
+  // calendar year exactly as it always has. A malformed or inverted pair is
+  // dropped rather than erroring the whole spec — worth losing the anchor,
+  // not worth failing a save over a bad date.
+  const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  if (isNonEmptyString(composed.cycleStart) && isNonEmptyString(composed.cycleEnd)) {
+    const cs = composed.cycleStart.trim();
+    const ce = composed.cycleEnd.trim();
+    if (ISO_DATE_RE.test(cs) && ISO_DATE_RE.test(ce) && cs < ce) {
+      out.cycleStart = cs;
+      out.cycleEnd = ce;
+    }
+  }
+
   if (Array.isArray(composed.periods) && composed.periods.length > 0) {
     if (!cadence) {
       errors.push(
