@@ -118,6 +118,7 @@ const DEV_HUB = Object.freeze({
   pages: Object.freeze({
     dashboard: "dev:dashboard",
     goals: "dev:goals",
+    goalsv2: "dev:goals-v2",
     evidence: "dev:evidence",
     snapshots: "dev:snapshots",
     reviews: "dev:reviews",
