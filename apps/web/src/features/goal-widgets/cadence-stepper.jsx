@@ -45,7 +45,13 @@ import {
   resolveNestedPeriodContent,
 } from "@/features/goal-specs";
 import { isLocked, setLock, useGoalLocks } from "@/features/goal-locks";
-import { useGoalTier, useGoalWindowTier, TIER_LABELS } from "@/features/goal-tiers";
+import {
+  useGoalTier,
+  useGoalWindowTier,
+  TIER_ORDER,
+  TIER_LABELS,
+  TIER_FIELD,
+} from "@/features/goal-tiers";
 import { ComposedFields } from "./widgets/composed-fields.jsx";
 
 /** Mirrors the shared validator's COMPOSED_MAX_NEST_DEPTH — a safety ceiling. */
@@ -379,7 +385,7 @@ const WINDOW_TIER_COLOR = {
  * button, rather than auto-grading the moment the fields are filled.
  */
 function WindowTierPanel({ goalId, spec, periodKey, windowStart, windowEnd, variant }) {
-  const { hasTiers, tierGoverned, verdict, grading, grade } = useGoalWindowTier(
+  const { hasTiers, tiers, tierGoverned, verdict, grading, grade } = useGoalWindowTier(
     goalId,
     spec,
     periodKey,
@@ -389,45 +395,87 @@ function WindowTierPanel({ goalId, spec, periodKey, windowStart, windowEnd, vari
   if (!hasTiers) return null;
   const isLight = variant === "light";
   const muted = isLight ? "rgba(255,255,255,0.62)" : "var(--muted-fg)";
+  const dim = isLight ? "rgba(255,255,255,0.40)" : "var(--dim-fg)";
   const fg = isLight ? "#ffffff" : "var(--fg)";
   const color = verdict?.tier ? WINDOW_TIER_COLOR[verdict.tier] : muted;
+  const current = verdict?.tier || null;
+  const tierMap = tiers || {};
 
   return (
     <div
-      className="mt-2 flex items-center justify-between gap-2 border-t pt-2"
+      className="mt-2 border-t pt-2"
       style={{ borderColor: isLight ? "rgba(255,255,255,0.15)" : "var(--border)" }}
     >
-      <div className="min-w-0">
-        <span
-          className="uppercase tracking-[0.5px]"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: muted }}
-        >
-          This window&apos;s tier{tierGoverned ? " (manager-governed)" : ""} —{" "}
-        </span>
-        {verdict?.tier ? (
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
           <span
-            className="font-bold uppercase"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color }}
-            title={verdict.reasoning || ""}
+            className="uppercase tracking-[0.5px]"
+            style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: muted }}
           >
-            {TIER_LABELS[verdict.tier]}
+            This window&apos;s tier{tierGoverned ? " (manager-governed)" : ""} —{" "}
           </span>
-        ) : (
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: muted }}>
-            not graded yet
-          </span>
-        )}
+          {verdict?.tier ? (
+            <span
+              className="font-bold uppercase"
+              style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color }}
+              title={verdict.reasoning || ""}
+            >
+              {TIER_LABELS[verdict.tier]}
+            </span>
+          ) : (
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: muted }}>
+              not graded yet
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={grade}
+          disabled={grading}
+          className="shrink-0 uppercase tracking-[0.5px] hover:opacity-100 disabled:opacity-40"
+          style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: fg, opacity: 0.8 }}
+          title="Grade this window against the tier criteria"
+        >
+          {grading ? "grading…" : verdict?.tier ? "re-grade window" : "grade window"}
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={grade}
-        disabled={grading}
-        className="shrink-0 uppercase tracking-[0.5px] hover:opacity-100 disabled:opacity-40"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: fg, opacity: 0.8 }}
-        title="Grade this window against the tier criteria"
-      >
-        {grading ? "grading…" : verdict?.tier ? "re-grade window" : "grade window"}
-      </button>
+      {/* The criteria themselves — what "over achieved" etc. actually MEAN for
+          this window, visible before grading. Without this a dev filling the
+          window had no way to know what they were being judged against until
+          after clicking "grade window". */}
+      <div className="mt-2 flex flex-col gap-1">
+        {TIER_ORDER.map((t) => {
+          const criterion = tierMap[TIER_FIELD[t]];
+          const isCurrent = t === current;
+          const tColor = WINDOW_TIER_COLOR[t];
+          return (
+            <div
+              key={t}
+              className="flex items-start gap-1.5"
+              style={{ opacity: isCurrent || !current ? 1 : 0.5 }}
+            >
+              <span
+                className="shrink-0 font-bold uppercase"
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 8.5,
+                  letterSpacing: "0.3px",
+                  color: isCurrent ? tColor : muted,
+                  width: 58,
+                }}
+              >
+                {TIER_LABELS[t]}
+              </span>
+              <span
+                className="min-w-0 flex-1"
+                style={{ fontSize: 10, lineHeight: 1.3, color: isCurrent ? fg : muted }}
+              >
+                {criterion || <span style={{ color: dim }}>—</span>}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

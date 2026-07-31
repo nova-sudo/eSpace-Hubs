@@ -1038,7 +1038,7 @@ export function useGoalWindowTier(goalId, spec, periodKey, windowStart, windowEn
     }
   }
 
-  return { hasTiers: !!tiers, tierGoverned, verdict, grading, grade };
+  return { hasTiers: !!tiers, tiers, tierGoverned, verdict, grading, grade };
 }
 
 /**
