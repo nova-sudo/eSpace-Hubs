@@ -4,8 +4,10 @@
  * Manager Hub — tier policies. Renders at /[hub]/tier-policies.
  *
  * Lets a manager author the achievement-tier CRITERIA (not a grade) for a
- * Goal Code, at the L1 level — org-wide, applying to every developer whose
- * goal shares that code. Two independent ladders per code:
+ * Goal Code — org-wide, applying to every developer whose goal (L1 or L2)
+ * shares that code. An L2 code takes precedence over its parent L1's code,
+ * per field, so a manager can set a broad L1 policy and then override just
+ * one L2 underneath it. Two independent ladders per code:
  *   - Final tiers    — the whole-goal ladder (spec.tiers today)
  *   - Cadence tiers   — the per-cadence-window ladder (e.g. per quarter)
  * Either may be set alone; neither is graded against or derived from the
@@ -113,8 +115,9 @@ export function ManagerTierPolicies() {
         subtitle={
           <>
             Author the Final (whole-goal) and Per-Cadence (per-window)
-            achievement-tier ladders for an L1 Goal Code — it applies to
-            every developer whose goal carries that code. A goal with
+            achievement-tier ladders for a Goal Code (L1 or L2) — it applies
+            to every developer whose goal carries that code. An L2 code
+            overrides its parent L1's code, field by field. A goal with
             nothing set here keeps using its own AI-extracted or
             self-authored tiers.
           </>
@@ -125,11 +128,11 @@ export function ManagerTierPolicies() {
         className="mt-2 flex flex-wrap items-end gap-2"
         onSubmit={handleAdd}
       >
-        <Field label="Goal Code" className="flex-1 min-w-[200px]">
+        <Field label="Goal Code (L1 or L2)" className="flex-1 min-w-[200px]">
           <Input
             value={newCode}
             onChange={(e) => setNewCode(e.target.value)}
-            placeholder="R-L0-3-PSCS-L1-06"
+            placeholder="R-L0-3-PSCS-L1-06 or …-L2-06-01"
             mono
           />
         </Field>

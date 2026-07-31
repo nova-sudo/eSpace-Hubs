@@ -2,8 +2,11 @@
  * goal_tier_policies collection — Mongo $jsonSchema validator.
  *
  * A manager's durable, org-wide achievement-tier CRITERIA policy for a Goal
- * Code (currently the free-text `l1.code` a developer types into their own
- * goal tree; Zoho will supply these later). One row per (orgId, code).
+ * Code (currently the free-text `l1.code` / `l2.code` a developer types into
+ * their own goal tree; Zoho will supply these later). One row per
+ * (orgId, code) — the same collection holds both L1- and L2-level codes,
+ * since a code is just a string here; resolution order (an L2's own code
+ * outranks its parent L1's) lives in modules/tier-policies/controller.ts.
  *
  * Unlike `manager_goal_verdicts` (a manager's grade for one specific dev's
  * one specific goal), this sets the CRITERIA TEXT itself — the four-rung
@@ -34,9 +37,9 @@ export const goalTierPoliciesValidator: Document = {
     properties: {
       _id: { bsonType: "objectId" },
       orgId: { bsonType: "objectId" },
-      // The L1 Goal Code — free text, case-sensitive exact match against
-      // l1.code. Not validated for format here (neither is the dev-side
-      // field it matches against).
+      // The Goal Code (L1 or L2) — free text, case-sensitive exact match
+      // against l1.code / l2.code. Not validated for format here (neither
+      // is the dev-side field it matches against).
       code: { bsonType: "string", minLength: 1, maxLength: 200 },
       finalTiers: { bsonType: ["object", "null"], ...tierCriteriaSchema },
       cadenceTiers: { bsonType: ["object", "null"], ...tierCriteriaSchema },

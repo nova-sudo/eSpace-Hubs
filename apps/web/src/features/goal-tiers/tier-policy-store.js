@@ -4,7 +4,8 @@
  * Manager tier-policy cache (dev side). Holds the manager-authored
  * achievement-tier CRITERIA that govern this user's own goals, hydrated
  * once from GET /api/v1/tier-policies/mine. A policy is AUTHORED by Goal
- * Code (l1.code, org-wide) but the server resolves the Code → goalId join
+ * Code (l1.code or l2.code, org-wide) but the server resolves the Code →
+ * goalId join
  * for us, so this store — like manager-verdict-store — is simply keyed by
  * goalId. `finalTiers` and `cadenceTiers` are read independently; neither
  * is derived from or compared against the other.

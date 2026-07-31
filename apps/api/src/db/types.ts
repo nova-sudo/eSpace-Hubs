@@ -706,10 +706,12 @@ export interface TierCriteria {
 
 /**
  * A manager's durable, org-wide achievement-tier CRITERIA policy for a Goal
- * Code (currently `l1.code`, a free-text field on a dev's own goal tree —
- * Zoho will supply these later). One row per (orgId, code). Unlike
- * `ManagerGoalVerdict` (a grade for one dev's one goal), this sets the
- * criteria TEXT itself and applies to every dev whose goal shares the code.
+ * Code (currently `l1.code` or `l2.code`, free-text fields on a dev's own
+ * goal tree — Zoho will supply these later). One row per (orgId, code); an
+ * L2-code policy takes precedence over its parent L1's, per field — see
+ * modules/tier-policies/controller.ts. Unlike `ManagerGoalVerdict` (a grade
+ * for one dev's one goal), this sets the criteria TEXT itself and applies
+ * to every dev whose goal shares the code.
  *
  * `finalTiers` (whole-goal ladder) and `cadenceTiers` (per-cadence-window
  * ladder) are independent — either may be null, and resolving one never

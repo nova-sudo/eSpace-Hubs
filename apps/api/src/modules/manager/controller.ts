@@ -526,9 +526,11 @@ export async function putGoalVerdictHandler(
 // ─── tier policies (manager-authored criteria, by Goal Code) ─────────
 //
 // Distinct from the goal verdict above: that grades ONE report's ONE goal.
-// A tier policy sets the CRITERIA TEXT for an L1 Goal Code, applying to
-// every developer whose goal shares that code — org-wide, not scoped to
-// this manager's own reports. `finalTiers` (whole-goal ladder) and
+// A tier policy sets the CRITERIA TEXT for a Goal Code (L1 or L2), applying
+// to every developer whose goal shares that code — org-wide, not scoped to
+// this manager's own reports. An L2-code policy takes precedence over its
+// parent L1-code policy, per field (see modules/tier-policies/controller.ts
+// for the resolution order). `finalTiers` (whole-goal ladder) and
 // `cadenceTiers` (per-cadence-window ladder) are set/read independently;
 // neither is derived from or compared against the other.
 
