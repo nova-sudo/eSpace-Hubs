@@ -24,6 +24,14 @@ export {
   getManagerVerdictsServerSnapshot,
 } from "./manager-verdict-store";
 export {
+  readTierPolicy,
+  hydrateTierPolicies,
+  resetTierPolicies,
+  subscribeTierPolicies,
+  getTierPoliciesSnapshot,
+  getTierPoliciesServerSnapshot,
+} from "./tier-policy-store";
+export {
   publishGoalLiveReading,
   readGoalLiveReading,
   resetGoalLiveReadings,

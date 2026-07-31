@@ -1,7 +1,10 @@
 /**
  * /api/v1/manager/* router.
  *
- *   GET /reports   list the authenticated manager's direct reports
+ *   GET /reports              list the authenticated manager's direct reports
+ *   GET /tier-policies        list org-wide manager tier-criteria policies
+ *   PUT /tier-policies/:code  set a Goal Code's final/cadence tier criteria
+ *   DELETE /tier-policies/:code   clear a Goal Code's policy
  *
  * Authorization: a full session (`requireAuth`) plus the
  * `manager.team.view` capability (`requireCapability`). The controller
@@ -19,13 +22,16 @@ import { CAPABILITIES } from "@espace-devhub/shared/capabilities";
 import { requireAuth } from "../../middleware/require-auth.js";
 import { requireCapability } from "../../middleware/require-capability.js";
 import {
+  deleteTierPolicyHandler,
   getReportGoalDetailHandler,
   getReportGoalHealthHandler,
   listApprovalsHandler,
   listDelegatedQueueHandler,
   listReportsHandler,
+  listTierPoliciesHandler,
   putApprovalDecisionHandler,
   putGoalVerdictHandler,
+  putTierPolicyHandler,
 } from "./controller.js";
 
 export const managerRouter: Router = Router();
@@ -77,4 +83,28 @@ managerRouter.put(
   requireAuth(),
   requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
   putGoalVerdictHandler,
+);
+
+// Tier policies — manager-authored achievement-tier CRITERIA by Goal Code.
+// Org-wide (not scoped to this manager's own reports), so these deliberately
+// don't go through resolveReport()/:userId like the routes above.
+managerRouter.get(
+  "/tier-policies",
+  requireAuth(),
+  requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
+  listTierPoliciesHandler,
+);
+
+managerRouter.put(
+  "/tier-policies/:code",
+  requireAuth(),
+  requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
+  putTierPolicyHandler,
+);
+
+managerRouter.delete(
+  "/tier-policies/:code",
+  requireAuth(),
+  requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
+  deleteTierPolicyHandler,
 );

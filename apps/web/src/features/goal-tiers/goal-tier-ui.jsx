@@ -96,7 +96,7 @@ export function GoalTierBadge({ goalId, spec }) {
  * "dark" white tiles).
  */
 export function GoalTierLadder({ spec, variant = "light" }) {
-  const { hasTiers, tiers, verdict, loading, regrade } = useGoalTier(
+  const { hasTiers, tiers, tierGoverned, verdict, loading, regrade } = useGoalTier(
     spec?.goalId,
     spec,
   );
@@ -149,7 +149,7 @@ export function GoalTierLadder({ spec, variant = "light" }) {
         >
           Achievement tier
           {verdict?.source === "manager" ? " · manager-graded" : ""}
-          {spec?.tiersLocked ? " · 🔒" : ""}
+          {tierGoverned ? " · manager-governed 🔒" : spec?.tiersLocked ? " · 🔒" : ""}
           {(loading && !verdict) || regrading ? " · grading…" : ""}
         </span>
         <div className="flex shrink-0 items-center gap-2">
@@ -172,25 +172,29 @@ export function GoalTierLadder({ spec, variant = "light" }) {
           </button>
           {/* The criteria belong to the goal owner — let them correct what the
               AI extracted. Editing re-grades against the new criteria; saving
-              locks them so re-analysis won't overwrite. */}
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="uppercase tracking-[0.5px] hover:opacity-100"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9,
-              color: muted,
-              opacity: 0.8,
-            }}
-            title={
-              spec?.tiersLocked
-                ? "Criteria locked — re-analysis won't overwrite. Click to edit or unlock."
-                : "Edit the achievement-tier criteria for this goal"
-            }
-          >
-            edit
-          </button>
+              locks them so re-analysis won't overwrite. Hidden when a manager
+              tier policy governs this goal — the criteria aren't the dev's to
+              edit in that case; a manager changes them from the Manager Hub. */}
+          {!tierGoverned ? (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="uppercase tracking-[0.5px] hover:opacity-100"
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 9,
+                color: muted,
+                opacity: 0.8,
+              }}
+              title={
+                spec?.tiersLocked
+                  ? "Criteria locked — re-analysis won't overwrite. Click to edit or unlock."
+                  : "Edit the achievement-tier criteria for this goal"
+              }
+            >
+              edit
+            </button>
+          ) : null}
         </div>
       </div>
       <div className="flex flex-col gap-1">

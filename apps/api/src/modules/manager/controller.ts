@@ -26,6 +26,7 @@ import {
 import type {
   ContextAnswer,
   GoalTier,
+  TierCriteria,
   User,
   UserRole,
 } from "../../db/types.js";
@@ -35,6 +36,11 @@ import {
   listManagerVerdictsForSubjects,
   upsertManagerVerdict,
 } from "../../lib/manager-verdicts.js";
+import {
+  deleteTierPolicy,
+  listTierPolicies,
+  upsertTierPolicy,
+} from "../../lib/goal-tier-policies.js";
 import { createNotification } from "../../lib/notifications.js";
 import { primaryRole } from "../../lib/user-roles.js";
 import { HttpError } from "../../middleware/error-handler.js";
@@ -512,6 +518,141 @@ export async function putGoalVerdictHandler(
         source: "manager",
       },
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── tier policies (manager-authored criteria, by Goal Code) ─────────
+//
+// Distinct from the goal verdict above: that grades ONE report's ONE goal.
+// A tier policy sets the CRITERIA TEXT for an L1 Goal Code, applying to
+// every developer whose goal shares that code — org-wide, not scoped to
+// this manager's own reports. `finalTiers` (whole-goal ladder) and
+// `cadenceTiers` (per-cadence-window ladder) are set/read independently;
+// neither is derived from or compared against the other.
+
+/** Validates a { notAchieved, achieved, overAchieved, roleModel } shape,
+ *  each an optional string|null capped at 600 chars. Returns null for an
+ *  explicit `null` input (clears the policy field); throws on anything else
+ *  malformed. Undefined input means "leave this field untouched". */
+function parseTierCriteria(
+  raw: unknown,
+  fieldName: string,
+): TierCriteria | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null) return null;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new HttpError(400, "invalid_tiers", `${fieldName} must be an object or null.`);
+  }
+  const obj = raw as Record<string, unknown>;
+  const out: TierCriteria = {
+    notAchieved: null,
+    achieved: null,
+    overAchieved: null,
+    roleModel: null,
+  };
+  for (const key of ["notAchieved", "achieved", "overAchieved", "roleModel"] as const) {
+    const v = obj[key];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== "string") {
+      throw new HttpError(400, "invalid_tiers", `${fieldName}.${key} must be a string or null.`);
+    }
+    out[key] = v.slice(0, 600);
+  }
+  return out;
+}
+
+/** List every manager tier policy in the org (authoring screen). */
+export async function listTierPoliciesHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const rows = await listTierPolicies(session.orgId);
+    res.json({
+      policies: rows.map((p) => ({
+        code: p.code,
+        finalTiers: p.finalTiers,
+        cadenceTiers: p.cadenceTiers,
+        updatedAt: p.updatedAt.toISOString(),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** Set (or clear) the final and/or cadence tier criteria for a Goal Code. */
+export async function putTierPolicyHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const code = (req.params.code || "").trim();
+    if (!code) {
+      throw new HttpError(400, "invalid_code", "A Goal Code is required.");
+    }
+    const body = (req.body ?? {}) as {
+      finalTiers?: unknown;
+      cadenceTiers?: unknown;
+    };
+    const finalTiers = parseTierCriteria(body.finalTiers, "finalTiers");
+    const cadenceTiers = parseTierCriteria(body.cadenceTiers, "cadenceTiers");
+    if (finalTiers === undefined && cadenceTiers === undefined) {
+      throw new HttpError(
+        400,
+        "nothing_to_set",
+        "Provide finalTiers and/or cadenceTiers.",
+      );
+    }
+
+    const updated = await upsertTierPolicy({
+      orgId: session.orgId,
+      code,
+      finalTiers,
+      cadenceTiers,
+      setBy: session.userId,
+    });
+
+    res.json({
+      policy: {
+        code: updated.code,
+        finalTiers: updated.finalTiers,
+        cadenceTiers: updated.cadenceTiers,
+        updatedAt: updated.updatedAt.toISOString(),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** Remove a Goal Code's manager policy entirely — matching goals fall back
+ *  to their own AI-extracted / self-authored tiers again. */
+export async function deleteTierPolicyHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const code = (req.params.code || "").trim();
+    const deleted = await deleteTierPolicy(session.orgId, code);
+    res.json({ ok: true, deleted });
   } catch (err) {
     next(err);
   }

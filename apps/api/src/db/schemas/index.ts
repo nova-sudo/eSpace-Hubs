@@ -23,6 +23,7 @@ import { companionDevicesValidator } from "./companion-devices.schema.js";
 import { companionPairingsValidator } from "./companion-pairings.schema.js";
 import { notificationsValidator } from "./notifications.schema.js";
 import { managerGoalVerdictsValidator } from "./manager-goal-verdicts.schema.js";
+import { goalTierPoliciesValidator } from "./goal-tier-policies.schema.js";
 import type { Document } from "mongodb";
 
 export interface CollectionDef {
@@ -50,4 +51,5 @@ export const COLLECTION_DEFS: readonly CollectionDef[] = [
   { name: "companion_pairings", validator: companionPairingsValidator },
   { name: "notifications", validator: notificationsValidator },
   { name: "manager_goal_verdicts", validator: managerGoalVerdictsValidator },
+  { name: "goal_tier_policies", validator: goalTierPoliciesValidator },
 ] as const;

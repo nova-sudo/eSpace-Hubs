@@ -694,6 +694,38 @@ export interface ManagerGoalVerdict {
   updatedAt: Date;
 }
 
+// ─── manager tier policies (a manager's authored criteria, by Goal Code) ──
+
+/** The four-rung achievement-tier criteria text. Any rung may be unset. */
+export interface TierCriteria {
+  notAchieved: string | null;
+  achieved: string | null;
+  overAchieved: string | null;
+  roleModel: string | null;
+}
+
+/**
+ * A manager's durable, org-wide achievement-tier CRITERIA policy for a Goal
+ * Code (currently `l1.code`, a free-text field on a dev's own goal tree —
+ * Zoho will supply these later). One row per (orgId, code). Unlike
+ * `ManagerGoalVerdict` (a grade for one dev's one goal), this sets the
+ * criteria TEXT itself and applies to every dev whose goal shares the code.
+ *
+ * `finalTiers` (whole-goal ladder) and `cadenceTiers` (per-cadence-window
+ * ladder) are independent — either may be null, and resolving one never
+ * falls back to or is compared against the other.
+ */
+export interface GoalTierPolicy {
+  _id: ObjectId;
+  orgId: ObjectId;
+  code: string;
+  finalTiers: TierCriteria | null;
+  cadenceTiers: TierCriteria | null;
+  setBy: ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // ─── evidence (user-starred review artifacts) ───────────────────────
 
 /**

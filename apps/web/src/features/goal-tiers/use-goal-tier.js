@@ -44,6 +44,13 @@ import {
   getManagerVerdictsServerSnapshot,
 } from "./manager-verdict-store";
 import {
+  hydrateTierPolicies,
+  readTierPolicy,
+  subscribeTierPolicies,
+  getTierPoliciesSnapshot,
+  getTierPoliciesServerSnapshot,
+} from "./tier-policy-store";
+import {
   getGoalLiveReadingsServerSnapshot,
   getGoalLiveReadingsSnapshot,
   readGoalLiveReading,
@@ -654,12 +661,23 @@ export function useGoalTier(goalId, spec) {
     getManagerVerdictsServerSnapshot,
   );
   const managerVerdict = readManagerVerdict(goalId);
+  // A manager tier POLICY (criteria text, authored by Goal Code) outranks
+  // the goal's own spec.tiers when set — independent of the manager VERDICT
+  // above, which outranks everything as a final grade. Subscribe so a
+  // hydrated/updated policy re-renders.
+  useSyncExternalStore(
+    subscribeTierPolicies,
+    getTierPoliciesSnapshot,
+    getTierPoliciesServerSnapshot,
+  );
+  const tierPolicy = readTierPolicy(goalId);
   // One-shot: seed the local caches from the durable server stores so a fresh
   // device / cleared localStorage doesn't re-grade unchanged goals. Self-guarded
   // — every mounted badge calls it, but only the first request goes out.
   useEffect(() => {
     hydrateGoalTiers();
     hydrateManagerVerdicts();
+    hydrateTierPolicies();
   }, []);
   const { snapshots } = useSnapshots();
   const { entries } = useGoalInputs(goalId);
@@ -667,7 +685,10 @@ export function useGoalTier(goalId, spec) {
   // hydration — used below to defer grading until the live data is loaded.
   const inputsHydrated = getInputsState().fetched;
   const isScorecard = spec?.widget === SPEC_KINDS.SCORECARD;
-  const tiers = spec?.tiers || null;
+  // Manager-authored FINAL criteria (by Goal Code) outrank the goal's own
+  // AI-extracted/self-authored spec.tiers when set.
+  const tiers = tierPolicy?.finalTiers || spec?.tiers || null;
+  const tierGoverned = !!tierPolicy?.finalTiers;
   // The classifier's contract is to never emit tierScale for SCORECARD (it's
   // graded qualitatively — the AI reads the composite + component readings
   // as prose). Enforced here too, defensively: liveReading.score is a "%
@@ -875,6 +896,7 @@ export function useGoalTier(goalId, spec) {
     return {
       hasTiers: true,
       tiers,
+      tierGoverned,
       verdict: {
         tier: managerVerdict.tier,
         reasoning: managerVerdict.note || "",
@@ -917,6 +939,7 @@ export function useGoalTier(goalId, spec) {
   return {
     hasTiers: !!(tiers || tierScale),
     tiers,
+    tierGoverned,
     verdict: cappedVerdict,
     loading: !!(tiers || tierScale) && !cappedVerdict,
     consistency,
@@ -955,9 +978,22 @@ export function useGoalWindowTier(goalId, spec, periodKey, windowStart, windowEn
     getGoalTiersSnapshot,
     getGoalTiersServerSnapshot,
   );
+  // Manager-authored CADENCE criteria (by Goal Code) outrank the goal's own
+  // spec.tiers when set — independent of the final-tier policy, which is
+  // read separately by useGoalTier and never consulted here.
+  useSyncExternalStore(
+    subscribeTierPolicies,
+    getTierPoliciesSnapshot,
+    getTierPoliciesServerSnapshot,
+  );
+  const tierPolicy = readTierPolicy(goalId);
+  useEffect(() => {
+    hydrateTierPolicies();
+  }, []);
   const { entries } = useGoalInputs(goalId);
   const [grading, setGrading] = useState(false);
-  const tiers = spec?.tiers || null;
+  const tiers = tierPolicy?.cadenceTiers || spec?.tiers || null;
+  const tierGoverned = !!tierPolicy?.cadenceTiers;
 
   const currentData = useMemo(() => {
     if (!periodKey) return "";
@@ -1002,7 +1038,7 @@ export function useGoalWindowTier(goalId, spec, periodKey, windowStart, windowEn
     }
   }
 
-  return { hasTiers: !!tiers, verdict, grading, grade };
+  return { hasTiers: !!tiers, tierGoverned, verdict, grading, grade };
 }
 
 /**

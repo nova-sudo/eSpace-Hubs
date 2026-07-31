@@ -32,6 +32,7 @@ const NAV_ITEMS = [
   { slot: "employees", subpath: "/employees" },
   { slot: "delegated", subpath: "/delegated" },
   { slot: "approvals", subpath: "/approvals" },
+  { slot: "tierpolicies", subpath: "/tier-policies" },
   // "checkin" retired — filling now lives on the Goals page via the per-widget
   // cadence stepper. The /checkin routes redirect to Goals for old bookmarks.
   { slot: "goals", subpath: "/goals" },
@@ -59,6 +60,7 @@ const DEFAULT_LABELS = {
   employees: "Employees",
   delegated: "Delegated",
   approvals: "Approvals",
+  tierpolicies: "Tier policies",
   reviews: "Reviews",
   snapshots: "Snapshots",
 };

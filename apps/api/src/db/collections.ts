@@ -25,6 +25,7 @@ import type {
   GoalContextDoc,
   GoalInputEntry,
   GoalSpecRecord,
+  GoalTierPolicy,
   GoalTierVerdict,
   GoalTree,
   GradingVerdict,
@@ -158,6 +159,13 @@ export async function getManagerGoalVerdictsCollection(): Promise<
 > {
   const db = await getDb();
   return db.collection<ManagerGoalVerdict>("manager_goal_verdicts");
+}
+
+export async function getGoalTierPoliciesCollection(): Promise<
+  Collection<GoalTierPolicy>
+> {
+  const db = await getDb();
+  return db.collection<GoalTierPolicy>("goal_tier_policies");
 }
 
 // ─── bootstrap: validators + indexes ─────────────────────────────────
@@ -541,8 +549,18 @@ async function ensureIndexes(): Promise<void> {
     },
   ]);
 
+  const tierPolicies = await getGoalTierPoliciesCollection();
+  await tierPolicies.createIndexes([
+    {
+      // One policy per (org, code). Upsert on re-set replaces it.
+      key: { orgId: 1, code: 1 },
+      unique: true,
+      name: "goal_tier_policies_org_code_uniq",
+    },
+  ]);
+
   logger.debug(
-    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs, snapshots, grading_verdicts, integrations, hub_configs, companion_devices, companion_pairings, notifications, manager_goal_verdicts",
+    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs, snapshots, grading_verdicts, integrations, hub_configs, companion_devices, companion_pairings, notifications, manager_goal_verdicts, goal_tier_policies",
   );
 }
 

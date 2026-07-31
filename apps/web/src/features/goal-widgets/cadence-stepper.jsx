@@ -379,7 +379,7 @@ const WINDOW_TIER_COLOR = {
  * button, rather than auto-grading the moment the fields are filled.
  */
 function WindowTierPanel({ goalId, spec, periodKey, windowStart, windowEnd, variant }) {
-  const { hasTiers, verdict, grading, grade } = useGoalWindowTier(
+  const { hasTiers, tierGoverned, verdict, grading, grade } = useGoalWindowTier(
     goalId,
     spec,
     periodKey,
@@ -402,7 +402,7 @@ function WindowTierPanel({ goalId, spec, periodKey, windowStart, windowEnd, vari
           className="uppercase tracking-[0.5px]"
           style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: muted }}
         >
-          This window&apos;s tier —{" "}
+          This window&apos;s tier{tierGoverned ? " (manager-governed)" : ""} —{" "}
         </span>
         {verdict?.tier ? (
           <span

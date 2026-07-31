@@ -198,6 +198,7 @@ const MANAGER_HUB = Object.freeze({
     employees: "manager:employees",
     delegated: "manager:delegated",
     approvals: "manager:approvals",
+    tierpolicies: "manager:tier-policies",
     settings: "manager:settings",
   }),
   widgets: Object.freeze([

@@ -46,6 +46,7 @@ import { adminRouter } from "./modules/admin/routes.js";
 import { managerRouter } from "./modules/manager/routes.js";
 import { notificationsRouter } from "./modules/notifications/routes.js";
 import { goalVerdictsRouter } from "./modules/goal-verdicts/routes.js";
+import { tierPoliciesRouter } from "./modules/tier-policies/routes.js";
 import { companionRouter } from "./modules/companion/routes.js";
 
 /**
@@ -144,6 +145,7 @@ export function buildApp(): Application {
   app.use("/api/v1/manager", managerRouter);
   app.use("/api/v1/notifications", notificationsRouter);
   app.use("/api/v1/goal-verdicts", goalVerdictsRouter);
+  app.use("/api/v1/tier-policies", tierPoliciesRouter);
   app.use("/api/v1/companion", companionRouter);
 
   // ─── tail handlers ─────────────────────────────────────────────────
