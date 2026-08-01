@@ -40,3 +40,4 @@ export {
   getGoalLiveReadingsServerSnapshot,
 } from "./live-readings-store";
 export { GoalTierBadge, GoalTierLadder } from "./goal-tier-ui";
+export { numericReadingFor, gradeNumericTier } from "./grade-numeric";

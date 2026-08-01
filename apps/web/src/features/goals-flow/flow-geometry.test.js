@@ -138,3 +138,28 @@ test("layoutFlow collapses an L1's rows but keeps its card, with a count", () =>
   assert.equal(layout.l1Cards[0].count, 2);
   assert.equal(layout.l1Cards[1].collapsed, false);
 });
+
+test("layoutFlow reserves enough vertical room that a 1-row group's L1 card cannot overlap the next group", () => {
+  // The L1 card is centered on its group's anchor Y and spans roughly
+  // [anchorY - 56, anchorY - 56 + LAYOUT.l1Card] — a real regression: a
+  // single-row group with a long (line-clamped 2-line) title used to
+  // render a card tall enough to visually overlap the next L1's card
+  // because groupGap didn't account for the card's own height, only the
+  // row's. This asserts the geometric invariant directly.
+  const groups = [
+    {
+      l1: { id: "l1-a", title: "A", category: null, weightage: null },
+      items: [{ goal: { id: "l2-1", kind: "L2" }, spec: { widget: "COUNTER", title: "One" } }],
+    },
+    {
+      l1: { id: "l1-b", title: "B", category: null, weightage: null },
+      items: [{ goal: { id: "l2-2", kind: "L2" }, spec: { widget: "COUNTER", title: "Two" } }],
+    },
+  ];
+  const layout = layoutFlow(groups, 1000);
+  const firstCardBottom = layout.l1Cards[0].top + LAYOUT.l1Card;
+  assert.ok(
+    layout.l1Cards[1].top >= firstCardBottom,
+    `second L1 card (top=${layout.l1Cards[1].top}) must start at or after the first card's bottom (${firstCardBottom})`,
+  );
+});

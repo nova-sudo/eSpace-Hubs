@@ -21,9 +21,14 @@ export const LAYOUT = Object.freeze({
   // row's own internal scroll (if content exceeds this) is an accepted
   // Phase 2 tradeoff, revisited if it's a real problem in testing.
   open: 640,
-  l1Card: 100,
+  // L1 cards can grow past a single line (title clamps to 2 lines in the
+  // renderer, plus label/weight/count rows) — groupGap has to clear the
+  // WORST case (a 1-row group whose card is centered on that single row),
+  // not the common case, or long titles overlap the next group's card.
+  // See flow-geometry.test.js's "does not overlap a tall L1 card" case.
+  l1Card: 150,
   gap: 13,
-  groupGap: 30,
+  groupGap: 96,
   top: 34,
   pad: 24,
   minCanvas: 560,

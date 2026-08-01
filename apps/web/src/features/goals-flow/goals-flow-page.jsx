@@ -27,7 +27,7 @@ import { useAnalystOptional, ANALYST_MODES } from "@/features/analyst";
 import { layoutFlow } from "./flow-geometry";
 import { FlowRow } from "./flow-row";
 import { EvidenceDrawer } from "./evidence-drawer";
-import { isGoalOwed } from "./flow-row-meta";
+import { isGoalOwed, cadenceWindowsFor } from "./flow-row-meta";
 
 function usePaneWidth() {
   const ref = useRef(null);
@@ -77,6 +77,7 @@ export function GoalsFlowPage() {
   const [density, setDensity] = useState("comfortable");
   const [collapsedL1Ids, setCollapsedL1Ids] = useState(() => new Set());
   const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [zoom, setZoom] = useState(1);
   const [focusedId, setFocusedId] = useState(null);
   const [announcement, setAnnouncement] = useState("");
   const rowRefs = useRef(new Map());
@@ -119,6 +120,27 @@ export function GoalsFlowPage() {
       }
     }
     return n;
+  }, [mergedGroups]);
+
+  // Per-L1 progress: aggregate filled/total across every L2's own cadence
+  // windows (goals with no cadence don't contribute to either side).
+  const l1Progress = useMemo(() => {
+    const map = new Map();
+    for (const g of mergedGroups) {
+      let filled = 0;
+      let total = 0;
+      let owed = 0;
+      for (const it of g.items) {
+        if (it.goal?.kind !== "L2") continue;
+        const cyc = cadenceWindowsFor(it.goal.id, it.spec);
+        if (!cyc) continue;
+        filled += cyc.filledCount;
+        total += cyc.total;
+        owed += (cyc.windows || []).filter((w) => w.state === "owed").length;
+      }
+      map.set(g.l1.id, { filled, total, owed });
+    }
+    return map;
   }, [mergedGroups]);
 
   // "Owed only" HIDES (not dims) and drops groups that empty out — a dim
@@ -195,25 +217,28 @@ export function GoalsFlowPage() {
   const ghostCount = unclassifiedGoals.length;
 
   return (
-    <div className="relative z-[2] flex h-[calc(100vh-var(--header-height,61px))] flex-col px-6 pb-6 pt-6">
+    <div
+      className="relative z-[2] flex flex-col"
+      style={{ height: "calc(100vh - var(--header-height))" }}
+    >
       <span aria-live="polite" className="sr-only">
         {announcement}
       </span>
 
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3 border-b border-border pb-3">
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-[19px] font-semibold" style={{ letterSpacing: "-0.4px" }}>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-2.5">
+        <div className="flex items-baseline gap-2.5">
+          <h1 className="text-[15px] font-semibold" style={{ letterSpacing: "-0.3px" }}>
             Goals
           </h1>
           <span
             className="text-muted-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.6px" }}
+            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.6px" }}
           >
             flow map &middot; {layout.l1Cards.length} L1 &middot; {rowIds.length} tracked
             {ghostCount > 0 ? ` · ${ghostCount} unclassified` : ""}
           </span>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           {ghostCount > 0 ? (
             <TitleBarButton onClick={() => analyst?.requestOpen?.(ANALYST_MODES.ANALYSIS)} active>
               Analyze {ghostCount} unclassified
@@ -228,16 +253,26 @@ export function GoalsFlowPage() {
           <TitleBarButton onClick={toggleAllGroups}>
             {allCollapsed ? "Expand all" : "Collapse all"}
           </TitleBarButton>
+          <div className="flex items-center gap-0.5 rounded-[var(--radius-sub)] border border-border px-0.5 py-0.5">
+            <ZoomButton onClick={() => setZoom((z) => Math.max(0.6, Math.round((z - 0.1) * 10) / 10))} label="&minus;" aria-label="Zoom out" />
+            <span
+              className="px-1 text-muted-fg"
+              style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, minWidth: 34, textAlign: "center" }}
+            >
+              {Math.round(zoom * 100)}%
+            </span>
+            <ZoomButton onClick={() => setZoom((z) => Math.min(1.4, Math.round((z + 0.1) * 10) / 10))} label="+" aria-label="Zoom in" />
+          </div>
           <TitleBarButton onClick={() => setEvidenceOpen((v) => !v)} active={evidenceOpen} aria-expanded={evidenceOpen}>
             Evidence
           </TitleBarButton>
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 items-stretch gap-0">
+      <div className="flex min-h-0 flex-1 items-stretch">
         <div
           ref={paneRef}
-          className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
+          className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-5"
           onKeyDown={handleTreeKeyDown}
         >
           {!ready ? (
@@ -248,68 +283,91 @@ export function GoalsFlowPage() {
             </div>
           ) : (
             <div
-              role="tree"
-              aria-label="Goals by L1 objective"
               className="relative mx-auto"
-              style={{ width: layout.canvas, height: layout.height }}
+              style={{ width: layout.canvas * zoom, height: layout.height * zoom }}
             >
-              <svg
-                width={layout.canvas}
-                height={layout.height}
-                aria-hidden="true"
-                focusable="false"
-                style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }}
+              <div
+                role="tree"
+                aria-label="Goals by L1 objective"
+                className="absolute left-0 top-0"
+                style={{
+                  width: layout.canvas,
+                  height: layout.height,
+                  transform: `scale(${zoom})`,
+                  transformOrigin: "0 0",
+                }}
               >
-                {layout.edges.map((e) => (
-                  <path
-                    key={e.id}
-                    d={e.d}
-                    fill="none"
-                    stroke={e.open ? "var(--border-strong)" : "var(--border)"}
-                    strokeWidth="1"
+                <svg
+                  width={layout.canvas}
+                  height={layout.height}
+                  aria-hidden="true"
+                  focusable="false"
+                  style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }}
+                >
+                  {layout.edges.map((e) => (
+                    <path
+                      key={e.id}
+                      d={e.d}
+                      fill="none"
+                      stroke={e.open ? "var(--border-strong)" : "var(--border)"}
+                      strokeWidth="1"
+                    />
+                  ))}
+                </svg>
+
+                {layout.l1Cards.map((c) => (
+                  <L1Card
+                    key={c.id}
+                    card={c}
+                    progress={l1Progress.get(c.id)}
+                    onToggleCollapse={() => toggleL1(c.id)}
                   />
                 ))}
-              </svg>
 
-              {layout.l1Cards.map((c) => (
-                <L1Card key={c.id} card={c} onToggleCollapse={() => toggleL1(c.id)} />
-              ))}
-
-              {layout.pills.map((p) => (
-                <div
-                  key={p.id}
-                  aria-hidden="true"
-                  className="absolute whitespace-nowrap bg-bg px-1.5 py-0.5"
-                  style={{ left: p.x, top: p.y, transform: "translate(-50%, -50%)" }}
-                >
-                  <span
-                    className="text-muted-fg"
-                    style={{ fontFamily: "var(--font-mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.5px" }}
+                {layout.pills.map((p) => (
+                  <div
+                    key={p.id}
+                    aria-hidden="true"
+                    className="absolute whitespace-nowrap"
+                    style={{ left: p.x, top: p.y, transform: "translate(-50%, -50%)" }}
                   >
-                    {p.label}
-                  </span>
-                </div>
-              ))}
+                    <span
+                      className="text-muted-fg"
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 9,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px",
+                        background: "var(--panel)",
+                        padding: "1px 5px",
+                        borderRadius: "var(--radius-pill)",
+                      }}
+                    >
+                      {p.label}
+                    </span>
+                  </div>
+                ))}
 
-              {layout.rows.map((r) => (
-                <FlowRow
-                  key={r.id}
-                  item={{ goal: r.goal, spec: r.spec }}
-                  open={r.open}
-                  onToggle={toggleRow}
-                  focused={focusedId ? focusedId === r.id : r.id === rowIds[0]}
-                  rowRef={(el) => {
-                    if (el) rowRefs.current.set(r.id, el);
-                    else rowRefs.current.delete(r.id);
-                  }}
-                  style={{
-                    left: r.left,
-                    top: r.top,
-                    width: r.width,
-                    ...(r.open ? { maxHeight: r.height, overflowY: "auto" } : {}),
-                  }}
-                />
-              ))}
+                {layout.rows.map((r) => (
+                  <FlowRow
+                    key={r.id}
+                    item={{ goal: r.goal, spec: r.spec }}
+                    open={r.open}
+                    onToggle={toggleRow}
+                    focused={focusedId ? focusedId === r.id : r.id === rowIds[0]}
+                    rowRef={(el) => {
+                      if (el) rowRefs.current.set(r.id, el);
+                      else rowRefs.current.delete(r.id);
+                    }}
+                    style={{
+                      left: r.left,
+                      top: r.top,
+                      width: r.width,
+                      ...(r.open ? { maxHeight: r.height, overflowY: "auto" } : {}),
+                    }}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -320,7 +378,26 @@ export function GoalsFlowPage() {
   );
 }
 
-function L1Card({ card, onToggleCollapse }) {
+function ZoomButton({ onClick, label, ...rest }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-[22px] w-[22px] items-center justify-center rounded-[4px] border-0 bg-transparent text-muted-fg hover:bg-card-alt"
+      style={{ fontFamily: "var(--font-mono)", fontSize: 12, cursor: "pointer" }}
+      {...rest}
+    >
+      {label}
+    </button>
+  );
+}
+
+function L1Card({ card, progress, onToggleCollapse }) {
+  const total = progress?.total || 0;
+  const filled = progress?.filled || 0;
+  const owed = progress?.owed || 0;
+  const pct = total > 0 ? Math.round((filled / total) * 100) : null;
+
   return (
     <div
       role="group"
@@ -348,15 +425,53 @@ function L1Card({ card, onToggleCollapse }) {
         >
           L1 {card.category ? `· ${card.category}` : ""}
         </span>
+        {pct != null ? (
+          <span
+            className="shrink-0 text-muted-fg"
+            style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}
+          >
+            {pct}%
+          </span>
+        ) : null}
       </button>
-      <div className="mb-2 text-[13px] font-semibold leading-[1.3]" style={{ letterSpacing: "-0.1px" }}>
+      <div
+        className="mb-2 text-[13px] font-semibold leading-[1.3]"
+        style={{
+          letterSpacing: "-0.1px",
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }}
+        title={card.title}
+      >
         {card.title || "(untitled)"}
       </div>
+      {total > 0 ? (
+        <div
+          className="relative mb-2 overflow-hidden"
+          style={{ height: 3, background: "var(--panel-2)" }}
+        >
+          <span
+            className="absolute left-0 top-0 h-full"
+            style={{ width: `${pct}%`, background: "var(--accent)" }}
+          />
+        </div>
+      ) : null}
       <div className="flex items-center justify-between gap-2 text-muted-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}>
         <span>
           {card.count} goal{card.count === 1 ? "" : "s"}
-          {card.weightage != null ? ` · ${card.weightage}% weight` : ""}
+          {owed > 0 ? ` · ${owed} owed` : ""}
         </span>
+      </div>
+      <div
+        className="mt-1.5 flex items-center justify-between gap-2 border-t border-border pt-1.5 text-muted-fg"
+        style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}
+      >
+        <span>{card.weightage != null ? `Σ ${card.weightage}% mapped` : ""}</span>
+        <a href="#" className="shrink-0" style={{ textTransform: "uppercase", letterSpacing: "0.5px" }}>
+          edit
+        </a>
       </div>
     </div>
   );
