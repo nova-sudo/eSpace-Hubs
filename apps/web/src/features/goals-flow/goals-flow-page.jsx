@@ -218,7 +218,7 @@ export function GoalsFlowPage() {
 
   return (
     <div
-      className="relative z-[2] flex flex-col"
+      className="relative z-[2] flex flex-col overflow-hidden"
       style={{ height: "calc(100vh - var(--header-height))" }}
     >
       <span aria-live="polite" className="sr-only">
