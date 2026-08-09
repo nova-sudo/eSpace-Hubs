@@ -33,18 +33,32 @@
  * connect, not this helper.
  */
 
-import type { IncomingMessage } from "node:http";
+import type { IncomingHttpHeaders } from "node:http";
 import { parse as parseCookieHeader } from "cookie";
 import { unsign } from "cookie-signature";
 import { env } from "../config/env.js";
 import { lookupSession } from "../modules/auth/session.js";
 import { SESSION_COOKIE_NAME } from "../modules/auth/cookies.js";
 import { getUsersCollection } from "../db/collections.js";
+import { logger } from "./logger.js";
 
 const COMPANION_STALE_AFTER_MS = 5 * 60 * 1000;
 
+/**
+ * Structural minimum this resolver needs: something with request
+ * headers. Deliberately NOT `IncomingMessage` — the two callers are
+ * Express's `Request` and Next's `NextApiRequest`, which both extend it
+ * but with mutually incompatible augmentations (pino-http narrows `id`
+ * to `ReqId` on Express's, so it isn't assignable to a plain
+ * `IncomingMessage` parameter). Asking only for what we read keeps both
+ * call sites type-safe without a cast.
+ */
+export interface CompanionRoutingRequest {
+  headers: IncomingHttpHeaders;
+}
+
 export async function resolveCompanionOrigin(
-  req: IncomingMessage,
+  req: CompanionRoutingRequest,
 ): Promise<string | null> {
   try {
     const cookieHeader = req.headers.cookie;
@@ -73,14 +87,36 @@ export async function resolveCompanionOrigin(
     if (!tunnel || !tunnel.hostname) return null;
 
     const ageMs = Date.now() - new Date(tunnel.lastSeenAt).getTime();
-    if (ageMs >= COMPANION_STALE_AFTER_MS) return null;
+    if (ageMs >= COMPANION_STALE_AFTER_MS) {
+      // Worth a line: the user has a companion registered but we're
+      // about to serve them from the deployed backend anyway. Silent,
+      // this is indistinguishable from "no companion" — and it's the
+      // state the UI keeps calling "companion" because the header chip
+      // reads the same row without the freshness check.
+      logger.debug(
+        {
+          userId: session.userId.toHexString(),
+          hostname: tunnel.hostname,
+          staleForMs: ageMs - COMPANION_STALE_AFTER_MS,
+        },
+        "[companion-routing] registration is stale — serving locally",
+      );
+      return null;
+    }
 
     return `https://${tunnel.hostname}`;
-  } catch {
-    // Defensive: ANY failure during routing resolution falls through
-    // to the bundled API. We never want a transient Mongo blip to
-    // 500 the whole catch-all just because the companion lookup
-    // didn't succeed.
+  } catch (err) {
+    // Defensive: ANY failure during routing resolution falls through to
+    // serving the request here. A transient Mongo blip must not 500 a
+    // request that this process is perfectly able to answer.
+    //
+    // Log it — swallowing this silently is precisely why a whole
+    // deployment's worth of companion routing could be dead without a
+    // single symptom in the logs.
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "[companion-routing] resolution threw — falling back to local",
+    );
     return null;
   }
 }

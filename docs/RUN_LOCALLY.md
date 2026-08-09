@@ -1,5 +1,24 @@
 # Run the backend locally (Docker)
 
+> **⚠️ Written for the retired Vercel deploy. Read this first.**
+>
+> Two things in this runbook are out of date and not fully rewritten yet:
+>
+> 1. **Vercel is gone** — the app runs on self-hosted Coolify. Every
+>    "Vercel → Settings → Environment Variables" step below means the
+>    equivalent Coolify app-env screen, and the public domain is your
+>    Coolify one, not `espace-hubs.vercel.app`. See
+>    [`deployment-coolify.md`](./deployment-coolify.md).
+> 2. **`API_ORIGIN` is global, not per-user** — pointing it at your
+>    tunnel redirects *everybody's* traffic to your laptop. That was
+>    acceptable as a one-person workaround; it isn't a team setup.
+>
+> For the per-user version of this — your requests route to your
+> machine, everyone else's don't — use the **desktop companion**
+> (`apps/desktop`), which pairs a device, spawns its own cloudflared
+> tunnel, and registers it against your session. The server side of
+> that lives in `apps/api/src/middleware/companion-proxy.ts`.
+
 This is the runbook for running `apps/api` as a Docker container —
 either purely local (talking to a local Mongo + your laptop's network)
 or paired with a Cloudflare Tunnel so the Vercel frontend can reach
@@ -32,7 +51,7 @@ docker compose --profile tunnel up -d
 #    Vercel → Deployments → Redeploy
 ```
 
-That's it. Visit `https://espace-hubs.vercel.app` (or whatever your
+That's it. Visit `https://devhub.espace.com.eg` (or whatever your
 deploy domain is). Every `/api/v1/*` call now traverses Vercel →
 Cloudflare Tunnel → your `api` container → upstreams visible from
 your host.
@@ -95,7 +114,7 @@ docker compose --profile tunnel up -d
 #   (Production scope)
 # Vercel → Deployments → Redeploy
 
-# Visit https://espace-hubs.vercel.app — all /api/v1/* now flows
+# Visit https://devhub.espace.com.eg — all /api/v1/* now flows
 # through your laptop's api.
 ```
 

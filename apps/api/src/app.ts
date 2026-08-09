@@ -9,11 +9,13 @@
  *   2. helmet           — security headers as early as possible
  *   3. cors             — preflight before anything else parses bodies
  *   4. cookie-parser    — required by session middleware (M2.3+)
- *   5. body parsers     — JSON only (no multipart by default)
- *   6. pino-http        — request logging with reqId already attached
- *   7. routes
- *   8. notFoundHandler  — synthesises a 404 for unmatched paths
- *   9. errorHandler     — final 4-arg handler shapes errors as JSON
+ *   5. companionProxy   — MUST precede the body parsers; it pipes the
+ *                          raw request stream to the user's companion
+ *   6. body parsers     — JSON only (no multipart by default)
+ *   7. pino-http        — request logging with reqId already attached
+ *   8. routes
+ *   9. notFoundHandler  — synthesises a 404 for unmatched paths
+ *  10. errorHandler     — final 4-arg handler shapes errors as JSON
  */
 
 import express, { type Application, type RequestHandler } from "express";
@@ -25,7 +27,8 @@ import { pinoHttp } from "pino-http";
 import { env, isDev } from "./config/env.js";
 import { logger } from "./lib/logger.js";
 import { requestId } from "./middleware/request-id.js";
-import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
+import { companionProxy } from "./middleware/companion-proxy.js";
+import { errorHandler, HttpError, notFoundHandler } from "./middleware/error-handler.js";
 import { sessionMiddleware } from "./middleware/session.js";
 import { healthRouter } from "./modules/health/routes.js";
 import { authRouter } from "./modules/auth/routes.js";
@@ -86,7 +89,19 @@ export function buildApp(): Application {
         // Same-origin (no Origin header) is always allowed.
         if (!origin) return cb(null, true);
         if (env.CORS_ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-        cb(new Error(`CORS: origin ${origin} not allowed`));
+        // A bare Error here would be laundered by errorHandler into an
+        // anonymous 500 "An unexpected error occurred." — which is how a
+        // misconfigured CORS_ALLOWED_ORIGINS used to present as a
+        // mystery server fault with no mention of CORS anywhere the
+        // caller could see it. Name the failure so the response says
+        // what's actually wrong and which origin was rejected.
+        cb(
+          new HttpError(
+            403,
+            "cors_origin_not_allowed",
+            `Origin ${origin} is not in CORS_ALLOWED_ORIGINS for this deployment.`,
+          ),
+        );
       },
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -94,6 +109,14 @@ export function buildApp(): Application {
   );
 
   app.use(mw(cookieParser(env.SESSION_SECRET)));
+
+  // Companion routing. Mounted here — after cookie-parser, BEFORE the
+  // body parsers — because it pipes the raw request stream to the
+  // user's companion tunnel; `express.json()` would consume that stream
+  // first and the companion would receive an empty body. Requests that
+  // aren't companion-bound (the overwhelming majority) fall straight
+  // through to the parsers below. See middleware/companion-proxy.ts.
+  app.use(companionProxy());
 
   app.use(mw(express.json({ limit: "1mb" })));
   app.use(mw(express.urlencoded({ extended: false, limit: "1mb" })));

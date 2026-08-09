@@ -658,7 +658,7 @@ export function App() {
           <input
             type="text"
             value={settings.apiBaseUrl || ""}
-            placeholder="https://espace-hubs.vercel.app"
+            placeholder="https://devhub.espace.com.eg"
             onChange={(e) => onSettingChange("apiBaseUrl", e.target.value.trim())}
             style={S.input}
           />

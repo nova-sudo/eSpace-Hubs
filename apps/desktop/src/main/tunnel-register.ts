@@ -42,11 +42,10 @@
  * the network.
  */
 
+import { devhubBaseUrl } from "./devhub-url.js";
 import { getToken } from "./pair.js";
-import { settings } from "./settings.js";
 import * as tunnelSpawn from "./tunnel-spawn.js";
 
-const DEFAULT_API_BASE_URL = "https://espace-hubs.vercel.app";
 const HEARTBEAT_INTERVAL_MS = 60_000;
 const PROBE_TIMEOUT_MS = 4_000;
 const PROBE_FAIL_THRESHOLD = 3;
@@ -111,14 +110,6 @@ function ensureSpawnSubscription(): void {
     if (!state.active) return;
     void heartbeat();
   });
-}
-
-function apiBaseUrl(): string {
-  const explicit = settings.get<string>("apiBaseUrl", "");
-  return (explicit && explicit.trim() ? explicit : DEFAULT_API_BASE_URL).replace(
-    /\/$/,
-    "",
-  );
 }
 
 export function getState(): TunnelState {
@@ -206,7 +197,7 @@ export async function stop(): Promise<void> {
 
   try {
     const res = await fetch(
-      `${apiBaseUrl()}/api/v1/auth/me/companion-tunnel`,
+      `${devhubBaseUrl()}/api/v1/auth/me/companion-tunnel`,
       {
         method: "DELETE",
         headers: { authorization: `Bearer ${token}` },
@@ -395,7 +386,7 @@ async function postRegister(
 ): Promise<StartResult> {
   try {
     const res = await fetch(
-      `${apiBaseUrl()}/api/v1/auth/me/companion-tunnel`,
+      `${devhubBaseUrl()}/api/v1/auth/me/companion-tunnel`,
       {
         method: "POST",
         headers: {

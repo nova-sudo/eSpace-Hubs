@@ -54,15 +54,17 @@ interface CompanionSchema {
   vpnAutoConnectOnStart?: boolean;
   // ── Phase 3d: companion-tunnel routing ──────────────────────────
   /** Public URL of the eSpace Dev Hub frontend the companion talks
-   *  to (for /api/v1/companion/* and /me/companion-tunnel). Defaults
-   *  to the production deployment; can be pointed at a preview /
+   *  to (for /api/v1/companion/* and /me/companion-tunnel). Blank
+   *  falls back to `DEVHUB_URL` in the environment, then to
+   *  `DEFAULT_DEVHUB_URL` — see devhub-url.ts, which owns the whole
+   *  resolution order. Set this to point at a preview deploy or
    *  localhost while developing. */
   apiBaseUrl?: string;
   /** The PUBLIC hostname the user's CF Tunnel exposes the local
    *  backend at. Mirrors the tunnel's --hostname or the auto-assigned
-   *  trycloudflare.com value. The companion POSTs this to the
-   *  Vercel app on backend start so the catch-all knows where to
-   *  proxy this user's requests. */
+   *  trycloudflare.com value. The companion POSTs this to the Dev Hub
+   *  on backend start so the api's companion-proxy middleware knows
+   *  where to route this user's requests. */
   tunnelHostname?: string;
   /** When true, backend:start auto-registers tunnelHostname via the
    *  paired bearer token AND backend:stop clears it. Defaults to true

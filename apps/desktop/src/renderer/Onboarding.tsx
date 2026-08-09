@@ -425,7 +425,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
               type="text"
               value={apiBaseUrl}
               onChange={(e) => setApiBaseUrl(e.target.value.trim())}
-              placeholder="https://espace-hubs.vercel.app"
+              placeholder="https://devhub.espace.com.eg"
               style={{ ...S.input, marginTop: 8 }}
             />
             <p style={S.help}>

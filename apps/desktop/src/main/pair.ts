@@ -32,12 +32,8 @@
 
 import { shell } from "electron";
 import os from "node:os";
+import { devhubBaseUrl } from "./devhub-url.js";
 import * as keychain from "./keychain.js";
-import { settings } from "./settings.js";
-
-/** Public URL we default to when the user hasn't customised
- *  `apiBaseUrl` in settings. Production deployment of the frontend. */
-const DEFAULT_API_BASE_URL = "https://espace-hubs.vercel.app";
 
 /** Keychain key under which the bearer token + device metadata live. */
 const TOKEN_KEY = "companionToken";
@@ -74,14 +70,6 @@ interface PendingPairing {
 }
 
 let currentPolling: AbortController | null = null;
-
-function apiBaseUrl(): string {
-  const explicit = settings.get<string>("apiBaseUrl", "");
-  return (explicit && explicit.trim() ? explicit : DEFAULT_API_BASE_URL).replace(
-    /\/$/,
-    "",
-  );
-}
 
 function defaultDeviceName(): string {
   // Fallback: "<hostname> (Companion)". Users can rename via the
@@ -147,7 +135,7 @@ export function cancelPairing(): void {
 export async function pair(): Promise<PairResult> {
   cancelPairing();
 
-  const base = apiBaseUrl();
+  const base = devhubBaseUrl();
   let pending: PendingPairing;
   try {
     pending = await startPairing(base);
