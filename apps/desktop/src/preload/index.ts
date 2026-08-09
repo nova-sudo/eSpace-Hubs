@@ -44,6 +44,19 @@ const api = {
     set: (patch: Record<string, unknown>) =>
       ipcRenderer.invoke("settings:set", patch),
   },
+  // Backend env overrides — apps/api env vars the companion injects
+  // directly into the spawned process, bypassing .env.local entirely.
+  // Values never round-trip back through this bridge; `list` only ever
+  // reports whether each key is set.
+  env: {
+    list: () =>
+      ipcRenderer.invoke("env:list") as Promise<
+        Array<{ key: string; label: string; help: string; secret: boolean; set: boolean }>
+      >,
+    set: (key: string, value: string) =>
+      ipcRenderer.invoke("env:set", { key, value }) as Promise<{ ok: boolean }>,
+    clear: (key: string) => ipcRenderer.invoke("env:clear", key) as Promise<{ ok: boolean }>,
+  },
   shell: {
     openExternal: (url: string) =>
       ipcRenderer.invoke("shell:open-external", url),

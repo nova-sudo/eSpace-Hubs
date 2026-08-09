@@ -34,6 +34,7 @@ import { pingApi } from "./health";
 import { settings } from "./settings";
 import * as vpn from "./vpn";
 import * as keychain from "./keychain";
+import * as envOverrides from "./env-overrides";
 import * as pair from "./pair";
 import * as tunnel from "./tunnel-register";
 import * as tunnelSpawn from "./tunnel-spawn";
@@ -276,6 +277,27 @@ ipcMain.handle(
 ipcMain.handle("credentials:clear", async (_event, key: string) => {
   if (typeof key !== "string") throw new Error("key must be a string");
   keychain.clear(key);
+  return { ok: true };
+});
+
+ipcMain.handle("env:list", async () => {
+  return envOverrides.listEnvOverrides();
+});
+
+ipcMain.handle(
+  "env:set",
+  async (_event, { key, value }: { key: string; value: string }) => {
+    if (typeof key !== "string" || typeof value !== "string") {
+      throw new Error("key + value must be strings");
+    }
+    envOverrides.setEnvOverride(key, value);
+    return { ok: true };
+  },
+);
+
+ipcMain.handle("env:clear", async (_event, key: string) => {
+  if (typeof key !== "string") throw new Error("key must be a string");
+  envOverrides.clearEnvOverride(key);
   return { ok: true };
 });
 

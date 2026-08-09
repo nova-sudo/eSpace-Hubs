@@ -32,6 +32,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { settings } from "./settings.js";
 import { pushLog } from "./log-buffer.js";
+import { resolveEnvOverrides } from "./env-overrides.js";
 
 /** How long to wait for the "listening" log line before giving up and
  *  reporting "starting" anyway — the log format could change under us,
@@ -105,6 +106,14 @@ export async function startBackend(): Promise<{ ok: boolean; message: string }> 
   stopping = false;
   pushLog(`[companion] starting apps/api natively (cwd=${dir})`);
 
+  const overrides = resolveEnvOverrides();
+  const overrideKeys = Object.keys(overrides);
+  if (overrideKeys.length > 0) {
+    // Never log values — only which keys are being forced, so a log
+    // dump pasted into chat can't leak a secret a second time.
+    pushLog(`[companion] applying env override(s): ${overrideKeys.join(", ")}`);
+  }
+
   return new Promise((resolve) => {
     let resolved = false;
     const settle = (result: { ok: boolean; message: string }) => {
@@ -117,10 +126,21 @@ export async function startBackend(): Promise<{ ok: boolean; message: string }> 
     // resolve, unlike a real .exe. See repo-clone.ts's git-vs-npm split
     // for the same distinction (and the bug that came from getting it
     // backwards).
+    //
+    // `env` merges the overrides on top of the companion's own
+    // process.env. dotenv's default `override: false` (in apps/api's
+    // env.ts) only fills keys NOT already present in process.env, so
+    // anything set here always wins over .env.local/.env — no file on
+    // disk needs to change.
     const proc = spawn(
       "npx",
       ["tsx", "watch", "--clear-screen=false", "src/server.ts"],
-      { cwd: dir, shell: process.platform === "win32", windowsHide: true },
+      {
+        cwd: dir,
+        shell: process.platform === "win32",
+        windowsHide: true,
+        env: { ...process.env, ...overrides },
+      },
     );
     child = proc;
 

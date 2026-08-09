@@ -54,6 +54,13 @@ type CompanionWindow = Window & {
       set: (key: string, value: string) => Promise<{ ok: boolean }>;
       clear: (key: string) => Promise<{ ok: boolean }>;
     };
+    env: {
+      list: () => Promise<
+        Array<{ key: string; label: string; help: string; secret: boolean; set: boolean }>
+      >;
+      set: (key: string, value: string) => Promise<{ ok: boolean }>;
+      clear: (key: string) => Promise<{ ok: boolean }>;
+    };
     settings: {
       get: () => Promise<{
         repoPath?: string;
@@ -130,6 +137,7 @@ type VpnStatus = Awaited<ReturnType<typeof companion.vpn.status>>;
 type VpnClient = Awaited<ReturnType<typeof companion.vpn.discoverClient>>;
 type CredentialFlag = Awaited<ReturnType<typeof companion.credentials.has>>;
 type PairStatus = Awaited<ReturnType<typeof companion.pair.status>>;
+type EnvOverrideList = Awaited<ReturnType<typeof companion.env.list>>;
 
 const POLL_INTERVAL_MS = 3000;
 const LOG_LINES = 50;
@@ -144,6 +152,8 @@ export function App() {
   const [vpnPwdFlag, setVpnPwdFlag] = useState<CredentialFlag | null>(null);
   const [vpnPwdDraft, setVpnPwdDraft] = useState("");
   const [pairState, setPairState] = useState<PairStatus | null>(null);
+  const [envOverrides, setEnvOverrides] = useState<EnvOverrideList>([]);
+  const [envDrafts, setEnvDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<
     | ""
     | "starting"
@@ -157,7 +167,7 @@ export function App() {
 
   const refresh = useCallback(async () => {
     try {
-      const [s, p, ll, st, vs, vc, vp, ps] = await Promise.all([
+      const [s, p, ll, st, vs, vc, vp, ps, eo] = await Promise.all([
         companion.backend.status(),
         companion.api.ping(),
         companion.backend.logs(LOG_LINES),
@@ -166,6 +176,7 @@ export function App() {
         companion.vpn.discoverClient(),
         companion.credentials.has("vpnPassword"),
         companion.pair.status(),
+        companion.env.list(),
       ]);
       setStatus(s);
       setPing(p);
@@ -175,6 +186,7 @@ export function App() {
       setVpnClient(vc);
       setVpnPwdFlag(vp);
       setPairState(ps);
+      setEnvOverrides(eo);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -241,6 +253,25 @@ export function App() {
 
   const onClearPassword = async () => {
     await companion.credentials.clear("vpnPassword");
+    await refresh();
+  };
+
+  /* ── Backend env overrides ───────────────────────────────────── */
+
+  const onSetEnvOverride = async (key: string) => {
+    const value = envDrafts[key];
+    if (!value) return;
+    try {
+      await companion.env.set(key, value);
+      setEnvDrafts((d) => ({ ...d, [key]: "" }));
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const onClearEnvOverride = async (key: string) => {
+    await companion.env.clear(key);
     await refresh();
   };
 
@@ -362,7 +393,56 @@ export function App() {
         )}
       </Section>
 
-      <Section num="02 /" title="VPN (Crealogix)">
+      <Section num="02 /" title="Backend env overrides">
+        <p style={S.helpInline}>
+          Forced into the spawned api process's environment on every
+          start — takes priority over apps/api/.env.local and .env
+          without editing either file. Stored encrypted in the OS
+          keychain, same as the VPN password below.
+        </p>
+        {envOverrides.map((def) => (
+          <div key={def.key} style={S.field}>
+            <span style={S.fieldLabel}>{def.label}</span>
+            {def.set ? (
+              <div style={S.row}>
+                <span style={{ ...S.statValue, color: "var(--good)" }}>
+                  overriding ✓
+                </span>
+                <button
+                  type="button"
+                  style={S.btnGhost}
+                  onClick={() => onClearEnvOverride(def.key)}
+                >
+                  Clear
+                </button>
+              </div>
+            ) : (
+              <div style={S.row}>
+                <input
+                  type={def.secret ? "password" : "text"}
+                  value={envDrafts[def.key] || ""}
+                  placeholder={def.key}
+                  onChange={(e) =>
+                    setEnvDrafts((d) => ({ ...d, [def.key]: e.target.value }))
+                  }
+                  style={{ ...S.input, flex: 1 }}
+                />
+                <button
+                  type="button"
+                  style={S.btnPrimary}
+                  disabled={!envDrafts[def.key]}
+                  onClick={() => onSetEnvOverride(def.key)}
+                >
+                  Set
+                </button>
+              </div>
+            )}
+            <span style={S.fieldHelp}>{def.help}</span>
+          </div>
+        ))}
+      </Section>
+
+      <Section num="03 /" title="VPN (Crealogix)">
         <div style={S.row}>
           <Stat
             label="Tunnel"
@@ -517,7 +597,7 @@ export function App() {
         </Field>
       </Section>
 
-      <Section num="03 /" title="Pairing & tunnel routing">
+      <Section num="04 /" title="Pairing & tunnel routing">
         <div style={S.row}>
           <Stat
             label="Companion"
@@ -665,7 +745,7 @@ export function App() {
         </Field>
       </Section>
 
-      <Section num="04 /" title="Settings">
+      <Section num="05 /" title="Settings">
         <Field
           label="Repo path"
           help="Absolute path to your espace-devhub checkout. The companion runs the backend directly from here — no Docker."
@@ -699,7 +779,7 @@ export function App() {
         </Field>
       </Section>
 
-      <Section num="05 /" title="Logs">
+      <Section num="06 /" title="Logs">
         <pre style={S.logs}>
           {logs.length === 0 ? "(no logs yet — Start backend to see output)" : logs.join("\n")}
         </pre>
