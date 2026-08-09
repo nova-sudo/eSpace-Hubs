@@ -7,8 +7,8 @@
 > 1. **Vercel is gone** — the app runs on self-hosted Coolify. Every
 >    "Vercel → Settings → Environment Variables" step below means the
 >    equivalent Coolify app-env screen, and the public domain is your
->    Coolify one, not `espace-hubs.vercel.app` (the api is at
->    `espace-hubs-api.espace.ws`). See
+>    Coolify one: `espace-hubs.espace.ws` for the web app,
+>    `espace-hubs-api.espace.ws` for the api. See
 >    [`deployment-coolify.md`](./deployment-coolify.md).
 > 2. **`API_ORIGIN` is global, not per-user** — pointing it at your
 >    tunnel redirects *everybody's* traffic to your laptop. That was

@@ -425,7 +425,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
               type="text"
               value={apiBaseUrl}
               onChange={(e) => setApiBaseUrl(e.target.value.trim())}
-              placeholder="https://espace-hubs-api.espace.ws"
+              placeholder="https://espace-hubs.espace.ws"
               style={{ ...S.input, marginTop: 8 }}
             />
             <p style={S.help}>

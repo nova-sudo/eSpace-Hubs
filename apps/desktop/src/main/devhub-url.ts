@@ -22,32 +22,36 @@
  * ── CHANGE THIS WHEN THE PUBLIC DOMAIN CHANGES ─────────────────────
  * Whatever this resolves to must be a PUBLICLY reachable origin that
  * serves `/api/v1/*` — never the container-internal `http://api:4000`.
- * Two origins qualify on the Coolify split deploy
- * (docs/deployment-coolify.md), and either works:
  *
- *   - the **api** app's own domain — what we default to, one less hop
- *   - the **web** app's domain, which rewrites `/api/v1/*` to the api
- *     container via `API_ORIGIN`
+ * Use the **web** origin, not the api app's own domain. Both serve
+ * `/api/v1/*` on the Coolify split deploy (the web tier rewrites them
+ * to the api container via `API_ORIGIN`), so either technically works
+ * — but the web origin is the one that exists in EVERY topology
+ * (bundled, split, and `npm run dev` on :3000), it's the origin users
+ * know and will paste into the "Dev Hub URL" field themselves, and
+ * it's guaranteed public because it's the product. A public domain on
+ * the api app is optional on Coolify — web reaches it over the
+ * internal network — so defaulting to it would bet on an exposure
+ * that might be incidental. The extra rewrite hop is nothing at this
+ * call volume: one pairing exchange, then one heartbeat a minute.
  *
- * The companion never needs the web origin for its own sake: it only
- * calls `/api/v1/companion/*` and `/api/v1/auth/me/companion-tunnel`,
- * and the browser-facing pairing-approval link is built SERVER-side
- * from the api's `APP_URL` and handed back in the /pair/start response
- * (see `approvalBaseUrl()` in modules/companion/controller.ts). Which
- * means: if `APP_URL` on the api service is wrong or unset, the
- * approval link the companion opens will be wrong no matter what this
- * constant says.
+ * Note what this constant does NOT control: the pairing-approval link
+ * the companion opens in the user's browser is built SERVER-side from
+ * the api's `APP_URL` and handed back in the /pair/start response (see
+ * `approvalBaseUrl()` in modules/companion/controller.ts). If `APP_URL`
+ * on the api service is wrong or unset, that link is wrong no matter
+ * what's set here.
  */
 
 import { settings } from "./settings.js";
 
 /**
- * Public origin of the production Dev Hub API.
+ * Public web origin of the production Dev Hub deployment.
  *
  * If the deployment moves, this constant is the only thing that needs
  * editing — or ship the build with `DEVHUB_URL` set.
  */
-export const DEFAULT_DEVHUB_URL = "https://espace-hubs-api.espace.ws";
+export const DEFAULT_DEVHUB_URL = "https://espace-hubs.espace.ws";
 
 function clean(value: string | undefined | null): string | null {
   if (typeof value !== "string") return null;
