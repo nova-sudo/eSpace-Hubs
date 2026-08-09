@@ -1,6 +1,6 @@
 {
   "name": "@espace-devhub/desktop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "eSpace Dev Hub — desktop companion (Crealogix backend + VPN runner).",
   "main": "dist/main/index.js",

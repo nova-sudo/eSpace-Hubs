@@ -658,7 +658,7 @@ export function App() {
           <input
             type="text"
             value={settings.apiBaseUrl || ""}
-            placeholder="https://devhub.espace.com.eg"
+            placeholder="https://espace-hubs-api.espace.ws"
             onChange={(e) => onSettingChange("apiBaseUrl", e.target.value.trim())}
             style={S.input}
           />

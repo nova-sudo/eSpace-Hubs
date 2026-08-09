@@ -7,7 +7,8 @@
 > 1. **Vercel is gone** — the app runs on self-hosted Coolify. Every
 >    "Vercel → Settings → Environment Variables" step below means the
 >    equivalent Coolify app-env screen, and the public domain is your
->    Coolify one, not `espace-hubs.vercel.app`. See
+>    Coolify one, not `espace-hubs.vercel.app` (the api is at
+>    `espace-hubs-api.espace.ws`). See
 >    [`deployment-coolify.md`](./deployment-coolify.md).
 > 2. **`API_ORIGIN` is global, not per-user** — pointing it at your
 >    tunnel redirects *everybody's* traffic to your laptop. That was
@@ -51,8 +52,7 @@ docker compose --profile tunnel up -d
 #    Vercel → Deployments → Redeploy
 ```
 
-That's it. Visit `https://devhub.espace.com.eg` (or whatever your
-deploy domain is). Every `/api/v1/*` call now traverses Vercel →
+That's it. Visit your Dev Hub's public web domain. Every `/api/v1/*` call now traverses Vercel →
 Cloudflare Tunnel → your `api` container → upstreams visible from
 your host.
 
@@ -114,7 +114,7 @@ docker compose --profile tunnel up -d
 #   (Production scope)
 # Vercel → Deployments → Redeploy
 
-# Visit https://devhub.espace.com.eg — all /api/v1/* now flows
+# Visit your Dev Hub's public web domain — all /api/v1/* now flows
 # through your laptop's api.
 ```
 

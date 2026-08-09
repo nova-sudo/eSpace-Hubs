@@ -20,26 +20,34 @@
  *   3. `DEFAULT_DEVHUB_URL` below.
  *
  * ── CHANGE THIS WHEN THE PUBLIC DOMAIN CHANGES ─────────────────────
- * `DEFAULT_DEVHUB_URL` must be the PUBLIC web origin of the Dev Hub —
- * the same value the Coolify `web` app serves on and that
- * `NEXT_PUBLIC_APP_URL` / `APP_URL` are set to (see
- * docs/deployment-coolify.md). Not the internal `http://api:4000`
- * address: the companion talks to the public web tier, and the
- * pairing-approval link it shows the user has to be clickable from a
- * browser.
+ * Whatever this resolves to must be a PUBLICLY reachable origin that
+ * serves `/api/v1/*` — never the container-internal `http://api:4000`.
+ * Two origins qualify on the Coolify split deploy
+ * (docs/deployment-coolify.md), and either works:
+ *
+ *   - the **api** app's own domain — what we default to, one less hop
+ *   - the **web** app's domain, which rewrites `/api/v1/*` to the api
+ *     container via `API_ORIGIN`
+ *
+ * The companion never needs the web origin for its own sake: it only
+ * calls `/api/v1/companion/*` and `/api/v1/auth/me/companion-tunnel`,
+ * and the browser-facing pairing-approval link is built SERVER-side
+ * from the api's `APP_URL` and handed back in the /pair/start response
+ * (see `approvalBaseUrl()` in modules/companion/controller.ts). Which
+ * means: if `APP_URL` on the api service is wrong or unset, the
+ * approval link the companion opens will be wrong no matter what this
+ * constant says.
  */
 
 import { settings } from "./settings.js";
 
 /**
- * Public origin of the production Dev Hub deployment.
+ * Public origin of the production Dev Hub API.
  *
- * Taken from the Coolify runbook's worked example
- * (docs/deployment-coolify.md → web build variables). If the real
- * deployment sits on a different domain, this constant is the only
- * thing that needs editing — or ship the build with `DEVHUB_URL` set.
+ * If the deployment moves, this constant is the only thing that needs
+ * editing — or ship the build with `DEVHUB_URL` set.
  */
-export const DEFAULT_DEVHUB_URL = "https://devhub.espace.com.eg";
+export const DEFAULT_DEVHUB_URL = "https://espace-hubs-api.espace.ws";
 
 function clean(value: string | undefined | null): string | null {
   if (typeof value !== "string") return null;
