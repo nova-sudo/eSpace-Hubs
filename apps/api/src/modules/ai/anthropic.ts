@@ -88,16 +88,17 @@ function litellmBaseUrl(): string {
 }
 
 /**
- * Default model — Sonnet 4.6, strong + cost-sane (classification + grading
- * run one call per goal / per PR). Override via ANTHROPIC_MODEL.
+ * Default model — Sonnet, strong + cost-sane (classification + grading run
+ * one call per goal / per PR). Override via ANTHROPIC_MODEL.
  *
- * The id is backend-specific and the defaults below are only a starting
- * point:
- *   litellm  the model NAME as configured on the gateway — check the
- *            Models page in the LiteLLM UI and set ANTHROPIC_MODEL (or
- *            LITELLM_MODEL) to the exact string listed there.
+ * The id is backend-specific, so each backend carries its own default:
+ *   litellm  the model NAME as configured on the gateway, NOT an Anthropic
+ *            or Bedrock id. `claude-sonnet-5` is the alias eSpace's gateway
+ *            publishes; if the Models page in the LiteLLM UI ever lists
+ *            something else, set ANTHROPIC_MODEL (or LITELLM_MODEL).
  *   bedrock  region-/inference-profile-specific, carrying an `anthropic.`
- *            (often `us.anthropic.…:0`) prefix.
+ *            (often `us.anthropic.…:0`) prefix — best-effort only, set
+ *            ANTHROPIC_MODEL to your account's exact id.
  */
 export function anthropicModel(): string {
   if (process.env.ANTHROPIC_MODEL) return process.env.ANTHROPIC_MODEL;
@@ -105,7 +106,7 @@ export function anthropicModel(): string {
     case "bedrock":
       return "anthropic.claude-sonnet-4-6";
     case "litellm":
-      return process.env.LITELLM_MODEL || "claude-sonnet-4-6";
+      return process.env.LITELLM_MODEL || "claude-sonnet-5";
     default:
       return "claude-sonnet-4-6";
   }

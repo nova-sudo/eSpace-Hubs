@@ -89,14 +89,18 @@ test("a lone direct key keeps an unmigrated env on api.anthropic.com", () => {
 });
 
 test("model id follows the backend, and ANTHROPIC_MODEL always wins", () => {
-  withEnv({}, () => assert.equal(anthropicModel(), "claude-sonnet-4-6"));
+  // Gateway default is the alias LiteLLM publishes, not an Anthropic id.
+  withEnv({}, () => assert.equal(anthropicModel(), "claude-sonnet-5"));
+  withEnv({ ANTHROPIC_BACKEND: "direct" }, () =>
+    assert.equal(anthropicModel(), "claude-sonnet-4-6"),
+  );
   withEnv({ ANTHROPIC_BEDROCK: "1" }, () =>
     assert.equal(anthropicModel(), "anthropic.claude-sonnet-4-6"),
   );
-  withEnv({ LITELLM_MODEL: "bedrock-sonnet" }, () =>
-    assert.equal(anthropicModel(), "bedrock-sonnet"),
+  withEnv({ LITELLM_MODEL: "claude-opus-5" }, () =>
+    assert.equal(anthropicModel(), "claude-opus-5"),
   );
-  withEnv({ LITELLM_MODEL: "bedrock-sonnet", ANTHROPIC_MODEL: "pinned" }, () =>
+  withEnv({ LITELLM_MODEL: "claude-opus-5", ANTHROPIC_MODEL: "pinned" }, () =>
     assert.equal(anthropicModel(), "pinned"),
   );
 });
