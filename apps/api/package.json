@@ -22,6 +22,7 @@
     "test": "tsx --test src/modules/ai/extract/extract.test.ts src/modules/ai/compose-guards.test.ts src/modules/ai/anthropic-backend.test.ts src/modules/integrations/query-runner.test.ts src/modules/integrations/query-routes.test.ts",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json",
+    "ai:check": "tsx scripts/litellm-check.ts",
     "admin:create": "tsx scripts/admin-create.ts",
     "admin:reset-password": "tsx scripts/reset-password.ts",
     "admin:reset-totp": "tsx scripts/reset-totp.ts"
