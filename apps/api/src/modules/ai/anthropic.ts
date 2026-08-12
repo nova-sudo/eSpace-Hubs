@@ -57,23 +57,48 @@ export type AnthropicBackend = "litellm" | "bedrock" | "direct";
 
 const LITELLM_DEFAULT_BASE_URL = "https://litellm.espace.ws";
 
-export function anthropicBackend(): AnthropicBackend {
+/**
+ * Resolve the backend AND why it was chosen.
+ *
+ * The reason matters as much as the answer. Every branch below is a
+ * silent decision: nothing fails, a request just quietly goes somewhere
+ * other than where whoever set the env expected. The legacy branch in
+ * particular means an environment can be fully migrated in code and
+ * still route to Bedrock forever because one stale variable outranks the
+ * default — visible only as an absence of traffic in the gateway's logs,
+ * which is close to impossible to notice.
+ */
+export function resolveAnthropicBackend(): {
+  backend: AnthropicBackend;
+  source: string;
+} {
   const explicit = (process.env.ANTHROPIC_BACKEND || "").trim().toLowerCase();
   if (explicit === "litellm" || explicit === "bedrock" || explicit === "direct") {
-    return explicit;
+    return { backend: explicit, source: "ANTHROPIC_BACKEND" };
   }
 
   const legacyBedrock = (process.env.ANTHROPIC_BEDROCK || "").trim().toLowerCase();
   if (legacyBedrock === "1" || legacyBedrock === "true" || legacyBedrock === "yes") {
-    return "bedrock";
+    return {
+      backend: "bedrock",
+      source:
+        "ANTHROPIC_BEDROCK (legacy flag — set ANTHROPIC_BACKEND=litellm to migrate)",
+    };
   }
 
   // No explicit choice: a direct key with no gateway key means this env
   // predates the migration and should keep talking to api.anthropic.com.
   if (process.env.ANTHROPIC_API_KEY && !process.env.LITELLM_API_KEY) {
-    return "direct";
+    return {
+      backend: "direct",
+      source: "inferred (ANTHROPIC_API_KEY set, LITELLM_API_KEY absent)",
+    };
   }
-  return "litellm";
+  return { backend: "litellm", source: "default" };
+}
+
+export function anthropicBackend(): AnthropicBackend {
+  return resolveAnthropicBackend().backend;
 }
 
 /**
@@ -100,6 +125,20 @@ function litellmBaseUrl(): string {
  *            (often `us.anthropic.…:0`) prefix — best-effort only, set
  *            ANTHROPIC_MODEL to your account's exact id.
  */
+/**
+ * Does this id look like a Bedrock model / inference-profile rather than a
+ * gateway alias? Bedrock ids carry a vendor prefix (`anthropic.…`), usually
+ * behind a region prefix (`us.`, `eu.`, `apac.`) and sometimes with a `:0`
+ * version suffix. Gateway aliases are bare names like `claude-sonnet-5`.
+ *
+ * Worth detecting because ANTHROPIC_MODEL is read before the backend
+ * switch, so a value left over from Bedrock silently follows the migration
+ * across and every request 403s on a model the gateway will not route.
+ */
+export function looksLikeBedrockModelId(id: string): boolean {
+  return /^(?:[a-z]{2,5}\.)?anthropic\./i.test(id.trim());
+}
+
 export function anthropicModel(): string {
   if (process.env.ANTHROPIC_MODEL) return process.env.ANTHROPIC_MODEL;
   switch (anthropicBackend()) {
