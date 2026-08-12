@@ -78,7 +78,7 @@ Two application containers + one database, all in **one Coolify project**:
 | `SESSION_SECRET` | **carry over unchanged from Vercel** (see migration) |
 | `INTEGRATION_TOKEN_KEY` | **carry over unchanged from Vercel** (see migration) |
 | `APP_URL` | public web origin (outbound email links) |
-| `AI_PROVIDER` + provider keys | `ANTHROPIC_*`/`AWS_*` · `MISTRAL_*` · `GLM_*` · `OPENROUTER_*` |
+| `AI_PROVIDER` + provider keys | `ANTHROPIC_BACKEND=litellm` + `LITELLM_*` (Claude via the eSpace gateway) · `MISTRAL_*` · `GLM_*` · `OPENROUTER_*` |
 | `RESEND_*` | email transport (`RESEND_API_KEY`, `RESEND_DOMAIN_MODE`, `RESEND_FROM_*`) |
 | `LOG_LEVEL` | e.g. `info` |
 | `<ENGAGEMENT>_GITHUB_CLIENT_ID` | per-engagement OAuth client ids |

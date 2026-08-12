@@ -30,7 +30,9 @@ import {
 const DEFAULT_PROVIDER = "mistral";
 
 export const AI_PROVIDERS = Object.freeze([
-  { id: "anthropic", label: "Claude (Anthropic)", env: "ANTHROPIC_API_KEY" },
+  // Claude is served through the eSpace LiteLLM gateway, so the key the
+  // API needs is the virtual key — not an api.anthropic.com key.
+  { id: "anthropic", label: "Claude (Anthropic)", env: "LITELLM_API_KEY" },
   { id: "mistral", label: "Mistral", env: "MISTRAL_API_KEY" },
   { id: "glm", label: "GLM (Z.ai)", env: "GLM_API_KEY" },
   { id: "openrouter", label: "OpenRouter", env: "OPENROUTER_API_KEY" },

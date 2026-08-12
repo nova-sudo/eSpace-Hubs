@@ -7,8 +7,11 @@
  * when the requested provider id is "anthropic".
  *
  * Config:
- *   ANTHROPIC_API_KEY   server-side key (required)
- *   ANTHROPIC_MODEL     optional model override (default: claude-opus-4-8)
+ *   ANTHROPIC_BACKEND   litellm (default) | bedrock | direct
+ *   LITELLM_API_KEY     virtual key for the LiteLLM gateway
+ *   LITELLM_BASE_URL    gateway origin (default: https://litellm.espace.ws)
+ *   ANTHROPIC_API_KEY   server-side key — direct backend only
+ *   ANTHROPIC_MODEL     optional model override
  *
  * System prompts go in the top-level `system` param (Claude separates them
  * from the user/assistant turn list); we never put a system role inside
@@ -36,28 +39,76 @@ export function isAnthropicId(id: string): boolean {
 }
 
 /**
- * Backend: Amazon Bedrock (AWS-managed Claude, AWS creds) vs the direct
- * Anthropic API (a single ANTHROPIC_API_KEY). Toggle with ANTHROPIC_BEDROCK.
- * Both speak the identical `messages.create` API — only the client and the
+ * Which backend serves Claude. All three speak the identical
+ * `messages.create` API — only the client, the credentials and the
  * model-id format differ.
+ *
+ *   litellm  eSpace's LiteLLM gateway. One virtual key, and the gateway
+ *            holds the AWS credentials. This is the supported path to
+ *            Bedrock — direct Bedrock access is being switched off.
+ *   bedrock  LEGACY. Talks to Amazon Bedrock directly with AWS creds.
+ *   direct   api.anthropic.com with an ANTHROPIC_API_KEY.
+ *
+ * Selected by ANTHROPIC_BACKEND. When that is unset we honour the older
+ * ANTHROPIC_BEDROCK flag so environments mid-migration keep working, then
+ * fall back to whichever credential is actually present.
  */
-function useBedrock(): boolean {
-  const v = (process.env.ANTHROPIC_BEDROCK || "").trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
+export type AnthropicBackend = "litellm" | "bedrock" | "direct";
+
+const LITELLM_DEFAULT_BASE_URL = "https://litellm.espace.ws";
+
+export function anthropicBackend(): AnthropicBackend {
+  const explicit = (process.env.ANTHROPIC_BACKEND || "").trim().toLowerCase();
+  if (explicit === "litellm" || explicit === "bedrock" || explicit === "direct") {
+    return explicit;
+  }
+
+  const legacyBedrock = (process.env.ANTHROPIC_BEDROCK || "").trim().toLowerCase();
+  if (legacyBedrock === "1" || legacyBedrock === "true" || legacyBedrock === "yes") {
+    return "bedrock";
+  }
+
+  // No explicit choice: a direct key with no gateway key means this env
+  // predates the migration and should keep talking to api.anthropic.com.
+  if (process.env.ANTHROPIC_API_KEY && !process.env.LITELLM_API_KEY) {
+    return "direct";
+  }
+  return "litellm";
+}
+
+/**
+ * Gateway origin. The Anthropic SDK appends `/v1/messages` itself, but the
+ * LiteLLM UI displays the OpenAI-style `…/v1` base URL, so a pasted value
+ * with `/v1` on the end is the likely mistake — trim it rather than issue
+ * every request against `/v1/v1/messages`.
+ */
+function litellmBaseUrl(): string {
+  const raw = (process.env.LITELLM_BASE_URL || LITELLM_DEFAULT_BASE_URL).trim();
+  return raw.replace(/\/+$/, "").replace(/\/v1$/, "");
 }
 
 /**
  * Default model — Sonnet 4.6, strong + cost-sane (classification + grading
  * run one call per goal / per PR). Override via ANTHROPIC_MODEL.
  *
- * Bedrock model ids are region-/inference-profile-specific and carry an
- * `anthropic.` (often `us.anthropic.…:0`) prefix, so on Bedrock you should
- * set ANTHROPIC_MODEL to YOUR account's exact id. The default below is a
- * best-effort starting point.
+ * The id is backend-specific and the defaults below are only a starting
+ * point:
+ *   litellm  the model NAME as configured on the gateway — check the
+ *            Models page in the LiteLLM UI and set ANTHROPIC_MODEL (or
+ *            LITELLM_MODEL) to the exact string listed there.
+ *   bedrock  region-/inference-profile-specific, carrying an `anthropic.`
+ *            (often `us.anthropic.…:0`) prefix.
  */
 export function anthropicModel(): string {
   if (process.env.ANTHROPIC_MODEL) return process.env.ANTHROPIC_MODEL;
-  return useBedrock() ? "anthropic.claude-sonnet-4-6" : "claude-sonnet-4-6";
+  switch (anthropicBackend()) {
+    case "bedrock":
+      return "anthropic.claude-sonnet-4-6";
+    case "litellm":
+      return process.env.LITELLM_MODEL || "claude-sonnet-4-6";
+    default:
+      return "claude-sonnet-4-6";
+  }
 }
 
 type AnyClient = Anthropic | AnthropicBedrock;
@@ -65,7 +116,30 @@ let client: AnyClient | null = null;
 
 function getClient(): AnyClient {
   if (client) return client;
-  if (useBedrock()) {
+  const backend = anthropicBackend();
+
+  if (backend === "litellm") {
+    const key = process.env.LITELLM_API_KEY;
+    if (!key) {
+      throw new HttpError(
+        500,
+        "ai_provider_unconfigured",
+        "Claude has no credentials. Set LITELLM_API_KEY to your LiteLLM virtual key in the API env and restart.",
+      );
+    }
+    // LiteLLM exposes Anthropic's own /v1/messages surface, so the stock
+    // SDK works unchanged against it — only the base URL and the key
+    // change. The SDK sends the key as `x-api-key`; the Bearer header is
+    // added because gateway deployments may read either one.
+    client = new Anthropic({
+      baseURL: litellmBaseUrl(),
+      apiKey: key,
+      defaultHeaders: { Authorization: `Bearer ${key}` },
+    });
+    return client;
+  }
+
+  if (backend === "bedrock") {
     // AnthropicBedrock resolves AWS creds from the standard chain
     // (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN, or an
     // IAM role). Region defaults to us-east-1 if AWS_REGION is unset.
@@ -74,12 +148,13 @@ function getClient(): AnyClient {
     );
     return client;
   }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new HttpError(
       500,
       "ai_provider_unconfigured",
-      "Claude has no credentials. Set ANTHROPIC_API_KEY, or enable Bedrock with ANTHROPIC_BEDROCK=1 + AWS creds, in the API env and restart.",
+      "Claude has no credentials. Set ANTHROPIC_API_KEY, or point at the LiteLLM gateway with ANTHROPIC_BACKEND=litellm + LITELLM_API_KEY, in the API env and restart.",
     );
   }
   client = new Anthropic({ apiKey });
