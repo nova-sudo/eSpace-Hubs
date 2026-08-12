@@ -35,9 +35,8 @@ process.env.MONGO_URI ??= "mongodb://localhost:27017";
 process.env.SESSION_SECRET ??= "litellm-check-placeholder-000000000000";
 process.env.INTEGRATION_TOKEN_KEY ??= "litellm-check-placeholder-00000000000";
 
-const { anthropicBackend, anthropicModel, anthropicComplete } = await import(
-  "../src/modules/ai/anthropic.js"
-);
+const { resolveAnthropicBackend, anthropicModel, anthropicComplete } =
+  await import("../src/modules/ai/anthropic.js");
 
 const args = process.argv.slice(2);
 const wantModels = args.includes("--models");
@@ -59,11 +58,13 @@ function baseUrl(): string {
   return raw.replace(/\/+$/, "").replace(/\/v1$/, "");
 }
 
-const backend = anthropicBackend();
+const resolved = resolveAnthropicBackend();
+const backend = resolved.backend;
 const model = anthropicModel();
 
 console.log("resolved config");
 console.log(`  backend   ${backend}`);
+console.log(`  chosen by ${resolved.source}`);
 console.log(`  model     ${model}`);
 if (backend === "litellm") {
   console.log(`  base url  ${baseUrl()}`);
