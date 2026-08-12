@@ -35,8 +35,12 @@ process.env.MONGO_URI ??= "mongodb://localhost:27017";
 process.env.SESSION_SECRET ??= "litellm-check-placeholder-000000000000";
 process.env.INTEGRATION_TOKEN_KEY ??= "litellm-check-placeholder-00000000000";
 
-const { resolveAnthropicBackend, anthropicModel, anthropicComplete } =
-  await import("../src/modules/ai/anthropic.js");
+const {
+  resolveAnthropicBackend,
+  anthropicModel,
+  anthropicComplete,
+  looksLikeBedrockModelId,
+} = await import("../src/modules/ai/anthropic.js");
 
 const args = process.argv.slice(2);
 const wantModels = args.includes("--models");
@@ -138,7 +142,30 @@ try {
     const blockedByIntermediary =
       status === 403 && /allowlist|egress|forbidden by proxy|tunnel/i.test(message);
 
-    if (blockedByIntermediary) {
+    // LiteLLM returns 403 team_model_access_denied when the key is valid
+    // but the model is outside the team's allow-list. That is a model
+    // problem wearing an auth status code — and the body names every
+    // model the team CAN reach, which is the answer, so surface it.
+    const modelNotAllowed =
+      status === 403 &&
+      /team_model_access_denied|not allowed to access model/i.test(message);
+
+    if (modelNotAllowed) {
+      const allowed = message.match(/models=\[([^\]]*)\]/)?.[1];
+      console.error(
+        `\nThe key is fine — the model is not. This team cannot reach\n` +
+          `"${model}".` +
+          (allowed ? `\n\nIt CAN reach:\n  ${allowed.replace(/['\s]/g, "").split(",").join("\n  ")}` : ""),
+      );
+      console.error(
+        `\nSet ANTHROPIC_MODEL to one of those, or unset it to take the\n` +
+          `default (claude-sonnet-5).` +
+          (looksLikeBedrockModelId(model)
+            ? `\n\nNote "${model}" is a Bedrock id — likely left over from the\n` +
+              `pre-gateway setup. The gateway routes by alias, not Bedrock id.`
+            : ""),
+      );
+    } else if (blockedByIntermediary) {
       console.error(
         `\nThis was blocked BEFORE it reached the gateway — the message above\n` +
           `came from a proxy, not from LiteLLM. The key is not implicated.\n` +

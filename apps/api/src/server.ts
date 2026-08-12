@@ -17,7 +17,11 @@ import { logger } from "./lib/logger.js";
 import { connect, disconnect } from "./db/client.js";
 import { bootstrap } from "./db/collections.js";
 import { seedDefaultOrg } from "./db/seed.js";
-import { resolveAnthropicBackend, anthropicModel } from "./modules/ai/anthropic.js";
+import {
+  resolveAnthropicBackend,
+  anthropicModel,
+  looksLikeBedrockModelId,
+} from "./modules/ai/anthropic.js";
 
 const SHUTDOWN_DEADLINE_MS = 10_000;
 
@@ -43,10 +47,22 @@ async function main(): Promise<void> {
   // the legacy path is to notice that a gateway's logs stay empty — the
   // requests themselves succeed either way, so nothing surfaces.
   const ai = resolveAnthropicBackend();
+  const aiModel = anthropicModel();
   logger.info(
-    { backend: ai.backend, source: ai.source, model: anthropicModel() },
+    { backend: ai.backend, source: ai.source, model: aiModel },
     `[boot] claude backend: ${ai.backend} (via ${ai.source})`,
   );
+
+  // ANTHROPIC_MODEL is read before the backend switch, so a Bedrock id set
+  // for the old path follows the migration across and 403s on every
+  // request. Say so at boot rather than once per failed classification.
+  if (ai.backend === "litellm" && looksLikeBedrockModelId(aiModel)) {
+    logger.warn(
+      { model: aiModel },
+      `[boot] ANTHROPIC_MODEL="${aiModel}" is a Bedrock id, but the backend is the LiteLLM gateway — ` +
+        `it routes by alias (e.g. claude-sonnet-5). Expect 403 team_model_access_denied until this is changed or unset.`,
+    );
+  }
 
   const server = app.listen(env.PORT, () => {
     logger.info(

@@ -125,6 +125,20 @@ function litellmBaseUrl(): string {
  *            (often `us.anthropic.…:0`) prefix — best-effort only, set
  *            ANTHROPIC_MODEL to your account's exact id.
  */
+/**
+ * Does this id look like a Bedrock model / inference-profile rather than a
+ * gateway alias? Bedrock ids carry a vendor prefix (`anthropic.…`), usually
+ * behind a region prefix (`us.`, `eu.`, `apac.`) and sometimes with a `:0`
+ * version suffix. Gateway aliases are bare names like `claude-sonnet-5`.
+ *
+ * Worth detecting because ANTHROPIC_MODEL is read before the backend
+ * switch, so a value left over from Bedrock silently follows the migration
+ * across and every request 403s on a model the gateway will not route.
+ */
+export function looksLikeBedrockModelId(id: string): boolean {
+  return /^(?:[a-z]{2,5}\.)?anthropic\./i.test(id.trim());
+}
+
 export function anthropicModel(): string {
   if (process.env.ANTHROPIC_MODEL) return process.env.ANTHROPIC_MODEL;
   switch (anthropicBackend()) {
