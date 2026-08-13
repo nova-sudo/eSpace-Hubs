@@ -34,6 +34,7 @@ import {
 import { assertDocumentUploadAllowed } from "../../lib/ai-document-policy.js";
 import { resolveRequestedId, selectProvider } from "./provider.js";
 import { anthropicComplete, isAnthropicId } from "./anthropic.js";
+import { openSse, wantsSse, type SseChannel } from "../../lib/sse.js";
 // Import from the leaf `limits` module, NOT from ./extract/index.js — the
 // latter reaches run-in-worker.ts and its `new Worker(...)` call, which
 // Turbopack can't statically analyse and which breaks the web build when it
@@ -1475,6 +1476,17 @@ const COMPOSE_MAX_TOKENS = 4_000;
  */
 const COMPOSE_TIMEOUT_MS = 25_000;
 
+/**
+ * The same budget for a client that speaks SSE.
+ *
+ * The 25s above exists only because a silent response gets severed at ~30s.
+ * A stream is never silent — it emits from the first millisecond and keeps
+ * emitting — so that ceiling does not apply and the limit can be what the
+ * work actually needs. Compose asks for up to COMPOSE_MAX_TOKENS of JSON,
+ * which through a gateway can legitimately run past a minute.
+ */
+const COMPOSE_STREAM_TIMEOUT_MS = 120_000;
+
 interface CleanComposedBlock {
   cadence?: string;
   prompt?: string;
@@ -1778,6 +1790,15 @@ export async function composeWidgetHandler(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
+  // Opened lazily: everything up to the model call can still fail with a
+  // real status code, and once the stream is open that option is gone.
+  let sse: SseChannel | null = null;
+  const streaming = wantsSse(req.headers.accept);
+  const respond = (body: unknown): void => {
+    if (sse) sse.result(body);
+    else res.json(body);
+  };
+
   try {
     const session = req.session;
     if (!session) {
@@ -1811,6 +1832,11 @@ export async function composeWidgetHandler(
     // misleading "returned non-JSON content".
     let truncated = false;
 
+    // From here on the work can outlast the proxy's idle ceiling, so start
+    // the stream before the model call rather than after it.
+    if (streaming) sse = openSse(res);
+    const budgetMs = streaming ? COMPOSE_STREAM_TIMEOUT_MS : COMPOSE_TIMEOUT_MS;
+
     if (
       isAnthropicId(
         resolveRequestedId({ request: req, bodyProvider: payload.provider ?? null }),
@@ -1820,7 +1846,8 @@ export async function composeWidgetHandler(
         system: COMPOSE_WIDGET_SYSTEM_PROMPT,
         messages: [{ role: "user", content: userPrompt }],
         maxTokens: COMPOSE_MAX_TOKENS,
-        timeoutMs: COMPOSE_TIMEOUT_MS,
+        timeoutMs: budgetMs,
+        ...(sse ? { onDelta: (t: string) => sse?.tick(t.length) } : {}),
       });
       content = r.content;
       modelName = r.model;
@@ -1841,7 +1868,7 @@ export async function composeWidgetHandler(
           { role: "system", content: COMPOSE_WIDGET_SYSTEM_PROMPT },
           { role: "user", content: userPrompt },
         ],
-      }, COMPOSE_TIMEOUT_MS);
+      }, budgetMs);
       const data = upstream.data as CompletionResponse;
       content = data.choices?.[0]?.message?.content ?? "";
       modelName = data.model;
@@ -2024,7 +2051,7 @@ export async function composeWidgetHandler(
         },
         "[ai] compose-widget seeded default fields",
       );
-      res.json({
+      respond({
         spec: fallback.spec,
         seeded: true,
         unrepresented,
@@ -2053,7 +2080,7 @@ export async function composeWidgetHandler(
       },
       "[ai] composed a custom widget",
     );
-    res.json({
+    respond({
       spec: built.spec,
       seeded,
       unrepresented,
@@ -2061,6 +2088,18 @@ export async function composeWidgetHandler(
       provider: providerId,
     });
   } catch (err) {
+    // Once the stream is open the status line is already sent, so the
+    // normal error handler cannot do its job — report in-band instead, and
+    // keep the shape the client would have received from it.
+    if (sse) {
+      const e = err as { code?: string; message?: string };
+      logger.warn(
+        { err: e.message, path: "/api/v1/ai/compose-widget" },
+        "[ai] compose-widget failed after the stream opened",
+      );
+      sse.fail(e.code ?? "compose_failed", e.message ?? "Compose failed.");
+      return;
+    }
     next(err);
   }
 }

@@ -90,6 +90,13 @@ export async function composeWidget({
     headers: {
       "Content-Type": "application/json",
       "x-ai-provider": provider,
+      // Ask for events, not a single body. Compose routinely runs past the
+      // ~30s a proxy will hold a silent response open, and being severed
+      // yields no status and no message — the request just dies. A stream
+      // emits from the first millisecond, so the connection stays provably
+      // alive for as long as the work takes. The payload is unchanged; it
+      // arrives whole, in one `result` event.
+      Accept: "text/event-stream",
     },
     body: JSON.stringify({
       goalId,
@@ -103,11 +110,22 @@ export async function composeWidget({
     signal,
   });
 
-  const body = await res.json().catch(() => ({}));
+  // The server honours the Accept header, but a cached bundle or an older
+  // deployment can still answer with plain JSON — read whichever arrived
+  // rather than assuming, so a version skew degrades instead of breaking.
+  const body = res.headers.get("content-type")?.includes("text/event-stream")
+    ? await readSseResult(res)
+    : await res.json().catch(() => ({}));
+
   if (!res.ok) {
     throw new Error(
       body?.error?.message || body?.error || `Couldn't build a tracker (${res.status}).`,
     );
+  }
+  // An SSE response is always HTTP 200 — the status line is sent before the
+  // work starts — so an in-band failure has to be checked separately.
+  if (body?.__sseError) {
+    throw new Error(body.message || "Couldn't build a tracker.");
   }
   if (!body?.spec) throw new Error("The AI returned no tracker — try rephrasing.");
   // `seeded: true` means the model's field list was unusable and the server
@@ -182,6 +200,70 @@ export async function extractComposeAttachment({ goalId, file, signal }) {
     warnings: toStringList(extracted.warnings),
     info: toStringList(extracted.info),
   };
+}
+
+/**
+ * Read an SSE response down to its single terminal event.
+ *
+ * Not a general EventSource replacement — `EventSource` cannot POST, and
+ * this stream carries exactly one payload. `progress` events exist only to
+ * keep the connection warm and carry nothing worth surfacing, so they are
+ * counted and dropped. Resolves with the `result` payload, or with an
+ * `__sseError` marker for a failure reported in-band (the status line is
+ * long gone by then, so it cannot arrive as an HTTP error).
+ */
+async function readSseResult(res) {
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("Couldn't build a tracker — the response had no body.");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let out = null;
+
+  try {
+    while (!out) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // Frames are separated by a blank line. Anything after the last one
+      // is a partial frame and stays in the buffer for the next chunk.
+      let split;
+      while ((split = buffer.indexOf("\n\n")) !== -1) {
+        const frame = buffer.slice(0, split);
+        buffer = buffer.slice(split + 2);
+
+        let event = "message";
+        const data = [];
+        for (const raw of frame.split("\n")) {
+          const line = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
+          if (!line || line.startsWith(":")) continue; // keepalive comment
+          if (line.startsWith("event:")) event = line.slice(6).trim();
+          else if (line.startsWith("data:")) data.push(line.slice(5).trim());
+        }
+        if (!data.length) continue;
+
+        let payload;
+        try {
+          payload = JSON.parse(data.join("\n"));
+        } catch {
+          continue; // a malformed frame is not worth failing the whole run
+        }
+
+        if (event === "result") out = payload;
+        else if (event === "error") out = { __sseError: true, ...payload };
+      }
+    }
+  } finally {
+    // Let the socket go as soon as the answer is in hand, rather than
+    // waiting for the server to close it.
+    reader.cancel().catch(() => {});
+  }
+
+  if (!out) {
+    throw new Error("The connection closed before the tracker was ready. Try again.");
+  }
+  return out;
 }
 
 /** Drop an empty/absent attachment entirely rather than sending `{text: ""}`. */

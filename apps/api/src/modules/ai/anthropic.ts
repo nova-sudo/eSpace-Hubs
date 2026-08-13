@@ -220,6 +220,19 @@ interface CompleteInput {
    * something useful instead.
    */
   timeoutMs?: number;
+
+  /**
+   * Called as text arrives. Passing this switches the request to the
+   * streaming API — same inputs, same return value, the reply is just
+   * assembled from deltas instead of arriving whole.
+   *
+   * Two things change for the better when it streams. Bytes move on the
+   * upstream connection continuously, so no idle-timeout anywhere in the
+   * path can mistake a long generation for a dead one; and the caller gets
+   * a liveness signal it can forward to ITS client, which is what keeps a
+   * proxy from severing a slow response mid-flight.
+   */
+  onDelta?: (text: string) => void;
 }
 
 /**
@@ -243,17 +256,34 @@ export async function anthropicComplete(
   stopReason: string | null;
 }> {
   const c = getClient();
+  const body = {
+    model: anthropicModel(),
+    max_tokens: opts.maxTokens ?? 2048,
+    ...(opts.system ? { system: opts.system } : {}),
+    messages: opts.messages,
+  };
+
+  /**
+   * A wall-clock budget and automatic retries are contradictory: the SDK
+   * retries twice by default, so a caller asking to fail at 25s instead
+   * failed at 75s, long after whatever it was racing had given up. Worse,
+   * the later attempts run with nobody listening — burning gateway
+   * capacity to produce an answer that is discarded. When the caller has
+   * named a deadline, honour it exactly and do not retry past it.
+   */
+  const requestOpts = opts.timeoutMs
+    ? [{ timeout: opts.timeoutMs, maxRetries: 0 }]
+    : [];
+
   let msg: Anthropic.Messages.Message;
   try {
-    msg = await c.messages.create(
-      {
-        model: anthropicModel(),
-        max_tokens: opts.maxTokens ?? 2048,
-        ...(opts.system ? { system: opts.system } : {}),
-        messages: opts.messages,
-      },
-      ...(opts.timeoutMs ? [{ timeout: opts.timeoutMs }] : []),
-    );
+    if (opts.onDelta) {
+      const stream = c.messages.stream(body, ...requestOpts);
+      stream.on("text", (text) => opts.onDelta?.(text));
+      msg = await stream.finalMessage();
+    } else {
+      msg = await c.messages.create(body, ...requestOpts);
+    }
   } catch (err) {
     throw mapSdkError(err);
   }
