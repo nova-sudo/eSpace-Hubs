@@ -1467,6 +1467,29 @@ const MAX_COMPOSED_PERIODS = 53;
 const COMPOSE_MAX_TOKENS = 4_000;
 
 /**
+ * The same ceiling for a client that speaks SSE.
+ *
+ * Read the note above: 4,000 is not the model's limit, it is the largest
+ * reply that reliably finished inside a 30s wall. `claude-sonnet-5` will
+ * write up to 128,000 output tokens. The comment records that 8,000 was
+ * tried and rolled back because a verbose reply then ran past 30s and was
+ * severed by the proxy — a wall-clock failure that got fixed by lowering a
+ * TOKEN ceiling, because there was no other lever at the time.
+ *
+ * Streaming removed that wall, so the rollback can be undone. This is the
+ * ceiling for a plan large enough that 4,000 truncates it mid-JSON, which
+ * is what surfaces to the user as "that plan was too long to turn into one
+ * tracker" — an honest message, but for a limit we imposed.
+ *
+ * Not raised further, and deliberately nowhere near 128k: a ceiling only
+ * pays off if the wall clock can afford it. At the throughput this gateway
+ * actually delivers, 16,000 tokens is roughly what fits in the streaming
+ * budget below. Raising one without the other just trades a truncated
+ * reply for a timed-out one.
+ */
+const COMPOSE_STREAM_MAX_TOKENS = 16_000;
+
+/**
  * Wall-clock budget for the compose round trip.
  *
  * Deliberately under the ~30s ceiling the proxy in front of this API enforces:
@@ -1482,10 +1505,16 @@ const COMPOSE_TIMEOUT_MS = 25_000;
  * The 25s above exists only because a silent response gets severed at ~30s.
  * A stream is never silent — it emits from the first millisecond and keeps
  * emitting — so that ceiling does not apply and the limit can be what the
- * work actually needs. Compose asks for up to COMPOSE_MAX_TOKENS of JSON,
- * which through a gateway can legitimately run past a minute.
+ * work actually needs. Compose asks for up to COMPOSE_STREAM_MAX_TOKENS of
+ * JSON, which through a gateway can legitimately run for minutes.
+ *
+ * Sized against that ceiling rather than picked round: 16,000 tokens at the
+ * throughput this gateway delivers lands in the low hundreds of seconds, so
+ * a budget under that would cut off replies the token ceiling was raised to
+ * allow. The two numbers move together — changing one alone reintroduces
+ * the failure the other was raised to prevent.
  */
-const COMPOSE_STREAM_TIMEOUT_MS = 120_000;
+const COMPOSE_STREAM_TIMEOUT_MS = 240_000;
 
 interface CleanComposedBlock {
   cadence?: string;
@@ -1835,7 +1864,11 @@ export async function composeWidgetHandler(
     // From here on the work can outlast the proxy's idle ceiling, so start
     // the stream before the model call rather than after it.
     if (streaming) sse = openSse(res);
+    // Both move together. A streaming client can afford a bigger reply
+    // because it can afford the time to receive it; a plain-JSON client can
+    // do neither, and still has the proxy's ~30s wall in front of it.
     const budgetMs = streaming ? COMPOSE_STREAM_TIMEOUT_MS : COMPOSE_TIMEOUT_MS;
+    const maxTokens = streaming ? COMPOSE_STREAM_MAX_TOKENS : COMPOSE_MAX_TOKENS;
 
     if (
       isAnthropicId(
@@ -1845,7 +1878,7 @@ export async function composeWidgetHandler(
       const r = await anthropicComplete({
         system: COMPOSE_WIDGET_SYSTEM_PROMPT,
         messages: [{ role: "user", content: userPrompt }],
-        maxTokens: COMPOSE_MAX_TOKENS,
+        maxTokens,
         timeoutMs: budgetMs,
         ...(sse ? { onDelta: (t: string) => sse?.tick(t.length) } : {}),
       });
@@ -1862,7 +1895,7 @@ export async function composeWidgetHandler(
       const upstream = await callProvider(provider, {
         model: provider.model,
         temperature: 0.2,
-        max_tokens: COMPOSE_MAX_TOKENS,
+        max_tokens: maxTokens,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: COMPOSE_WIDGET_SYSTEM_PROMPT },
