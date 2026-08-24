@@ -127,9 +127,17 @@ function toIsoDate(raw) {
 
 /**
  * Parse a File or Blob (CSV / XLS / XLSX) into normalized rows.
- * Returns `{ type, rows, filename, warning? }`.
+ * Returns `{ type, detectedType, rows, filename, sheet?, warning? }`.
+ *
+ * `type` is the level the rows were parsed AS; `detectedType` is what the
+ * header sniff said (they differ only under `forceType`). Pass
+ * `{ forceType: "l1" | "l2" }` to override the sniff — used by the import
+ * panel's per-file level toggle. A forced parse takes the first sheet
+ * whose rows survive the forced normalizer, so flipping is only possible
+ * for files that actually carry the other level's columns; a forced parse
+ * with zero surviving rows returns a warning and an empty `rows`.
  */
-export async function parseImportFile(file) {
+export async function parseImportFile(file, { forceType } = {}) {
   const filename = file.name;
   const buffer = await file.arrayBuffer();
 
@@ -137,19 +145,40 @@ export async function parseImportFile(file) {
   try {
     workbook = XLSX.read(buffer, { type: "array" });
   } catch (err) {
-    return { type: null, rows: [], filename, warning: `${filename}: ${err.message}` };
+    return {
+      type: null,
+      detectedType: null,
+      rows: [],
+      filename,
+      warning: `${filename}: ${err.message}`,
+    };
   }
 
   // Zoho's L2 XLS has two sheets: Sheet 1 (data) and "Comments". We want
-  // whichever sheet has recognizable KRA columns.
+  // whichever sheet has recognizable KRA columns — or, when forcing a
+  // level, whichever sheet yields rows under that level's normalizer.
   let best = null;
+  let detectedType = null;
   for (const name of workbook.SheetNames) {
     const sheet = workbook.Sheets[name];
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
     if (rows.length === 0) continue;
-    const type = detectType(Object.keys(rows[0]));
-    if (type) {
-      best = { type, rows, sheetName: name };
+    const sniffed = detectType(Object.keys(rows[0]));
+    if (sniffed && !detectedType) detectedType = sniffed;
+    if (forceType) {
+      const normalized = rows
+        .map(forceType === "l1" ? normalizeL1 : normalizeL2)
+        .filter(Boolean);
+      if (normalized.length > 0) {
+        best = { type: forceType, rows: normalized, sheetName: name };
+        break;
+      }
+    } else if (sniffed) {
+      best = {
+        type: sniffed,
+        rows: rows.map(sniffed === "l1" ? normalizeL1 : normalizeL2).filter(Boolean),
+        sheetName: name,
+      };
       break;
     }
   }
@@ -157,17 +186,22 @@ export async function parseImportFile(file) {
   if (!best) {
     return {
       type: null,
+      detectedType,
       rows: [],
       filename,
-      warning: `${filename}: couldn't recognize L1 or L2 columns`,
+      warning: forceType
+        ? `${filename}: no ${forceType.toUpperCase()} rows found — the file doesn't carry ${forceType.toUpperCase()} columns`
+        : `${filename}: couldn't recognize L1 or L2 columns`,
     };
   }
 
-  const normalized = best.rows
-    .map(best.type === "l1" ? normalizeL1 : normalizeL2)
-    .filter(Boolean);
-
-  return { type: best.type, rows: normalized, filename, sheet: best.sheetName };
+  return {
+    type: best.type,
+    detectedType,
+    rows: best.rows,
+    filename,
+    sheet: best.sheetName,
+  };
 }
 
 /**
@@ -234,6 +268,46 @@ export function mergeImport({ l1Rows = [], l2Rows = [] }) {
       l1Count: l1s.length,
       l2Matched: l2Rows.length - unmatchedL2s.length,
       l2Unmatched: unmatchedL2s.length,
+    },
+  };
+}
+
+/**
+ * Re-home orphaned L2s onto user-chosen parents. `assignments` maps an
+ * orphan's l2 id → the target l1 id; ids not present (or pointing at an
+ * l1 that isn't in the tree) leave that orphan orphaned, so stale
+ * assignments from a previous parse are harmless. Pure — returns a fresh
+ * `{ tree, unmatchedL2s, stats }` without mutating the input.
+ */
+export function applyOrphanAssignments(merged, assignments = {}) {
+  const { tree, unmatchedL2s, stats } = merged;
+  if (!unmatchedL2s?.length || Object.keys(assignments).length === 0) {
+    return merged;
+  }
+
+  const l1s = tree.l1s.map((l1) => ({ ...l1, l2s: [...l1.l2s] }));
+  const byId = new Map(l1s.map((l1) => [l1.id, l1]));
+
+  const stillOrphaned = [];
+  let moved = 0;
+  for (const orphan of unmatchedL2s) {
+    const target = byId.get(assignments[orphan.id]);
+    if (target) {
+      const { parentTitle: _dropped, ...l2Entry } = orphan;
+      target.l2s.push(l2Entry);
+      moved++;
+    } else {
+      stillOrphaned.push(orphan);
+    }
+  }
+
+  return {
+    tree: { l1s },
+    unmatchedL2s: stillOrphaned,
+    stats: {
+      ...stats,
+      l2Matched: stats.l2Matched + moved,
+      l2Unmatched: stats.l2Unmatched - moved,
     },
   };
 }
