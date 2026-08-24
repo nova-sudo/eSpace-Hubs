@@ -25,6 +25,7 @@ import {
   useGithubMergedSince,
   useJiraTickets,
   useBuildEventsSince,
+  useGithubReviewCounts,
   avgReviewerComments,
   linkagePct,
   firstPassRatePct,
@@ -124,20 +125,39 @@ export function useDataSource(source) {
     ? filterMrsByRepo(merged.data, repoFilter)
     : merged.data;
 
+  // Window guard: GitLab pages merged MRs by `updated_after` (not a
+  // merged-date filter), so a pre-Jan-1 MR that was touched this year
+  // leaks into the fetch. Every merged-MR metric must slice to
+  // `merged_at` within the YTD window or the counts include prior-year
+  // work and never respond to the window at all (the frozen "130/9"
+  // first-pass bug). Same guard the evidence page applies in
+  // `goal-readings.js`.
+  const windowedMerged = filteredMerged
+    ? mergedWithin(filteredMerged, days)
+    : null;
+
+  // AVG_ROUNDS and FIRST_PASS_RATE read `user_notes_count`, which the
+  // GitHub search normaliser fills with issue comments only — hydrate
+  // those rows with real review-comment counts (capped N+1, see hook).
+  const needsNotes =
+    metric === SOURCE_METRICS.AVG_ROUNDS ||
+    metric === SOURCE_METRICS.FIRST_PASS_RATE;
+  const reviewCounts = useGithubReviewCounts(
+    needsNotes ? windowedMerged : null,
+  );
+
   if (!source || !metric) {
     return { data: null, isLoading: false, error: null, windowDays: days, windowLabel };
   }
 
   // Compute-on-demand — cheap, and keeps this file pure-ish.
   if (metric === SOURCE_METRICS.MERGED_COUNT) {
-    const count = filteredMerged
-      ? mergedWithin(filteredMerged, days).length
-      : null;
-    const trend = filteredMerged
-      ? mergedTrend(filteredMerged, 8).map((b) => b.n)
+    const count = windowedMerged ? windowedMerged.length : null;
+    const trend = windowedMerged
+      ? mergedTrend(windowedMerged, 8).map((b) => b.n)
       : [];
     return {
-      data: { count, trend, rawMrs: filteredMerged || [] },
+      data: { count, trend, rawMrs: windowedMerged || [] },
       isLoading: merged.isLoading,
       error: merged.error,
       windowDays: days,
@@ -146,11 +166,11 @@ export function useDataSource(source) {
   }
 
   if (metric === SOURCE_METRICS.AVG_ROUNDS) {
-    const mrs = filteredMerged || [];
+    const mrs = reviewCounts.data || [];
     const value = mrs.length > 0 ? avgReviewerComments(mrs) : null;
     return {
       data: { value, rawMrs: mrs },
-      isLoading: merged.isLoading,
+      isLoading: merged.isLoading || reviewCounts.isLoading,
       error: merged.error,
       windowDays: days,
       windowLabel,
@@ -158,7 +178,7 @@ export function useDataSource(source) {
   }
 
   if (metric === SOURCE_METRICS.MEDIAN_TURNAROUND) {
-    const mrs = filteredMerged || [];
+    const mrs = windowedMerged || [];
     const median = mrs.length > 0 ? medianTurnaroundDays(mrs) : null;
     const histogram = turnaroundHistogram(mrs);
     return {
@@ -171,7 +191,7 @@ export function useDataSource(source) {
   }
 
   if (metric === SOURCE_METRICS.LINKAGE_PCT) {
-    const mrs = filteredMerged || [];
+    const mrs = windowedMerged || [];
     const value = mrs.length > 0 ? linkagePct(mrs) : null;
     return {
       data: { ...(value || {}), rawMrs: mrs },
@@ -188,11 +208,11 @@ export function useDataSource(source) {
     // (clean ≤1-comment PRs vs. ping-pong ones). Returning the same
     // `{ pct, clean, pingPong, rawMrs }` triple lets the widget render
     // a familiar headline + bar without inventing new shape.
-    const mrs = filteredMerged || [];
+    const mrs = reviewCounts.data || [];
     const value = mrs.length > 0 ? firstPassRatePct(mrs) : null;
     return {
       data: { ...(value || {}), rawMrs: mrs },
-      isLoading: merged.isLoading,
+      isLoading: merged.isLoading || reviewCounts.isLoading,
       error: merged.error,
       windowDays: days,
       windowLabel,

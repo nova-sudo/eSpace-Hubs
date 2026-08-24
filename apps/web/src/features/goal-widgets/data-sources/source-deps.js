@@ -16,6 +16,7 @@ export {
   useJiraTickets,
   useBuildEventsSince,
   useJenkinsJobs,
+  useGithubReviewCounts,
   avgReviewerComments,
   linkagePct,
   firstPassRatePct,
