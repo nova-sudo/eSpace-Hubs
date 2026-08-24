@@ -329,6 +329,12 @@ export const CONTEXT_QUESTION_KINDS = Object.freeze([
   // example PRs/tickets) the classifier asks for to build a better widget.
   // Stored + serialised like "list"; rendered as link inputs.
   "resource_link",
+  // Repo picker: one or more "owner/name" slugs chosen from the user's
+  // connected providers (multi-select, free-text fallback). Stored +
+  // serialised like "list" (string array); the query runner fans a
+  // repo-parameterised source out across every selected repo and
+  // aggregates (count → sum, exists → any, latest_date → max).
+  "repo_select",
 ]);
 
 export const DELEGATED_JUDGES = Object.freeze(["manager", "senior", "peer"]);

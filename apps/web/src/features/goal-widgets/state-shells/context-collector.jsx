@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Select } from "@/components/ui";
 import { WidgetShell } from "../widget-shell";
 import { useGoalContext } from "@/features/goal-context";
+import { RepoMultiPicker, isRepoQuestion } from "./repo-multi-picker";
 
 /**
  * Renders in place of a widget when `spec.context.required` and not all
@@ -271,7 +272,7 @@ function buildAnswerPairs(questions, normalizedAnswers) {
 
 function serializeAnswer(value, kind) {
   if (value == null) return "";
-  if (kind === "list" || kind === "resource_link") {
+  if (kind === "list" || kind === "resource_link" || kind === "repo_select") {
     return Array.isArray(value)
       ? value.map((s) => String(s).trim()).filter(Boolean).join("\n")
       : "";
@@ -311,7 +312,17 @@ function QuestionField({ question: q, value, onChange, onBlur, variant }) {
       <span className="uppercase" style={labelStyle}>
         {q.prompt}
       </span>
-      {q.kind === "text" ? (
+      {isRepoQuestion(q) ? (
+        // Repo questions get the multi-select picker — including legacy
+        // resource_link questions with the "owner/name" placeholder, so
+        // specs composed before `repo_select` existed pick it up too.
+        <RepoMultiPicker
+          value={value}
+          onChange={onChange}
+          onBlur={onBlur}
+          variant={variant}
+        />
+      ) : q.kind === "text" ? (
         <input
           type="text"
           value={typeof value === "string" ? value : ""}
@@ -391,7 +402,7 @@ function normalizeAnswers(questions, draft) {
   const out = {};
   for (const q of questions) {
     const raw = draft[q.id];
-    if (q.kind === "list" || q.kind === "resource_link") {
+    if (q.kind === "list" || q.kind === "resource_link" || q.kind === "repo_select") {
       // Accept either the stored array or a textarea string.
       const items = Array.isArray(raw)
         ? raw

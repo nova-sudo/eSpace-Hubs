@@ -61,7 +61,9 @@ function permissiveRegistry(
   };
 }
 
-function ctx(contextAnswers: Record<string, string> = {}): ResolveQueryContext {
+function ctx(
+  contextAnswers: Record<string, string | string[]> = {},
+): ResolveQueryContext {
   return {
     userId: new ObjectId(),
     orgId: new ObjectId(),
@@ -394,6 +396,141 @@ test("an extract the template does not support is refused", async () => {
     "query_extract_unsupported",
   );
   assert.equal(calls.length, 0);
+});
+
+// ─── multi-repo fan-out ──────────────────────────────────────────────
+
+test("a multi-repo answer fans out sequentially and sums counts", async () => {
+  const calls: Array<{ url: string; method: string }> = [];
+  const totals = ["3", "5", "0"];
+  const impl = (async (url: unknown, init?: { method?: string }) => {
+    calls.push({ url: String(url), method: init?.method ?? "GET" });
+    return jsonResponse(200, [{ id: 1 }], { "x-total": totals[calls.length - 1]! });
+  }) as unknown as typeof fetch;
+
+  const result = await resolveQuery(
+    { ...source, extract: "count", params: { repo: "{{ctx:q_repo}}", path: "AGENTS.md" } },
+    ctx({ q_repo: ["espace/one", "espace/two", "espace/three"] }),
+    deps(
+      permissiveRegistry((s) => ({ path: `repos/${s.params.repo}/pulls` })),
+      impl,
+    ),
+  );
+
+  assert.equal(calls.length, 3);
+  assert.deepEqual(
+    calls.map((c) => c.url),
+    [
+      "https://api.github.com/repos/espace/one/pulls",
+      "https://api.github.com/repos/espace/two/pulls",
+      "https://api.github.com/repos/espace/three/pulls",
+    ],
+  );
+  assert.equal(result.value, 8);
+  assert.match(result.describe, /\(\+2 more repos\)$/);
+});
+
+test("multi-repo exists is an OR — a 404 in one repo doesn't sink a hit in another", async () => {
+  let n = 0;
+  const impl = (async () => {
+    n += 1;
+    return n === 1
+      ? jsonResponse(404, { message: "Not Found" })
+      : jsonResponse(200, {});
+  }) as unknown as typeof fetch;
+
+  const result = await resolveQuery(
+    { ...source, params: { repo: "{{ctx:q_repo}}", path: "AGENTS.md" } },
+    ctx({ q_repo: ["espace/one", "espace/two"] }),
+    deps(
+      permissiveRegistry((s) => ({
+        path: `repos/${s.params.repo}/contents/AGENTS.md`,
+      })),
+      impl,
+    ),
+  );
+  assert.equal(result.value, true);
+});
+
+test("multi-repo exists with every repo 404ing is false", async () => {
+  const { impl } = recordingFetch(() => jsonResponse(404, { message: "Not Found" }));
+  const result = await resolveQuery(
+    { ...source, params: { repo: "{{ctx:q_repo}}", path: "AGENTS.md" } },
+    ctx({ q_repo: ["espace/one", "espace/two"] }),
+    deps(
+      permissiveRegistry((s) => ({
+        path: `repos/${s.params.repo}/contents/AGENTS.md`,
+      })),
+      impl,
+    ),
+  );
+  assert.equal(result.value, false);
+});
+
+test("more than 10 repos in one answer is a clear 400, not a request storm", async () => {
+  const { calls, impl } = recordingFetch(() => jsonResponse(200, {}));
+  const repos = Array.from({ length: 11 }, (_, i) => `espace/repo-${i}`);
+  await expectHttpError(
+    resolveQuery(
+      { ...source, params: { repo: "{{ctx:q_repo}}", path: "AGENTS.md" } },
+      ctx({ q_repo: repos }),
+      deps(
+        permissiveRegistry((s) => ({ path: `repos/${s.params.repo}` })),
+        impl,
+      ),
+    ),
+    "context_answer_too_many",
+  );
+  assert.equal(calls.length, 0);
+});
+
+test("two multi-valued params are refused — no cartesian fan-out", async () => {
+  const { calls, impl } = recordingFetch(() => jsonResponse(200, {}));
+  await expectHttpError(
+    resolveQuery(
+      { ...source, params: { repo: "{{ctx:q_repo}}", path: "{{ctx:q_path}}" } },
+      ctx({ q_repo: ["espace/one", "espace/two"], q_path: ["a.md", "b.md"] }),
+      deps(
+        permissiveRegistry((s) => ({ path: `repos/${s.params.repo}/${s.params.path}` })),
+        impl,
+      ),
+    ),
+    "query_source_invalid",
+  );
+  assert.equal(calls.length, 0);
+});
+
+test("a single-element array answer behaves exactly like a scalar", async () => {
+  const { calls, impl } = recordingFetch(() => jsonResponse(200, {}));
+  const result = await resolveQuery(
+    { ...source, params: { repo: "{{ctx:q_repo}}", path: "AGENTS.md" } },
+    ctx({ q_repo: ["espace/devhub"] }),
+    deps(
+      permissiveRegistry((s) => ({
+        path: `repos/${s.params.repo}/contents/AGENTS.md`,
+      })),
+      impl,
+    ),
+  );
+  assert.equal(calls.length, 1);
+  assert.equal(result.value, true);
+  assert.equal(result.describe, "whether the file exists");
+});
+
+test("every fanned-out answer passes the shape gate — one hostile repo kills the field", async () => {
+  const { calls, impl } = recordingFetch(() => jsonResponse(200, {}));
+  await expectHttpError(
+    resolveQuery(
+      { ...source, params: { repo: "{{ctx:q_repo}}", path: "AGENTS.md" } },
+      ctx({ q_repo: ["espace/clean", "../../etc/passwd"] }),
+      deps(
+        permissiveRegistry((s) => ({ path: `repos/${s.params.repo}` })),
+        impl,
+      ),
+    ),
+    "context_answer_rejected",
+  );
+  assert.equal(calls.length, 0, "hostile element must be caught before ANY fetch");
 });
 
 test("a template with no binding for the resolved provider is refused", async () => {

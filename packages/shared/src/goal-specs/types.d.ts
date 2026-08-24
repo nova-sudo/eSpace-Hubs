@@ -114,6 +114,10 @@ export const CONTEXT_QUESTION_KINDS: readonly [
   // asks for a repo with a resource_link question, and TypeScript callers were
   // being told that kind didn't exist.
   "resource_link",
+  // One or more "owner/name" slugs picked from the user's connected
+  // providers. Answer is a string array; repo-parameterised sources fan
+  // out across every selected repo (see query-runner).
+  "repo_select",
 ];
 export type ContextQuestionKind = (typeof CONTEXT_QUESTION_KINDS)[number];
 

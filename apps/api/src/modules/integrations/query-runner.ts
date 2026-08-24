@@ -216,11 +216,32 @@ function assertAnswerShape(raw: string, questionId: string): void {
   }
 }
 
-function coerceAnswer(value: ContextAnswer, questionId: string): string {
-  if (typeof value === "string") return value.trim();
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  if (Array.isArray(value) && value.length === 1 && typeof value[0] === "string") {
-    return value[0].trim();
+/**
+ * Repo-picker answers are arrays; each element becomes its own upstream
+ * request, so the cap is a fan-out budget, not a UI nicety. It matches
+ * the client-side cap in the RepoMultiPicker.
+ */
+const MAX_ANSWER_VALUES = 10;
+
+function coerceAnswers(value: ContextAnswer, questionId: string): string[] {
+  if (typeof value === "string") return [value.trim()];
+  if (typeof value === "number" && Number.isFinite(value)) return [String(value)];
+  if (Array.isArray(value) && value.length > 0) {
+    if (value.length > MAX_ANSWER_VALUES) {
+      throw new HttpError(
+        400,
+        "context_answer_too_many",
+        `Pick at most ${MAX_ANSWER_VALUES} values for the setup question "${questionId}".`,
+      );
+    }
+    const items = value
+      .filter((v): v is string => typeof v === "string")
+      .map((v) => v.trim())
+      .filter(Boolean);
+    // De-dupe while preserving order — the same repo pasted twice must
+    // not be counted twice by a summing aggregate.
+    const deduped = [...new Set(items)];
+    if (deduped.length > 0) return deduped;
   }
   throw new HttpError(
     400,
@@ -229,11 +250,21 @@ function coerceAnswer(value: ContextAnswer, questionId: string): string {
   );
 }
 
-function substituteParams(
+/**
+ * Substitute `{{ctx:...}}` placeholders, fanning a multi-valued answer
+ * out into one param-set per value. At most ONE param may be
+ * multi-valued — two would mean a cartesian product of upstream
+ * requests, which no template needs and the budget can't afford.
+ * Single-valued answers keep today's exact behaviour: one param set,
+ * same shape checks.
+ */
+function substituteParamsMulti(
   params: Record<string, string>,
   answers: Record<string, ContextAnswer>,
-): Record<string, string> {
-  const out: Record<string, string> = {};
+): Array<Record<string, string>> {
+  const fixed: Record<string, string> = {};
+  let multi: { name: string; values: string[] } | null = null;
+
   for (const [name, value] of Object.entries(params ?? {})) {
     if (typeof value !== "string") {
       throw new HttpError(
@@ -244,15 +275,28 @@ function substituteParams(
     }
     const match = CTX_PLACEHOLDER_RE.exec(value);
     if (!match) {
-      out[name] = value;
+      fixed[name] = value;
       continue;
     }
     const questionId = match[1] as string;
-    const answer = coerceAnswer(answers?.[questionId] ?? null, questionId);
-    assertAnswerShape(answer, questionId);
-    out[name] = answer;
+    const resolved = coerceAnswers(answers?.[questionId] ?? null, questionId);
+    for (const answer of resolved) assertAnswerShape(answer, questionId);
+    if (resolved.length === 1) {
+      fixed[name] = resolved[0]!;
+      continue;
+    }
+    if (multi) {
+      throw new HttpError(
+        400,
+        "query_source_invalid",
+        "This field's query has more than one multi-value parameter.",
+      );
+    }
+    multi = { name, values: resolved };
   }
-  return out;
+
+  if (!multi) return [fixed];
+  return multi.values.map((v) => ({ ...fixed, [multi!.name]: v }));
 }
 
 // ─── provider resolution ─────────────────────────────────────────────
@@ -594,23 +638,28 @@ export async function resolveQuery(
 
   // Gate 2 — substitute, then re-validate the SUBSTITUTED source. A
   // param that passed validation when the spec was written says nothing
-  // about the answer typed into the context question afterwards.
-  const substituted: QuerySource = {
-    ...normalized,
-    params: substituteParams(normalized.params, ctx.contextAnswers),
-  };
-  const runtimeErrors: string[] = [];
-  const revalidated = registry.validateQuerySource(substituted, runtimeErrors);
-  if (!revalidated) {
-    throw new HttpError(
-      400,
-      "context_answer_rejected",
-      "Your answer to this tracker's setup question isn't usable here.",
-    );
-  }
+  // about the answer typed into the context question afterwards. A
+  // multi-valued answer (the repo picker) fans out into one substituted
+  // source per value; every one is re-validated on its own — the second
+  // repo in the list gets no free pass because the first was clean.
+  const paramSets = substituteParamsMulti(normalized.params, ctx.contextAnswers);
+  const revalidatedList: QuerySource[] = paramSets.map((params) => {
+    const substituted: QuerySource = { ...normalized, params };
+    const runtimeErrors: string[] = [];
+    const revalidated = registry.validateQuerySource(substituted, runtimeErrors);
+    if (!revalidated) {
+      throw new HttpError(
+        400,
+        "context_answer_rejected",
+        "Your answer to this tracker's setup question isn't usable here.",
+      );
+    }
+    return revalidated;
+  });
+  const primary = revalidatedList[0]!;
 
   const { provider, accessToken } = await resolveProvider(
-    revalidated,
+    primary,
     ctx,
     loadTokens,
   );
@@ -622,7 +671,7 @@ export async function resolveQuery(
     );
   }
 
-  const extract = (revalidated.extract ?? "exists") as QueryExtract;
+  const extract = (primary.extract ?? "exists") as QueryExtract;
   if (template.extracts && !template.extracts.includes(extract)) {
     throw new HttpError(
       400,
@@ -630,6 +679,105 @@ export async function resolveQuery(
       "This field asks for a reading this check can't produce.",
     );
   }
+  // No shipped template pairs `ratio` with a repo param today; summing
+  // numerators/denominators across repos would need per-part extraction
+  // that the extractor contract doesn't expose. Explicit 400 over a
+  // silently-wrong average.
+  if (extract === "ratio" && revalidatedList.length > 1) {
+    throw new HttpError(
+      400,
+      "query_extract_unsupported",
+      "This check can't aggregate a ratio across multiple repositories — pick one.",
+    );
+  }
+
+  const fanout = revalidatedList.length;
+  const values: Array<boolean | number | string | null> = [];
+  let anyOk = false;
+  // Sequential on purpose: GitHub search is quota'd at 30 req/min per
+  // user, and a capped 10-repo fan-out issued in parallel from several
+  // widgets at once would trip it. Ten serial GETs still finish well
+  // inside the caller's patience. A per-repo failure fails the whole
+  // field fast — a partial sum shown as a complete one would be a
+  // plausible-but-wrong number.
+  for (const revalidated of revalidatedList) {
+    const outcome = await executeOne(revalidated, {
+      registry,
+      template,
+      provider,
+      accessToken,
+      extract,
+      ctx,
+      doFetch,
+      markError,
+      startedAt,
+      fanout,
+    });
+    values.push(outcome.value);
+    if (outcome.ok) anyOk = true;
+  }
+
+  if (anyOk) {
+    void markUsed({
+      orgId: ctx.orgId,
+      userId: ctx.userId,
+      providerId: provider,
+    });
+  }
+
+  const baseDescribe = safeDescribe(registry, primary);
+  const describe =
+    fanout > 1 && baseDescribe
+      ? `${baseDescribe} (+${fanout - 1} more ${fanout === 2 ? "repo" : "repos"})`
+      : baseDescribe;
+
+  return {
+    // N=1 returns the single outcome untouched (custom extractors may
+    // produce shapes the aggregates don't know); N>1 folds per-extract.
+    value: fanout === 1 ? values[0]! : aggregateValues(extract, values),
+    extract,
+    fetchedAt: new Date().toISOString(),
+    describe,
+    provider,
+  };
+}
+
+interface ExecuteOneEnv {
+  registry: QueryTemplateRegistry;
+  template: QueryTemplateDescriptor;
+  provider: QueryProvider;
+  accessToken: string;
+  extract: QueryExtract;
+  ctx: ResolveQueryContext;
+  doFetch: typeof fetch;
+  markError: typeof markIntegrationError;
+  startedAt: number;
+  fanout: number;
+}
+
+/**
+ * Build, gate, fetch, and extract ONE substituted source. Gates 3-4 and
+ * every status branch live here so each fanned-out repo passes the same
+ * checks a single-repo call always has. Returns the extracted primitive
+ * plus whether the upstream call genuinely succeeded (a 404-as-value is
+ * an answer, but not a "connection works" signal for markUsed).
+ */
+async function executeOne(
+  revalidated: QuerySource,
+  env: ExecuteOneEnv,
+): Promise<{ value: boolean | number | string | null; ok: boolean }> {
+  const {
+    registry,
+    template,
+    provider,
+    accessToken,
+    extract,
+    ctx,
+    doFetch,
+    markError,
+    startedAt,
+    fanout,
+  } = env;
 
   // The registry throws QueryTemplateError — a plain Error, not an HttpError —
   // so left uncaught it reaches errorHandler as an unexpected exception and
@@ -684,7 +832,7 @@ export async function resolveQuery(
       signal: abort.signal,
     });
   } catch (err) {
-    logOutcome(template.id, provider, startedAt, "network_error");
+    logOutcome(template.id, provider, startedAt, "network_error", fanout);
     void markError({
       orgId: ctx.orgId,
       userId: ctx.userId,
@@ -703,7 +851,7 @@ export async function resolveQuery(
   const status = response.status;
 
   if (status === 401 || status === 403) {
-    logOutcome(template.id, provider, startedAt, "auth_failed");
+    logOutcome(template.id, provider, startedAt, "auth_failed", fanout);
     void markError({
       orgId: ctx.orgId,
       userId: ctx.userId,
@@ -718,20 +866,14 @@ export async function resolveQuery(
   }
 
   // A 404 is an ANSWER for existence-shaped checks: "the file isn't
-  // there" is exactly what the field is asking. Only counting/ratio
-  // checks treat it as a broken target.
+  // there" is exactly what the field is asking — per repo, in a fan-out.
+  // Only counting/ratio checks treat it as a broken target.
   if (status === 404) {
     if (extract === "exists" || extract === "latest_date") {
-      logOutcome(template.id, provider, startedAt, "not_found_as_value");
-      return {
-        value: extract === "exists" ? false : null,
-        extract,
-        fetchedAt: new Date().toISOString(),
-        describe: safeDescribe(registry, revalidated),
-        provider,
-      };
+      logOutcome(template.id, provider, startedAt, "not_found_as_value", fanout);
+      return { value: extract === "exists" ? false : null, ok: false };
     }
-    logOutcome(template.id, provider, startedAt, "target_missing");
+    logOutcome(template.id, provider, startedAt, "target_missing", fanout);
     throw new HttpError(
       404,
       "query_target_missing",
@@ -740,7 +882,7 @@ export async function resolveQuery(
   }
 
   if (status >= 400) {
-    logOutcome(template.id, provider, startedAt, `upstream_${status}`);
+    logOutcome(template.id, provider, startedAt, `upstream_${status}`, fanout);
     void markError({
       orgId: ctx.orgId,
       userId: ctx.userId,
@@ -761,20 +903,38 @@ export async function resolveQuery(
   const body = extract === "exists" ? null : await readJson(response);
   const value = applyExtract(extract, { status, body, headers }, template);
 
-  void markUsed({
-    orgId: ctx.orgId,
-    userId: ctx.userId,
-    providerId: provider,
-  });
-  logOutcome(template.id, provider, startedAt, "ok");
+  logOutcome(template.id, provider, startedAt, "ok", fanout);
+  return { value, ok: true };
+}
 
-  return {
-    value,
-    extract,
-    fetchedAt: new Date().toISOString(),
-    describe: safeDescribe(registry, revalidated),
-    provider,
-  };
+/**
+ * Fold fanned-out per-repo primitives into one. Semantics chosen to
+ * match what the question means across repos: a count sums, existence
+ * passes if ANY repo passes, latest_date is the max. `ratio` is blocked
+ * before execution (see resolveQuery).
+ */
+function aggregateValues(
+  extract: QueryExtract,
+  values: Array<boolean | number | string | null>,
+): boolean | number | string | null {
+  switch (extract) {
+    case "exists":
+      return values.some((v) => v === true);
+    case "count": {
+      const nums = values.filter((v): v is number => typeof v === "number");
+      if (nums.length === 0) return null;
+      return nums.reduce((a, b) => a + b, 0);
+    }
+    case "latest_date": {
+      const dates = values.filter(
+        (v): v is string => typeof v === "string" && !Number.isNaN(Date.parse(v)),
+      );
+      if (dates.length === 0) return null;
+      return dates.reduce((a, b) => (Date.parse(b) > Date.parse(a) ? b : a));
+    }
+    default:
+      return null;
+  }
 }
 
 /**
@@ -804,9 +964,10 @@ function logOutcome(
   provider: QueryProvider,
   startedAt: number,
   outcome: string,
+  fanout = 1,
 ): void {
   logger.info(
-    { templateId, provider, durationMs: Date.now() - startedAt, outcome },
+    { templateId, provider, durationMs: Date.now() - startedAt, outcome, fanout },
     "[query-runner] field resolved",
   );
 }
