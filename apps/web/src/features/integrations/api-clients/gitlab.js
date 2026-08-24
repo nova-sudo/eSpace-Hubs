@@ -32,6 +32,22 @@ async function gitlabPaginate(buildPath) {
 export const gitlabApi = {
   me: () => proxyFetch("gitlab", "user"),
 
+  /**
+   * Projects the user is a member of, most-recently-active first.
+   * Returns "group/project" slugs (lower-cased to match `mrRepo`) —
+   * drives the BYO repo picker's option list. One page of 100 is
+   * enough for a picker; pagination would just bury the tail.
+   */
+  myProjects: async () => {
+    const projects = await proxyFetch(
+      "gitlab",
+      "projects?membership=true&per_page=100&order_by=last_activity_at&sort=desc",
+    );
+    return (Array.isArray(projects) ? projects : [])
+      .map((p) => (typeof p?.path_with_namespace === "string" ? p.path_with_namespace.toLowerCase() : null))
+      .filter(Boolean);
+  },
+
   myOpenMRs: () =>
     proxyFetch("gitlab", "merge_requests?scope=created_by_me&state=opened&per_page=50"),
 

@@ -88,6 +88,19 @@ async function searchIssuesPaginated(rawQuery) {
 export const githubApi = {
   me: () => proxyFetch("github", "user"),
 
+  /**
+   * Repositories the user can access, most-recently-pushed first.
+   * Returns "owner/name" slugs (lower-cased to match `mrRepo`) — drives
+   * the BYO repo picker's option list. One page of 100 is enough for a
+   * picker; the free-text fallback covers anything beyond it.
+   */
+  myRepos: async () => {
+    const repos = await proxyFetch("github", "user/repos?per_page=100&sort=pushed");
+    return (Array.isArray(repos) ? repos : [])
+      .map((r) => (typeof r?.full_name === "string" ? r.full_name.toLowerCase() : null))
+      .filter(Boolean);
+  },
+
   myOpenPulls: () =>
     proxyFetch(
       "github",
@@ -260,6 +273,24 @@ export const githubApi = {
       out.push(it);
     }
     return out;
+  },
+
+  /**
+   * Lightweight comment counts for one PR — a single `GET /pulls/{n}`
+   * round-trip, unlike `pullDetails` below which needs three. Used to
+   * hydrate `user_notes_count` on merged-PR rows: the search-issues
+   * `comments` field counts ISSUE comments only, so inline review
+   * feedback is invisible to first-pass-rate / avg-rounds without this.
+   */
+  pullCounts: async (owner, repo, number) => {
+    const pr = await proxyFetch(
+      "github",
+      `repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}`,
+    );
+    return {
+      comments: Number(pr?.comments) || 0,
+      reviewComments: Number(pr?.review_comments) || 0,
+    };
   },
 
   /**

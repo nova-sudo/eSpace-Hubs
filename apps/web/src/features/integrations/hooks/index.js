@@ -14,6 +14,8 @@ export {
   useGithubReviewRequests,
 } from "./use-github-pulls";
 export { useGithubMergedSince } from "./use-github-merged";
+export { useGithubReviewCounts } from "./use-github-review-counts";
+export { useRepoOptions } from "./use-repo-options";
 export { useGithubEventsSince } from "./use-github-events";
 export { useGithubPrEventsSince } from "./use-github-pr-events";
 export {
