@@ -75,6 +75,21 @@ interface CompanionSchema {
    *  null/undefined the renderer overlays the wizard on top of the
    *  main companion UI until all required steps are done. */
   onboardingCompletedAt?: string | null;
+  // ── Local storage mode ──────────────────────────────────────────
+  /** Where the companion-spawned api stores its data. "cloud" (the
+   *  default) leaves apps/api/.env.local's MONGO_URI untouched;
+   *  "local" spawns a devhub-mongo Docker container (mongo-container.ts)
+   *  and injects MONGO_URI/MONGO_DB_NAME into the api's environment
+   *  (process.env beats .env.local in the api's env loader). */
+  storageMode?: "cloud" | "local";
+  /** Local-mode connection string. Defaults to the devhub-mongo
+   *  container's 127.0.0.1 bind; point it at any other local Mongo
+   *  (native install, different port) if you run your own. */
+  localMongoUri?: string;
+  /** Local-mode database name. Deliberately NOT the cloud DB name so a
+   *  later copy-down (scripts/migrate-mongo.mjs) can't be confused for
+   *  the cloud DB itself. */
+  localMongoDbName?: string;
 }
 
 const FILE_NAME = "config.json";

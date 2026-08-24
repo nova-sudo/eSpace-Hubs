@@ -42,6 +42,7 @@ import { installNode } from "./node-install";
 import { installCloudflared } from "./cloudflared-install";
 import { cloneAndInstall, getCloneState, resetCloneState } from "./repo-clone";
 import { initAutoUpdater } from "./auto-update";
+import * as mongoContainer from "./mongo-container";
 
 // __dirname is available natively in CommonJS — no fileURLToPath
 // gymnastics needed. Electron's main process is CJS by default; we
@@ -211,6 +212,19 @@ ipcMain.handle("backend:start", async () => {
       // connects).
     }
   }
+
+  // Local storage mode — the local Mongo MUST be up before the api
+  // spawns. The api hard-exits on an unreachable/invalid Mongo env and
+  // backend-process.ts deliberately has no auto-restart, so a failed
+  // pre-flight returns without spawning at all: the user gets one
+  // clear error instead of a dead process and a log to decode.
+  if (settings.get<string>("storageMode", "cloud") === "local") {
+    const mongo = await mongoContainer.startMongo();
+    if (!mongo.ok) {
+      return { ok: false, message: `Local storage: ${mongo.message}` };
+    }
+  }
+
   const result = await startBackend();
 
   // Phase 3d + auto-tunnel — after the backend is up:
@@ -349,6 +363,24 @@ ipcMain.handle("tunnel:clear", async () => {
 
 ipcMain.handle("backend:status", async () => {
   return backendStatus();
+});
+
+// ─── local Mongo (storage mode) IPC ─────────────────────────────────
+// backend:stop deliberately does NOT stop Mongo — the container is
+// cheap to keep warm and stopping it with the backend would make every
+// backend restart pay the Mongo boot wait again. mongo:stop is the
+// explicit user action.
+
+ipcMain.handle("mongo:status", async () => {
+  return mongoContainer.mongoStatus();
+});
+
+ipcMain.handle("mongo:start", async () => {
+  return mongoContainer.startMongo();
+});
+
+ipcMain.handle("mongo:stop", async () => {
+  return mongoContainer.stopMongo();
 });
 
 ipcMain.handle("backend:logs", async (_event, { lines = 100 } = {}) => {

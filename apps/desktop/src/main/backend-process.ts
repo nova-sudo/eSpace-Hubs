@@ -103,6 +103,24 @@ export async function startBackend(): Promise<{ ok: boolean; message: string }> 
   }
 
   stopping = false;
+
+  // Local storage mode — override the api's Mongo target through the
+  // child's environment. apps/api's env loader gives process.env
+  // precedence over .env.local (env.ts), so this needs zero changes on
+  // the api side and never edits the user's .env.local. Cloud mode
+  // passes no overrides and behaves exactly as before.
+  const extraEnv: Record<string, string> = {};
+  if (settings.get<string>("storageMode", "cloud") === "local") {
+    extraEnv.MONGO_URI = settings.get<string>(
+      "localMongoUri",
+      "mongodb://127.0.0.1:27017",
+    );
+    extraEnv.MONGO_DB_NAME = settings.get<string>("localMongoDbName", "devhub-local");
+    pushLog(
+      `[companion] storage mode: LOCAL — api uses ${extraEnv.MONGO_URI} (db ${extraEnv.MONGO_DB_NAME}); integrations/sessions data lives on this machine`,
+    );
+  }
+
   pushLog(`[companion] starting apps/api natively (cwd=${dir})`);
 
   return new Promise((resolve) => {
@@ -120,7 +138,12 @@ export async function startBackend(): Promise<{ ok: boolean; message: string }> 
     const proc = spawn(
       "npx",
       ["tsx", "watch", "--clear-screen=false", "src/server.ts"],
-      { cwd: dir, shell: process.platform === "win32", windowsHide: true },
+      {
+        cwd: dir,
+        shell: process.platform === "win32",
+        windowsHide: true,
+        env: { ...process.env, ...extraEnv },
+      },
     );
     child = proc;
 
@@ -131,7 +154,9 @@ export async function startBackend(): Promise<{ ok: boolean; message: string }> 
       }
       if (line.includes('"msg":"[db] mongo connection failed"')) {
         pushLog(
-          "[companion] can't reach MongoDB — MONGO_URI in apps/api/.env.local needs to point at a real database now that the backend runs natively (no local Mongo container).",
+          Object.keys(extraEnv).length > 0
+            ? `[companion] can't reach the LOCAL MongoDB at ${extraEnv.MONGO_URI} — check the devhub-mongo container is running (Storage section) or switch back to cloud mode.`
+            : "[companion] can't reach MongoDB — MONGO_URI in apps/api/.env.local needs to point at a real database now that the backend runs natively (no local Mongo container).",
         );
       }
     };

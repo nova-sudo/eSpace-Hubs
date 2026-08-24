@@ -22,6 +22,26 @@ const api = {
   api: {
     ping: () => ipcRenderer.invoke("api:ping"),
   },
+  // Local storage mode — devhub-mongo container lifecycle + status.
+  mongo: {
+    status: () =>
+      ipcRenderer.invoke("mongo:status") as Promise<{
+        docker:
+          | { available: true }
+          | {
+              available: false;
+              reason: "not_installed" | "not_running";
+              message: string;
+            };
+        containerExists: boolean;
+        containerRunning: boolean;
+        reachable: boolean;
+      }>,
+    start: () =>
+      ipcRenderer.invoke("mongo:start") as Promise<{ ok: boolean; message: string }>,
+    stop: () =>
+      ipcRenderer.invoke("mongo:stop") as Promise<{ ok: boolean; message: string }>,
+  },
   vpn: {
     status: () => ipcRenderer.invoke("vpn:status"),
     connect: () => ipcRenderer.invoke("vpn:connect"),

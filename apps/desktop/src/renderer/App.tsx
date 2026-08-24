@@ -34,6 +34,22 @@ type CompanionWindow = Window & {
         error: string | null;
       }>;
     };
+    mongo: {
+      status: () => Promise<{
+        docker:
+          | { available: true }
+          | {
+              available: false;
+              reason: "not_installed" | "not_running";
+              message: string;
+            };
+        containerExists: boolean;
+        containerRunning: boolean;
+        reachable: boolean;
+      }>;
+      start: () => Promise<{ ok: boolean; message: string }>;
+      stop: () => Promise<{ ok: boolean; message: string }>;
+    };
     vpn: {
       status: () => Promise<{
         connected: boolean;
@@ -68,6 +84,9 @@ type CompanionWindow = Window & {
         tunnelHostname?: string;
         tunnelAutoRegister?: boolean;
         onboardingCompletedAt?: string | null;
+        storageMode?: "cloud" | "local";
+        localMongoUri?: string;
+        localMongoDbName?: string;
       }>;
       set: (patch: Record<string, unknown>) => Promise<unknown>;
     };
@@ -130,6 +149,7 @@ type VpnStatus = Awaited<ReturnType<typeof companion.vpn.status>>;
 type VpnClient = Awaited<ReturnType<typeof companion.vpn.discoverClient>>;
 type CredentialFlag = Awaited<ReturnType<typeof companion.credentials.has>>;
 type PairStatus = Awaited<ReturnType<typeof companion.pair.status>>;
+type MongoState = Awaited<ReturnType<typeof companion.mongo.status>>;
 
 const POLL_INTERVAL_MS = 3000;
 const LOG_LINES = 50;
@@ -144,6 +164,7 @@ export function App() {
   const [vpnPwdFlag, setVpnPwdFlag] = useState<CredentialFlag | null>(null);
   const [vpnPwdDraft, setVpnPwdDraft] = useState("");
   const [pairState, setPairState] = useState<PairStatus | null>(null);
+  const [mongoState, setMongoState] = useState<MongoState | null>(null);
   const [busy, setBusy] = useState<
     | ""
     | "starting"
@@ -152,6 +173,8 @@ export function App() {
     | "vpn-disconnect"
     | "pairing"
     | "tunnel-register"
+    | "mongo-start"
+    | "mongo-stop"
   >("");
   const [error, setError] = useState<string | null>(null);
 
@@ -175,6 +198,13 @@ export function App() {
       setVpnClient(vc);
       setVpnPwdFlag(vp);
       setPairState(ps);
+      // Mongo status shells out to `docker inspect` — only worth the
+      // subprocess churn when local mode is actually on.
+      if (st.storageMode === "local") {
+        setMongoState(await companion.mongo.status());
+      } else {
+        setMongoState(null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -205,6 +235,26 @@ export function App() {
 
   const onSettingChange = async (key: string, value: unknown) => {
     await companion.settings.set({ [key]: value });
+    await refresh();
+  };
+
+  /* ── Local storage (Mongo) actions ───────────────────────────── */
+
+  const onMongoStart = async () => {
+    setBusy("mongo-start");
+    setError(null);
+    const r = await companion.mongo.start();
+    if (!r.ok) setError(r.message);
+    setBusy("");
+    await refresh();
+  };
+
+  const onMongoStop = async () => {
+    setBusy("mongo-stop");
+    setError(null);
+    const r = await companion.mongo.stop();
+    if (!r.ok) setError(r.message);
+    setBusy("");
     await refresh();
   };
 
@@ -362,7 +412,123 @@ export function App() {
         )}
       </Section>
 
-      <Section num="02 /" title="VPN (Crealogix)">
+      <Section num="02 /" title="Storage">
+        <div style={S.row}>
+          <Stat
+            label="Mode"
+            value={settings.storageMode === "local" ? "local (this machine)" : "cloud"}
+            tone={settings.storageMode === "local" ? "good" : "muted"}
+          />
+          {settings.storageMode === "local" ? (
+            <Stat
+              label="Local MongoDB"
+              value={mongoStorageValue(mongoState)}
+              tone={mongoStorageTone(mongoState)}
+            />
+          ) : null}
+        </div>
+        <div style={S.actions}>
+          <button
+            type="button"
+            style={settings.storageMode !== "local" ? S.btnPrimary : S.btnSecondary}
+            disabled={!!busy || settings.storageMode !== "local"}
+            onClick={() => onSettingChange("storageMode", "cloud")}
+          >
+            Cloud
+          </button>
+          <button
+            type="button"
+            style={settings.storageMode === "local" ? S.btnPrimary : S.btnSecondary}
+            disabled={!!busy || settings.storageMode === "local"}
+            onClick={() => onSettingChange("storageMode", "local")}
+          >
+            Local (Mongo in Docker)
+          </button>
+          {settings.storageMode === "local" ? (
+            mongoState?.containerRunning || mongoState?.reachable ? (
+              <button
+                type="button"
+                style={S.btnSecondary}
+                disabled={!!busy}
+                onClick={onMongoStop}
+              >
+                {busy === "mongo-stop" ? "Stopping…" : "Stop local Mongo"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                style={S.btnSecondary}
+                disabled={!!busy || mongoState?.docker.available === false}
+                onClick={onMongoStart}
+              >
+                {busy === "mongo-start" ? "Starting…" : "Start local Mongo"}
+              </button>
+            )
+          ) : null}
+        </div>
+        {settings.storageMode === "local" &&
+        mongoState &&
+        !mongoState.docker.available ? (
+          <div style={S.errorBanner}>
+            {mongoState.docker.message}{" "}
+            {mongoState.docker.reason === "not_installed" ? (
+              <a
+                href="#"
+                style={S.link}
+                onClick={(e) => {
+                  e.preventDefault();
+                  void companion.shell.openExternal(
+                    "https://www.docker.com/products/docker-desktop/",
+                  );
+                }}
+              >
+                Get Docker Desktop ↗
+              </a>
+            ) : null}
+          </div>
+        ) : null}
+        <p style={S.helpInline}>
+          Local mode runs a devhub-mongo container (mongo:7, bound to
+          127.0.0.1 only — no VPN interaction) and points the backend at it,
+          so your data stays on this machine. Applies on the next backend
+          start — restart the backend after switching. A fresh local database
+          starts empty: reconnect your integrations there, or copy cloud data
+          down with scripts/migrate-mongo.mjs. Pairing and sign-in stay
+          cloud-side either way.
+        </p>
+        {settings.storageMode === "local" ? (
+          <>
+            <Field
+              label="Local Mongo URI"
+              help="Where the backend connects in local mode. Leave the default for the devhub-mongo container; point elsewhere if you run your own MongoDB."
+            >
+              <input
+                type="text"
+                value={settings.localMongoUri || ""}
+                placeholder="mongodb://127.0.0.1:27017"
+                onChange={(e) => onSettingChange("localMongoUri", e.target.value.trim())}
+                style={S.input}
+              />
+            </Field>
+            <Field
+              label="Local database name"
+              help="Kept distinct from the cloud DB name on purpose, so a copied-down dataset can't be mistaken for the cloud."
+            >
+              <input
+                type="text"
+                value={settings.localMongoDbName || ""}
+                placeholder="devhub-local"
+                onChange={(e) =>
+                  onSettingChange("localMongoDbName", e.target.value.trim())
+                }
+                style={S.input}
+              />
+            </Field>
+          </>
+        ) : null}
+      </Section>
+
+      <Section num="03 /" title="VPN (Crealogix)">
         <div style={S.row}>
           <Stat
             label="Tunnel"
@@ -517,7 +683,7 @@ export function App() {
         </Field>
       </Section>
 
-      <Section num="03 /" title="Pairing & tunnel routing">
+      <Section num="04 /" title="Pairing & tunnel routing">
         <div style={S.row}>
           <Stat
             label="Companion"
@@ -665,7 +831,7 @@ export function App() {
         </Field>
       </Section>
 
-      <Section num="04 /" title="Settings">
+      <Section num="05 /" title="Settings">
         <Field
           label="Repo path"
           help="Absolute path to your espace-devhub checkout. The companion runs the backend directly from here — no Docker."
@@ -699,7 +865,7 @@ export function App() {
         </Field>
       </Section>
 
-      <Section num="05 /" title="Logs">
+      <Section num="06 /" title="Logs">
         <pre style={S.logs}>
           {logs.length === 0 ? "(no logs yet — Start backend to see output)" : logs.join("\n")}
         </pre>
@@ -760,6 +926,32 @@ function tunnelStatusTone(
   if (s.tunnel.active && s.tunnel.hostname) return "good";
   if (s.spawn?.status === "crashed") return "bad";
   if (s.tunnel.active || s.spawn?.status === "running") return "warn";
+  return "muted";
+}
+
+/**
+ * Local Mongo readout. `reachable` wins over container state — a
+ * native Mongo on the same port is just as valid a local target, and
+ * showing "stopped" while the port answers would read as a bug.
+ */
+function mongoStorageValue(m: MongoState | null): string {
+  if (!m) return "—";
+  if (!m.docker.available && !m.reachable) {
+    return m.docker.reason === "not_installed" ? "Docker missing" : "Docker engine stopped";
+  }
+  if (m.reachable) {
+    return m.containerRunning ? "running" : "reachable (external)";
+  }
+  if (m.containerRunning) return "starting…";
+  if (m.containerExists) return "stopped";
+  return "not created yet";
+}
+
+function mongoStorageTone(m: MongoState | null): "good" | "bad" | "muted" | "warn" {
+  if (!m) return "muted";
+  if (m.reachable) return "good";
+  if (!m.docker.available) return "warn";
+  if (m.containerRunning) return "muted";
   return "muted";
 }
 
