@@ -271,11 +271,50 @@ export async function hydrateGoalTiers() {
   }
 }
 
+/**
+ * Persist the DISPLAYED verdict to the durable server store — the
+ * deterministic numeric grade (`source: "numeric"`, which the AI path
+ * never persisted, leaving every COUNTER/SCALE/DATE_LOG/tierScale goal
+ * invisible on the manager's board and blank on a fresh device) or the
+ * consistency-CAPPED tier (`source: "capped"`, written when the cap
+ * bites so the stored row can't contradict the badge). Deduped per
+ * store key on (tier, data hash, source) so render-effect callers don't
+ * re-PUT on every pass; a failed write clears the dedupe so it retries.
+ */
+const pushedRemote = new Map();
+export function persistDisplayedVerdict(goalId, periodKey, verdict, key, source) {
+  if (!goalId || !verdict?.tier || !key || typeof window === "undefined") return;
+  const storeKey = tierKey(goalId, periodKey);
+  const sig = `${verdict.tier}|${key}|${source}`;
+  if (pushedRemote.get(storeKey) === sig) return;
+  pushedRemote.set(storeKey, sig);
+  void fetch(`/api/v1/ai/goal-tier-verdicts/${encodeURIComponent(goalId)}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      periodKey: periodKey || undefined,
+      tierHash: key,
+      tier: verdict.tier,
+      reasoning: verdict.reasoning || "",
+      confidence: verdict.confidence || "high",
+      source,
+    }),
+  })
+    .then((res) => {
+      if (!res.ok) pushedRemote.delete(storeKey);
+    })
+    .catch(() => {
+      pushedRemote.delete(storeKey);
+    });
+}
+
 export function resetGoalTiers() {
   state = {};
   loaded = true;
   hydrated = false;
   hydrating = false;
+  pushedRemote.clear();
   notify();
   if (typeof window === "undefined") return;
   try {

@@ -32,6 +32,7 @@ import {
   getGoalTiersServerSnapshot,
   getGoalTiersSnapshot,
   hydrateGoalTiers,
+  persistDisplayedVerdict,
   readGoalTier,
   setGoalTierVerdict,
   subscribeGoalTiers,
@@ -889,6 +890,42 @@ export function useGoalTier(goalId, spec) {
     // no-ops once the goal is graded for the day.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goalId, key, criteriaKey, inputsHydrated, needsSetup, tiersTick, managerVerdict]);
+
+  // One reading, one tier: mirror the DISPLAYED whole-goal tier into the
+  // durable server store so the manager's board and a fresh device read
+  // the same number the badge shows.
+  //   - numeric-ladder goals: their deterministic grade was never
+  //     server-persisted at all (localStorage-only), so every
+  //     COUNTER/SCALE/DATE_LOG/tierScale goal was invisible to the
+  //     manager and blank after a re-login.
+  //   - qualitative goals: the AI path persists the RAW verdict; when
+  //     the consistency cap bites, push the capped tier over it so the
+  //     stored row can't contradict the badge. (When the cap later
+  //     un-bites, the next data-change/daily re-grade rewrites the row
+  //     with the raw verdict — a brief stale-capped window we accept
+  //     over guessing at server state.)
+  // persistDisplayedVerdict dedupes per (tier, hash, source), so this
+  // effect is cheap on re-renders.
+  useEffect(() => {
+    if (!goalId || !key || needsSetup || managerVerdict) return;
+    const stored = readGoalTier(goalId);
+    if (!stored || stored.awaiting || stored.pendingSetup || !stored.tier) return;
+    const valid = tierScale
+      ? stored.key === key
+      : stored.criteriaKey === criteriaKey;
+    if (!valid) return;
+    if (tierScale) {
+      persistDisplayedVerdict(goalId, null, stored, key, "numeric");
+      return;
+    }
+    if (tiers) {
+      const capped = capVerdictByConsistency(stored, consistency, cadence);
+      if (capped && capped.tier !== stored.tier) {
+        persistDisplayedVerdict(goalId, null, capped, key, "capped");
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goalId, key, criteriaKey, needsSetup, managerVerdict, tiersTick, lockTick, consistency, cadence, tierScale, tiers]);
 
   // Manager verdict wins — authoritative, overrides the AI/deterministic
   // verdict AND the consistency cap. A dev can't self-regrade over it.

@@ -676,6 +676,88 @@ export async function listGoalTierVerdictsHandler(
   }
 }
 
+// ─── PUT /api/v1/ai/goal-tier-verdicts/:goalId ───────────────────────
+// Persist a CLIENT-computed verdict: the deterministic numeric grade
+// (gradeNumericTier) or the consistency-CAPPED displayed tier. Both were
+// localStorage-only, which meant (a) every numeric-ladder goal had NO
+// grade on the manager's board or on a fresh device, and (b) the
+// persisted AI verdict could disagree with the capped tier the badge
+// actually showed. Upserts the same goal_tier_verdicts row the AI path
+// writes, with `provider: "client-<source>"` marking provenance.
+export async function putClientTierVerdictHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const goalId = req.params.goalId;
+    if (typeof goalId !== "string" || !goalId || goalId.length > 200) {
+      throw new HttpError(400, "validation_error", "Invalid goalId.");
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const tier = body.tier;
+    if (typeof tier !== "string" || !VALID_TIERS.includes(tier)) {
+      throw new HttpError(400, "validation_error", "Invalid tier.");
+    }
+    const tierHash = body.tierHash;
+    if (typeof tierHash !== "string" || !tierHash || tierHash.length > 500) {
+      throw new HttpError(400, "validation_error", "Invalid tierHash.");
+    }
+    const source = body.source;
+    if (source !== "numeric" && source !== "capped") {
+      throw new HttpError(400, "validation_error", "Invalid source.");
+    }
+    const periodKey =
+      typeof body.periodKey === "string" && body.periodKey.length <= 200 && body.periodKey
+        ? body.periodKey
+        : WHOLE_GOAL_TIER_KEY;
+    const verdict: GoalTierVerdictBody = {
+      tier: tier as GoalTierVerdictBody["tier"],
+      reasoning:
+        typeof body.reasoning === "string"
+          ? body.reasoning.trim().slice(0, 4_000)
+          : "",
+      confidence: (typeof body.confidence === "string" &&
+      VALID_CONFIDENCE.includes(body.confidence)
+        ? body.confidence
+        : "high") as GoalTierVerdictBody["confidence"],
+    };
+
+    const verdicts = await getGoalTierVerdictsCollection();
+    await verdicts.updateOne(
+      {
+        orgId: session.orgId,
+        userId: session.userId,
+        goalId,
+        periodKey,
+      },
+      {
+        $set: {
+          tierHash,
+          verdict,
+          gradedAt: new Date(),
+          model: null,
+          provider: `client-${source}`,
+        },
+        $setOnInsert: {
+          orgId: session.orgId,
+          userId: session.userId,
+          goalId,
+          periodKey,
+        },
+      },
+      { upsert: true },
+    );
+    res.json({ ok: true, periodKey });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ─── POST /api/v1/ai/compose-widget ──────────────────────────────────
 // The "describe your own tracker" escape hatch. Turns a user's plain-English
 // description of how they want to track a goal into a COMPOSED spec (fields +

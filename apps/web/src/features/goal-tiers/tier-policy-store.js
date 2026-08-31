@@ -60,8 +60,12 @@ export async function hydrateTierPolicies() {
       credentials: "include",
     });
     if (res.status === 401) return; // not authed yet — retry on a later mount
-    hydrated = true;
+    // Only a SUCCESSFUL fetch counts as hydrated: marking hydrated before
+    // the ok-check meant a transient 500 permanently pinned this session
+    // to an empty policy map, silently grading every goal against the
+    // AI's guessed tiers instead of the manager's criteria.
     if (!res.ok) return;
+    hydrated = true;
     const body = await res.json().catch(() => ({}));
     const map = body?.policies && typeof body.policies === "object" ? body.policies : {};
     const next = {};

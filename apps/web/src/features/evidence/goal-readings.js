@@ -58,7 +58,7 @@ import {
   getManagerVerdictsSnapshot,
   getManagerVerdictsServerSnapshot,
 } from "@/features/goal-tiers";
-import { readLocks } from "@/features/goal-locks";
+import { readLocks, useGoalLocks } from "@/features/goal-locks";
 import { extractEvidenceItems, distinctDays } from "./goal-evidence";
 import { startOfYearIso, startOfYearMs } from "@/lib/date";
 import {
@@ -138,6 +138,9 @@ export function useGoalReadings() {
     void hydrateGoalTiers();
     void hydrateManagerVerdicts();
   }, []);
+  // Locks feed the consistency cap inside readCappedGoalTier — subscribe
+  // (and hydrate, via the hook) so rows re-derive when a settle lands.
+  const locksTick = useGoalLocks();
 
   return useMemo(() => {
     const out = [];
@@ -173,7 +176,7 @@ export function useGoalReadings() {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [goals, specs, merged, events, jira, snapshots, inputsTick, contextTick, liveTick, tiersTick, managerTick]);
+  }, [goals, specs, merged, events, jira, snapshots, inputsTick, contextTick, liveTick, tiersTick, managerTick, locksTick]);
 }
 
 /** Locked window keys for one goal, from the flat goal-locks map

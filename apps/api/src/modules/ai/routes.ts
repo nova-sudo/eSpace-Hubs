@@ -28,6 +28,7 @@ import {
   gradePrHandler,
   gradeGoalTierHandler,
   listGoalTierVerdictsHandler,
+  putClientTierVerdictHandler,
   composeWidgetHandler,
   extractAttachmentHandler,
 } from "./controller.js";
@@ -211,6 +212,13 @@ aiRouter.post(
 );
 // Hydrate all persisted tier verdicts for the user in one request (page load).
 aiRouter.get("/goal-tier-verdicts", requireAuth(), listGoalTierVerdictsHandler);
+// Persist a client-computed verdict (deterministic numeric grade / capped
+// displayed tier) into the same durable store — no AI call, plain DB write.
+aiRouter.put(
+  "/goal-tier-verdicts/:goalId",
+  requireAuth(),
+  putClientTierVerdictHandler,
+);
 // /classify-goals — NDJSON stream (one AnalysisEvent per line).
 // Auth runs as middleware; once headers flush, the handler owns the
 // response and never throws into express's error handler. The limiter
