@@ -110,12 +110,16 @@ function Badge({ href, label, active }) {
         active ? "text-accent-on" : "text-accent-on/85 hover:text-accent-on",
       )}
       style={{
-        background: active ? "var(--accent)" : "rgba(56, 38, 255, 0.82)",
+        // Accent-derived, not hard-coded Electric indigo — the badges
+        // must follow the per-hub accent (dev green, qa orange, …).
+        background: active
+          ? "var(--accent)"
+          : "color-mix(in srgb, var(--accent) 82%, transparent)",
         width: 30,
         minHeight: 132,
         filter: active
-          ? "drop-shadow(0 4px 10px rgba(56, 38, 255, 0.32))"
-          : "drop-shadow(0 1px 3px rgba(56, 38, 255, 0.18))",
+          ? "drop-shadow(0 4px 10px color-mix(in srgb, var(--accent) 32%, transparent))"
+          : "drop-shadow(0 1px 3px color-mix(in srgb, var(--accent) 18%, transparent))",
         transition:
           "filter 200ms cubic-bezier(0.22, 0.61, 0.36, 1), transform 200ms cubic-bezier(0.22, 0.61, 0.36, 1), background 200ms cubic-bezier(0.22, 0.61, 0.36, 1)",
       }}

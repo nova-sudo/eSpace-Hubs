@@ -58,8 +58,8 @@ export function SnapshotsTile() {
           </div>
           {latest.partial ? (
             <div
-              className="mt-0.5 text-[10px] text-[#b45309]"
-              style={{ fontFamily: "var(--font-mono)" }}
+              className="mt-0.5 text-[10px]"
+              style={{ fontFamily: "var(--font-mono)", color: "var(--warn)" }}
             >
               ⚠ Partial data
               {latest.gaps?.length > 0

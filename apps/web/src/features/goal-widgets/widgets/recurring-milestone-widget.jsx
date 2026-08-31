@@ -176,7 +176,7 @@ export function RecurringMilestoneWidget({
             <li key={it.id} className="group flex min-w-0 flex-col gap-0.5">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="shrink-0">
-                  <Checkbox checked={!!it.done} onChange={() => toggle(it.id)} />
+                  <Checkbox checked={!!it.done} onChange={() => toggle(it.id)} label={it.label || "checklist item"} />
                 </span>
                 <span
                   className="min-w-0 flex-1 truncate"

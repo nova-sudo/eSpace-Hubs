@@ -73,7 +73,7 @@ export function TileState({
   const tone =
     kind === "error" ? "var(--fg)" : "var(--muted-fg)";
   const accent =
-    kind === "error" ? "#c0392b" : "var(--muted-fg)";
+    kind === "error" ? "var(--bad)" : "var(--muted-fg)";
   return (
     <div
       className={cn("flex h-full min-h-0 w-full flex-1 flex-col justify-center", className)}

@@ -144,7 +144,7 @@ export function MilestoneWidget({ spec, goal, variant = "light", className, onRe
           {items.map((it) => (
             <li key={it.id} className="group flex flex-col gap-0.5">
               <div className="flex items-center gap-2">
-                <Checkbox checked={!!it.done} onChange={() => toggle(it.id)} />
+                <Checkbox checked={!!it.done} onChange={() => toggle(it.id)} label={it.label || it.title || "milestone item"} />
                 <span
                   className="flex-1 truncate"
                   style={{

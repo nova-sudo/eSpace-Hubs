@@ -242,7 +242,7 @@ function FillHint({ health, cadence }) {
   return (
     <div
       className="text-[11px] font-medium"
-      style={{ color: health.overdue ? "#b91c1c" : "#b45309" }}
+      style={{ color: health.overdue ? "var(--bad)" : "var(--warn)" }}
     >
       {text}
     </div>
@@ -262,7 +262,7 @@ function TrendArrow({ trend }) {
       ? "var(--muted-fg)"
       : trend.good
         ? "var(--good)"
-        : "#b91c1c";
+        : "var(--bad)";
   const title =
     trend.good == null
       ? `Trending ${trend.dir}`

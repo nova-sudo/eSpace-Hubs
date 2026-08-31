@@ -285,6 +285,21 @@ textarea:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 0;
 }
+/* Every OTHER focusable — buttons, links, role="checkbox" spans, tab
+   pills — previously had no designed focus indicator at all, and the UA
+   default ring is invisible on accent-filled CTAs. One accent ring with
+   offset keeps keyboard position visible everywhere without fighting
+   the tighter form-control rule above. */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+[role="checkbox"]:focus-visible,
+[role="tab"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 
 /* Baseline for native form controls so anything not yet using the UI
    primitives still reads in the Nothing language (mono + ink tokens) and

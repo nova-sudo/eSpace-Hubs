@@ -612,6 +612,7 @@ export function RubricCriteriaEditor({
         <Checkbox
           checked={firstReviewOnly}
           onChange={() => onToggleFirstReviewOnly(!firstReviewOnly)}
+          label="Grade first review round only"
         />
         <span>Grade first-review state only</span>
       </label>

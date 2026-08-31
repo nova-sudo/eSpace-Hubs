@@ -31,7 +31,7 @@ const DOT = {
   disconnected: "var(--accent)",
   loading: "var(--muted-fg)",
   error: "var(--bad)",
-  degraded: "#b45309",
+  degraded: "var(--warn)",
   empty: "var(--muted-fg)",
 };
 

@@ -42,7 +42,9 @@ export function SectionRail() {
           flexDirection: "column",
           gap: 16,
           padding: "14px 10px",
-          background: "rgba(255,255,255,0.55)",
+          // Theme token, not white — this rail is persistent chrome and
+          // rendered as a translucent WHITE pill on the dark theme.
+          background: "color-mix(in srgb, var(--card) 55%, transparent)",
           border: "1px solid var(--border)",
           borderRadius: 999,
           backdropFilter: "blur(10px)",

@@ -317,7 +317,7 @@ export const STATUS_META = Object.freeze({
  */
 export function statusDisplay(health) {
   if (health?.overdue) {
-    return { label: "Overdue", tone: "warn", dot: "#b91c1c" };
+    return { label: "Overdue", tone: "warn", dot: "var(--bad)" };
   }
   return STATUS_META[health?.status] ?? STATUS_META[HEALTH.NO_DATA];
 }

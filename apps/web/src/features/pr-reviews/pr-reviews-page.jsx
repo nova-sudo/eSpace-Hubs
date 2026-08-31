@@ -633,7 +633,7 @@ function renderDiffHunk(hunk) {
   return lines.map((line, i) => {
     let color = "var(--fg)";
     if (line.startsWith("+") && !line.startsWith("+++")) color = "var(--accent)";
-    else if (line.startsWith("-") && !line.startsWith("---")) color = "#c0392b";
+    else if (line.startsWith("-") && !line.startsWith("---")) color = "var(--bad)";
     else if (line.startsWith("@@")) color = "var(--muted-fg)";
     return (
       <span key={i} style={{ color, display: "block" }}>

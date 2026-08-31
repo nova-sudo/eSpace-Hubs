@@ -276,6 +276,7 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
           <Checkbox
             checked={v === true}
             onChange={() => setValue(f.id, v !== true)}
+            label={f.label || f.id}
           />
         );
       case "counter": {

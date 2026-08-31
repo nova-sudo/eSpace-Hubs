@@ -195,6 +195,7 @@ export function RepoMultiPicker({ value, onChange, onBlur, variant = "light" }) 
                   <Checkbox
                     checked={checked}
                     onChange={() => (capped ? null : toggle(slug))}
+                    label={slug}
                   />
                   <span className="min-w-0 flex-1 truncate">{slug}</span>
                   {recentSet.has(slug) ? <Pill tone="muted" mono>recent</Pill> : null}
