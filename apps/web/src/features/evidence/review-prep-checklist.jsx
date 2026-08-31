@@ -1,31 +1,37 @@
 "use client";
 
 import Link from "next/link";
-import { useIntegrations } from "@/features/integrations";
 import { useSnapshots } from "@/features/snapshots";
-import { useHubLink } from "@/features/hubs";
+import { useGoalWidgetItems } from "@/features/goal-widgets";
+import { useActiveHub, useHubLink } from "@/features/hubs";
+import { weekLabel } from "@/lib/date";
 
 /**
  * Review-prep checklist — a compact horizontal strip showing the
- * four pre-flight steps before generating evidence:
+ * pre-flight steps before generating evidence:
  *
- *   1. Connect a code host (GitLab or GitHub)
- *   2. Connect Jira
- *   3. Capture a snapshot this week
- *   4. → Generate evidence
+ *   1. Classify your goals into trackers
+ *   2. Capture a snapshot this week (hubs that expose the slot)
+ *   3. → Generate evidence
  *
- * All steps are derived from real app state — no independent checkboxes.
+ * All steps derive from real app state — no independent checkboxes.
  * Sits at the top of the Evidence page.
+ *
+ * Deliberately GOAL-oriented: earlier versions gated on "connect a
+ * code host" and "connect Jira" — integrations this page stopped
+ * consuming when it went goals-only — so the first thing users saw was
+ * a blocker demanding setup the document never used.
  */
 export function ReviewPrepChecklist() {
-  const { isConnected } = useIntegrations();
+  const { hasSpecs } = useGoalWidgetItems();
   const { snapshots } = useSnapshots();
+  const hub = useActiveHub();
   const link = useHubLink();
 
-  const hasCodeHost = isConnected("gitlab") || isConnected("github");
-  const hasJira = isConnected("jira");
-
-  const currentWeek = isoWeekLabel(new Date());
+  // Snapshot weeks are stamped with lib/date's weekLabel ("Wnn") — use
+  // the same function here so the comparison can actually match, with
+  // capturedAt-this-week as the tolerant fallback.
+  const currentWeek = weekLabel(new Date());
   const latestSnap = snapshots[0];
   const hasThisWeekSnap =
     latestSnap?.week === currentWeek ||
@@ -34,30 +40,28 @@ export function ReviewPrepChecklist() {
 
   const steps = [
     {
-      id: "code-host",
-      label: hasCodeHost ? "Code host" : "Code host",
-      done: hasCodeHost,
-      href: link("/settings"),
-      actionLabel: "Connect",
-    },
-    {
-      id: "jira",
-      label: "Jira",
-      done: hasJira,
-      href: link("/settings"),
-      actionLabel: "Connect",
-    },
-    {
-      id: "snapshot",
-      label: "Snapshot",
-      done: hasThisWeekSnap,
-      href: link("/snapshots"),
-      actionLabel: "Capture",
+      id: "classified",
+      label: "Goals classified",
+      done: hasSpecs,
+      href: link("/goals"),
+      actionLabel: "Classify",
     },
   ];
+  // Only hubs that actually expose the snapshots slot get the step —
+  // linking a QA user to a page the slot guard bounces them off of is a
+  // checklist that can never reach ready.
+  if (hub?.pages?.snapshots) {
+    steps.push({
+      id: "snapshot",
+      label: "Snapshot",
+      done: Boolean(hasThisWeekSnap),
+      href: link("/snapshots"),
+      actionLabel: "Capture",
+    });
+  }
 
-  // The generate step is the 4th window in the fill-strip: lit only once the
-  // three prerequisites are met.
+  // The generate step is the last window in the fill-strip: lit only once
+  // the prerequisites are met.
   const doneCount = steps.filter((s) => s.done).length;
   const allDone = steps.every((s) => s.done);
   const total = steps.length + 1;
@@ -135,15 +139,6 @@ function SegmentLink({ step }) {
       {seg}
     </Link>
   );
-}
-
-function isoWeekLabel(date) {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
-  return `W${String(weekNo).padStart(2, "0")}-${d.getUTCFullYear()}`;
 }
 
 function startOfWeek(date) {

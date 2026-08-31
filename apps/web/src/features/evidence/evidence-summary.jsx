@@ -13,7 +13,11 @@ const ROWS = [
   { key: "awaiting", label: "Awaiting data", color: "var(--muted-fg)" },
 ];
 
-export function EvidenceSummary({ rangeLabel, summary, onCompile }) {
+export function EvidenceSummary({ rangeLabel, summary, onCompile, loading }) {
+  // While the goals/specs are still hydrating, "0" is a confident lie —
+  // the board next to this says "Reading your goals…" while the sidebar
+  // asserted On track 0 / Total goals 0 in display numerals.
+  const num = (v) => (loading ? "—" : (v ?? 0));
   return (
     <div
       className="flex flex-col gap-[13px]"
@@ -38,7 +42,7 @@ export function EvidenceSummary({ rangeLabel, summary, onCompile }) {
                 className="text-fg"
                 style={{ fontFamily: "var(--font-dot)", fontWeight: 900, fontSize: 24, lineHeight: 1 }}
               >
-                {summary?.[r.key] ?? 0}
+                {num(summary?.[r.key])}
               </span>
             </div>
           ))}
@@ -47,7 +51,7 @@ export function EvidenceSummary({ rangeLabel, summary, onCompile }) {
               Total goals
             </span>
             <span className="text-[13px] font-semibold text-fg" style={{ fontFamily: "var(--font-mono)" }}>
-              {summary?.total ?? 0}
+              {num(summary?.total)}
             </span>
           </div>
         </div>

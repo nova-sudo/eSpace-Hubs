@@ -129,6 +129,7 @@ export function EvidencePage() {
             rangeLabel={rangeLabel}
             summary={evidence.summary}
             onCompile={() => setView("compile")}
+            loading={loading}
           />
         </div>
         )}
