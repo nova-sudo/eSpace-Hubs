@@ -54,6 +54,7 @@ import {
   useAllGoalInputs,
   getInputsState,
 } from "@/features/goal-inputs";
+import { readGoalLiveReading } from "@/features/goal-tiers";
 import { isoDaysAgo, weekLabel, DAY_MS } from "@/lib/date";
 
 const HOUR = 60 * 60 * 1000;
@@ -197,6 +198,10 @@ export function useAutoSnapshot() {
       tickets: Array.isArray(jira?.issues) ? jira.issues : [],
       allInputs: readInputs(),
       priorReadings: priorWeekReadings(existing, week.weekLabel),
+      // Current-week capture only: freeze CI/CD + SCORECARD widgets'
+      // last-published live values. Backfills (synthesise-week) omit
+      // this on purpose — a past week must not carry today's numbers.
+      readLive: readGoalLiveReading,
     });
 
     saveSnapshot({

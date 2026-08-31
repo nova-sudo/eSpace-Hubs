@@ -37,9 +37,11 @@ import { SPEC_KINDS } from "@/features/goal-specs";
 import {
   avgReviewerComments,
   countMrComments,
+  firstPassRatePct,
   linkagePct,
   medianTurnaroundDays,
 } from "@/features/integrations";
+import { weekNumber } from "@/lib/date";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -62,6 +64,12 @@ const WEEK = 7 * DAY;
  *   //   span multiple weeks (we add this week's contribution to whatever
  *   //   the prior snapshot recorded for the same window). For
  *   //   weekly-cadence goals, ignored.
+ *   readLive?: (goalId: string) => object | null,
+ *   //   Reader into the goal-tiers live-readings store — CI/CD and
+ *   //   SCORECARD widgets' values only exist while their widget is
+ *   //   mounted, so the CURRENT week's capture freezes what they last
+ *   //   published. Omit for backfills: a past week must not be stamped
+ *   //   with today's live value.
  * }} ctx
  * @returns {Object<string, GoalReading>}
  */
@@ -113,11 +121,21 @@ function readGoal(spec, goal, ctx) {
       return readLinkage(spec, ctx);
     case SPEC_KINDS.TICKET_CYCLE:
       return readTicketCycle(spec, ctx);
+    case SPEC_KINDS.FIRST_PASS_RATE:
+      return readFirstPass(spec, ctx);
     case SPEC_KINDS.CODE_RUBRIC:
       // Rubric grading is decoupled (PRs graded asynchronously). We
       // record the count of merged PRs in this window for context;
       // compliance-from-snapshots aggregates it.
       return readRubric(spec, ctx);
+    // CI/CD + SCORECARD readings only exist while their widget is
+    // mounted (they aggregate SWR sources this pure module can't
+    // re-fetch) — freeze whatever the widget last published.
+    case SPEC_KINDS.DEPLOY_FREQUENCY:
+    case SPEC_KINDS.LEAD_TIME:
+    case SPEC_KINDS.BUILD_PASS_RATE:
+    case SPEC_KINDS.SCORECARD:
+      return readFromLive(spec, goal, ctx);
 
     // ── Manual widgets ────────────────────────────────────────────────
     case SPEC_KINDS.COUNTER:
@@ -126,14 +144,28 @@ function readGoal(spec, goal, ctx) {
       return readScale(spec, goal, ctx);
     case SPEC_KINDS.MILESTONE:
       return readMilestone(spec, goal, ctx);
+    case SPEC_KINDS.RECURRING_MILESTONE:
+      return readRecurringMilestone(spec, goal, ctx);
     case SPEC_KINDS.DATE_LOG:
       return readDateLog(spec, goal, ctx);
     case SPEC_KINDS.FREE_TEXT:
+    // COMPOSED + INCIDENT_LOG piggy-back on the goal-inputs store the
+    // same way FREE_TEXT does — one entry per fill/incident — so the
+    // "entries this week + total so far" reading is the right shape
+    // for all three. (Period completion / severity judgement stays with
+    // their own widgets; the snapshot stream just needs to EXIST.)
+    case SPEC_KINDS.COMPOSED:
+    case SPEC_KINDS.INCIDENT_LOG:
       return readFreeText(spec, goal, ctx);
     case SPEC_KINDS.BEFORE_AFTER:
       return readBeforeAfter(spec, goal, ctx);
 
     default:
+      // Every member of SPEC_KINDS must be routed above (or explicitly
+      // excluded with a comment) — capture-coverage.test.js enforces it.
+      // A kind that silently lands here gets NO snapshot stream, ever:
+      // compliance reads empty, evidence prints a placeholder, and the
+      // deterministic grader has nothing to grade.
       return null;
   }
 }
@@ -208,6 +240,48 @@ function readRubric(spec, ctx) {
   });
 }
 
+function readFirstPass(spec, ctx) {
+  const inWindow = mrsInWindow(ctx.mrs, ctx.weekStart, ctx.weekEnd);
+  const result = firstPassRatePct(inWindow);
+  const pct = result?.pct ?? null;
+  const target = spec.source?.target;
+  return baseReading(spec, ctx, {
+    weekContribution: pct,
+    cumulative: pct,
+    windowMet: evalMet(pct, target, "recompute"),
+  });
+}
+
+/**
+ * Freeze the widget's last-published live reading (CI/CD + SCORECARD).
+ * `ctx.readLive` is only supplied for the CURRENT week's capture — a
+ * backfilled past week must not be stamped with today's live value, so
+ * those record the window with nulls (the stream still exists, which is
+ * the point). The envelope's `value` is the widget's DISPLAY string
+ * ("87%", "3.2/wk"); we keep the leading number for trend surfaces but
+ * never judge windowMet off it — display provenance isn't a measurement.
+ */
+function readFromLive(spec, goal, ctx) {
+  const envelope =
+    typeof ctx.readLive === "function" ? ctx.readLive(goal.id) : null;
+  const value =
+    envelope && (!envelope.widget || envelope.widget === spec.widget)
+      ? leadingNumber(envelope.value)
+      : null;
+  return baseReading(spec, ctx, {
+    weekContribution: null,
+    cumulative: value,
+    windowMet: null,
+  });
+}
+
+function leadingNumber(v) {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v !== "string") return null;
+  const m = v.match(/-?\d+(?:\.\d+)?/);
+  return m ? Number(m[0]) : null;
+}
+
 /* ── manual ── */
 
 function readCounter(spec, goal, ctx) {
@@ -255,6 +329,28 @@ function readMilestone(spec, goal, ctx) {
     weekContribution: null,
     cumulative: pct,
     windowMet: pct === 100 ? true : pct == null ? null : false,
+  });
+}
+
+function readRecurringMilestone(spec, goal, ctx) {
+  // Entries are per-period checklist snapshots ({periodKey, items}) —
+  // the latest one INSIDE this window is the period's state as of the
+  // capture. Unlike MILESTONE (one lifetime checklist), completion here
+  // is judged per window: an untouched period reads null, not carried
+  // over from last period's 100%.
+  const entries = ctx.allInputs[goal.id] || [];
+  const inWindow = entries.filter(
+    (e) => e.ts >= ctx.weekStart.getTime() && e.ts < ctx.weekEnd.getTime(),
+  );
+  const latest = inWindow[inWindow.length - 1];
+  const items = Array.isArray(latest?.value?.items) ? latest.value.items : [];
+  const done = items.filter((it) => it.done).length;
+  const total = items.length;
+  const pct = total > 0 ? Math.round((done / total) * 100) : null;
+  return baseReading(spec, ctx, {
+    weekContribution: pct,
+    cumulative: pct,
+    windowMet: pct == null ? null : pct === 100,
   });
 }
 
@@ -357,8 +453,16 @@ function inferCadenceFromSource(spec) {
  */
 function cadenceWindowFor(cadence, weekEnd) {
   const d = weekEnd instanceof Date ? weekEnd : new Date(weekEnd);
-  const year = d.getUTCFullYear();
-  const month = d.getUTCMonth() + 1;
+  // LOCAL calendar components throughout: weekStart/weekEnd are local
+  // midnights, and reading them back through getUTC* shifted the date
+  // one day earlier for any timezone ahead of UTC (Cairo: a snapshot
+  // for the week ending Fri Aug 1 00:00 local keyed to July). The week
+  // number comes from lib/date's canonical Sunday-anchored counter —
+  // the old private `sunWeekNumber` here used fixed 7-day blocks from
+  // Jan 1 and disagreed with `weekLabel` by one most years, so one
+  // snapshot carried two different week numberings.
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
   switch (cadence) {
     case "yearly":
       return `${year}`;
@@ -369,29 +473,17 @@ function cadenceWindowFor(cadence, weekEnd) {
     case "monthly":
       return `${year}-${String(month).padStart(2, "0")}`;
     case "biweekly": {
-      const wk = sunWeekNumber(d);
+      const wk = weekNumber(d);
       const fortnight = Math.ceil(wk / 2);
       return `${year}-F${String(fortnight).padStart(2, "0")}`;
     }
     case "weekly":
-      return `W${String(sunWeekNumber(d)).padStart(2, "0")}-${year}`;
+      return `W${String(weekNumber(d)).padStart(2, "0")}-${year}`;
     case "daily":
-      return d.toISOString().slice(0, 10);
+      return `${year}-${String(month).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     default:
       return "lifetime";
   }
-}
-
-/**
- * Sun-anchored ISO-ish week number. Week 1 contains Jan 1 (regardless
- * of how many days fall in the prior year — keeps boundaries simple
- * for a year-aligned perf cycle).
- */
-function sunWeekNumber(d) {
-  const year = d.getUTCFullYear();
-  const jan1 = new Date(Date.UTC(year, 0, 1));
-  const daysSinceJan1 = Math.floor((d.getTime() - jan1.getTime()) / DAY);
-  return Math.floor(daysSinceJan1 / 7) + 1;
 }
 
 function mrsInWindow(mrs, start, end) {
