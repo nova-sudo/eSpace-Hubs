@@ -132,7 +132,12 @@ export function GoalsImport({ onClose }) {
   const commit = () => {
     if (!parsed?.tree) return;
     if (mode === "replace") {
-      if (!confirm("Replace all existing goals with the imported tree?")) return;
+      if (
+        !confirm(
+          "Replace all existing goals with the imported tree? Your current goals are archived first — view them under Past cycles, not deleted.",
+        )
+      )
+        return;
       replaceGoals(parsed.tree);
     } else {
       appendGoals(parsed.tree);

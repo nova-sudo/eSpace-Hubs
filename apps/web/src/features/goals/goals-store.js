@@ -192,13 +192,19 @@ export async function fetchGoals() {
  * Send a new l1s list to /goals. Optimistically updates local state;
  * rolls back on failure.
  */
-async function persistL1s(nextL1s) {
+async function persistL1s(nextL1s, options = {}) {
   const prevL1s = state.l1s;
   setState({ l1s: nextL1s, error: null });
   // Echo the concurrency token: the server 409s (goals_conflict) when
   // the stored tree moved under us, instead of letting this stale tab
   // silently wipe another device's edits.
-  const r = await apiPut("/goals", { l1s: nextL1s, updatedAt: state.updatedAt });
+  const r = await apiPut("/goals", {
+    l1s: nextL1s,
+    updatedAt: state.updatedAt,
+    // Replace imports send an archive label so the outgoing tree is
+    // frozen into goal_cycles instead of destroyed (F2 v1).
+    ...(options.archiveCurrent ? { archiveCurrent: options.archiveCurrent } : {}),
+  });
   if (!r.ok) {
     if (r.error?.code === "goals_conflict") {
       // Adopt the live tree the 409 carried (or refetch as a fallback)
@@ -347,7 +353,17 @@ export function replaceGoals(tree) {
         }))
       : [],
   }));
-  void persistL1s(l1s);
+  // A replace over a non-empty tree archives the outgoing one first —
+  // importing next cycle's goals must never be a data-loss event.
+  const hadGoals = state.l1s.length > 0;
+  const archiveCurrent = hadGoals
+    ? `Archived ${new Date().toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })}`
+    : null;
+  void persistL1s(l1s, archiveCurrent ? { archiveCurrent } : {});
 }
 
 /**

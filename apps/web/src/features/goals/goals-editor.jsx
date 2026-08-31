@@ -25,6 +25,7 @@ import {
 } from "./goals-store";
 import { useGoals } from "./use-goals";
 import { GoalsImport } from "./goals-import";
+import { PastCycles } from "./past-cycles";
 
 /**
  * L1 / L2 goal tree editor.
@@ -121,6 +122,10 @@ export function GoalsEditor() {
         ))}
         {goals.l1s.length === 0 ? <EmptyHint /> : null}
       </div>
+
+      {/* Archived prior trees (F2 v1) — replace imports freeze the
+          outgoing tree here instead of destroying it. */}
+      <PastCycles />
     </div>
   );
 }
