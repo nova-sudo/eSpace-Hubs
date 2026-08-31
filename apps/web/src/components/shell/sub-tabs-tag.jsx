@@ -29,39 +29,42 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
+import { useActiveHub, useHubLink } from "@/features/hubs";
 
 /**
- * Map of top-level tab base path → array of drill-down routes.
- * Adding a sub-tab is one entry. Order is the visual display order.
+ * Drill-down slots surfaced as badges, in display order. A slot only
+ * renders when the active hub's registry actually exposes it.
+ *
+ * HUB-AWARE ON PURPOSE: the original map keyed on bare paths ("/",
+ * "/reviews") from the pre-hub era — under /[hub] routing the key never
+ * matched the pathname and the hrefs would have 404'd, so this
+ * component silently returned null forever and two fully-built pages
+ * (Reviews log, Snapshots) had no entry point in the entire UI.
  */
-const SUB_TABS = {
-  "/": [
-    { label: "Reviews log", href: "/reviews" },
-    { label: "Snapshots", href: "/snapshots" },
-  ],
-  // Other tabs have no drill-downs today. Add entries here when they do.
-  // "/goals":     [],
-  // "/evidence":  [],
-  // "/settings":  [],
-};
-
-/**
- * Resolve which sub-tabs apply to the current pathname. We match against
- * the TOP-LEVEL tab key — when on /reviews or /snapshots the user is
- * still "in Performance", so we show the Performance drill-downs.
- */
-function resolveSubTabs(pathname) {
-  if (SUB_TABS[pathname]) return SUB_TABS[pathname];
-  for (const [, items] of Object.entries(SUB_TABS)) {
-    if (items.some((it) => pathname?.startsWith(it.href))) return items;
-  }
-  return null;
-}
+const DRILL_DOWNS = [
+  { slot: "reviews", label: "Reviews log", path: "/reviews" },
+  { slot: "snapshots", label: "Snapshots", path: "/snapshots" },
+];
 
 export function SubTabsTag() {
   const pathname = usePathname();
-  const items = resolveSubTabs(pathname);
-  if (!items || items.length === 0) return null;
+  const hub = useActiveHub();
+  const link = useHubLink();
+
+  const items = DRILL_DOWNS.filter((d) => hub?.pages?.[d.slot]).map((d) => ({
+    ...d,
+    href: link(d.path),
+  }));
+  if (!hub || items.length === 0) return null;
+
+  // Show on the hub's home (the dashboard the drill-downs belong to)
+  // and on the drill-downs themselves (breadcrumb role) — not on
+  // /goals, /evidence, /settings.
+  const onHome = pathname === `/${hub.id}`;
+  const onDrillDown = items.some(
+    (it) => pathname === it.href || pathname?.startsWith(it.href + "/"),
+  );
+  if (!onHome && !onDrillDown) return null;
 
   return (
     <div
