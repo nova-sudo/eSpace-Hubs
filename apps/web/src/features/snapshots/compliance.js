@@ -38,20 +38,34 @@
  * "tracking 4/8 this quarter — on pace".
  */
 
-const HOUR = 60 * 60 * 1000;
-const DAY = 24 * HOUR;
+import { weekNumber, weekRangeFromLabel } from "@/lib/date";
 
 /**
  * @param {Array<Snapshot>} snapshots — newest-first array from readSnapshots()
  * @param {string} goalId
  * @returns {{
  *   metWindows:     number,
- *   totalWindows:   number,
+ *   totalWindows:   number,   // closed windows WITH a verdict + missed ones
+ *   missedWindows:  number,   // expected windows with NO snapshot at all
  *   pct:            number | null,    // 0..100, null when no closed windows yet
  *   cadence:        string | null,
  *   inProgress: { cadenceWindow, cumulative, target, windowMet, onPace } | null,
  *   windows:        Array<{ cadenceWindow, reading, closed: boolean }>,
  * }}
+ *
+ * Missed windows — the denominator must be honest
+ * ───────────────────────────────────────────────
+ * Snapshots only exist when the user opened the dashboard that week, so
+ * a window with NO snapshot used to simply not exist: open the app in
+ * Q1 and Q4 only and a goal abandoned for six months read
+ * "100% · 2 of 2 quarters on target" in the review export. We now
+ * enumerate every expected window at the goal's cadence between the
+ * EARLIEST window that has a reading and the current (in-progress) one;
+ * absent windows count as missed in `totalWindows`/`missedWindows`.
+ * Anchoring on the earliest OBSERVED window keeps late adopters fair —
+ * months before the user started tracking aren't held against them.
+ * (Missed windows are counted, not pushed into `windows`, so display
+ * consumers keep their reading-bearing rows.)
  */
 export function goalCompliance(snapshots, goalId) {
   if (!Array.isArray(snapshots) || snapshots.length === 0 || !goalId) {
@@ -111,12 +125,22 @@ export function goalCompliance(snapshots, goalId) {
   // Sort windows newest-first for display
   windows.sort((a, b) => b.cadenceWindow.localeCompare(a.cadenceWindow));
 
+  // Honest denominator: expected windows between the earliest observed
+  // one and now that have NO snapshot are misses, not non-existence.
+  const missedWindows = countMissedWindows(
+    cadence,
+    byWindow,
+    currentWindowLabel,
+  );
+  totalWindows += missedWindows;
+
   const pct =
     totalWindows > 0 ? Math.round((metWindows / totalWindows) * 100) : null;
 
   return {
     metWindows,
     totalWindows,
+    missedWindows,
     pct,
     cadence,
     inProgress,
@@ -128,11 +152,121 @@ function empty() {
   return {
     metWindows: 0,
     totalWindows: 0,
+    missedWindows: 0,
     pct: null,
     cadence: null,
     inProgress: null,
     windows: [],
   };
+}
+
+/* ── expected-window enumeration ── */
+
+/** A date safely inside the window a label describes, or null when the
+ *  label (or cadence) isn't enumerable. */
+function windowAnchorDate(cadence, label) {
+  if (typeof label !== "string") return null;
+  let m;
+  switch (cadence) {
+    case "weekly":
+      return weekRangeFromLabel(label)?.start ?? null;
+    case "monthly":
+      m = label.match(/^(\d{4})-(\d{2})$/);
+      return m ? new Date(Number(m[1]), Number(m[2]) - 1, 15) : null;
+    case "quarterly":
+      m = label.match(/^(\d{4})-Q([1-4])$/);
+      return m ? new Date(Number(m[1]), (Number(m[2]) - 1) * 3, 15) : null;
+    case "yearly":
+      m = label.match(/^(\d{4})$/);
+      return m ? new Date(Number(m[1]), 6, 1) : null;
+    case "daily":
+      m = label.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      return m
+        ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12)
+        : null;
+    default:
+      // biweekly fortnights + "lifetime" aren't enumerated — they fall
+      // back to the observed-windows-only denominator.
+      return null;
+  }
+}
+
+function stepWindow(cadence, d) {
+  const next = new Date(d);
+  switch (cadence) {
+    case "weekly":
+      next.setDate(next.getDate() + 7);
+      return next;
+    case "monthly":
+      next.setMonth(next.getMonth() + 1);
+      return next;
+    case "quarterly":
+      next.setMonth(next.getMonth() + 3);
+      return next;
+    case "yearly":
+      next.setFullYear(next.getFullYear() + 1);
+      return next;
+    case "daily":
+      next.setDate(next.getDate() + 1);
+      return next;
+    default:
+      return null;
+  }
+}
+
+/** Runaway guard — a daily goal enumerates at most ~1.5 years. */
+const MAX_ENUMERATED_WINDOWS = 500;
+
+function countMissedWindows(cadence, byWindow, currentWindowLabel) {
+  // Earliest observed window = the enumeration anchor.
+  let earliest = null;
+  let earliestDate = null;
+  for (const label of byWindow.keys()) {
+    const d = windowAnchorDate(cadence, label);
+    if (!d) continue;
+    if (!earliestDate || d < earliestDate) {
+      earliestDate = d;
+      earliest = label;
+    }
+  }
+  if (!earliest || !earliestDate) return 0;
+
+  let missed = 0;
+  let cursor = earliestDate;
+  for (let i = 0; i < MAX_ENUMERATED_WINDOWS; i++) {
+    const label = labelFor(cadence, cursor);
+    // Stop at the current (in-progress) window — it isn't owed yet —
+    // or when we've walked past "now" entirely (no current label for
+    // this cadence).
+    if (label == null || label === currentWindowLabel) break;
+    if (cursor > new Date()) break;
+    if (!byWindow.has(label)) missed += 1;
+    cursor = stepWindow(cadence, cursor);
+    if (!cursor) break;
+  }
+  return missed;
+}
+
+/** Cadence-window label for an arbitrary date — same grammar the
+ *  snapshotter writes (capture-readings' cadenceWindowFor). */
+function labelFor(cadence, date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
+  switch (cadence) {
+    case "yearly":
+      return `${year}`;
+    case "quarterly":
+      return `${year}-Q${Math.floor((month - 1) / 3) + 1}`;
+    case "monthly":
+      return `${year}-${String(month).padStart(2, "0")}`;
+    case "weekly":
+      return `W${String(weekNumber(d)).padStart(2, "0")}-${year}`;
+    case "daily":
+      return `${year}-${String(month).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    default:
+      return null;
+  }
 }
 
 /**
@@ -141,33 +275,13 @@ function empty() {
  */
 function currentCadenceWindow(cadence) {
   const d = new Date();
-  const year = d.getUTCFullYear();
-  const month = d.getUTCMonth() + 1;
-  switch (cadence) {
-    case "yearly":
-      return `${year}`;
-    case "quarterly": {
-      const q = Math.floor((month - 1) / 3) + 1;
-      return `${year}-Q${q}`;
-    }
-    case "monthly":
-      return `${year}-${String(month).padStart(2, "0")}`;
-    case "biweekly": {
-      const wk = sunWeekNumber(d);
-      return `${year}-F${String(Math.ceil(wk / 2)).padStart(2, "0")}`;
-    }
-    case "weekly":
-      return `W${String(sunWeekNumber(d)).padStart(2, "0")}-${year}`;
-    case "daily":
-      return d.toISOString().slice(0, 10);
-    default:
-      return null;
+  // Biweekly keeps its fortnight grammar; everything else shares
+  // labelFor so "now" and the snapshotter can never disagree on a key.
+  // Local calendar components throughout — the old getUTC* read shifted
+  // the date a day early for timezones ahead of UTC.
+  if (cadence === "biweekly") {
+    const fortnight = Math.ceil(weekNumber(d) / 2);
+    return `${d.getFullYear()}-F${String(fortnight).padStart(2, "0")}`;
   }
-}
-
-function sunWeekNumber(d) {
-  const year = d.getUTCFullYear();
-  const jan1 = new Date(Date.UTC(year, 0, 1));
-  const daysSinceJan1 = Math.floor((d.getTime() - jan1.getTime()) / DAY);
-  return Math.floor(daysSinceJan1 / 7) + 1;
+  return labelFor(cadence, d);
 }
