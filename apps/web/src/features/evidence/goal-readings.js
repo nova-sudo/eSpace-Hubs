@@ -18,7 +18,7 @@
  *   - markdown-export consumes the readings; document-preview renders them
  */
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import {
   avgReviewerComments,
   countMrComments,
@@ -48,10 +48,17 @@ import {
   getGoalLiveReadingsSnapshot,
   getGoalLiveReadingsServerSnapshot,
   readGoalTier,
+  readCappedGoalTier,
+  hydrateGoalTiers,
+  hydrateManagerVerdicts,
   subscribeGoalTiers,
   getGoalTiersSnapshot,
   getGoalTiersServerSnapshot,
+  subscribeManagerVerdicts,
+  getManagerVerdictsSnapshot,
+  getManagerVerdictsServerSnapshot,
 } from "@/features/goal-tiers";
+import { readLocks } from "@/features/goal-locks";
 import { extractEvidenceItems, distinctDays } from "./goal-evidence";
 import { startOfYearIso, startOfYearMs } from "@/lib/date";
 import {
@@ -116,6 +123,21 @@ export function useGoalReadings() {
     getGoalTiersSnapshot,
     getGoalTiersServerSnapshot,
   );
+  // Manager verdicts are the grade of record and OVERRIDE the AI tier in
+  // every row (readCappedGoalTier prefers them). Subscribe + hydrate here:
+  // the export used to print the raw AI verdict even when the manager had
+  // graded differently — the review document contradicted the grade of
+  // record. Hydrating tiers too covers the deep-link-to-/evidence path
+  // where no widget ever mounted to do it.
+  const managerTick = useSyncExternalStore(
+    subscribeManagerVerdicts,
+    getManagerVerdictsSnapshot,
+    getManagerVerdictsServerSnapshot,
+  );
+  useEffect(() => {
+    void hydrateGoalTiers();
+    void hydrateManagerVerdicts();
+  }, []);
 
   return useMemo(() => {
     const out = [];
@@ -135,6 +157,7 @@ export function useGoalReadings() {
       events,
       tickets,
       allInputs,
+      allLocks: readLocks(),
       snapshots,
       // Year-to-date cutoff for the evidence-item window (L2s are annual goals).
       yearStart,
@@ -150,7 +173,29 @@ export function useGoalReadings() {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [goals, specs, merged, events, jira, snapshots, inputsTick, contextTick, liveTick, tiersTick]);
+  }, [goals, specs, merged, events, jira, snapshots, inputsTick, contextTick, liveTick, tiersTick, managerTick]);
+}
+
+/** Locked window keys for one goal, from the flat goal-locks map
+ *  (`"<goalId>::<windowKey>": true`). Mirrors use-goal-health. */
+function lockedKeysForGoal(allLocks, goalId) {
+  const set = new Set();
+  if (!allLocks || !goalId) return set;
+  const prefix = `${goalId}::`;
+  for (const k of Object.keys(allLocks)) {
+    if (allLocks[k] && k.startsWith(prefix)) set.add(k.slice(prefix.length));
+  }
+  return set;
+}
+
+/** Newest snapshot reading for a goal (snapshots are newest-first). */
+function latestSnapReading(snapshots, goalId) {
+  if (!Array.isArray(snapshots)) return null;
+  for (const s of snapshots) {
+    const r = s?.goalReadings?.[goalId];
+    if (r) return r;
+  }
+  return null;
 }
 
 function pushReading(out, goal, level, ctx) {
@@ -176,7 +221,19 @@ function pushReading(out, goal, level, ctx) {
     // HOW (the grader's reasoning + the logged proof), and WHEN (proof dates).
     const entries = ctx.allInputs?.[goal.id] || [];
     const cutoff = ctx.yearStart;
-    row.verdict = readGoalTier(goal.id);
+    // The DISPLAYED tier — manager verdict first (the grade of record),
+    // then numeric-inline, then the capped AI verdict: the same tier the
+    // goal's badge shows, so the exported document can never contradict
+    // it. Raw cache as fallback keeps the "awaiting"-shaped rows the
+    // renderer already understands.
+    row.verdict =
+      readCappedGoalTier(
+        goal.id,
+        spec,
+        entries,
+        lockedKeysForGoal(ctx.allLocks, goal.id),
+        latestSnapReading(ctx.snapshots, goal.id),
+      ) ?? readGoalTier(goal.id);
     row.evidence = extractEvidenceItems(entries, cutoff, 8);
     const inWindowTs = entries
       .filter((e) => typeof e?.ts === "number" && e.ts >= cutoff)
