@@ -451,6 +451,22 @@ export interface GoalContextDoc {
   updatedAt: Date;
 }
 
+// ─── goal locks (settle-locks: "this period is finalised") ───────────
+
+/**
+ * One document per (orgId, userId): the user's settle-locks as a flat
+ * array of `"<goalId>::<windowKey>"` keys. Server-persisted because the
+ * cadence-consistency cap on displayed tiers reads these — device-local
+ * locks made the same goal show different tiers per device.
+ */
+export interface GoalLocksDoc {
+  _id: ObjectId;
+  orgId: ObjectId;
+  userId: ObjectId;
+  keys: string[];
+  updatedAt: Date;
+}
+
 // ─── goal inputs (manual time-series entries) ────────────────────────
 
 /**

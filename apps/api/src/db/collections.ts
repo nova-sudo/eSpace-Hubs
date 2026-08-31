@@ -24,6 +24,7 @@ import type {
   EvidenceItem,
   GoalContextDoc,
   GoalInputEntry,
+  GoalLocksDoc,
   GoalSpecRecord,
   GoalTierPolicy,
   GoalTierVerdict,
@@ -93,6 +94,13 @@ export async function getGoalInputsCollection(): Promise<
 > {
   const db = await getDb();
   return db.collection<GoalInputEntry>("goal_inputs");
+}
+
+export async function getGoalLocksCollection(): Promise<
+  Collection<GoalLocksDoc>
+> {
+  const db = await getDb();
+  return db.collection<GoalLocksDoc>("goal_locks");
 }
 
 export async function getSnapshotsCollection(): Promise<Collection<Snapshot>> {
@@ -335,6 +343,12 @@ async function ensureIndexes(): Promise<void> {
   await goalContext.createIndex(
     { orgId: 1, userId: 1, goalId: 1 },
     { unique: true, name: "goal_context_org_user_goal_uniq" },
+  );
+
+  const goalLocks = await getGoalLocksCollection();
+  await goalLocks.createIndex(
+    { orgId: 1, userId: 1 },
+    { unique: true, name: "goal_locks_org_user_uniq" },
   );
 
   const goalInputs = await getGoalInputsCollection();
