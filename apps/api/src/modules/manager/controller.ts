@@ -15,6 +15,7 @@
 
 import type { NextFunction, Request, Response } from "express";
 import { ObjectId } from "mongodb";
+import { networkMeta, writeAudit } from "../../lib/audit.js";
 import {
   getGoalContextCollection,
   getGoalInputsCollection,
@@ -497,6 +498,25 @@ export async function putGoalVerdictHandler(
       gradedByName: managerName,
     });
 
+    // The grade of record has HR consequences — it must leave a trace.
+    // (This module wrote zero audit rows while every other privileged
+    // module audited; "my manager changed my tier and there's no
+    // record" was unanswerable.)
+    await writeAudit({
+      orgId: session.orgId,
+      actorUserId: session.userId,
+      actorRole: session.role,
+      action: "manager.goal_verdict.set",
+      targetType: "goal",
+      targetId: goalId,
+      after: {
+        subjectUserId: target._id.toHexString(),
+        tier,
+        hasNote: note.length > 0,
+      },
+      ...networkMeta(req),
+    });
+
     // Best-effort inbox notice — must never block the grade itself.
     void createNotification({
       orgId: session.orgId,
@@ -627,6 +647,25 @@ export async function putTierPolicyHandler(
       setBy: session.userId,
     });
 
+    // Org-wide grading criteria, last-write-wins across managers —
+    // exactly the kind of write the audit page must be able to answer
+    // "who changed this and when" for.
+    const describe = (v: TierCriteria | null | undefined) =>
+      v === undefined ? "untouched" : v === null ? "cleared" : "set";
+    await writeAudit({
+      orgId: session.orgId,
+      actorUserId: session.userId,
+      actorRole: session.role,
+      action: "manager.tier_policy.set",
+      targetType: "tier_policy",
+      targetId: updated.code,
+      after: {
+        finalTiers: describe(finalTiers),
+        cadenceTiers: describe(cadenceTiers),
+      },
+      ...networkMeta(req),
+    });
+
     res.json({
       policy: {
         code: updated.code,
@@ -654,6 +693,17 @@ export async function deleteTierPolicyHandler(
     }
     const code = (req.params.code || "").trim();
     const deleted = await deleteTierPolicy(session.orgId, code);
+    if (deleted) {
+      await writeAudit({
+        orgId: session.orgId,
+        actorUserId: session.userId,
+        actorRole: session.role,
+        action: "manager.tier_policy.delete",
+        targetType: "tier_policy",
+        targetId: code,
+        ...networkMeta(req),
+      });
+    }
     res.json({ ok: true, deleted });
   } catch (err) {
     next(err);
@@ -1040,6 +1090,21 @@ export async function putApprovalDecisionHandler(
       { orgId: session.orgId, userId: target._id, goalId },
       { $set: { "spec.approval": approval } },
     );
+
+    await writeAudit({
+      orgId: session.orgId,
+      actorUserId: session.userId,
+      actorRole: session.role,
+      action: "manager.goal_approval.decide",
+      targetType: "goal_spec",
+      targetId: goalId,
+      after: {
+        subjectUserId: target._id.toHexString(),
+        decision: body.decision,
+        hasNote: note.length > 0,
+      },
+      ...networkMeta(req),
+    });
 
     const tree = await getGoalsCollection().then((c) =>
       c.findOne({ orgId: session.orgId, userId: target._id }),
