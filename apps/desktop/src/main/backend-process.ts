@@ -109,7 +109,12 @@ export async function startBackend(): Promise<{ ok: boolean; message: string }> 
   // precedence over .env.local (env.ts), so this needs zero changes on
   // the api side and never edits the user's .env.local. Cloud mode
   // passes no overrides and behaves exactly as before.
-  const extraEnv: Record<string, string> = {};
+  const extraEnv: Record<string, string> = {
+    // The whole point of the companion is reaching VPN'd upstreams whose
+    // hostnames resolve to PRIVATE addresses — the cloud API's proxy
+    // SSRF guard must not apply on the user's own machine.
+    PROXY_ALLOW_PRIVATE_UPSTREAMS: "1",
+  };
   if (settings.get<string>("storageMode", "cloud") === "local") {
     extraEnv.MONGO_URI = settings.get<string>(
       "localMongoUri",

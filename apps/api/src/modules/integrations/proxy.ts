@@ -33,13 +33,31 @@
  * length. Node sets `transfer-encoding: chunked` automatically when
  * we pipe a stream, which is the correct framing.
  *
- * Methods: GET + POST only, matching the localStorage-era Next.js
- * proxy. PUT/PATCH/DELETE aren't used by any current call site;
- * adding them later is a one-line change per route.
+ * Methods: GET everywhere; POST only where a call site actually needs
+ * it (today: Jira's search endpoint — Cloud deprecated GET search).
+ * The old "GET + POST, path-unrestricted" posture let any session
+ * drive arbitrary writes upstream with the user's own token (create
+ * commits, edit webhooks…) — far beyond the read-metrics contract the
+ * settings page advertises. Each provider context now declares which
+ * POST paths it accepts; everything else 405s.
+ *
+ * SSRF: gitlab/jira/jenkins upstreams come from a user-editable
+ * `endpointUrl` that was only validated as "a URL" — pointing it at
+ * http://169.254.169.254/… or an internal service turned the proxy
+ * into an authenticated pivot from the API's network position. Every
+ * upstream host is now resolved and private/loopback/link-local
+ * addresses are refused — EXCEPT when PROXY_ALLOW_PRIVATE_UPSTREAMS is
+ * set: the desktop companion runs this API on the user's own laptop
+ * where the VPN'd GitLab/Jira genuinely ARE private addresses, and
+ * "reach your own network from your own machine" is not a cross-tenant
+ * risk. (Basic lookup-time check; DNS-rebinding-grade defences are out
+ * of scope here.)
  */
 
 import type { NextFunction, Request, Response } from "express";
 import { Readable } from "node:stream";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import type { ObjectId } from "mongodb";
 import { logger } from "../../lib/logger.js";
 import { HttpError } from "../../middleware/error-handler.js";
@@ -83,6 +101,13 @@ const PASSTHROUGH_RESPONSE_HEADERS = new Set([
 
 interface ProxyContext {
   providerId: "github" | "gitlab" | "jira" | "jenkins";
+  /**
+   * POST allowlist — true when this rest-of-path may be POSTed.
+   * Undefined = the provider is GET-only through the proxy. Writes
+   * with the user's token must never be reachable from the browser
+   * "because the path happened to exist upstream".
+   */
+  allowPost?: (restPath: string) => boolean;
   /**
    * Builds the upstream URL from the captured rest-of-path +
    * querystring. `engagement` lets a provider branch on the user's
@@ -179,6 +204,10 @@ function translateJiraPathForServer(restPath: string): string {
 
 const JIRA: ProxyContext = {
   providerId: "jira",
+  // Jira Cloud deprecated GET search — the dashboard POSTs its JQL to
+  // search/jql (translated to `search` for Server 8.x). Nothing else
+  // is writable through the proxy.
+  allowPost: (restPath) => restPath === "search/jql" || restPath === "search",
   /**
    * Path version + endpoint-name both branch on engagement:
    *   - "espace"     → on-prem Jira Server 8.x: /rest/api/2/* + Server
@@ -322,12 +351,26 @@ async function runProxy(
       ? `?${req.originalUrl.split("?", 2)[1] ?? ""}`
       : "";
 
+    // Method policy — see the header comment. GET always; POST only on
+    // a provider's explicit allowlist.
+    if (req.method === "POST" && !(ctx.allowPost?.(restPath) ?? false)) {
+      throw new HttpError(
+        405,
+        "proxy_method_not_allowed",
+        `The ${ctx.providerId} proxy is read-only for this path.`,
+      );
+    }
+
     const targetUrl = ctx.buildUrl({
       restPath,
       search,
       endpointUrl: tokens.endpointUrl,
       engagement,
     });
+
+    // SSRF guard on the user-editable upstream host — see the header
+    // comment for the companion carve-out.
+    await assertUpstreamAllowed(targetUrl, ctx.providerId);
 
     const upstreamHeaders: Record<string, string> = {
       ...ctx.buildHeaders({
@@ -494,6 +537,110 @@ async function runProxy(
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────
+
+/** Private / loopback / link-local / CGNAT — the addresses an
+ *  attacker-controlled endpointUrl must not be able to aim the proxy
+ *  at (cloud deployments; the companion opts out via env). */
+function isPrivateIp(ip: string): boolean {
+  // v6-mapped v4 ("::ffff:10.0.0.1") → judge the v4 part.
+  const mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  if (mapped) return isPrivateIp(mapped[1]!);
+  if (isIP(ip) === 4) {
+    const [a = 0, b = 0] = ip.split(".").map(Number);
+    return (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) || // CGNAT
+      (a === 169 && b === 254) || // link-local (cloud metadata lives here)
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168)
+    );
+  }
+  const lower = ip.toLowerCase();
+  return (
+    lower === "::" ||
+    lower === "::1" ||
+    lower.startsWith("fc") ||
+    lower.startsWith("fd") || // fc00::/7 unique-local
+    lower.startsWith("fe8") ||
+    lower.startsWith("fe9") ||
+    lower.startsWith("fea") ||
+    lower.startsWith("feb") // fe80::/10 link-local
+  );
+}
+
+/** host → verdict cache so a busy dashboard doesn't re-resolve the
+ *  same GitLab host on every tile. 10 minutes matches typical DNS TTLs
+ *  without pinning a changed record for long. */
+const upstreamHostCache = new Map<string, { ok: boolean; expires: number }>();
+const UPSTREAM_CACHE_MS = 10 * 60 * 1000;
+
+async function assertUpstreamAllowed(
+  targetUrl: string,
+  providerId: string,
+): Promise<void> {
+  const allowPrivate = /^(1|true)$/i.test(
+    process.env.PROXY_ALLOW_PRIVATE_UPSTREAMS ?? "",
+  );
+
+  let parsed: URL;
+  try {
+    parsed = new URL(targetUrl);
+  } catch {
+    throw new HttpError(
+      400,
+      "integration_misconfigured",
+      `The ${providerId} endpoint URL is not a valid URL.`,
+    );
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new HttpError(
+      400,
+      "integration_misconfigured",
+      `The ${providerId} endpoint URL must be http(s).`,
+    );
+  }
+  // Credentials embedded in the URL would ride along on every request.
+  if (parsed.username || parsed.password) {
+    throw new HttpError(
+      400,
+      "integration_misconfigured",
+      `The ${providerId} endpoint URL must not contain credentials.`,
+    );
+  }
+  if (allowPrivate) return;
+
+  const host = parsed.hostname;
+  const cached = upstreamHostCache.get(host);
+  if (cached && cached.expires > Date.now()) {
+    if (cached.ok) return;
+  } else {
+    let ok = true;
+    if (isIP(host)) {
+      ok = !isPrivateIp(host);
+    } else {
+      try {
+        const addrs = await lookup(host, { all: true, verbatim: true });
+        ok = addrs.length > 0 && addrs.every((a) => !isPrivateIp(a.address));
+      } catch {
+        // Unresolvable host: let fetch produce its own (clearer)
+        // network error rather than masking it as a policy rejection.
+        ok = true;
+      }
+    }
+    upstreamHostCache.set(host, {
+      ok,
+      expires: Date.now() + UPSTREAM_CACHE_MS,
+    });
+    if (ok) return;
+  }
+  throw new HttpError(
+    400,
+    "integration_upstream_blocked",
+    `The ${providerId} endpoint resolves to a private address, which this deployment doesn't proxy to. Self-hosting on a private network? Run the desktop companion instead.`,
+  );
+}
 
 /**
  * Resolve the user's engagement for a proxy call. Read-only, single
