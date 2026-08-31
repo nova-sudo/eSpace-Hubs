@@ -93,8 +93,13 @@ export function numericReadingFor(spec, entries, snapshotReading) {
       if (SPEC_KIND_META[widget]?.variant !== SPEC_VARIANTS.AUTO) return null;
       const r = snapshotReading;
       if (!r || typeof r !== "object") return null;
+      // Tier thresholds describe the goal's WINDOW total, so the
+      // window-to-date cumulative must win. `weekContribution` is always
+      // a number (0 included) on captured readings, so putting it first
+      // meant `cumulative` was never reached — a dev with 41/30 merged
+      // this quarter but 2 this week graded "not achieved".
       const raw =
-        r.weekContribution ?? r.cumulative ?? r.value ?? null;
+        r.cumulative ?? r.weekContribution ?? r.value ?? null;
       const n = raw == null ? null : Number(raw);
       return Number.isFinite(n)
         ? { value: n, unit: spec?.source?.metric || null }
