@@ -6,8 +6,16 @@
  */
 
 export function compareCount(current, previous) {
-  const c = current?.length ?? Number(current) ?? 0;
-  const p = previous?.length ?? Number(previous) ?? 0;
+  // `??` doesn't catch NaN: `Number(undefined) ?? 0` is NaN, so an
+  // absent input (source still loading / errored) rendered a literal
+  // "NaN" delta chip. Coerce through a finite check instead.
+  const toCount = (v) => {
+    if (Array.isArray(v)) return v.length;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const c = toCount(current);
+  const p = toCount(previous);
   return { current: c, previous: p, delta: c - p };
 }
 

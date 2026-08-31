@@ -40,6 +40,7 @@ export function deriveAttention({ openMRs = [], tickets = [], jiraBaseUrl, limit
         detail: `${Math.round(ageDays)}d since last update${comments ? ` · ${comments} comments` : ""}`,
         action: "Respond",
         href: url,
+        _ageDays: ageDays,
       });
     }
   }
@@ -47,8 +48,13 @@ export function deriveAttention({ openMRs = [], tickets = [], jiraBaseUrl, limit
   for (const issue of tickets) {
     const cat = issue.fields?.status?.statusCategory?.key;
     if (cat === "done" || cat === "new") continue; // only track active work
-    const updated = new Date(issue.fields?.updated || 0).getTime();
+    // Same guard the MR branch has: a missing `updated` used to fall
+    // back to epoch 0 → a permanent bogus "20700d since last change"
+    // high-severity alert.
+    const updatedAt = issue.fields?.updated;
+    const updated = updatedAt ? new Date(updatedAt).getTime() : NaN;
     const ageDays = (now - updated) / DAY_MS;
+    if (!Number.isFinite(ageDays)) continue;
     if (ageDays >= 7) {
       items.push({
         id: `issue-${issue.id}`,
@@ -59,15 +65,21 @@ export function deriveAttention({ openMRs = [], tickets = [], jiraBaseUrl, limit
         detail: `${Math.round(ageDays)}d since last change`,
         action: "Unblock",
         href: jiraBaseUrl ? `${jiraBaseUrl}/browse/${issue.key}` : undefined,
+        _ageDays: ageDays,
       });
     }
   }
 
-  // High severity first, then most recent
+  // High severity first, then most-recently-touched within a severity —
+  // the old comparator ranked severity ONLY, so ordering fell back to
+  // insertion order (all MRs, then all tickets) and three stale PRs
+  // permanently starved every ticket alert out of the `limit` cap.
   items.sort((a, b) => {
     const rank = { high: 0, med: 1, low: 2 };
-    return (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9);
+    const bySeverity = (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9);
+    if (bySeverity !== 0) return bySeverity;
+    return (a._ageDays ?? 0) - (b._ageDays ?? 0);
   });
 
-  return items.slice(0, limit);
+  return items.slice(0, limit).map(({ _ageDays, ...item }) => item);
 }
