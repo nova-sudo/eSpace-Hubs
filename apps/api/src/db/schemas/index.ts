@@ -14,6 +14,7 @@ import { goalSpecsValidator } from "./goal-specs.schema.js";
 import { goalContextValidator } from "./goal-context.schema.js";
 import { goalLocksValidator } from "./goal-locks.schema.js";
 import { reviewPacketsValidator } from "./review-packets.schema.js";
+import { goalCyclesValidator } from "./goal-cycles.schema.js";
 import { goalInputsValidator } from "./goal-inputs.schema.js";
 import { snapshotsValidator } from "./snapshots.schema.js";
 import { gradingVerdictsValidator } from "./grading-verdicts.schema.js";
@@ -44,6 +45,7 @@ export const COLLECTION_DEFS: readonly CollectionDef[] = [
   { name: "goal_context", validator: goalContextValidator },
   { name: "goal_locks", validator: goalLocksValidator },
   { name: "review_packets", validator: reviewPacketsValidator },
+  { name: "goal_cycles", validator: goalCyclesValidator },
   { name: "goal_inputs", validator: goalInputsValidator },
   { name: "snapshots", validator: snapshotsValidator },
   { name: "grading_verdicts", validator: gradingVerdictsValidator },

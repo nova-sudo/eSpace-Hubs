@@ -14,7 +14,11 @@
  */
 
 import type { NextFunction, Request, Response } from "express";
-import { getGoalsCollection } from "../../db/collections.js";
+import { ObjectId } from "mongodb";
+import {
+  getGoalCyclesCollection,
+  getGoalsCollection,
+} from "../../db/collections.js";
 import {
   GOALS_SCHEMA_VERSION,
   type GoalL1,
@@ -90,6 +94,25 @@ export async function putGoalsHandler(
     // with the current tree so the client can merge/resync in one hop.
     const token = payload.updatedAt;
     const guarded = token !== undefined;
+
+    // F2 v1 — archive-on-replace. Snapshot the OUTGOING tree before it
+    // is overwritten: replace used to destroy the only id→title mapping
+    // for last cycle's goals, orphaning every spec/input/verdict/
+    // snapshot row keyed to them. Read-before-guarded-update is sound:
+    // if another writer lands in between, the guarded update below
+    // conflicts (stale token) and no archive is inserted.
+    let archiveSource: { l1s: unknown[] } | null = null;
+    if (payload.archiveCurrent) {
+      const goalsCol = await getGoalsCollection();
+      const current = await goalsCol.findOne({
+        orgId: session.orgId,
+        userId: session.userId,
+      });
+      if (current && Array.isArray(current.l1s) && current.l1s.length > 0) {
+        archiveSource = { l1s: current.l1s };
+      }
+    }
+
     const filter: Record<string, unknown> = {
       orgId: session.orgId,
       userId: session.userId,
@@ -156,6 +179,49 @@ export async function putGoalsHandler(
       return await conflict();
     }
 
+    // The replace landed — freeze the outgoing tree (best-effort: the
+    // user's new tree must never fail because the archive write did).
+    if (archiveSource) {
+      try {
+        const cycles = await getGoalCyclesCollection();
+        const l1s = archiveSource.l1s as GoalL1[];
+        const l2Count = l1s.reduce((s, l1) => s + (l1.l2s?.length ?? 0), 0);
+        const archiveDoc = {
+          orgId: session.orgId,
+          userId: session.userId,
+          label: payload.archiveCurrent!,
+          tree: { l1s },
+          l1Count: l1s.length,
+          l2Count,
+          archivedAt: now,
+        };
+        await cycles.insertOne(archiveDoc as Parameters<typeof cycles.insertOne>[0]);
+        // Keep the newest 10 archives per user.
+        const stale = await cycles
+          .find(
+            { orgId: session.orgId, userId: session.userId },
+            { projection: { _id: 1 }, sort: { archivedAt: -1 }, skip: 10 },
+          )
+          .toArray();
+        if (stale.length > 0) {
+          await cycles.deleteMany({ _id: { $in: stale.map((d) => d._id) } });
+        }
+        await writeAudit({
+          orgId: session.orgId,
+          actorUserId: session.userId,
+          actorRole: session.role,
+          action: "goals.cycle_archived",
+          targetType: "goal_cycle",
+          targetId: payload.archiveCurrent!,
+          after: { l1Count: l1s.length, l2Count },
+          ...networkMeta(req),
+        });
+      } catch {
+        // Archive failure is logged via audit absence only; the replace
+        // itself already succeeded.
+      }
+    }
+
     await writeAudit({
       orgId: session.orgId,
       actorUserId: session.userId,
@@ -168,6 +234,79 @@ export async function putGoalsHandler(
     });
 
     res.json(toPublic(result));
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── GET /api/v1/goals/cycles ────────────────────────────────────────
+
+/** Meta-only list of the user's archived trees, newest first. */
+export async function listGoalCyclesHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const cycles = await getGoalCyclesCollection();
+    const rows = await cycles
+      .find(
+        { orgId: session.orgId, userId: session.userId },
+        { projection: { tree: 0 }, sort: { archivedAt: -1 }, limit: 10 },
+      )
+      .toArray();
+    res.json({
+      cycles: rows.map((r) => ({
+        id: r._id.toHexString(),
+        label: r.label,
+        l1Count: r.l1Count,
+        l2Count: r.l2Count,
+        archivedAt: r.archivedAt.toISOString(),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── GET /api/v1/goals/cycles/:id ────────────────────────────────────
+
+/** One archived tree, read-only, in full. */
+export async function getGoalCycleHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const rawId = req.params.id;
+    if (typeof rawId !== "string" || !ObjectId.isValid(rawId)) {
+      throw new HttpError(404, "not_found", "No such archive.");
+    }
+    const cycles = await getGoalCyclesCollection();
+    const row = await cycles.findOne({
+      _id: new ObjectId(rawId),
+      orgId: session.orgId,
+      userId: session.userId,
+    });
+    if (!row) {
+      throw new HttpError(404, "not_found", "No such archive.");
+    }
+    res.json({
+      id: row._id.toHexString(),
+      label: row.label,
+      l1Count: row.l1Count,
+      l2Count: row.l2Count,
+      archivedAt: row.archivedAt.toISOString(),
+      tree: row.tree,
+    });
   } catch (err) {
     next(err);
   }

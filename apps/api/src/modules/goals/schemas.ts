@@ -55,5 +55,12 @@ export const goalsUpsertSchema = z.object({
    * older client keeps working).
    */
   updatedAt: z.string().datetime({ offset: true }).nullable().optional(),
+  /**
+   * When present, the CURRENT tree (if non-empty) is frozen into
+   * goal_cycles under this label before the replace lands — the import
+   * flow sends it so a new cycle's import archives instead of destroys
+   * (F2 v1; audit critical #218).
+   */
+  archiveCurrent: z.string().min(1).max(200).optional(),
 });
 export type GoalsUpsertInput = z.infer<typeof goalsUpsertSchema>;

@@ -467,6 +467,33 @@ export interface GoalLocksDoc {
   updatedAt: Date;
 }
 
+// ─── goal cycle archives (frozen prior-year trees) ───────────────────
+
+/**
+ * A frozen copy of a goal tree, taken automatically when a replace
+ * import is about to overwrite it. This is what makes January 1 a
+ * rollover instead of a data-loss event: the replace used to $set the
+ * one-and-only tree, and every spec/input/verdict/snapshot keyed to the
+ * old goal ids became unreferenceable garbage — the id→title/structure
+ * mapping was gone. The archive preserves that mapping, so historical
+ * rows (which are never deleted) stay interpretable, and the review
+ * packet (review_packets) preserves the year's final document.
+ *
+ * Append-only; the active tree stays in `goals`. Full cycle-keying of
+ * every store + a cycle switcher is the rest of F2 (#227).
+ */
+export interface GoalCycleArchive {
+  _id: ObjectId;
+  orgId: ObjectId;
+  userId: ObjectId;
+  /** Human label, e.g. "Archived Aug 28, 2026 · 6 L1 · 23 L2". */
+  label: string;
+  tree: { l1s: GoalL1[] };
+  l1Count: number;
+  l2Count: number;
+  archivedAt: Date;
+}
+
 // ─── review packets (submitted evidence documents) ───────────────────
 
 /** One compact per-goal row frozen into a packet — what the manager's

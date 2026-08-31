@@ -23,6 +23,7 @@ import type {
   CompanionPairing,
   EvidenceItem,
   GoalContextDoc,
+  GoalCycleArchive,
   GoalInputEntry,
   GoalLocksDoc,
   ReviewPacket,
@@ -109,6 +110,13 @@ export async function getReviewPacketsCollection(): Promise<
 > {
   const db = await getDb();
   return db.collection<ReviewPacket>("review_packets");
+}
+
+export async function getGoalCyclesCollection(): Promise<
+  Collection<GoalCycleArchive>
+> {
+  const db = await getDb();
+  return db.collection<GoalCycleArchive>("goal_cycles");
 }
 
 export async function getSnapshotsCollection(): Promise<Collection<Snapshot>> {
@@ -357,6 +365,12 @@ async function ensureIndexes(): Promise<void> {
   await goalLocks.createIndex(
     { orgId: 1, userId: 1 },
     { unique: true, name: "goal_locks_org_user_uniq" },
+  );
+
+  const goalCycles = await getGoalCyclesCollection();
+  await goalCycles.createIndex(
+    { orgId: 1, userId: 1, archivedAt: -1 },
+    { name: "goal_cycles_org_user_archived" },
   );
 
   const reviewPackets = await getReviewPacketsCollection();
