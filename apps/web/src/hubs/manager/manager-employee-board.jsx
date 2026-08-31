@@ -21,6 +21,7 @@ import { TIER_LABELS } from "@/features/goal-tiers";
 import { readinessLabel } from "@/features/goal-widgets";
 import { useReportHealth } from "./use-report-health";
 import { ManagerGradeDrawer } from "./manager-grade-drawer";
+import { ReviewPacketCard } from "./review-packet-card";
 
 function initials(name) {
   const parts = String(name || "")
@@ -222,6 +223,10 @@ export function ManagerEmployeeBoard({ userId }) {
           <SummaryStat label="Delegated to you" value={summary.delegatedToYou} tone={summary.delegatedToYou ? "accent" : null} />
         </div>
       ) : null}
+
+      {/* The frozen evidence document this report submitted (F1) — the
+          artifact you grade against, not a live recompute. */}
+      <ReviewPacketCard userId={userId} />
 
       <div className="mt-9">
         {!hasGoals ? (

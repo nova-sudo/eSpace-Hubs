@@ -18,6 +18,7 @@ import { GoalEvidenceBoard } from "./goal-evidence-board";
 import { EvidenceSummary } from "./evidence-summary";
 import { downloadMarkdown, renderMarkdown } from "./markdown-export";
 import { yearToDateLabel } from "@/lib/date";
+import { apiGet, apiPost } from "@/lib/api-client";
 import { generateEvidencePdf } from "./pdf/generate-pdf";
 
 export function EvidencePage() {
@@ -64,8 +65,25 @@ export function EvidencePage() {
   // "set up your goals" empty state.
   const loading = !ready;
 
-  async function handleExport() {
-    const props = {
+  // F1 — submission status. The compile view shows when this document
+  // was last submitted; submitting freezes it server-side as a review
+  // packet the manager grades against.
+  const [submitting, setSubmitting] = useState(false);
+  const [lastPacket, setLastPacket] = useState(null); // {submittedAt, hasManager} | null
+  useEffect(() => {
+    if (view !== "compile") return;
+    let cancelled = false;
+    void apiGet("/review-packets/mine").then((r) => {
+      if (cancelled || !r.ok) return;
+      setLastPacket(r.data?.packets?.[0] ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [view]);
+
+  function buildDocProps() {
+    return {
       name: me?.name,
       team: me?.team,
       level,
@@ -75,6 +93,56 @@ export function EvidencePage() {
       starred,
       include,
     };
+  }
+
+  async function handleSubmitForReview() {
+    if (submitting) return;
+    setSubmitting(true);
+    const markdown = renderMarkdown(buildDocProps());
+    // Clamp to the server's field caps so one long reading string can't
+    // fail validation for the whole submit.
+    const clip = (v, n) => (typeof v === "string" ? v.slice(0, n) : null);
+    const goals = goalReadings
+      .filter((r) => r.level === "L2")
+      .map((r) => ({
+        goalId: r.goal.id,
+        title: clip(r.goal.title, 1000) || "",
+        l1Title: clip(r.parentL1?.title, 1000) || "",
+        tier: clip(r.verdict?.tier, 50),
+        reading: clip(r.reading?.value, 500),
+        statusLabel: clip(r.reading?.statusLabel, 100),
+      }));
+    const r = await apiPost("/review-packets", {
+      level,
+      rangeLabel,
+      narrative,
+      markdown,
+      goals,
+      starredCount: starred.length,
+    });
+    setSubmitting(false);
+    if (!r.ok) {
+      toast.error(
+        `Couldn't submit: ${r.error?.message || "the server didn't respond"}`,
+      );
+      return;
+    }
+    setLastPacket(r.data?.packet ?? null);
+    if (r.data?.packet?.hasManager) {
+      toast.success("Submitted for review.", {
+        description:
+          "Your manager received the frozen document — it's the record you'll both be looking at.",
+      });
+    } else {
+      toast.success("Review packet saved.", {
+        description:
+          "No manager on file yet — the frozen version is stored and appears to a manager once one is assigned.",
+      });
+    }
+  }
+
+  async function handleExport() {
+    const props = buildDocProps();
     if (format === "pdf") {
       const t = toast.loading("Generating PDF…");
       try {
@@ -158,13 +226,30 @@ export function EvidencePage() {
         italicWord="case"
         subtitle="Compile your goals — what each was set up to achieve, where it landed, and the evidence you logged — into one reviewable document."
         right={
-          <div className="flex gap-2 no-print">
-            <Button variant="ghost" onClick={() => setView("board")}>
-              ← Goals
-            </Button>
-            <Button size="lg" onClick={handleExport}>
-              Export {format === "markdown" ? ".md" : ".pdf"}
-            </Button>
+          <div className="flex flex-col items-end gap-1.5 no-print">
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setView("board")}>
+                ← Goals
+              </Button>
+              <Button variant="ghost" onClick={handleExport}>
+                Export {format === "markdown" ? ".md" : ".pdf"}
+              </Button>
+              <Button size="lg" onClick={handleSubmitForReview} disabled={submitting || loading}>
+                {submitting ? "Submitting…" : "Submit for review"}
+              </Button>
+            </div>
+            {lastPacket?.submittedAt ? (
+              <span
+                className="uppercase tracking-[0.5px] text-dim-fg"
+                style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
+              >
+                Last submitted{" "}
+                {new Date(lastPacket.submittedAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                })}
+              </span>
+            ) : null}
           </div>
         }
       />

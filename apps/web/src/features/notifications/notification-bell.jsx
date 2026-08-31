@@ -26,6 +26,7 @@ const KIND_PATH = {
   goal_changes_requested: "/goals",
   goal_submitted: "/approvals",
   user_pending_approval: "/users",
+  review_packet_submitted: "/employees",
 };
 
 function ago(iso) {
