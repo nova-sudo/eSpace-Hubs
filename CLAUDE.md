@@ -222,14 +222,17 @@ or business logic there — the server is stateless and the proxy is just a
 CORS/auth bridge. All metric derivation happens client-side in
 `features/integrations/metrics/*`.
 
-### 4. Tokens never leave the browser except as Authorization headers
+### 4. Tokens are encrypted at rest and used server-side only
 
-Every provider token lives in `localStorage` under
-`espace-devhub:integrations`. When calling a provider, we send the token to our
-own Next route, which sets `Authorization: Bearer <token>` upstream. We don't
-log the token, don't cache responses on the server, and don't have a DB. The
-settings page advertises this contract — don't violate it without updating the
-privacy-first copy.
+Provider tokens are stored **envelope-encrypted at rest in Mongo**
+(`INTEGRATION_TOKEN_KEY`) and decrypted only inside the API process, which
+attaches them as `Authorization` headers upstream via the integrations proxy
+(`apps/api/src/modules/integrations/proxy.ts`). Tokens are never logged and
+never echoed back to the browser after save. Goals, readings, snapshots, and
+grades are server-persisted per account (and manager-readable where the role
+model says so) — the app is NOT localStorage-only anymore. The settings page's
+privacy copy mirrors this contract — keep the two in sync. Key custody /
+rotation: see BL-004 in `docs/backlog.md`.
 
 ### 5. Design tokens are the source of truth
 
@@ -277,19 +280,19 @@ npm run dev                  # http://localhost:3000
 | Activity timeline | ✅ | GitLab `/events` bucketed daily |
 | Recent commits | ✅ | GitLab `/events?action=pushed` |
 | Attention band | ✅ | Derived from open MRs + Jira tickets |
-| Snapshots | ✅ localStorage | Captured on "Snapshot now" |
+| Snapshots | ✅ server-persisted | Auto-captured on dashboard visit + manual "Snapshot now" |
 | Evidence export (.md) | ✅ | Client-side renderer → blob download |
-| Evidence export (.pdf) | ⚠️ browser print | `window.print()` — a proper path
-needs `@react-pdf/renderer` |
+| Evidence export (.pdf) | ✅ | `@react-pdf/renderer` (dynamically imported) — `features/evidence/pdf/` |
 
 ## Open questions
 
 See `.design-reference/README.md` — the Claude Design handoff covers these
 in detail. Notable ones still open:
 
-1. Accent swap — prototype uses `#3826ff` Electric; if the team wants the
-   PRD's cobalt `#1D4ED8`, change one CSS var.
+1. ~~Accent swap~~ — RESOLVED: cobalt `#1D4ED8` won (`--accent` in
+   `globals.css`), with per-hub accents layered on top by the hub registry.
 2. Proper "review rounds" requires per-MR `/discussions` calls (N+1); current
-   implementation is `user_notes_count` as a proxy.
-3. Snapshot cron — server action (Vercel Cron) vs. client-side detection on
-   Monday open. v0 is manual "Snapshot now".
+   implementation is `user_notes_count` as a proxy (tracked as BL-012).
+3. Snapshot cron — still open. Auto-capture fires on dashboard visit
+   (client-side detection); a server-side scheduler is proposal F4 in the
+   2026-08 audit (#229).

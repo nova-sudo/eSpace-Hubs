@@ -50,7 +50,12 @@
   - A dropped tunnel raises an alert (log/notification) within minutes, not on next user visit.
   - The companion-pairing UI surfaces current tunnel status.
 
-### BL-017 · Enforce authentication in production builds
+### BL-017 · Enforce authentication in production builds ✅ DONE (2026-08-26)
+- **Resolved:** the guard now fails closed — auth is required unless
+  `NEXT_PUBLIC_AUTH_REQUIRED` is EXPLICITLY `"false"`, a production build with
+  it off logs a warning, and docker-compose's build-arg default flipped to
+  `true` (commit `39c2c56`, issue #222). Remaining nice-to-have from the
+  acceptance criteria: a deployed-build smoke test.
 - **Priority:** P0 · **Type:** security · **Size:** S
 - **Why:** The client `AuthGuard` gates on `NEXT_PUBLIC_AUTH_REQUIRED`, which
   **defaults to `false`** — when unset it renders every protected page as-is with
@@ -136,7 +141,10 @@
 
 ## P2 — Medium
 
-### BL-008 · Fix CLAUDE.md "Rule 4" privacy doc-drift
+### BL-008 · Fix CLAUDE.md "Rule 4" privacy doc-drift ✅ DONE (2026-08-26)
+- **Resolved:** Rule 4 and the settings-page privacy subtitle now describe the
+  real posture (tokens encrypted at rest, decrypted server-side only, account
+  data server-persisted). Key-custody documentation remains with BL-004.
 - **Priority:** P2 · **Type:** docs · **Size:** S
 - **Why:** Rule 4 claims tokens "never leave the browser," but tokens now live
   encrypted-at-rest in Mongo and are decrypted server-side. The advertised
@@ -191,7 +199,10 @@
   - The N+1 call cost is bounded (cached/batched) so it doesn't regress load time.
   - The rounds tile value matches a hand-counted sample MR.
 
-### BL-013 · First-class PDF evidence export
+### BL-013 · First-class PDF evidence export ✅ DONE (shipped earlier; row was stale)
+- **Resolved:** `apps/web/src/features/evidence/pdf/` renders the document via
+  `@react-pdf/renderer` (dynamically imported) — no print dialog. This row was
+  stale for a while; closed by the 2026-08-26 audit sweep.
 - **Priority:** P2 · **Type:** feature · **Size:** M
 - **Why:** PDF export is `window.print()` today — fragile, browser-dependent,
   off-brand. A real renderer (e.g. `@react-pdf/renderer`) gives a controlled,
