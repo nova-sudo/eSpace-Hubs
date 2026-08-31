@@ -22,6 +22,7 @@ import {
   getGoalSpecsCollection,
   getGoalTierVerdictsCollection,
   getGoalsCollection,
+  getReviewPacketsCollection,
   getUsersCollection,
 } from "../../db/collections.js";
 import type {
@@ -537,6 +538,51 @@ export async function putGoalVerdictHandler(
         gradedByName: managerName,
         source: "manager",
       },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── review packets (a report's submitted evidence documents) ────────
+
+/**
+ * GET /manager/reports/:userId/review-packets — the report's frozen
+ * evidence documents, newest first. The LATEST version includes the
+ * full content (narrative, per-goal rows, the rendered markdown);
+ * older versions are meta-only so the manager can see the submission
+ * history without shipping N × 400KB blobs.
+ */
+export async function listReportReviewPacketsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { session, target } = await resolveReport(req);
+    const col = await getReviewPacketsCollection();
+    const rows = await col
+      .find(
+        { orgId: session.orgId, userId: target._id },
+        { sort: { submittedAt: -1 }, limit: 20 },
+      )
+      .toArray();
+    res.json({
+      packets: rows.map((r, i) => ({
+        id: r._id.toHexString(),
+        submittedAt: r.submittedAt.toISOString(),
+        level: r.level,
+        rangeLabel: r.rangeLabel,
+        goalCount: r.goalCount,
+        starredCount: r.starredCount,
+        ...(i === 0
+          ? {
+              narrative: r.narrative,
+              goals: r.goals,
+              markdown: r.markdown,
+            }
+          : {}),
+      })),
     });
   } catch (err) {
     next(err);

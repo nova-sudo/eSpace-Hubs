@@ -25,6 +25,7 @@ import type {
   GoalContextDoc,
   GoalInputEntry,
   GoalLocksDoc,
+  ReviewPacket,
   GoalSpecRecord,
   GoalTierPolicy,
   GoalTierVerdict,
@@ -101,6 +102,13 @@ export async function getGoalLocksCollection(): Promise<
 > {
   const db = await getDb();
   return db.collection<GoalLocksDoc>("goal_locks");
+}
+
+export async function getReviewPacketsCollection(): Promise<
+  Collection<ReviewPacket>
+> {
+  const db = await getDb();
+  return db.collection<ReviewPacket>("review_packets");
 }
 
 export async function getSnapshotsCollection(): Promise<Collection<Snapshot>> {
@@ -350,6 +358,20 @@ async function ensureIndexes(): Promise<void> {
     { orgId: 1, userId: 1 },
     { unique: true, name: "goal_locks_org_user_uniq" },
   );
+
+  const reviewPackets = await getReviewPacketsCollection();
+  await reviewPackets.createIndexes([
+    {
+      // "Latest packet for this dev" (own status line + manager board).
+      key: { orgId: 1, userId: 1, submittedAt: -1 },
+      name: "review_packets_org_user_submitted",
+    },
+    {
+      // Manager-side sweep: unreviewed packets across my reports.
+      key: { orgId: 1, managerId: 1, submittedAt: -1 },
+      name: "review_packets_org_manager_submitted",
+    },
+  ]);
 
   const goalInputs = await getGoalInputsCollection();
   await goalInputs.createIndexes([

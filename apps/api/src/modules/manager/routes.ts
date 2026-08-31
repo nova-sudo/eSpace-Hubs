@@ -27,6 +27,7 @@ import {
   getReportGoalHealthHandler,
   listApprovalsHandler,
   listDelegatedQueueHandler,
+  listReportReviewPacketsHandler,
   listReportsHandler,
   listTierPoliciesHandler,
   putApprovalDecisionHandler,
@@ -55,6 +56,13 @@ managerRouter.get(
   requireAuth(),
   requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
   getReportGoalDetailHandler,
+);
+
+managerRouter.get(
+  "/reports/:userId/review-packets",
+  requireAuth(),
+  requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
+  listReportReviewPacketsHandler,
 );
 
 managerRouter.get(

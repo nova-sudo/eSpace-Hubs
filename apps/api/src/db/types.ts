@@ -467,6 +467,48 @@ export interface GoalLocksDoc {
   updatedAt: Date;
 }
 
+// ─── review packets (submitted evidence documents) ───────────────────
+
+/** One compact per-goal row frozen into a packet — what the manager's
+ *  board renders without re-deriving anything. */
+export interface ReviewPacketGoalRow {
+  goalId: string;
+  title: string;
+  l1Title: string;
+  /** The DISPLAYED tier at submit time (capped / manager / numeric). */
+  tier: string | null;
+  /** Headline reading, e.g. "41 merged PRs". */
+  reading: string | null;
+  statusLabel: string | null;
+}
+
+/**
+ * An immutable, timestamped freeze of the evidence document at the
+ * moment the dev clicked "Submit for review" — the artifact BOTH sides
+ * of the review argue from. Closes the export dead end: before this,
+ * the compiled document only ever existed as a file download on the
+ * dev's laptop and no record existed of what was reviewed, when, or
+ * against which readings. New submits insert new versions (append-only);
+ * the manager reads the latest.
+ */
+export interface ReviewPacket {
+  _id: ObjectId;
+  orgId: ObjectId;
+  /** The dev who submitted. */
+  userId: ObjectId;
+  /** Their manager at submit time (null = submitted without one). */
+  managerId: ObjectId | null;
+  submittedAt: Date;
+  level: string;
+  rangeLabel: string;
+  narrative: string;
+  /** The full rendered markdown — the frozen document itself. */
+  markdown: string;
+  goals: ReviewPacketGoalRow[];
+  goalCount: number;
+  starredCount: number;
+}
+
 // ─── goal inputs (manual time-series entries) ────────────────────────
 
 /**
@@ -649,7 +691,8 @@ export type NotificationKind =
   | "goal_submitted"
   | "goal_approved"
   | "goal_changes_requested"
-  | "user_pending_approval";
+  | "user_pending_approval"
+  | "review_packet_submitted";
 
 export const ALL_NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "manager_graded",
@@ -657,6 +700,7 @@ export const ALL_NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "goal_approved",
   "goal_changes_requested",
   "user_pending_approval",
+  "review_packet_submitted",
 ] as const;
 
 /**

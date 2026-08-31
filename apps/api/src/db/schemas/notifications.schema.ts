@@ -34,6 +34,7 @@ export const notificationsValidator: Document = {
           "goal_approved",
           "goal_changes_requested",
           "user_pending_approval",
+          "review_packet_submitted",
         ],
       },
       title: { bsonType: "string", minLength: 1, maxLength: 200 },

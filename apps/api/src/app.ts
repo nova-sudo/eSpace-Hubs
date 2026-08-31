@@ -37,6 +37,7 @@ import { goalsRouter } from "./modules/goals/routes.js";
 import { goalSpecsRouter } from "./modules/goal-specs/routes.js";
 import { goalContextRouter } from "./modules/goal-context/routes.js";
 import { goalLocksRouter } from "./modules/goal-locks/routes.js";
+import { reviewPacketsRouter } from "./modules/review-packets/routes.js";
 import { goalInputsRouter } from "./modules/goal-inputs/routes.js";
 import { snapshotsRouter } from "./modules/snapshots/routes.js";
 import { gradingVerdictsRouter } from "./modules/grading-verdicts/routes.js";
@@ -157,6 +158,7 @@ export function buildApp(): Application {
   app.use("/api/v1/goal-specs", goalSpecsRouter);
   app.use("/api/v1/goal-context", goalContextRouter);
   app.use("/api/v1/goal-locks", goalLocksRouter);
+  app.use("/api/v1/review-packets", reviewPacketsRouter);
   app.use("/api/v1/goal-inputs", goalInputsRouter);
   app.use("/api/v1/snapshots", snapshotsRouter);
   app.use("/api/v1/grading-verdicts", gradingVerdictsRouter);
