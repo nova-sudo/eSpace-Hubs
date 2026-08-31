@@ -96,6 +96,10 @@ const INITIAL_STATE = {
   error: null,
   /** The L1 tree. Empty array until the first fetch lands. */
   l1s: [],
+  /** Server `updatedAt` of the tree we hold (ISO string) — the
+   *  optimistic-concurrency token PUT /goals echoes back. Null until
+   *  the first fetch, or when the server has no tree yet. */
+  updatedAt: null,
 };
 
 let state = { ...INITIAL_STATE };
@@ -171,7 +175,14 @@ export async function fetchGoals() {
       return state.l1s;
     }
     const l1s = Array.isArray(r.data?.l1s) ? r.data.l1s : [];
-    setState({ loading: false, fetched: true, attempted: true, error: null, l1s });
+    setState({
+      loading: false,
+      fetched: true,
+      attempted: true,
+      error: null,
+      l1s,
+      updatedAt: r.data?.updatedAt ?? null,
+    });
     return l1s;
   })();
   return inflightFetch;
@@ -184,16 +195,42 @@ export async function fetchGoals() {
 async function persistL1s(nextL1s) {
   const prevL1s = state.l1s;
   setState({ l1s: nextL1s, error: null });
-  const r = await apiPut("/goals", { l1s: nextL1s });
+  // Echo the concurrency token: the server 409s (goals_conflict) when
+  // the stored tree moved under us, instead of letting this stale tab
+  // silently wipe another device's edits.
+  const r = await apiPut("/goals", { l1s: nextL1s, updatedAt: state.updatedAt });
   if (!r.ok) {
-    setState({ l1s: prevL1s, error: r.error });
+    if (r.error?.code === "goals_conflict") {
+      // Adopt the live tree the 409 carried (or refetch as a fallback)
+      // so the next save starts from reality, and keep the error so the
+      // editor can tell the user their last edit needs re-applying.
+      const current = r.error?.details?.current;
+      if (current && Array.isArray(current.l1s)) {
+        setState({
+          l1s: current.l1s,
+          updatedAt: current.updatedAt ?? null,
+          fetched: true,
+          attempted: true,
+          error: r.error,
+        });
+      } else {
+        setState({ l1s: prevL1s, error: r.error });
+        void fetchGoals();
+      }
+    } else {
+      setState({ l1s: prevL1s, error: r.error });
+    }
     // eslint-disable-next-line no-console
     console.warn(
       "[goals] save failed:",
       r.error?.code,
       r.error?.message,
     );
+    return;
   }
+  // A successful save advances the token — without this, the SECOND
+  // save from this tab would conflict against its own first write.
+  setState({ updatedAt: r.data?.updatedAt ?? state.updatedAt });
 }
 
 function uid() {

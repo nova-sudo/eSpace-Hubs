@@ -45,5 +45,15 @@ const l1Schema = z.object({
 
 export const goalsUpsertSchema = z.object({
   l1s: z.array(l1Schema).max(200),
+  /**
+   * Optimistic-concurrency token: the `updatedAt` the client last saw
+   * (from GET or the previous PUT), or null when the client believes no
+   * tree exists yet. When present, the write only lands if the stored
+   * tree still carries that timestamp — otherwise 409 `goals_conflict`
+   * with the current tree, so a stale tab can't silently wipe another
+   * device's goals. Omitted = legacy unguarded behaviour (kept so any
+   * older client keeps working).
+   */
+  updatedAt: z.string().datetime({ offset: true }).nullable().optional(),
 });
 export type GoalsUpsertInput = z.infer<typeof goalsUpsertSchema>;

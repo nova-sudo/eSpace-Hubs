@@ -32,6 +32,7 @@ const SERVER_SNAPSHOT_KEY = JSON.stringify({
   attempted: false,
   error: null,
   l1s: [],
+  updatedAt: null,
 });
 
 function getSnapshot() {
