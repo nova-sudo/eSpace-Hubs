@@ -164,7 +164,8 @@ services:
         # These mirror the Coolify "build variables"; override via a root
         # .env file next to this compose file.
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-        NEXT_PUBLIC_AUTH_REQUIRED: ${NEXT_PUBLIC_AUTH_REQUIRED:-false}
+        # Fail closed (BL-017): auth on unless explicitly disabled.
+        NEXT_PUBLIC_AUTH_REQUIRED: ${NEXT_PUBLIC_AUTH_REQUIRED:-true}
         NEXT_PUBLIC_JIRA_URL: ${NEXT_PUBLIC_JIRA_URL:-}
         NEXT_PUBLIC_GITLAB_URL: ${NEXT_PUBLIC_GITLAB_URL:-}
         NEXT_PUBLIC_JENKINS_URL: ${NEXT_PUBLIC_JENKINS_URL:-}

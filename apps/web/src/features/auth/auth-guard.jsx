@@ -4,11 +4,13 @@
  * Auth + TOTP-enrolment + onboarding gate for protected pages.
  *
  * Behaviour
- *   NEXT_PUBLIC_AUTH_REQUIRED=false (default) → renders children as-is,
- *     no redirects. Existing dev flows + the legacy localStorage path
- *     keep working without a login.
+ *   NEXT_PUBLIC_AUTH_REQUIRED="false" → renders children as-is, no
+ *     redirects. Opt-OUT only: for local dev / the legacy localStorage
+ *     path, and it must be set explicitly. BL-017: the default used to
+ *     be false, which meant a production build that simply forgot the
+ *     var served every hub with no login.
  *
- *   NEXT_PUBLIC_AUTH_REQUIRED=true →
+ *   NEXT_PUBLIC_AUTH_REQUIRED unset or "true" (default: required) →
  *     1. while loading initial /me, render a placeholder
  *     2. no session OR partial session (needsTotp) → redirect to /login
  *     3. authenticated but TOTP not enrolled → redirect to /totp-setup
@@ -34,9 +36,22 @@ import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useSession } from "./use-session.js";
 
+// Fail CLOSED: auth is required unless the flag is EXPLICITLY "false".
+// An unset var in a production build must never mean "no login".
 const AUTH_REQUIRED =
+  typeof process === "undefined" ||
+  process.env.NEXT_PUBLIC_AUTH_REQUIRED !== "false";
+
+if (
+  !AUTH_REQUIRED &&
   typeof process !== "undefined" &&
-  process.env.NEXT_PUBLIC_AUTH_REQUIRED === "true";
+  process.env.NODE_ENV === "production"
+) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[auth-guard] NEXT_PUBLIC_AUTH_REQUIRED=false in a production build — every hub is served without a login.",
+  );
+}
 
 const TOTP_SETUP_PATH = "/totp-setup";
 const ONBOARDING_PATH = "/onboarding";
