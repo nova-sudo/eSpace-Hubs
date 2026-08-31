@@ -30,6 +30,7 @@ export { useAvailableHubs } from "./use-available-hubs.js";
 export { useActiveHub, useActiveHubStrict, HubContext } from "./hub-context.js";
 export { useHubLink } from "./use-hub-link.js";
 export { useHubSlotGuard } from "./use-hub-slot-guard.js";
+export { HubSlotGate } from "./hub-slot-gate.jsx";
 export { useAllowedProviders } from "./use-allowed-providers.js";
 export {
   useQaHubConfig,
