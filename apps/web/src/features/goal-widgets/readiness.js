@@ -15,6 +15,7 @@ export const GOAL_READINESS = Object.freeze({
   UNCLASSIFIED: "unclassified", // no spec yet — can't track
   UNTRACKABLE: "untrackable", // AI/user flagged not currently trackable
   PENDING_APPROVAL: "pending-approval", // BYO tracker awaiting manager approval
+  REJECTED: "changes-requested", // manager sent it back — dev must revise
   DELEGATED: "delegated", // judged by someone else — no self-tracking
   NEEDS_CONTEXT: "needs-context", // context questions not answered yet
   READY: "ready", // fully defined — safe to enter data
@@ -23,9 +24,13 @@ export const GOAL_READINESS = Object.freeze({
 export function goalReadiness(spec, contextComplete) {
   if (!spec) return GOAL_READINESS.UNCLASSIFIED;
   if (spec.untrackable) return GOAL_READINESS.UNTRACKABLE;
-  // A "Build Your Own" tracker awaiting (or sent back by) manager approval is
-  // read-only until approved — it can't be filled or graded yet (P4).
-  if (spec.approval?.status === "pending" || spec.approval?.status === "rejected") {
+  // A "Build Your Own" tracker in the approval flow is read-only until
+  // approved. Pending and rejected are DIFFERENT states with different
+  // owners: pending waits on the MANAGER, rejected waits on the DEV —
+  // collapsing them told a rejected user they were "still waiting on
+  // approval" while the manager was waiting on them.
+  if (spec.approval?.status === "rejected") return GOAL_READINESS.REJECTED;
+  if (spec.approval?.status === "pending") {
     return GOAL_READINESS.PENDING_APPROVAL;
   }
   if (spec.delegated?.delegated) return GOAL_READINESS.DELEGATED;
@@ -44,6 +49,8 @@ export function readinessLabel(status) {
   switch (status) {
     case GOAL_READINESS.PENDING_APPROVAL:
       return "Waiting on your manager's approval before it goes live.";
+    case GOAL_READINESS.REJECTED:
+      return "Your manager requested changes — open the goal to revise & resubmit.";
     case GOAL_READINESS.NEEDS_CONTEXT:
       return "Answer its setup questions in Goals to start tracking.";
     case GOAL_READINESS.DELEGATED:

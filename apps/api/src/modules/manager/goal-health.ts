@@ -25,6 +25,8 @@ import type { ContextAnswer } from "../../db/types.js";
 export type Readiness =
   | "unclassified"
   | "untrackable"
+  | "pending-approval"
+  | "changes-requested"
   | "delegated"
   | "needs-context"
   | "ready";
@@ -79,6 +81,11 @@ export function contextComplete(
 export function goalReadiness(spec: Spec | null, ctxComplete: boolean): Readiness {
   if (!spec) return "unclassified";
   if (spec.untrackable === true) return "untrackable";
+  // Approval flow — this mirror had drifted from the web gate: a
+  // pending/rejected BYO tracker read "ready" on the manager's board.
+  const approvalStatus = asObj(spec.approval)?.status;
+  if (approvalStatus === "rejected") return "changes-requested";
+  if (approvalStatus === "pending") return "pending-approval";
   if (asObj(spec.delegated)?.delegated === true) return "delegated";
   if (asObj(spec.context)?.required === true && !ctxComplete) {
     return "needs-context";

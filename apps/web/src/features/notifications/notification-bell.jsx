@@ -8,8 +8,25 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/cn";
+import { useHubLink } from "@/features/hubs";
 import { useNotifications } from "./use-notifications";
+
+/**
+ * Where a notification kind leads. Rows used to only mark-as-read — an
+ * inbox with no follow-through — and the manager's rejection note lived
+ * in `data` that nothing rendered, so "why was my goal sent back?" was
+ * unanswerable from the UI. Links go through useHubLink; a hub that
+ * doesn't expose the slot bounces to its dashboard via the slot guard.
+ */
+const KIND_PATH = {
+  manager_graded: "/goals",
+  goal_approved: "/goals",
+  goal_changes_requested: "/goals",
+  goal_submitted: "/approvals",
+  user_pending_approval: "/users",
+};
 
 function ago(iso) {
   const t = Date.parse(iso);
@@ -27,6 +44,17 @@ export function NotificationBell() {
   const { items, unread, loading, markRead, markAll } = useNotifications();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+  const router = useRouter();
+  const link = useHubLink();
+
+  const openNotification = (n) => {
+    if (!n.read) markRead(n.id);
+    const path = KIND_PATH[n.kind];
+    if (path) {
+      setOpen(false);
+      router.push(link(path));
+    }
+  };
 
   useEffect(() => {
     if (!open) return undefined;
@@ -127,7 +155,7 @@ export function NotificationBell() {
                 <button
                   key={n.id}
                   type="button"
-                  onClick={() => !n.read && markRead(n.id)}
+                  onClick={() => openNotification(n)}
                   className={cn(
                     "flex w-full items-start gap-3 border-b border-border px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-card-alt",
                     !n.read && "bg-accent-dim/30",
@@ -144,6 +172,11 @@ export function NotificationBell() {
                     <span className="mt-0.5 block text-[12px] leading-snug text-muted-fg">
                       {n.body}
                     </span>
+                    {typeof n.data?.note === "string" && n.data.note ? (
+                      <span className="mt-1 block text-[12px] italic leading-snug text-muted-fg">
+                        &ldquo;{n.data.note}&rdquo;
+                      </span>
+                    ) : null}
                     <span
                       className="mt-1 block text-dim-fg"
                       style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.03em" }}

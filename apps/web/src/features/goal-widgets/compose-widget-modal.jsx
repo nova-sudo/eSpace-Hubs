@@ -374,10 +374,18 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
       );
       return;
     }
-    // A fresh tracker replaces whatever widget was here — wipe the old
-    // logged history + settle-locks so it starts clean (same as re-analyze).
-    clearGoalEntries(goalId);
-    clearGoalLocks(goalId);
+    // A fresh tracker replacing a DIFFERENT widget kind starts clean
+    // (same as re-analyze) — but a REVISION of an existing COMPOSED
+    // tracker keeps its history: "revise & resubmit" after a manager's
+    // change-request used to destroy every logged entry and settle-lock
+    // on the goal, which made the one manager→dev feedback loop a data
+    // hazard. Stale field ids from a revised shape are simply ignored
+    // by the renderers.
+    const revisingComposed = spec?.widget === previewSpec.widget;
+    if (!revisingComposed) {
+      clearGoalEntries(goalId);
+      clearGoalLocks(goalId);
+    }
 
     // Route it for approval. No manager on file → the server says "approved"
     // and we activate immediately; otherwise it stays pending (read-only) and
@@ -392,7 +400,17 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
         { ...pendingSpec, approval: { status: "approved" } },
         { replace: true },
       );
-      toast.success("Custom tracker created.");
+      // Honest about the missing gate: with no manager on file the
+      // server auto-approves — say so instead of implying a review
+      // happened.
+      if (r.data?.autoApproved) {
+        toast.success("Custom tracker created.", {
+          description:
+            "No manager on file, so it went live without a review.",
+        });
+      } else {
+        toast.success("Custom tracker created.");
+      }
     } else {
       toast.success("Sent to your manager for approval.", {
         description: "It goes live once they sign off.",

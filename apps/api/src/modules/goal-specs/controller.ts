@@ -65,7 +65,20 @@ export async function submitApprovalHandler(
     const managerId = me?.managerId ?? null;
 
     if (!managerId) {
-      res.json({ status: "approved" });
+      // The approval gate silently no-ops without a managerId — that's a
+      // governance bypass an admin must be able to find after the fact,
+      // and the client must be able to tell the user no review happened.
+      await writeAudit({
+        orgId: session.orgId,
+        actorUserId: session.userId,
+        actorRole: session.role,
+        action: "goal_spec.approval.auto_approved",
+        targetType: "goal_spec",
+        targetId: goalId,
+        after: { reason: "no_manager_on_file" },
+        ...networkMeta(req),
+      });
+      res.json({ status: "approved", autoApproved: true });
       return;
     }
 
