@@ -10,48 +10,62 @@
  * escape hatch from the rolling-window inference: the app can't tell "didn't
  * get to it" from "nothing happened" — the lock lets the user say which.
  *
- * Persistence: localStorage, device-local — the same localStorage-first
- * pattern `prefs` used before graduating to API-direct. User-scoped, so the
- * key is wiped on every auth transition (see clear-user-storage.js).
- * Promoting locks to cross-device sync = move this to an API-direct store
- * later; the public surface here stays the same.
+ * Persistence (BL-011 closed): API-direct — `goal_locks` on the server is
+ * the source of truth, hydrated once per session, with localStorage kept
+ * as a synchronous warm-start cache (readLocks() is called from non-React
+ * code on first render, before any fetch can resolve). Why this graduated
+ * from device-local: the cadence-consistency CAP on displayed achievement
+ * tiers reads these locks, so device-local state made the same goal show
+ * different tiers per device, and a re-login (which wipes user-scoped
+ * storage) silently degraded the user's own badge.
+ *
+ * Mutations are optimistic: local state + cache update immediately, the
+ * PUT ({set/clear}) follows fire-and-forget; a failed write logs and the
+ * next hydration reconciles. The auth-transition wipe still clears the
+ * cache key and resets this module.
  *
  * Shape: { "<goalId>::<windowKey>": true }. Absent / false === unlocked.
  */
+
+import { apiGet, apiPut } from "@/lib/api-client";
 
 export const LOCKS_STORAGE_KEY = "espace-devhub:goal-locks";
 export const LOCKS_CHANGE_EVENT = "goal-locks:change";
 
 let tick = 0;
+/** In-memory map — the synchronous read surface. Seeded from the
+ *  localStorage cache on first read, replaced by the server on hydrate. */
+let state = null; // null = not loaded from cache yet
+let hydrated = false;
+let hydrating = false;
 
 function keyOf(goalId, windowKey) {
   return `${goalId}::${windowKey}`;
 }
 
-export function readLocks() {
-  if (typeof window === "undefined") return {};
+function loadCache() {
+  if (state !== null || typeof window === "undefined") return;
   try {
     const raw = localStorage.getItem(LOCKS_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === "object" ? parsed : {};
+    state = parsed && typeof parsed === "object" ? parsed : {};
   } catch {
-    return {};
+    state = {};
   }
 }
 
-export function isLocked(goalId, windowKey) {
-  if (!goalId || !windowKey) return false;
-  return readLocks()[keyOf(goalId, windowKey)] === true;
-}
-
-function write(next) {
+function persistCache() {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(LOCKS_STORAGE_KEY, JSON.stringify(next));
+    localStorage.setItem(LOCKS_STORAGE_KEY, JSON.stringify(state ?? {}));
   } catch {
     /* ignore quota / disabled storage */
   }
+}
+
+function notify() {
   tick += 1;
+  if (typeof window === "undefined") return;
   try {
     window.dispatchEvent(new Event(LOCKS_CHANGE_EVENT));
   } catch {
@@ -59,19 +73,97 @@ function write(next) {
   }
 }
 
+export function readLocks() {
+  loadCache();
+  return state ?? {};
+}
+
+export function isLocked(goalId, windowKey) {
+  if (!goalId || !windowKey) return false;
+  return readLocks()[keyOf(goalId, windowKey)] === true;
+}
+
+/**
+ * One-shot server hydration per session. The server's keys REPLACE the
+ * local map (it is the source of truth; the cache is only a warm
+ * start). 401 leaves it un-hydrated so a later mount retries once auth
+ * settles. Safe to call from many mounts.
+ */
+export async function hydrateLocks() {
+  if (hydrated || hydrating || typeof window === "undefined") return;
+  hydrating = true;
+  loadCache();
+  try {
+    const r = await apiGet("/goal-locks");
+    if (!r.ok) {
+      // Auth-flush 401s are normal; anything else logs and retries later.
+      if (
+        r.error?.code !== "unauthenticated" &&
+        r.error?.code !== "totp_required"
+      ) {
+        // eslint-disable-next-line no-console
+        console.warn("[goal-locks] hydrate failed:", r.error?.code);
+      }
+      return;
+    }
+    hydrated = true;
+    const keys = Array.isArray(r.data?.keys) ? r.data.keys : [];
+    const next = {};
+    for (const k of keys) {
+      if (typeof k === "string" && k) next[k] = true;
+    }
+    const changed = JSON.stringify(next) !== JSON.stringify(state ?? {});
+    state = next;
+    if (changed) {
+      persistCache();
+      notify();
+    }
+  } finally {
+    hydrating = false;
+  }
+}
+
+function applyLocal(setKeys, clearKeys) {
+  loadCache();
+  const next = { ...(state ?? {}) };
+  let changed = false;
+  for (const k of setKeys) {
+    if (next[k] !== true) {
+      next[k] = true;
+      changed = true;
+    }
+  }
+  for (const k of clearKeys) {
+    if (k in next) {
+      delete next[k];
+      changed = true;
+    }
+  }
+  if (!changed) return false;
+  state = next;
+  persistCache();
+  notify();
+  return true;
+}
+
+function pushRemote(setKeys, clearKeys) {
+  if (setKeys.length === 0 && clearKeys.length === 0) return;
+  void apiPut("/goal-locks", {
+    ...(setKeys.length ? { set: setKeys } : {}),
+    ...(clearKeys.length ? { clear: clearKeys } : {}),
+  }).then((r) => {
+    if (!r.ok && r.error?.code !== "unauthenticated" && r.error?.code !== "totp_required") {
+      // eslint-disable-next-line no-console
+      console.warn("[goal-locks] save failed:", r.error?.code, r.error?.message);
+    }
+  });
+}
+
 export function setLock(goalId, windowKey, locked) {
   if (!goalId || !windowKey) return;
-  const locks = readLocks();
   const k = keyOf(goalId, windowKey);
-  if (locked) {
-    if (locks[k] === true) return;
-    write({ ...locks, [k]: true });
-  } else {
-    if (!(k in locks)) return;
-    const next = { ...locks };
-    delete next[k];
-    write(next);
-  }
+  const changed = locked ? applyLocal([k], []) : applyLocal([], [k]);
+  if (changed) pushRemote(locked ? [k] : [], locked ? [] : [k]);
 }
 
 export function toggleLock(goalId, windowKey) {
@@ -98,8 +190,9 @@ export function isCurrentWindowLocked(goalId, windowKey) {
 /** Reopen the current window — clears both the real key and any legacy
  * "all" leftover, so a stale pre-migration lock can't keep re-settling it. */
 export function reopenCurrentWindow(goalId, windowKey) {
-  setLock(goalId, windowKey, false);
-  if (windowKey !== "all") setLock(goalId, "all", false);
+  const keys = windowKey !== "all" ? [keyOf(goalId, windowKey), keyOf(goalId, "all")] : [keyOf(goalId, windowKey)];
+  const changed = applyLocal([], keys);
+  if (changed) pushRemote([], keys);
 }
 
 /**
@@ -112,16 +205,24 @@ export function clearGoalLocks(goalId) {
   if (!goalId) return;
   const locks = readLocks();
   const prefix = `${goalId}::`;
-  let changed = false;
-  const next = {};
-  for (const [k, v] of Object.entries(locks)) {
-    if (k.startsWith(prefix)) {
-      changed = true;
-      continue;
-    }
-    next[k] = v;
-  }
-  if (changed) write(next);
+  const doomed = Object.keys(locks).filter((k) => k.startsWith(prefix));
+  if (doomed.length === 0) return;
+  applyLocal([], doomed);
+  pushRemote([], doomed);
+}
+
+/** Reset in-memory state (auth transitions). The storage key itself is
+ *  wiped by clear-user-storage's allowlist; this clears the module copy
+ *  so the next session re-hydrates for the new user. */
+export function resetLocks() {
+  state = null;
+  hydrated = false;
+  hydrating = false;
+  notify();
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("auth:user-storage-cleared", resetLocks);
 }
 
 /* ─────────────────── useSyncExternalStore plumbing ─────────────────── */
