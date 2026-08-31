@@ -208,9 +208,12 @@ export function EvidencePdfDocument({
   rangeLabel,
   narrative,
   goalReadings = [],
+  starred = [],
   include = { narrative: true, goals: true },
 }) {
   const groups = include.goals ? goalGroups(goalReadings) : [];
+  const starredRows =
+    include.starred !== false && Array.isArray(starred) ? starred : [];
   const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
   return (
@@ -254,6 +257,19 @@ export function EvidencePdfDocument({
               </View>
             ))}
           </View>
+        ) : null}
+
+        {starredRows.length ? (
+          <Section n="03" title="Starred proof">
+            {starredRows.map((it, i) => (
+              <Text key={i} style={s.para}>
+                {it.ref ? `${it.ref} — ` : ""}
+                {it.title || "(untitled)"}
+                {it.impact?.trim() ? ` — ${it.impact.trim()}` : ""}
+                {it.date ? `  (${it.date})` : ""}
+              </Text>
+            ))}
+          </Section>
         ) : null}
 
         <Text style={s.footer} fixed>

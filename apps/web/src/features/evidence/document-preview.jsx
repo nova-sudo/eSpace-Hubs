@@ -31,18 +31,22 @@ export function DocumentPreview({
   setNarrative,
   include,
   goalReadings,
+  starred,
   rangeLabel,
 }) {
   const { me } = useIntegrations();
 
   const filename = `performance-review-ytd.${format === "markdown" ? "md" : "pdf"}`;
 
+  const showStarred =
+    include.starred !== false && Array.isArray(starred) && starred.length > 0;
   // Count the sections actually rendered into the preview — drives the
   // Doto "N sections" tally in the preview header. Goal-oriented: summary
-  // narrative + per-goal readings.
+  // narrative + per-goal readings + hand-picked starred proof.
   const sectionCount =
     (include.narrative ? 1 : 0) +
-    (include.goals && goalReadings && goalReadings.length > 0 ? 1 : 0);
+    (include.goals && goalReadings && goalReadings.length > 0 ? 1 : 0) +
+    (showStarred ? 1 : 0);
 
   return (
     <Card className="overflow-hidden p-0">
@@ -131,6 +135,36 @@ export function DocumentPreview({
             rangeLabel="ai-classified · live"
           >
             <GoalReadingsBlock readings={goalReadings} />
+          </DocSection>
+        ) : null}
+
+        {showStarred ? (
+          <DocSection title={`03 / Starred proof · ${starred.length}`} rangeLabel="hand-picked">
+            <ul className="flex flex-col gap-1.5">
+              {starred.map((s) => (
+                <li key={s.id} className="flex items-baseline gap-2 text-[12px] leading-[1.45] text-fg/85">
+                  {s.ref ? (
+                    <span
+                      className="shrink-0 text-accent"
+                      style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, fontWeight: 700 }}
+                    >
+                      {s.ref}
+                    </span>
+                  ) : null}
+                  <span className="min-w-0">
+                    {s.title || "(untitled)"}
+                    {s.impact?.trim() ? (
+                      <span className="text-muted-fg"> — {s.impact.trim()}</span>
+                    ) : null}
+                  </span>
+                  {s.date ? (
+                    <span className="ml-auto shrink-0 text-dim-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}>
+                      {s.date}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
           </DocSection>
         ) : null}
 

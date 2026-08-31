@@ -10,6 +10,8 @@ import { useGoalWidgetItems } from "@/features/goal-widgets";
 import { ConfigPanel } from "./config-panel";
 import { DocumentPreview } from "./document-preview";
 import { ReviewPrepChecklist } from "./review-prep-checklist";
+import { StarredEvidenceCard } from "./starred-evidence-card";
+import { useStarredEvidence } from "./use-evidence";
 import { useGoalReadings } from "./goal-readings";
 import { buildGoalEvidenceGroups } from "./goal-evidence";
 import { GoalEvidenceBoard } from "./goal-evidence-board";
@@ -46,6 +48,9 @@ export function EvidencePage() {
   // readInputs() on hydration/change.
   const { ready, goalsError, retryGoals } = useGoalWidgetItems();
   const goalReadings = useGoalReadings();
+  // Hand-picked proof artifacts (starred PRs/tickets) — rendered in the
+  // sidebar card and as the document's "Starred proof" section.
+  const starred = useStarredEvidence();
   // Enrichment (verdict, evidence, timing) lives in useGoalReadings now, so the
   // rows already carry everything — this just shelves them by L1.
   const evidence = useMemo(
@@ -67,6 +72,7 @@ export function EvidencePage() {
       rangeLabel,
       narrative,
       goalReadings,
+      starred,
       include,
     };
     if (format === "pdf") {
@@ -125,12 +131,15 @@ export function EvidencePage() {
             loading={loading}
             goalsHref={link("/goals")}
           />
-          <EvidenceSummary
-            rangeLabel={rangeLabel}
-            summary={evidence.summary}
-            onCompile={() => setView("compile")}
-            loading={loading}
-          />
+          <div className="flex flex-col gap-[13px]">
+            <EvidenceSummary
+              rangeLabel={rangeLabel}
+              summary={evidence.summary}
+              onCompile={() => setView("compile")}
+              loading={loading}
+            />
+            <StarredEvidenceCard />
+          </div>
         </div>
         )}
       </main>
@@ -181,6 +190,7 @@ export function EvidencePage() {
             setNarrative={setNarrative}
             include={include}
             goalReadings={goalReadings}
+            starred={starred}
             rangeLabel={rangeLabel}
           />
         </div>

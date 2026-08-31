@@ -12,6 +12,7 @@ export function renderMarkdown({
   rangeLabel,
   narrative,
   goalReadings,
+  starred,
   include = { narrative: true, goals: true },
 }) {
   const lines = [];
@@ -53,6 +54,27 @@ export function renderMarkdown({
           lines.push(`### ${r.parentL1?.title || "(untitled L1)"}${w}`);
         }
         emitGoalBlock(lines, r);
+      }
+    }
+    lines.push("");
+  }
+
+  // Hand-picked artifacts — the concrete PRs/tickets the user starred
+  // as proof. Rendered whenever any exist (include.starred !== false
+  // keeps it toggleable from the config panel later).
+  if (
+    include.starred !== false &&
+    Array.isArray(starred) &&
+    starred.length > 0
+  ) {
+    lines.push("## 03 · Starred proof");
+    lines.push("");
+    for (const s of starred) {
+      const ref = s.ref ? `**${s.ref}** — ` : "";
+      const date = s.date ? ` _(${s.date})_` : "";
+      lines.push(`- ${ref}${s.title || "(untitled)"}${date}`);
+      if (s.impact?.trim()) {
+        lines.push(`  - _Impact:_ ${s.impact.trim()}`);
       }
     }
     lines.push("");
