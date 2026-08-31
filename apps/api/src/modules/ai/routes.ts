@@ -97,6 +97,41 @@ const composeLimiterOptions: Partial<Options> = {
 const composeWidgetLimiter = rateLimit(composeLimiterOptions);
 
 /**
+ * G1.6 — every route below bills the LLM gateway per call, and until now
+ * only the two compose routes were metered: an authenticated session could
+ * loop /classify-goals (one upstream call PER GOAL, up to the 200×200 zod
+ * ceiling) without limit. Budgets are per-user like the two limiters
+ * above — same window, same headers, same envelope — and sized to the
+ * heaviest LEGITIMATE burst each route sees, not to typical use:
+ *
+ *   chat        40 — a long back-and-forth session
+ *   grade-tier  60 — a full dashboard re-grade across every goal
+ *   grade-pr   300 — the rubric widget's grade-all over a heavy author's
+ *                    backlog (client-driven fan-out, one call per PR)
+ *   classify    10 — whole-tree analysis; users re-run a handful of times
+ *                    while iterating on goals, never dozens
+ */
+function aiUserLimiter(max: number, what: string) {
+  return rateLimit({
+    ...uploadLimiterOptions,
+    max,
+    handler: (_req: Request, _res: Response, next: NextFunction) => {
+      next(
+        new HttpError(
+          429,
+          "rate_limited",
+          `Too many ${what}. Wait a few minutes and try again.`,
+        ),
+      );
+    },
+  });
+}
+const chatLimiter = aiUserLimiter(40, "chat messages");
+const gradeGoalTierLimiter = aiUserLimiter(60, "tier gradings");
+const gradePrLimiter = aiUserLimiter(300, "PR gradings");
+const classifyGoalsLimiter = aiUserLimiter(10, "goal analyses");
+
+/**
  * W7 — memory storage (nothing ever hits the disk, so there is no path to
  * traverse and no file to leave behind), one file, hard byte cap enforced
  * by multer before a single byte reaches a parser. `fields`/`parts` are
@@ -146,11 +181,16 @@ function uploadSingleDocument(
 
 export const aiRouter: Router = Router();
 
-aiRouter.post("/chat", requireAuth(), chatHandler);
-aiRouter.post("/grade-pr", requireAuth(), gradePrHandler);
+aiRouter.post("/chat", requireAuth(), chatLimiter, chatHandler);
+aiRouter.post("/grade-pr", requireAuth(), gradePrLimiter, gradePrHandler);
 // Score which achievement tier a developer is at for one goal, given the
 // goal's classifier-distilled tier criteria + its current metric data.
-aiRouter.post("/grade-goal-tier", requireAuth(), gradeGoalTierHandler);
+aiRouter.post(
+  "/grade-goal-tier",
+  requireAuth(),
+  gradeGoalTierLimiter,
+  gradeGoalTierHandler,
+);
 // "Describe your own tracker" → a COMPOSED spec built from the user's text
 // (plus, optionally, text extracted from a document they attached).
 aiRouter.post(
@@ -173,5 +213,12 @@ aiRouter.post(
 aiRouter.get("/goal-tier-verdicts", requireAuth(), listGoalTierVerdictsHandler);
 // /classify-goals — NDJSON stream (one AnalysisEvent per line).
 // Auth runs as middleware; once headers flush, the handler owns the
-// response and never throws into express's error handler.
-aiRouter.post("/classify-goals", requireAuth(), classifyGoalsHandler);
+// response and never throws into express's error handler. The limiter
+// sits BEFORE the handler so a 429 is a clean JSON error, not a broken
+// stream.
+aiRouter.post(
+  "/classify-goals",
+  requireAuth(),
+  classifyGoalsLimiter,
+  classifyGoalsHandler,
+);
