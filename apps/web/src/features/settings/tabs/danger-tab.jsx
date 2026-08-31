@@ -8,7 +8,7 @@ import { clearSnapshots, readSnapshots } from "@/features/snapshots";
 const ACTIONS = [
   {
     title: "Export snapshots as JSON",
-    body: "Download all local snapshots as a portable archive.",
+    body: "Download all snapshots from your account as a portable archive.",
     cta: "Export JSON",
     variant: "ghost",
     onClick: () => {
@@ -25,13 +25,21 @@ const ACTIONS = [
   },
   {
     title: "Clear snapshot history",
-    body: "Deletes all weekly snapshots from this browser. Current metrics stay.",
+    // Honest scope: this fires DELETE /snapshots per week — a permanent,
+    // account-wide deletion across every device, and the compliance
+    // stream (trends, evidence readings, the manager's view) goes with
+    // it. It is NOT a browser-local cleanup.
+    body: "Permanently deletes all weekly snapshots from your account — every device. Trend history and compliance readings go with them.",
     cta: "Clear snapshots",
     variant: "danger",
     onClick: () => {
-      if (confirm("Delete all snapshots? This cannot be undone.")) {
+      if (
+        confirm(
+          "Permanently delete ALL snapshots from your account? Trend history and compliance readings are lost on every device. This cannot be undone.",
+        )
+      ) {
         clearSnapshots();
-        toast.success("Snapshots cleared");
+        toast.success("Snapshots deleted from your account");
       }
     },
   },
@@ -48,14 +56,23 @@ const ACTIONS = [
     },
   },
   {
-    title: "Reset everything",
-    body: "Wipes all local state including preferences. You'll see the onboarding screen next load.",
-    cta: "Reset",
+    title: "Reset this device",
+    // Honest scope: localStorage.clear() wipes DEVICE state only —
+    // preferences, drafts, cached readings, settle-locks (which can
+    // change displayed tiers until re-settled). Goals, snapshots, and
+    // grades are server-side and survive; onboarding is a server-side
+    // flag and does NOT re-show.
+    body: "Wipes app data stored on this device — preferences, drafts, cached readings. Your goals, snapshots, and grades live in your account and are not deleted.",
+    cta: "Reset device",
     variant: "danger",
     onClick: () => {
-      if (confirm("Reset everything? This wipes all local data.")) {
+      if (
+        confirm(
+          "Reset this device? Local preferences, drafts, and cached readings are wiped. Your account data (goals, snapshots, grades) is kept.",
+        )
+      ) {
         localStorage.clear();
-        location.href = "/onboarding";
+        location.href = "/";
       }
     },
   },

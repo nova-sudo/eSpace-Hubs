@@ -100,7 +100,7 @@ export function SettingsPage() {
         title: "Your keys. Your terms.",
         italicWord: "terms",
         subtitle:
-          "Everything lives in your browser. We never see your tokens, and your metrics never leave this tab unless you export them.",
+          "Provider tokens are encrypted at rest and only ever used to fetch your own data. Goals, check-ins, and grades are stored in your account so they follow you across devices.",
       }
     : {
         crumb: "Settings · your account",
