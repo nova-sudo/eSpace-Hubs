@@ -73,12 +73,38 @@ export function isoStartOfWeek(date = new Date()) {
  *   Sun Apr 26 2026 lands in week 18.
  */
 export function weekLabel(date = new Date()) {
-  const d = new Date(date);
-  const yearStart = new Date(d.getFullYear(), 0, 1);
-  const dayOfYear = Math.floor((d - yearStart) / DAY_MS) + 1; // 1-indexed
-  const jan1Weekday = yearStart.getDay(); // 0 = Sun
-  const week = Math.ceil((dayOfYear + jan1Weekday) / 7);
-  return `W${String(week).padStart(2, "0")}`;
+  return `W${String(weekNumber(date)).padStart(2, "0")}`;
+}
+
+/**
+ * Calendar-day difference between two LOCAL dates, immune to DST: the
+ * naive `(b - a) / DAY_MS` is off by an hour across a transition, and a
+ * floor over that mislabelled every DST-period Sunday with the previous
+ * week (the flip lands exactly on `dayOfYear % 7` boundaries — Sundays).
+ * Reconstructing both calendar dates in UTC makes every day exactly
+ * 24h long.
+ */
+function calendarDaysBetween(a, b) {
+  const au = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
+  const bu = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
+  return Math.round((bu - au) / DAY_MS);
+}
+
+/**
+ * THE canonical Sunday-anchored week number (1-indexed; week 1 contains
+ * Jan 1). Every producer of a "Wnn" key — labels, snapshot cadence
+ * windows, compliance buckets — must derive from this one function:
+ * the old state of two lookalike implementations (`weekLabel` here,
+ * `sunWeekNumber` in snapshots) disagreed by one most years, so a
+ * single snapshot document carried `week: "W02"` next to
+ * `cadenceWindow: "W01-…"`.
+ */
+export function weekNumber(date = new Date()) {
+  const d = date instanceof Date ? date : new Date(date);
+  const jan1 = new Date(d.getFullYear(), 0, 1);
+  // The Sunday on/before Jan 1 starts week 1.
+  const week1Sunday = new Date(d.getFullYear(), 0, 1 - jan1.getDay());
+  return Math.floor(calendarDaysBetween(week1Sunday, d) / 7) + 1;
 }
 
 export function shortDate(iso) {
@@ -135,7 +161,12 @@ export function weekRangeFromLabel(label) {
   return {
     start: sunday,
     end: friday,
-    weekLabel: weekLabel(new Date(sunday.getTime() + 3 * DAY_MS)),
+    // The normalized form of the label the caller asked for ("W9" →
+    // "W09") — NOT recomputed from a mid-week day: week 1's mid-week
+    // can fall in the PREVIOUS calendar year (W01-2026 starts Sun Dec
+    // 28 2025), and recomputing there returned that year's W53,
+    // breaking label → range → label round-trips.
+    weekLabel: `W${String(weekNum).padStart(2, "0")}`,
   };
 }
 
