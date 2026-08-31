@@ -44,7 +44,7 @@ export function EvidencePage() {
   // logged against each goal. Windowed to year-to-date (the L2s are annual
   // goals). useAllGoalInputs subscribes the inputs store so the memo re-reads
   // readInputs() on hydration/change.
-  const { ready } = useGoalWidgetItems();
+  const { ready, goalsError, retryGoals } = useGoalWidgetItems();
   const goalReadings = useGoalReadings();
   // Enrichment (verdict, evidence, timing) lives in useGoalReadings now, so the
   // rows already carry everything — this just shelves them by L1.
@@ -103,6 +103,22 @@ export function EvidencePage() {
             </span>
           }
         />
+        {goalsError && !ready ? (
+          // Failed /goals fetch: without this branch the board reads
+          // "Reading your goals…" forever (the store no longer auto-retries).
+          <div className="flex flex-col items-start gap-3 rounded-[var(--radius-sub)] border border-dashed border-[color-mix(in_srgb,var(--bad)_35%,transparent)] bg-[color-mix(in_srgb,var(--bad)_6%,transparent)] p-5">
+            <div
+              className="uppercase tracking-[1px] text-bad"
+              style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
+            >
+              Couldn&apos;t load your goals
+            </div>
+            <p className="text-[13px] leading-[1.5] text-muted-fg">
+              {goalsError.message || "The server didn't respond. Check your connection and try again."}
+            </p>
+            <Button onClick={() => void retryGoals()}>Retry</Button>
+          </div>
+        ) : (
         <div className="grid grid-cols-[minmax(0,1fr)_300px] items-start gap-[26px]">
           <GoalEvidenceBoard
             groups={evidence.groups}
@@ -115,6 +131,7 @@ export function EvidencePage() {
             onCompile={() => setView("compile")}
           />
         </div>
+        )}
       </main>
     );
   }

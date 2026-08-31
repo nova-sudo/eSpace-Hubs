@@ -29,6 +29,7 @@ import {
 const SERVER_SNAPSHOT_KEY = JSON.stringify({
   loading: false,
   fetched: false,
+  attempted: false,
   error: null,
   l1s: [],
 });
@@ -53,13 +54,17 @@ export function useGoals() {
 
   // Kick off the initial fetch the first time any consumer mounts
   // after an auth transition or app boot. fetchGoals is idempotent —
-  // concurrent calls share the same in-flight promise, and once
-  // `fetched` flips true the function short-circuits.
+  // concurrent calls share the same in-flight promise. Gated on
+  // `attempted`, NOT `fetched`: a failed fetch settles with
+  // `fetched:false`, and gating on that refired this effect forever —
+  // an infinite spinner that hammered the API. Failures now settle
+  // once; recovery is the user-facing retry (or the next auth
+  // transition, which resets the store).
   useEffect(() => {
-    if (!stateSnapshot.fetched && !stateSnapshot.loading) {
+    if (!stateSnapshot.attempted && !stateSnapshot.loading) {
       void fetchGoals();
     }
-  }, [stateSnapshot.fetched, stateSnapshot.loading]);
+  }, [stateSnapshot.attempted, stateSnapshot.loading]);
 
   const goals = {
     schemaVersion: GOALS_SCHEMA_VERSION,
@@ -83,5 +88,9 @@ export function useGoals() {
     // flashes before hydration: `!fetched → loader`.
     fetched: stateSnapshot.fetched,
     error: stateSnapshot.error,
+    // Explicit user-driven retry after a failed load. fetchGoals ignores
+    // the `attempted` gate — that gate only stops the AUTOMATIC refetch
+    // loop, never a person clicking "Retry".
+    retry: fetchGoals,
   };
 }

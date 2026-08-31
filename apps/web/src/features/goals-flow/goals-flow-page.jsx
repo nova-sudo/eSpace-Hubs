@@ -70,7 +70,8 @@ function TitleBarButton({ onClick, active, children, ...rest }) {
 }
 
 export function GoalsFlowPage() {
-  const { groupedItems, unclassifiedGoals, hasGoals, ready } = useGoalWidgetItems();
+  const { groupedItems, unclassifiedGoals, hasGoals, ready, goalsError, retryGoals } =
+    useGoalWidgetItems();
   const [paneRef, paneWidth] = usePaneWidth();
   const [openId, setOpenId] = useState(null);
   const [owedOnly, setOwedOnly] = useState(false);
@@ -275,7 +276,20 @@ export function GoalsFlowPage() {
           className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-5"
           onKeyDown={handleTreeKeyDown}
         >
-          {!ready ? (
+          {goalsError && !ready ? (
+            <div className="flex flex-col items-start gap-2 p-6">
+              <span className="text-[13px] text-bad">
+                Couldn&apos;t load goals — {goalsError.message || "the server didn't respond"}.
+              </span>
+              <button
+                type="button"
+                onClick={() => void retryGoals()}
+                className="rounded-[var(--radius-sub)] border border-border-strong px-3 py-1 text-[12px] text-fg hover:border-accent"
+              >
+                Retry
+              </button>
+            </div>
+          ) : !ready ? (
             <div className="p-6 text-[13px] text-muted-fg">Loading goals&hellip;</div>
           ) : !hasGoals || layout.rows.length === 0 ? (
             <div className="rounded-[var(--radius-tile)] border border-dashed border-border-strong bg-card-alt p-6 text-center text-[13px] text-muted-fg">

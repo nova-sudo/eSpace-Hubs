@@ -84,6 +84,14 @@ const INITIAL_STATE = {
   /** Whether a successful `GET /goals` has completed for the active
    *  session. Used to gate "show empty state" UI vs "still loading." */
   fetched: false,
+  /** Whether ANY `GET /goals` has settled (success OR failure) for the
+   *  active session. The mount-effect in use-goals gates on this, not
+   *  on `fetched` — gating on `fetched` meant a failed fetch left
+   *  `fetched:false`, the effect refired, and the app hammered the API
+   *  in a loop while the page showed an endless spinner. Reset (like
+   *  everything here) on auth transitions; manual retries call
+   *  fetchGoals() directly. */
+  attempted: false,
   /** Last write/fetch error envelope ({code, message}) or null. */
   error: null,
   /** The L1 tree. Empty array until the first fetch lands. */
@@ -155,6 +163,7 @@ export async function fetchGoals() {
         r.error?.code === "unauthenticated" || r.error?.code === "totp_required";
       setState({
         loading: false,
+        attempted: true,
         // Auth failures are normal during logout flushes; not an error
         // state the user needs to see.
         error: isAuth ? null : r.error,
@@ -162,7 +171,7 @@ export async function fetchGoals() {
       return state.l1s;
     }
     const l1s = Array.isArray(r.data?.l1s) ? r.data.l1s : [];
-    setState({ loading: false, fetched: true, error: null, l1s });
+    setState({ loading: false, fetched: true, attempted: true, error: null, l1s });
     return l1s;
   })();
   return inflightFetch;

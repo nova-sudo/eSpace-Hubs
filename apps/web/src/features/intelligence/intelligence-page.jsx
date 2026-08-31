@@ -29,6 +29,8 @@ export function IntelligencePage() {
     hasSpecs,
     unclassifiedGoals,
     ready: itemsReady,
+    goalsError,
+    retryGoals,
   } = useGoalWidgetItems();
   const { ready: inputsReady, groups, queue, summary } = useGoalHealth(groupedItems);
 
@@ -65,7 +67,22 @@ export function IntelligencePage() {
         </h1>
       </div>
 
-      {loading ? (
+      {goalsError && !itemsReady ? (
+        // A failed /goals fetch settles once (no auto-retry loop) — give
+        // the user the error and a way back instead of an endless spinner.
+        <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+          <div
+            className="uppercase tracking-[1px] text-bad"
+            style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
+          >
+            Couldn&apos;t load your goals
+          </div>
+          <p className="max-w-[42ch] text-[13px] leading-[1.5] text-muted-fg">
+            {goalsError.message || "The server didn't respond. Check your connection and try again."}
+          </p>
+          <Button onClick={() => void retryGoals()}>Retry</Button>
+        </div>
+      ) : loading ? (
         <div className="flex items-center justify-center py-24">
           <Loader label="Reading your goals" />
         </div>

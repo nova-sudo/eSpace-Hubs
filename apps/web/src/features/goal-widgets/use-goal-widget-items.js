@@ -29,7 +29,12 @@ function flattenGoals(tree) {
 }
 
 export function useGoalWidgetItems() {
-  const { goals, fetched: goalsFetched } = useGoals();
+  const {
+    goals,
+    fetched: goalsFetched,
+    error: goalsError,
+    retry: retryGoals,
+  } = useGoals();
   const { specs, lastAnalyzedAt, fetched: specsFetched } = useGoalSpecs();
 
   const items = useMemo(() => {
@@ -116,5 +121,9 @@ export function useGoalWidgetItems() {
     // True once goals + specs have both hydrated — gate empty/CTA states on
     // this so "Add goals" / "Analyze" never flash before the first load.
     ready: goalsFetched && specsFetched,
+    // A failed goals fetch settles without flipping `ready` — pages must
+    // branch on this (error + retry) instead of spinning forever.
+    goalsError,
+    retryGoals,
   };
 }
