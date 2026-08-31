@@ -47,16 +47,12 @@ export const PROVIDERS = {
     scopes: "overall/read · job/read · job/build (optional)",
     endpointHint: (url) => (url ? url.replace(/^https?:\/\//, "") : "your Jenkins instance"),
   },
-  zoho: {
-    id: "zoho",
-    label: "Zoho People",
-    glyph: "Z",
-    authMode: "oauth",
-    description:
-      "OAuth into Zoho People to pull your L1 / L2 performance goals into the dashboard.",
-    scopes: "ZohoPeople.employee.READ · ZohoPeople.forms.READ",
-    endpointHint: (dc) => `people.zoho.${dc || "com"}`,
-  },
+  // NOTE: no Zoho entry. A "Zoho People" OAuth provider used to be
+  // advertised here with no api-client, no OAuth route, and no proxy
+  // support behind it — a promise the product visibly couldn't keep.
+  // Goals arrive via the manual CSV/XLS import (features/goals) until
+  // the real M9 Zoho integration lands; re-add the provider WITH its
+  // client when that ships.
 };
 
 export const PROVIDER_IDS = Object.keys(PROVIDERS);

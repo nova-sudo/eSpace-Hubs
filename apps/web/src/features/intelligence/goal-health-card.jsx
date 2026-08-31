@@ -28,8 +28,8 @@ import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
 import {
   currentWindowKey,
   reopenCurrentWindow,
-  setLock,
 } from "@/features/goal-locks";
+import { skipWindow } from "./skip-window";
 import { GOAL_READINESS, readinessLabel } from "@/features/goal-widgets";
 import { useHubLink } from "@/features/hubs";
 import { cn } from "@/lib/cn";
@@ -163,7 +163,7 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
           ) : health.needsFill && windowKey ? (
             <button
               type="button"
-              onClick={() => setLock(goal?.id, windowKey, true)}
+              onClick={() => skipWindow(goal, windowKey)}
               className="text-[10px] uppercase tracking-[0.4px] text-muted-fg/60 hover:text-fg"
               style={{ fontFamily: "var(--font-mono)" }}
               title="Mark this period settled — nothing to report"

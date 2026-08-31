@@ -17,7 +17,8 @@ import { Pill } from "@/components/ui";
 import { SPEC_KIND_META, specCadence } from "@/features/goal-specs";
 import { cadenceWindowLabel } from "@/features/goal-inputs";
 import { readinessLabel, GoalWidgetModal } from "@/features/goal-widgets";
-import { currentWindowKey, setLock } from "@/features/goal-locks";
+import { currentWindowKey } from "@/features/goal-locks";
+import { skipWindow } from "./skip-window";
 import { HEALTH } from "./status";
 
 function daysSince(ts) {
@@ -230,7 +231,7 @@ export function FocusHero({ card }) {
             {canSkip ? (
               <button
                 type="button"
-                onClick={() => setLock(goal?.id, windowKey, true)}
+                onClick={() => skipWindow(goal, windowKey)}
                 className="rounded-[11px] uppercase tracking-[0.8px] text-muted-fg transition-colors hover:text-fg"
                 style={{
                   fontFamily: "var(--font-mono)",

@@ -20,6 +20,8 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useHubLink } from "@/features/hubs";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
 import { useAllGoalInputs } from "@/features/goal-inputs";
 import { useGoalLocks } from "@/features/goal-locks";
@@ -407,6 +409,10 @@ function ZoomButton({ onClick, label, ...rest }) {
 }
 
 function L1Card({ card, progress, onToggleCollapse }) {
+  // Real destination for "edit" — the goals editor owns L1 editing.
+  // This used to be href="#": a visible link that scrolled to the top
+  // and did nothing.
+  const link = useHubLink();
   const total = progress?.total || 0;
   const filled = progress?.filled || 0;
   const owed = progress?.owed || 0;
@@ -483,9 +489,13 @@ function L1Card({ card, progress, onToggleCollapse }) {
         style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}
       >
         <span>{card.weightage != null ? `Σ ${card.weightage}% mapped` : ""}</span>
-        <a href="#" className="shrink-0" style={{ textTransform: "uppercase", letterSpacing: "0.5px" }}>
+        <Link
+          href={link("/goals")}
+          className="shrink-0 hover:text-fg"
+          style={{ textTransform: "uppercase", letterSpacing: "0.5px" }}
+        >
           edit
-        </a>
+        </Link>
       </div>
     </div>
   );
