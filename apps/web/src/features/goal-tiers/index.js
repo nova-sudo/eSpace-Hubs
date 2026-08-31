@@ -41,3 +41,17 @@ export {
 } from "./live-readings-store";
 export { GoalTierBadge, GoalTierLadder } from "./goal-tier-ui";
 export { numericReadingFor, gradeNumericTier } from "./grade-numeric";
+// F9 — instant tier feedback.
+export { tierDelta } from "./tier-diff";
+export { TIER_COLOR, tierBadgeFg } from "./tier-colors";
+export {
+  recordTierTransition,
+  readTierTransition,
+  clearTierTransition,
+  subscribeTierTransitions,
+  getTierTransitionsSnapshot,
+  getTierTransitionsServerSnapshot,
+  resetTierTransitions,
+} from "./tier-transitions-store";
+export { useTierFillFeedback } from "./use-tier-fill-feedback";
+export { TierDeltaBadge } from "./tier-move";

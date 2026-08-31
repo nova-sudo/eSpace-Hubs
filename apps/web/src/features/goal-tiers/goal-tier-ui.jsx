@@ -10,13 +10,8 @@
 import { useState } from "react";
 import { updateSpecTiers } from "@/features/goal-specs";
 import { useGoalTier, TIER_ORDER, TIER_LABELS, TIER_FIELD } from "./use-goal-tier";
-
-const TIER_COLOR = {
-  not_achieved: "#b91c1c", // bad
-  achieved: "#1D4ED8", // accent
-  over_achieved: "#00c48a", // accent-2
-  role_model: "#f59e0b", // amber — exemplary
-};
+import { TIER_COLOR, tierBadgeFg } from "./tier-colors";
+import { TierDeltaBadge } from "./tier-move";
 const TIER_SHORT = {
   not_achieved: "Not met",
   achieved: "Achieved",
@@ -74,18 +69,24 @@ export function GoalTierBadge({ goalId, spec }) {
         ? " (low confidence)"
         : "");
   return (
-    <span
-      className="inline-flex shrink-0 items-center rounded-[var(--radius-pill)] px-1.5 py-px font-bold uppercase tracking-[0.3px]"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 9,
-        color: "#ffffff",
-        background: color,
-      }}
-      title={title}
-    >
-      {TIER_SHORT[verdict.tier]}
-    </span>
+    <>
+      <span
+        className="inline-flex shrink-0 items-center rounded-[var(--radius-pill)] px-1.5 py-px font-bold uppercase tracking-[0.3px]"
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 9,
+          // Dark fg on the two light fills — white on over_achieved /
+          // role_model failed WCAG AA outright (see tier-colors.js).
+          color: tierBadgeFg(verdict.tier),
+          background: color,
+        }}
+        title={title}
+      >
+        {TIER_SHORT[verdict.tier]}
+      </span>
+      {/* F9: fresh rung-move delta, rendered inline for ~6s. */}
+      <TierDeltaBadge goalId={goalId} variant="dark" />
+    </>
   );
 }
 
@@ -144,13 +145,15 @@ export function GoalTierLadder({ spec, variant = "light" }) {
     >
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <span
-          className="uppercase tracking-[0.5px]"
+          className="inline-flex items-center gap-1.5 uppercase tracking-[0.5px]"
           style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: muted }}
         >
           Achievement tier
           {verdict?.source === "manager" ? " · manager-graded" : ""}
           {tierGoverned ? " · manager-governed 🔒" : spec?.tiersLocked ? " · 🔒" : ""}
           {(loading && !verdict) || regrading ? " · grading…" : ""}
+          {/* F9: fresh rung-move delta beside the header for ~6s. */}
+          <TierDeltaBadge goalId={spec?.goalId} variant={variant} />
         </span>
         <div className="flex shrink-0 items-center gap-2">
           {/* Manual re-grade — grading is throttled to once a day, so this is

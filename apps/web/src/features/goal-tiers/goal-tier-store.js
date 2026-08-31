@@ -147,8 +147,13 @@ export async function gradeGoalTier({
     ) {
       return;
     }
-    if (inflight.has(storeKey)) return;
   }
+  // In-flight guard runs UNCONDITIONALLY (F9 G1.7 / W1): it used to sit
+  // inside `if (!force)`, so force calls — the explicit-fill default
+  // path — could spawn concurrent duplicate paid grades on a
+  // double-click or a double-mounted hook. Only the cache-freshness
+  // short-circuit above stays force-bypassed.
+  if (inflight.has(storeKey)) return;
   inflight.add(storeKey);
   // Surface the grade in the shell "running jobs" toast. The request already
   // survives navigation (it writes straight into this module store), so this
@@ -183,9 +188,25 @@ export async function gradeGoalTier({
     );
     const body = await res.json().catch(() => ({}));
     if (res.ok && body?.verdict?.tier) {
+      // F9 G0.1 — remember what was showing a moment ago. Raw-tier
+      // bookkeeping only (the capped diff lives in the hook, G0.3);
+      // omitted entirely when there was no prior REAL tier (first grade
+      // is a landing, not a move — BR-11).
+      const prior = state[storeKey];
+      const prevTier =
+        prior && !prior.awaiting && !prior.pendingSetup && prior.tier &&
+        prior.tier !== body.verdict.tier
+          ? prior.tier
+          : undefined;
       state = {
         ...state,
-        [storeKey]: { ...body.verdict, key, criteriaKey, gradedDay },
+        [storeKey]: {
+          ...body.verdict,
+          key,
+          criteriaKey,
+          gradedDay,
+          ...(prevTier ? { prevTier } : {}),
+        },
       };
       persist();
       notify();
@@ -223,11 +244,33 @@ export function setGoalTierVerdict(goalId, verdict, key, criteriaKey, periodKey)
   // basis the hook reads) but NOT gradedDay — a deterministic numeric grade or
   // an "awaiting" placeholder must never count as the day's AI grade, or the
   // first real grade of the day would be throttled away.
+  // F9 G0.1: carry the prior REAL tier forward as prevTier (omitted when
+  // there wasn't one, or when the tier didn't change).
+  const priorTier =
+    existing && !existing.awaiting && !existing.pendingSetup && existing.tier &&
+    existing.tier !== verdict.tier
+      ? existing.tier
+      : undefined;
   state = {
     ...state,
-    [storeKey]: { ...verdict, key, ...(criteriaKey != null ? { criteriaKey } : {}) },
+    [storeKey]: {
+      ...verdict,
+      key,
+      ...(criteriaKey != null ? { criteriaKey } : {}),
+      ...(priorTier ? { prevTier: priorTier } : {}),
+    },
   };
   persist();
+  notify();
+}
+
+/**
+ * Re-run every effect keyed on the goal-tiers tick without changing any
+ * verdict — the fill-feedback debounce (F9 G1.4) calls this after
+ * marking fill intent so useGoalTier's grading effect re-evaluates with
+ * the intent in hand.
+ */
+export function pokeGoalTiers() {
   notify();
 }
 

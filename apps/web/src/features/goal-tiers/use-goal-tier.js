@@ -12,7 +12,7 @@
  *               reasoning, confidence } | null
  */
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSnapshots } from "@/features/snapshots";
 import {
   useGoalInputs,
@@ -37,6 +37,12 @@ import {
   setGoalTierVerdict,
   subscribeGoalTiers,
 } from "./goal-tier-store";
+import { TIER_ORDER, TIER_LABELS } from "./tier-diff";
+import {
+  consumeFillIntent,
+  peekFillIntent,
+  recordTierTransition,
+} from "./tier-transitions-store";
 import {
   hydrateManagerVerdicts,
   readManagerVerdict,
@@ -870,7 +876,16 @@ export function useGoalTier(goalId, spec) {
       const criteriaChanged = !stored || stored.criteriaKey !== criteriaKey;
       const dataChanged = !stored || stored.key !== key;
       const gradedToday = !!stored && stored.gradedDay === today;
-      if (criteriaChanged || (!gradedToday && dataChanged)) {
+      // F9 G1.3 — an EXPLICIT fill (marked by useTierFillFeedback's
+      // debounced settle) bypasses the once-per-day throttle, but keeps
+      // the dataChanged gate: a no-op re-submit stays free, and passive
+      // AUTO drift still respects the daily budget. `force` rides along
+      // because the store's own same-day short-circuit (criteriaKey +
+      // gradedDay) would otherwise swallow the fill re-grade; the
+      // server's tierHash cache still dedupes identical data.
+      const fillIntent = peekFillIntent(goalId);
+      if (criteriaChanged || (fillIntent ? dataChanged : (!gradedToday && dataChanged))) {
+        if (fillIntent) consumeFillIntent(goalId);
         void gradeGoalTier({
           goalId,
           goalTitle: spec?.title,
@@ -880,7 +895,12 @@ export function useGoalTier(goalId, spec) {
           criteriaKey,
           gradedDay: today,
           aiProvider: getAiProvider(),
+          force: fillIntent || undefined,
         });
+      } else if (fillIntent && !dataChanged) {
+        // No-op fill — nothing to grade; drop the intent so it can't
+        // force a later passive re-render.
+        consumeFillIntent(goalId);
       }
     } else {
       setGoalTierVerdict(goalId, AWAITING_VERDICT, key, criteriaKey);
@@ -924,6 +944,57 @@ export function useGoalTier(goalId, spec) {
         persistDisplayedVerdict(goalId, null, capped, key, "capped");
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goalId, key, criteriaKey, needsSetup, managerVerdict, tiersTick, lockTick, consistency, cadence, tierScale, tiers]);
+
+  // F9 G0.3 — the correctness core (R1): diff the DISPLAYED tier (the
+  // capped verdict every badge/ladder renders — or the manager's, which
+  // overrides everything) against the last displayed tier THIS instance
+  // observed, and record a transition only on a real change. Diffing the
+  // raw verdict instead would both miss cap-uncap moves (a filled period
+  // lifting the cap is a real, earned, zero-AI-cost move — BR-8) and
+  // falsely fire when the cap absorbs a raw change (R1's failure mode:
+  // a celebration claiming a rung the badge doesn't show).
+  //
+  // The ref starts undefined, so a hydration seed / first mount records
+  // nothing (R3 — tierDelta treats undefined as "never observed"). The
+  // transitions store idempotently absorbs the double-mounted hook
+  // (ladder + stepper) racing to record the same move (G1.5).
+  const prevDisplayedRef = useRef({ goalId: null, tier: undefined });
+  useEffect(() => {
+    if (!goalId) return;
+    if (prevDisplayedRef.current.goalId !== goalId) {
+      prevDisplayedRef.current = { goalId, tier: undefined };
+    }
+    if (needsSetup) return;
+    let displayed;
+    if (managerVerdict?.tier) {
+      displayed = managerVerdict.tier;
+    } else {
+      const stored = readGoalTier(goalId);
+      const usable =
+        stored && !stored.awaiting && !stored.pendingSetup && stored.tier
+          ? tierScale
+            ? stored.key === key
+              ? stored
+              : null
+            : stored.criteriaKey === criteriaKey
+              ? stored
+              : null
+          : null;
+      if (!usable) return;
+      const capped =
+        tiers && !tierScale
+          ? capVerdictByConsistency(usable, consistency, cadence)
+          : usable;
+      displayed = capped?.tier;
+    }
+    if (!displayed) return;
+    const prev = prevDisplayedRef.current.tier;
+    if (prev !== undefined && prev !== displayed) {
+      recordTierTransition(goalId, prev, displayed);
+    }
+    prevDisplayedRef.current = { goalId, tier: displayed };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goalId, key, criteriaKey, needsSetup, managerVerdict, tiersTick, lockTick, consistency, cadence, tierScale, tiers]);
 
@@ -1133,18 +1204,12 @@ export function readCappedGoalTier(goalId, spec, entries, lockedKeys, snapReadin
 }
 
 /** The ordered tier ladder + display labels — shared with the UI (Phase 3). */
-export const TIER_ORDER = [
-  "not_achieved",
-  "achieved",
-  "over_achieved",
-  "role_model",
-];
-export const TIER_LABELS = {
-  not_achieved: "Not achieved",
-  achieved: "Achieved",
-  over_achieved: "Over achieved",
-  role_model: "Role model",
-};
+// Canonical definitions moved to tier-diff.js (pure module — the
+// transitions store + tests import the ladder without pulling this
+// "use client" hook file). Imported and re-exported here, their
+// historical site, so every existing consumer AND this module's own
+// internal uses keep working.
+export { TIER_ORDER, TIER_LABELS };
 /** Map a tier id → the spec.tiers field that holds its criterion. */
 export const TIER_FIELD = {
   not_achieved: "notAchieved",

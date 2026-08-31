@@ -32,6 +32,7 @@ import { Minus, Plus, Check } from "lucide-react";
 import { Select, Input, ItemEvidence } from "@/components/ui";
 import { useGoalInputs } from "@/features/goal-inputs";
 import { useGoalContext, resolveMilestoneItems } from "@/features/goal-context";
+import { useTierFillFeedback } from "@/features/goal-tiers";
 import { midWeekTs } from "@/lib/date";
 import { cn } from "@/lib/cn";
 
@@ -39,6 +40,7 @@ import { cn } from "@/lib/cn";
 
 export function CounterEditor({ goal, spec, weekStart, weekEnd, activeLabel, writeTs }) {
   const { entries, append } = useGoalInputs(goal?.id);
+  const { captureBefore, settleAfter } = useTierFillFeedback(goal?.id);
   const weekTotal = useMemo(
     () => sumNumericInWindow(entries, weekStart, weekEnd),
     [entries, weekStart, weekEnd],
@@ -49,7 +51,11 @@ export function CounterEditor({ goal, spec, weekStart, weekEnd, activeLabel, wri
   const add = (delta) => {
     const ts = writeTs ?? midWeekTs(activeLabel);
     if (ts == null) return;
+    // F9 G1.1 — explicit-fill bracket: rapid +1 bursts collapse to one
+    // re-grade via the orchestrator's trailing debounce.
+    captureBefore();
     append(delta, undefined, ts);
+    settleAfter();
   };
 
   return (
@@ -77,6 +83,7 @@ export function CounterEditor({ goal, spec, weekStart, weekEnd, activeLabel, wri
 
 export function ScaleEditor({ goal, weekStart, weekEnd, activeLabel, writeTs }) {
   const { entries, append } = useGoalInputs(goal?.id);
+  const { captureBefore, settleAfter } = useTierFillFeedback(goal?.id);
   const currentValue = useMemo(() => {
     const inWindow = entries.filter(
       (e) =>
@@ -91,7 +98,10 @@ export function ScaleEditor({ goal, weekStart, weekEnd, activeLabel, writeTs }) 
   const pick = (n) => {
     const ts = writeTs ?? midWeekTs(activeLabel);
     if (ts == null) return;
+    // F9 G1.1 — explicit-fill bracket.
+    captureBefore();
     append(n, undefined, ts);
+    settleAfter();
   };
 
   return (
@@ -246,6 +256,7 @@ export function FreeTextEditor({ goal, weekStart, weekEnd, activeLabel, writeTs 
 
 export function DateLogEditor({ goal, weekStart, weekEnd, activeLabel, writeTs }) {
   const { entries, append } = useGoalInputs(goal?.id);
+  const { captureBefore, settleAfter } = useTierFillFeedback(goal?.id);
   const weekCount = useMemo(
     () =>
       entries.filter(
@@ -257,7 +268,10 @@ export function DateLogEditor({ goal, weekStart, weekEnd, activeLabel, writeTs }
   const add = () => {
     const ts = writeTs ?? midWeekTs(activeLabel);
     if (ts == null) return;
+    // F9 G1.1 — explicit-fill bracket.
+    captureBefore();
     append(true, undefined, ts);
+    settleAfter();
   };
 
   return (

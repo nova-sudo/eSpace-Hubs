@@ -51,6 +51,7 @@ import {
   TIER_ORDER,
   TIER_LABELS,
   TIER_FIELD,
+  useTierFillFeedback,
 } from "@/features/goal-tiers";
 import { ComposedFields } from "./widgets/composed-fields.jsx";
 
@@ -502,15 +503,16 @@ export function CadenceStepper({ spec, variant = "light" }) {
   // Subscribe to lock changes so "nothing to report" settles re-render the cells.
   useGoalLocks();
 
-  // Force a re-grade when the user finishes filling a window. Filling already
-  // appends live, so the deterministic/AI grade re-runs on its own when the
-  // cache key busts — but an AI call can be stale (or never fired if the
-  // provider was down), so the explicit "Save & grade" button forces it.
-  const { regrade, hasTiers } = useGoalTier(goalId, spec);
+  // F9 G1.1 — "Save & grade" is an EXPLICIT fill: bracket it with the
+  // fill-feedback orchestrator instead of a bare regrade. The debounced
+  // intent bypasses the daily throttle for qualitative goals (one grade
+  // per burst) and lets the rung-move diff fire; numeric/tierScale
+  // widgets re-derive deterministically on render, no AI call.
+  const { hasTiers } = useGoalTier(goalId, spec);
+  const { captureBefore, settleAfter } = useTierFillFeedback(goalId);
   function saveAndGrade() {
-    // Qualitative widgets (spec.tiers) re-run the AI grader; numeric/tierScale
-    // widgets re-grade deterministically off the data change on close.
-    if (spec?.tiers) regrade?.();
+    captureBefore();
+    settleAfter();
     setSelectedKey(null);
   }
 
