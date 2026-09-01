@@ -755,10 +755,14 @@ function readCiCdFromCompliance(spec, ctx) {
   if (live) return live;
   const fromCompliance = readingFromCompliance(spec, ctx);
   if (fromCompliance) return fromCompliance;
+  // Audit #238 ("secret ritual"): live-only widgets publish their number
+  // when their Goals-page widget mounts, cached per device. A fresh
+  // device deep-linking straight to /evidence used to export a mute
+  // placeholder with no explanation — say HOW to get the number instead.
   return {
-    value: "Tracked via dashboard",
-    statusTone: TONES.MUTED,
-    statusLabel: "no snapshot yet",
+    value: "No reading on this device",
+    statusTone: TONES.WARN,
+    statusLabel: "open Goals, then export",
   };
 }
 

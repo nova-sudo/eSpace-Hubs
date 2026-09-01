@@ -657,7 +657,10 @@ export function UnsupportedStub({ message }) {
       className="rounded-md border border-dashed border-border px-2.5 py-1 text-[11px] text-muted-fg/80"
       style={{ fontFamily: "var(--font-mono)" }}
     >
-      {message || "Edit from the goal widget for now — inline editor coming soon."}
+      {/* Honest copy (audit #238): no inline editor is planned for these
+          kinds — composed trackers fill per-period on their own widget,
+          which is a design decision, not a pending feature. */}
+      {message || "This tracker fills on its own goal widget — open the goal to log."}
     </div>
   );
 }

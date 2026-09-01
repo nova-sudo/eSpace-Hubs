@@ -576,6 +576,16 @@ async function ensureIndexes(): Promise<void> {
   // ─── Manager hub (P2) collections ─────────────────────────────────
 
   const notifications = await getNotificationsCollection();
+  // Audit #238: the original 180-day TTL expired a March "manager
+  // graded" row before the annual review it exists to support. Widen to
+  // 400 days (a full cycle + review season). TTL seconds can't be
+  // changed via createIndex on an existing index — drop blind and
+  // recreate, same idempotent pattern as the other index migrations.
+  try {
+    await notifications.dropIndex("notifications_ttl");
+  } catch {
+    /* index already gone or never existed — expected after first boot */
+  }
   await notifications.createIndexes([
     {
       // The inbox: "my notifications, newest first" + unread count.
@@ -583,10 +593,12 @@ async function ensureIndexes(): Promise<void> {
       name: "notifications_org_user_created",
     },
     {
-      // 180-day TTL — the inbox is a rolling feed, not an archive.
+      // 400-day TTL — a rolling feed, but one that must outlive the
+      // annual review cycle its rows are evidence for. New name, so the
+      // blind drop above no-ops from the second boot onward.
       key: { createdAt: 1 },
-      expireAfterSeconds: 15_552_000,
-      name: "notifications_ttl",
+      expireAfterSeconds: 34_560_000,
+      name: "notifications_ttl_400d",
     },
   ]);
 

@@ -61,6 +61,18 @@ const USER_SCOPED_KEYS = Object.freeze([
   "espace-devhub:goal-tiers",
   "espace-devhub:goal-locks",
   "eshub:qa:config:v1",
+  // Audit #238 — keys that survived the wipe: the legacy pre-API goals
+  // blob (only migrate/collect-payload still reads it) and the OAuth
+  // PKCE pending state (a signed-out browser must not carry another
+  // user's in-flight OAuth handshake). "espace-devhub:rate-limit-wait"
+  // from the same finding is an EVENT name, not a storage key — nothing
+  // to wipe.
+  "espace-devhub:goals",
+  "espace-devhub:oauth-pending",
+  // Live widget readings are per-user numbers cached per-device — the
+  // in-memory store resets on the auth event, but the blob itself must
+  // go too or the next sign-in reloads the previous user's readings.
+  "espace-devhub:goal-live-readings",
 ]);
 
 /**

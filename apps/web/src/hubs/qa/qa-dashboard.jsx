@@ -43,7 +43,7 @@ export function QaDashboard() {
         crumb={`${hub?.label ?? "QA Hub"} · performance`}
         title="Test quality, on the record."
         italicWord="record"
-        subtitle="Automation runs, defect flow, and test coverage — pulled live from Jenkins, Jira, and Zephyr."
+        subtitle="Automation runs and defect flow — pulled live from Jenkins and Jira."
         right={
           <Link
             href={link("/settings")}
