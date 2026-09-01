@@ -136,6 +136,11 @@ interface GoalRow {
   delegatedJudge: string | null;
   entryCount: number;
   lastActivityAt: string | null;
+  /** Headline reading frozen in the report's latest review packet
+   *  ("41 merged PRs"), or null. The only number the server has for
+   *  AUTO goals — provider metrics are computed client-side (#238). */
+  reading: string | null;
+  readingAsOf: string | null;
   tier: {
     tier: string;
     confidence: string | null;
@@ -231,6 +236,15 @@ export async function getReportGoalHealthHandler(
         ),
         getManagerVerdictMap(session.orgId, target._id),
       ]);
+    // Latest review packet: the one server-side source of a real number
+    // for AUTO goals (the dev's client froze it at submit time).
+    const latestPacket = await getReviewPacketsCollection().then((c) =>
+      c.findOne(scope, { sort: { submittedAt: -1 }, projection: { goals: 1, submittedAt: 1 } }),
+    );
+    const readingMap = new Map(
+      (latestPacket?.goals ?? []).map((g) => [g.goalId, g.reading]),
+    );
+    const readingAsOf = latestPacket?.submittedAt.toISOString() ?? null;
 
     const specMap = new Map(specDocs.map((s) => [s.goalId, s.spec]));
     const ctxMap = new Map<string, Record<string, ContextAnswer>>(
@@ -315,6 +329,8 @@ export async function getReportGoalHealthHandler(
           delegatedJudge: judge,
           entryCount,
           lastActivityAt: act?.lastTs ? act.lastTs.toISOString() : null,
+          reading: readingMap.get(l2.id) ?? null,
+          readingAsOf: readingMap.has(l2.id) ? readingAsOf : null,
           tier: tierOut,
         };
       }),

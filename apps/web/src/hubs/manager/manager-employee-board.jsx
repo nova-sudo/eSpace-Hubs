@@ -266,6 +266,22 @@ export function ManagerEmployeeBoard({ userId }) {
                             {sub}
                             {activity ? ` · updated ${activity}` : ""}
                           </div>
+                          {/* #238: the frozen headline from the report's latest
+                              review packet — a real number for AUTO goals instead
+                              of the bare "auto" label. Dated so it's never read as
+                              live. */}
+                          {goal.reading ? (
+                            <div
+                              className="mt-1 text-fg"
+                              style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
+                              title={`From the review packet submitted ${ago(goal.readingAsOf) || "recently"}`}
+                            >
+                              {goal.reading}
+                              <span className="text-dim-fg">
+                                {" "}· as of packet {ago(goal.readingAsOf) || ""}
+                              </span>
+                            </div>
+                          ) : null}
                           {goal.tier?.source === "manager" ? (
                             <div
                               className="mt-1 text-accent"
