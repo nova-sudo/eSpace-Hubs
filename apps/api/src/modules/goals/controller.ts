@@ -17,10 +17,14 @@ import type { NextFunction, Request, Response } from "express";
 import { ObjectId } from "mongodb";
 import {
   getGoalCyclesCollection,
+  getGoalTierVerdictsCollection,
   getGoalsCollection,
+  getManagerGoalVerdictsCollection,
 } from "../../db/collections.js";
 import {
   GOALS_SCHEMA_VERSION,
+  WHOLE_GOAL_TIER_KEY,
+  type GoalCycleReportRow,
   type GoalL1,
   type GoalTree,
 } from "../../db/types.js";
@@ -186,11 +190,17 @@ export async function putGoalsHandler(
         const cycles = await getGoalCyclesCollection();
         const l1s = archiveSource.l1s as GoalL1[];
         const l2Count = l1s.reduce((s, l1) => s + (l1.l2s?.length ?? 0), 0);
+        const report = await buildCycleReport(
+          session.orgId,
+          session.userId,
+          l1s,
+        );
         const archiveDoc = {
           orgId: session.orgId,
           userId: session.userId,
           label: payload.archiveCurrent!,
           tree: { l1s },
+          ...(report ? { report } : {}),
           l1Count: l1s.length,
           l2Count,
           archivedAt: now,
@@ -242,6 +252,62 @@ export async function putGoalsHandler(
 // ─── GET /api/v1/goals/cycles ────────────────────────────────────────
 
 /** Meta-only list of the user's archived trees, newest first. */
+/**
+ * F2 v2 — the frozen report card. Joins the outgoing tree's goal ids
+ * against the verdicts that exist RIGHT NOW, before the replace makes
+ * them last cycle's orphans: the manager's verdict wins (it's the
+ * review of record), else the latest whole-goal AI tier. Returns null
+ * when nothing was ever graded (and on any error — an archive must
+ * never fail because its report enrichment did).
+ */
+async function buildCycleReport(
+  orgId: ObjectId,
+  userId: ObjectId,
+  l1s: GoalL1[],
+): Promise<Record<string, GoalCycleReportRow> | null> {
+  try {
+    const goalIds: string[] = [];
+    for (const l1 of l1s) {
+      if (l1.id) goalIds.push(l1.id);
+      for (const l2 of l1.l2s ?? []) if (l2.id) goalIds.push(l2.id);
+    }
+    if (goalIds.length === 0) return null;
+
+    const report: Record<string, GoalCycleReportRow> = {};
+    const aiVerdicts = await getGoalTierVerdictsCollection();
+    for await (const v of aiVerdicts.find({
+      orgId,
+      userId,
+      goalId: { $in: goalIds },
+      periodKey: WHOLE_GOAL_TIER_KEY,
+    })) {
+      report[v.goalId] = {
+        tier: v.verdict.tier,
+        source: "ai",
+        gradedAt: v.gradedAt,
+        note: null,
+      };
+    }
+    // Manager rows second — they overwrite the AI row for the same goal.
+    const managerVerdicts = await getManagerGoalVerdictsCollection();
+    for await (const v of managerVerdicts.find({
+      orgId,
+      subjectUserId: userId,
+      goalId: { $in: goalIds },
+    })) {
+      report[v.goalId] = {
+        tier: v.tier,
+        source: "manager",
+        gradedAt: v.gradedAt,
+        note: v.note || null,
+      };
+    }
+    return Object.keys(report).length > 0 ? report : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function listGoalCyclesHandler(
   req: Request,
   res: Response,
@@ -306,6 +372,20 @@ export async function getGoalCycleHandler(
       l2Count: row.l2Count,
       archivedAt: row.archivedAt.toISOString(),
       tree: row.tree,
+      // v1 archives predate the frozen report card — null, not {}.
+      report: row.report
+        ? Object.fromEntries(
+            Object.entries(row.report).map(([goalId, r]) => [
+              goalId,
+              {
+                tier: r.tier,
+                source: r.source,
+                gradedAt: r.gradedAt.toISOString(),
+                note: r.note,
+              },
+            ]),
+          )
+        : null,
     });
   } catch (err) {
     next(err);

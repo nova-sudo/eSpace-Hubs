@@ -482,6 +482,20 @@ export interface GoalLocksDoc {
  * Append-only; the active tree stays in `goals`. Full cycle-keying of
  * every store + a cycle switcher is the rest of F2 (#227).
  */
+/** One goal's outcome as it stood the moment the cycle was archived —
+ *  manager verdict first (it's the review of record), else the latest
+ *  whole-goal AI tier. "Last year's review" must not depend on verdict
+ *  rows that a later cycle's grading traffic can overwrite or expire
+ *  (goal_tier_verdicts carries a 180-day TTL). */
+export interface GoalCycleReportRow {
+  tier: GoalTier;
+  /** Who decided: the manager's grade or the AI grader. */
+  source: "manager" | "ai";
+  gradedAt: Date;
+  /** Manager's rationale when source is "manager"; null for AI rows. */
+  note: string | null;
+}
+
 export interface GoalCycleArchive {
   _id: ObjectId;
   orgId: ObjectId;
@@ -489,6 +503,13 @@ export interface GoalCycleArchive {
   /** Human label, e.g. "Archived Aug 28, 2026 · 6 L1 · 23 L2". */
   label: string;
   tree: { l1s: GoalL1[] };
+  /**
+   * F2 v2 — the frozen report card: goalId → outcome at archive time.
+   * Optional: v1 archives predate it and simply render without tiers.
+   * Goals never graded are absent, which is itself information ("this
+   * goal ended the cycle ungraded").
+   */
+  report?: Record<string, GoalCycleReportRow>;
   l1Count: number;
   l2Count: number;
   archivedAt: Date;

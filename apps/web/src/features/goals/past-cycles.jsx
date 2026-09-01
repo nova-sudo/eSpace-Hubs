@@ -21,10 +21,51 @@ function fmtWhen(iso) {
   });
 }
 
+/** Duplicated from goal-tiers rather than imported: goals is a product
+ *  surface, the labels are four fixed strings, and this viewer renders
+ *  FROZEN history — a future rename upstream must not rewrite it. */
+const TIER_LABELS = {
+  not_achieved: "Not achieved",
+  achieved: "Achieved",
+  over_achieved: "Over achieved",
+  role_model: "Role model",
+};
+
+function TierChip({ row }) {
+  if (!row?.tier) return null;
+  const good = row.tier === "over_achieved" || row.tier === "role_model";
+  const bad = row.tier === "not_achieved";
+  return (
+    <span
+      className="ml-1.5 inline-flex shrink-0 items-center rounded-full px-1.5 py-[1px] align-middle uppercase"
+      style={{
+        fontFamily: "var(--font-mono)",
+        fontSize: 9,
+        letterSpacing: "0.4px",
+        fontWeight: 700,
+        background: bad
+          ? "color-mix(in srgb, var(--bad) 13%, transparent)"
+          : good
+            ? "var(--accent-dim)"
+            : "var(--panel-2)",
+        color: bad ? "var(--bad)" : good ? "var(--accent)" : "var(--muted-fg)",
+      }}
+      title={
+        `${TIER_LABELS[row.tier] || row.tier} — ${row.source === "manager" ? "manager verdict" : "AI grade"} at archive time` +
+        (row.note ? `: ${row.note}` : "")
+      }
+    >
+      {TIER_LABELS[row.tier] || row.tier}
+      {row.source === "manager" ? " ·M" : ""}
+    </span>
+  );
+}
+
 export function PastCycles() {
   const [cycles, setCycles] = useState(null); // null = loading
   const [openId, setOpenId] = useState(null);
   const [trees, setTrees] = useState({}); // id -> {l1s} | "loading" | "error"
+  const [reports, setReports] = useState({}); // id -> {goalId: row} | null
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +91,7 @@ export function PastCycles() {
       ...t,
       [id]: r.ok && r.data?.tree ? r.data.tree : "error",
     }));
+    setReports((p) => ({ ...p, [id]: r.ok ? r.data?.report || null : null }));
   }
 
   // Nothing archived (or still loading) → render nothing; the section
@@ -67,6 +109,7 @@ export function PastCycles() {
         {cycles.map((c) => {
           const open = openId === c.id;
           const tree = trees[c.id];
+          const report = reports[c.id] || {};
           return (
             <li
               key={c.id}
@@ -120,6 +163,7 @@ export function PastCycles() {
                               </span>
                             ) : null}
                             {l1.title || "(untitled L1)"}
+                            <TierChip row={report[l1.id]} />
                             {l1.weightage > 0 ? (
                               <span className="text-dim-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>
                                 {l1.weightage}%
@@ -139,6 +183,7 @@ export function PastCycles() {
                                     </span>
                                   ) : null}
                                   {l2.title || "(untitled L2)"}
+                                  <TierChip row={report[l2.id]} />
                                 </li>
                               ))}
                             </ul>

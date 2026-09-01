@@ -22,6 +22,10 @@ export const goalCyclesValidator: Document = {
       userId: { bsonType: "objectId" },
       label: { bsonType: "string", minLength: 1, maxLength: 200 },
       tree: { bsonType: "object" },
+      // F2 v2 — the frozen report card (goalId → outcome at archive
+      // time). Loosely validated for the same reason `tree` is: an
+      // archive must never fail on shape.
+      report: { bsonType: "object" },
       l1Count: { bsonType: "int", minimum: 0 },
       l2Count: { bsonType: "int", minimum: 0 },
       archivedAt: { bsonType: "date" },
