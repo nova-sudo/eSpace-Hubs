@@ -221,9 +221,23 @@ export function companionProxy(): RequestHandler {
     if (req.headers[COMPANION_HOP_HEADER]) return next(); // we ARE the companion
     if (shouldBypassCompanion(req.originalUrl || req.url || "")) return next();
 
+    // The session lookup below is async, so the body stream sits unread
+    // for one event-loop hop (or a Mongo round-trip). If the client
+    // aborts in that gap, falling through to `next()` hands body-parser
+    // a dead stream and every body-carrying request 500s with "stream
+    // is not readable" — noise for a request nobody is waiting on.
+    // Drop it instead.
+    const serveLocally = (): void => {
+      if (req.destroyed) {
+        res.destroy();
+        return;
+      }
+      next();
+    };
+
     void resolveCompanionOrigin(req)
       .then((origin) => {
-        if (!origin) return next();
+        if (!origin) return serveLocally();
         logger.debug(
           { method: req.method, path: req.path, origin },
           "[companion-proxy] routing to companion",
@@ -239,7 +253,7 @@ export function companionProxy(): RequestHandler {
           { err: err instanceof Error ? err.message : String(err) },
           "[companion-proxy] routing resolution failed — serving locally",
         );
-        next();
+        serveLocally();
       });
   };
 }

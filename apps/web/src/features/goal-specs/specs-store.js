@@ -200,8 +200,9 @@ export function saveSpec(spec, { replace = false } = {}) {
   const res = validateSpec(input);
   if (!res.ok) return res;
   const goalId = res.spec.goalId;
+  const prior = state.specs[goalId];
   setState({ specs: { ...state.specs, [goalId]: res.spec }, error: null });
-  void putSpecRemote(goalId, res.spec);
+  void putSpecRemote(goalId, res.spec, prior);
   return res;
 }
 
@@ -217,11 +218,11 @@ export function updateSpecTiers(goalId, tiers, locked) {
   const res = validateSpec({ ...existing, tiers, tiersLocked: locked === true });
   if (!res.ok) return res;
   setState({ specs: { ...state.specs, [goalId]: res.spec }, error: null });
-  void putSpecRemote(goalId, res.spec);
+  void putSpecRemote(goalId, res.spec, existing);
   return res;
 }
 
-async function putSpecRemote(goalId, spec) {
+async function putSpecRemote(goalId, spec, prior) {
   const r = await apiPut(`/goal-specs/${encodeURIComponent(goalId)}`, spec);
   if (r.ok) {
     // Server owns generatedAt — thread it into lastAnalyzedAt so the
@@ -238,11 +239,17 @@ async function putSpecRemote(goalId, spec) {
   ) {
     return;
   }
-  // Targeted rollback: drop only this spec, and only if a concurrent
-  // save didn't overwrite it in the meantime.
+  // Targeted rollback — and only if a concurrent save didn't overwrite
+  // it in the meantime. Restore the spec that was there BEFORE the
+  // optimistic write; a goal that had a working widget yesterday must
+  // not lose it to one failed re-save (deleting here also re-triggers
+  // any "no spec yet" recovery paths, which can amplify a transient
+  // server error into a save loop). Only a goal that had no spec at
+  // all rolls back to "no spec".
   if (state.specs[goalId] === spec) {
     const next = { ...state.specs };
-    delete next[goalId];
+    if (prior) next[goalId] = prior;
+    else delete next[goalId];
     setState({ specs: next, error: r.error });
   } else {
     setState({ error: r.error });

@@ -60,7 +60,7 @@ import {
   extractComposeAttachment,
 } from "@/features/analyst";
 import { saveSpec } from "@/features/goal-specs";
-import { clearGoalEntries, deriveCycleEndIso } from "@/features/goal-inputs";
+import { clearGoalEntries, deriveCycleEndIso, toIsoDay } from "@/features/goal-inputs";
 import { clearGoalLocks } from "@/features/goal-locks";
 import { apiPost } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
@@ -353,14 +353,19 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
     // impossible regardless of where cycleStart came from.
     const previewSpec = preview.spec;
     const periodCount = previewSpec.composed?.periods?.length || 0;
-    const cycleStart = previewSpec.composed?.cycleStart || goal?.startDate || null;
+    const cycleStart = toIsoDay(
+      previewSpec.composed?.cycleStart || goal?.startDate,
+    );
     const cycleEnd =
       periodCount > 0 && cycleStart
         ? deriveCycleEndIso(cycleStart, previewSpec.composed.cadence, periodCount)
         : null;
-    const composed = cycleEnd
-      ? { ...previewSpec.composed, cycleStart, cycleEnd }
-      : previewSpec.composed;
+    // Only attach a pair the validator will keep (end strictly after
+    // start) — a dropped pair just means the calendar-year default.
+    const composed =
+      cycleEnd && cycleStart < cycleEnd
+        ? { ...previewSpec.composed, cycleStart, cycleEnd }
+        : previewSpec.composed;
     const pendingSpec = {
       ...previewSpec,
       composed,

@@ -18,4 +18,5 @@ export {
   cadenceConsistency,
   composedCycleBounds,
   deriveCycleEndIso,
+  toIsoDay,
 } from "./cadence-windows";

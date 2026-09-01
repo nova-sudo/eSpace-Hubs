@@ -220,6 +220,22 @@ const CADENCE_MAX_WINDOW_DAYS = {
  * makes that tail structurally impossible: the cycle can only ever be as
  * long as there are periods to fill it.
  */
+/**
+ * Normalize a date-ish string to the strict "YYYY-MM-DD" the spec
+ * validator's cycle-bounds check accepts — a full ISO datetime is
+ * truncated to its day. Anything else (empty, non-ISO, garbage) → null.
+ * The composed widget's cycle self-heal MUST run its candidates through
+ * this: feeding the validator a shape it drops means the saved spec
+ * comes back without the bounds, and an effect keyed on them re-saves
+ * forever.
+ */
+export function toIsoDay(value) {
+  if (typeof value !== "string") return null;
+  const day = value.trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  return day;
+}
+
 export function deriveCycleEndIso(cycleStartIso, cadence, periodCount) {
   const startMs = typeof cycleStartIso === "string" ? Date.parse(cycleStartIso) : NaN;
   const perWindowDays = CADENCE_MAX_WINDOW_DAYS[cadence];

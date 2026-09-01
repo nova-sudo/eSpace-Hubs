@@ -53,6 +53,7 @@ import {
   composedCycleBounds,
   currentPeriodKey,
   deriveCycleEndIso,
+  toIsoDay,
 } from "@/features/goal-inputs";
 import { resolvePeriodContent, resolveNestedPeriodContent, saveSpec } from "@/features/goal-specs";
 import { ComposedFields } from "./composed-fields.jsx";
@@ -205,6 +206,18 @@ function NestedCadenceLevel({
   );
 }
 
+/**
+ * Goals whose cycle self-heal already fired a save this session. One
+ * attempt per goal is the hard stop that makes the heal loop-proof: if
+ * the write doesn't stick (validator drops the pair, offline, server
+ * rejects), retrying with the same inputs can only produce the same
+ * outcome — the Aug 2026 production freeze was exactly this effect
+ * re-saving an identical spec ~30×/sec because the validator dropped a
+ * non-"YYYY-MM-DD" cycleStart on every round. Resets on reload, which
+ * is also when a genuinely changed goal/spec deserves a fresh attempt.
+ */
+const cycleHealAttempted = new Set();
+
 export function ComposedWidget({ spec, goal, variant = "light", className, onRetry }) {
   const cadence = spec.composed?.cadence || null;
 
@@ -251,12 +264,21 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
     // default by every measure that matters here, and it needs no further
     // action from the user — a tracker composed before the AI knew about
     // cycleStart has no more precise anchor available to self-heal from.
-    const cycleStart =
-      composed.cycleStart || goal?.startDate || composed.periods[0]?.dueAt || null;
+    const cycleStart = toIsoDay(
+      composed.cycleStart || goal?.startDate || composed.periods[0]?.dueAt,
+    );
     if (!cycleStart) return;
     const cycleEnd = deriveCycleEndIso(cycleStart, composed.cadence, periodCount);
-    if (!cycleEnd) return;
+    // Mirror validateCycleBounds exactly: a pair the validator would drop
+    // (missing, or end not strictly after start — e.g. a single-period
+    // daily plan) must bail HERE. Saving it anyway stores a spec without
+    // the bounds, this effect re-fires on the new spec identity, and the
+    // save loops forever.
+    if (!cycleEnd || cycleStart >= cycleEnd) return;
     if (composed.cycleStart === cycleStart && composed.cycleEnd === cycleEnd) return;
+    const goalId = spec?.goalId;
+    if (goalId && cycleHealAttempted.has(goalId)) return;
+    if (goalId) cycleHealAttempted.add(goalId);
     saveSpec({ ...spec, composed: { ...composed, cycleStart, cycleEnd } });
   }, [spec, goal?.startDate]);
 

@@ -6,6 +6,7 @@ import {
   currentPeriodKey,
   composedCycleBounds,
   deriveCycleEndIso,
+  toIsoDay,
 } from "./cadence-windows.js";
 
 /**
@@ -252,4 +253,21 @@ test("deriveCycleEndIso returns null for bad input rather than a wrong date", ()
   assert.equal(deriveCycleEndIso("2026-07-01", "milestone", 13), null, "non-bucketing cadence");
   assert.equal(deriveCycleEndIso("2026-07-01", "weekly", 0), null);
   assert.equal(deriveCycleEndIso("2026-07-01", "weekly", -1), null);
+});
+
+// The Aug 2026 production freeze: the composed widget's cycle self-heal fed
+// `goal.startDate` / `periods[0].dueAt` straight into the spec's
+// composed.cycleStart, the shared validator's strict ^\d{4}-\d{2}-\d{2}$
+// check dropped anything else (notably full ISO datetimes), and the effect
+// re-saved the identical spec forever. toIsoDay is the gate: every heal
+// candidate must normalize through it, or return null and skip the save.
+test("toIsoDay normalizes datetimes to the day and rejects non-dates", () => {
+  assert.equal(toIsoDay("2026-09-07"), "2026-09-07");
+  assert.equal(toIsoDay("  2026-09-07  "), "2026-09-07", "trimmed");
+  assert.equal(toIsoDay("2026-09-07T00:00:00.000Z"), "2026-09-07", "full ISO datetime");
+  assert.equal(toIsoDay(""), null);
+  assert.equal(toIsoDay("09/07/2026"), null, "non-ISO format");
+  assert.equal(toIsoDay("Week 1"), null);
+  assert.equal(toIsoDay(null), null);
+  assert.equal(toIsoDay(20260907), null, "non-string");
 });
