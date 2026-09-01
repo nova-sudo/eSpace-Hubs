@@ -125,6 +125,25 @@ export function ReviewPacketCard({ userId }) {
               >
                 View the frozen document
               </summary>
+              {/* #238: managers couldn't export a report's packet — HR wants
+                  the file, not a scroll box. Plain blob download; the
+                  markdown is already the frozen document. */}
+              <button
+                type="button"
+                className="mt-2 uppercase tracking-[0.5px] text-muted-fg hover:text-fg"
+                style={{ fontFamily: "var(--font-mono)", fontSize: 10, background: "transparent" }}
+                onClick={() => {
+                  const blob = new Blob([latest.markdown], { type: "text/markdown;charset=utf-8" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `review-packet-${(latest.submittedAt || "").slice(0, 10) || "latest"}.md`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+              >
+                ↓ Download .md
+              </button>
               <pre
                 className="mt-3 max-h-[420px] overflow-auto rounded-[var(--radius-sub)] border border-border bg-card-alt p-3 text-fg/85"
                 style={{ fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.55, whiteSpace: "pre-wrap" }}

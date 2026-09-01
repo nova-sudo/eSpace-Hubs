@@ -14,9 +14,11 @@
 
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
+import { useFocusTrap } from "@/components/ui";
 import { GoalWidget } from "./goal-widget";
 
 export function GoalWidgetModal({ open, onClose, spec, goal }) {
+  const trapRef = useFocusTrap(open && !!spec);
   useEffect(() => {
     if (!open) return undefined;
     // #239: remember who opened us and hand focus back on close, so a
@@ -68,6 +70,7 @@ export function GoalWidgetModal({ open, onClose, spec, goal }) {
       style={{ background: "rgba(10,10,20,0.55)", backdropFilter: "blur(2px)" }}
     >
       <div
+        ref={trapRef}
         className="flex w-full max-w-[560px] flex-col overflow-hidden rounded-[var(--radius-tile)]"
         onClick={(e) => e.stopPropagation()}
         style={{

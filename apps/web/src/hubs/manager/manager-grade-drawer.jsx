@@ -13,6 +13,7 @@ import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { apiPut } from "@/lib/api-client";
 import { TIER_ORDER, TIER_LABELS } from "@/features/goal-tiers";
+import { useFocusTrap } from "@/components/ui";
 import { useGoalDetail } from "./use-goal-detail";
 import { ManagerGoalReview } from "./manager-goal-review";
 
@@ -34,6 +35,7 @@ export function ManagerGradeDrawer({
   const [tier, setTier] = useState(null);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const trapRef = useFocusTrap(open && !!goal);
 
   // Read-only goal detail (definition, evidence, AI verdict) for the
   // review panel — fetched lazily while the drawer is open.
@@ -116,6 +118,7 @@ export function ManagerGradeDrawer({
         aria-hidden="true"
       />
       <aside
+        ref={trapRef}
         role="dialog"
         aria-modal="true"
         aria-label={`Grade ${goal.title}`}

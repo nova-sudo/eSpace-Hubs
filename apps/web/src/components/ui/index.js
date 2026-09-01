@@ -3,6 +3,7 @@
 export { BentoTile } from "./bento-tile";
 export { Bars } from "./bars";
 export { Button } from "./button";
+export { useFocusTrap } from "./use-focus-trap";
 export { Card } from "./card";
 export { Checkbox } from "./checkbox";
 export { ContributionHeatmap } from "./contribution-heatmap";
