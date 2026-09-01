@@ -368,6 +368,15 @@ export async function captureWeeklySnapshots(now: Date): Promise<void> {
       const specs = await specsCol
         .find({ orgId: user.orgId, userId: user._id })
         .toArray();
+      // One query for the whole week, bucketed by goal — not one per spec.
+      const entriesByGoal = new Map<string, { value: unknown }[]>();
+      for await (const e of inputsCol.find({
+        orgId: user.orgId,
+        userId: user._id,
+        ts: { $gte: new Date(start), $lt: new Date(end) },
+      })) {
+        (entriesByGoal.get(e.goalId) ?? entriesByGoal.set(e.goalId, []).get(e.goalId)!).push(e);
+      }
       const goalReadings: Record<string, GoalReading> = {};
       for (const rec of specs) {
         const spec = rec.spec as Record<string, unknown>;
@@ -379,14 +388,7 @@ export async function captureWeeklySnapshots(now: Date): Promise<void> {
           | { cadence?: string; target?: { op?: string; value?: number } }
           | undefined;
         const cadence = manual?.cadence || "weekly";
-        const entries = await inputsCol
-          .find({
-            orgId: user.orgId,
-            userId: user._id,
-            goalId: rec.goalId,
-            ts: { $gte: new Date(start), $lt: new Date(end) },
-          })
-          .toArray();
+        const entries = entriesByGoal.get(rec.goalId) ?? [];
         // COUNTER entries carry numeric contributions; everything else
         // reads "how many times was this touched" — same split the
         // client capture makes, without importing its widget registry.
@@ -414,8 +416,9 @@ export async function captureWeeklySnapshots(now: Date): Promise<void> {
       }
       if (Object.keys(goalReadings).length === 0) continue; // dormant account — no noise rows
 
-      const key = `snap:${user._id}:${week}`;
-      if (!(await claimStamp(key))) continue;
+      // No stamp needed: the existence check above plus $setOnInsert
+      // under the unique (org,user,week) index already make this
+      // idempotent — a stamp would be a second lock on the same door.
       const doc: Snapshot = {
         _id: new OID(),
         orgId: user.orgId,

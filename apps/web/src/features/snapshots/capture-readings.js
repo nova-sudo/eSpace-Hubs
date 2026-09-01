@@ -37,7 +37,6 @@ import { SPEC_KINDS } from "@/features/goal-specs";
 import {
   avgReviewerComments,
   filterMrsByRepo,
-  countMrComments,
   firstPassRatePct,
   linkagePct,
   medianTurnaroundDays,

@@ -21,7 +21,6 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import {
   avgReviewerComments,
-  countMrComments,
   filterMrsByRepo,
   fmtDurationHours,
   firstPassRatePct,

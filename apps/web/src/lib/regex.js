@@ -10,10 +10,12 @@ export const JIRA_KEY_RE = /\b[A-Z][A-Z0-9]+-\d+\b/;
  * loses linkage credit, which is the safer failure than inflating
  * everyone's linkage % with encodings and hash names.
  */
+// Only tokens nobody would name a Jira project after. Short two-letter
+// entries ("ES", "MD") were dropped: an org's real project key can look
+// exactly like that, and zeroing a team's own linkage is the worse bug.
 const NON_ISSUE_PREFIXES = new Set([
   "UTF",
   "SHA",
-  "MD",
   "CVE",
   "ISO",
   "RFC",
@@ -22,12 +24,6 @@ const NON_ISSUE_PREFIXES = new Set([
   "TLS",
   "SSL",
   "HTTP",
-  "HTTP2",
-  "CRC",
-  "BASE",
-  "OAUTH",
-  "IPV",
-  "ES",
 ]);
 
 /**
