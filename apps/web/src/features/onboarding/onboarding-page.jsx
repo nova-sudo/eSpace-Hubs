@@ -181,7 +181,9 @@ export function OnboardingPage() {
               style={{ background: "var(--accent)" }}
             />
             <span className="uppercase tracking-[1.5px] text-muted-fg">
-              {requiresCompanion ? "Step 1 of 2" : "Step 1 of 1"} · One-time setup
+              {/* #239: "Step 1 of 1" is a progress bar with nothing to
+                  measure — count steps only when there's more than one. */}
+              {requiresCompanion ? "Step 1 of 2 · " : ""}One-time setup
             </span>
           </div>
 
@@ -295,8 +297,8 @@ export function OnboardingPage() {
           className="mt-[42px] border-t border-border pt-4 text-[10.5px]"
           style={{ fontFamily: "var(--font-mono)", color: "var(--dim-fg)" }}
         >
-          Signed in as {user.email}. This is a one-time setup; you won't see
-          it again on this device.
+          Signed in as {user.email}. This is a one-time setup saved to your
+          account — you won&apos;t see it again on any device.
         </div>
       </div>
     </main>

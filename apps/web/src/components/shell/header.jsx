@@ -11,6 +11,7 @@ import { UserChip } from "@/features/auth";
 import { NotificationBell } from "@/features/notifications";
 import { CompanionIndicator } from "@/features/companion";
 import { useActiveHub, HubSwitcher } from "@/features/hubs";
+import { openCommandPalette } from "@/features/command-palette";
 import { cn } from "@/lib/cn";
 
 /**
@@ -187,6 +188,19 @@ export function Header() {
           </nav>
         </div>
         <div className="flex shrink-0 items-center gap-2 sm:gap-3.5">
+          {/* #239: the command palette had NO visible trigger — a
+              keyboard-only feature is invisible to anyone who doesn't
+              already know it exists. Desktop-only chip; phones keep the
+              header space (F10). */}
+          <button
+            type="button"
+            onClick={() => openCommandPalette()}
+            aria-label="Open command palette"
+            className="hidden items-center gap-1 rounded-md border border-border px-2 py-1 text-dim-fg transition-colors hover:border-border-strong hover:text-muted-fg md:inline-flex"
+            style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
+          >
+            <span aria-hidden="true">⌘K</span>
+          </button>
           {/* Light/dark switch — persists to localStorage('espace-theme'),
               which the no-flash script in layout.jsx reads on first paint. */}
           <ThemeToggle />

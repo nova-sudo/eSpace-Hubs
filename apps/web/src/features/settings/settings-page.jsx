@@ -119,18 +119,30 @@ export function SettingsPage() {
         subtitle={header.subtitle}
         right={
           <Link href={link("")}>
-            <Button variant="ghost">← Dashboard</Button>
+            <Button variant="ghost">← Home</Button>
           </Link>
         }
       />
 
-      <div className="grid grid-cols-[220px_minmax(0,1fr)] items-start gap-8">
-        <nav className="sticky top-20 flex flex-col gap-0.5">
+      {/* #239: real tab semantics (tablist/tab/tabpanel + aria-selected)
+          so the selected state isn't conveyed by styling alone; the
+          sidebar stacks on phones (a 220px fixed rail at 380px left a
+          sliver for content — F10's finding). */}
+      <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-[220px_minmax(0,1fr)] md:gap-8">
+        <nav
+          role="tablist"
+          aria-orientation="vertical"
+          aria-label="Settings sections"
+          className="flex flex-row flex-wrap gap-0.5 md:sticky md:top-20 md:flex-col"
+        >
           {tabs.map(({ id, label }) => {
             const active = activeTab.id === id;
             return (
               <button
                 key={id}
+                role="tab"
+                aria-selected={active}
+                aria-controls={`settings-panel-${activeTab.id}`}
                 onClick={() => setTab(id)}
                 className={cn(
                   "cursor-pointer px-3.5 py-2.5 text-left uppercase tracking-[0.5px] transition-colors",
@@ -152,7 +164,7 @@ export function SettingsPage() {
             );
           })}
         </nav>
-        <div>
+        <div role="tabpanel" id={`settings-panel-${activeTab.id}`}>
           <ActivePanel />
         </div>
       </div>

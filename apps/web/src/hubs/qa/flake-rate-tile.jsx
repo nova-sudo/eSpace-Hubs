@@ -59,13 +59,30 @@ export function FlakeRateTile() {
   const { config } = useQaHubConfig();
   const connected = isConnected("jenkins");
   const jobName = config.jenkinsJobName;
+  // #239: the default job is the synthetic demo target — numbers from
+  // it must never read as the team's real flake rate. Anything the user
+  // explicitly configured is real.
+  const isDemoJob = jobName === "qa-sim-target";
 
   return (
     <BentoTile
       col="span 4"
       row="span 2"
-      label="Flake rate · last 30d"
-      right={connected ? <span style={meta}>UNSTABLE / completed</span> : null}
+      label={isDemoJob ? "Flake rate · demo data" : "Flake rate · last 30d"}
+      right={
+        connected ? (
+          <span
+            style={meta}
+            title={
+              isDemoJob
+                ? "Reading the synthetic qa-sim-target job. Pick your real Jenkins job in Settings → QA Hub config."
+                : undefined
+            }
+          >
+            {isDemoJob ? "qa-sim-target · demo" : "UNSTABLE / completed"}
+          </span>
+        ) : null
+      }
     >
       {connected ? <Body jobName={jobName} /> : <NotConnectedBody />}
     </BentoTile>

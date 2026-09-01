@@ -13,21 +13,14 @@
 import Link from "next/link";
 import { useActiveHubStrict, useHubLink } from "@/features/hubs";
 
+// #239: this used to print internal API routes ("Backend: GET
+// /api/v1/admin/users + PATCH …") into user-facing copy — engineering
+// notes are for the tracker, not the page. (The users/audit entries are
+// also dead: both slots have real pages now.)
 const COPY = {
-  users: {
-    title: "User management",
-    body: "List every member of your org, edit their roles (multi-select), and manage hub access per user.",
-    pending: "Backend: GET /api/v1/admin/users + PATCH /api/v1/admin/users/:id",
-  },
-  audit: {
-    title: "Audit log",
-    body: "Filterable list of privileged actions — invites, role changes, hub overrides, password resets — with actor + IP + timestamp.",
-    pending: "Backend: GET /api/v1/admin/audit?since=…&limit=…",
-  },
   default: {
     title: "Coming soon",
-    body: "This admin surface is scaffolded — backend wiring lands next.",
-    pending: null,
+    body: "This admin surface is on the roadmap — it isn't wired up yet.",
   },
 };
 
@@ -57,18 +50,6 @@ export function AdminPlaceholder({ slot = "default" }) {
       <p className="mt-2 max-w-xl text-[14px] leading-[1.55] text-muted-fg">
         {copy.body}
       </p>
-
-      <div
-        className="mt-6 rounded-md border border-dashed border-border bg-card-alt p-4"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 11.5 }}
-      >
-        <div className="mb-1 uppercase tracking-[0.4px] text-dim-fg">
-          Status
-        </div>
-        <div className="text-muted-fg">
-          UI scaffolded. {copy.pending ?? "Backend endpoint TBD."}
-        </div>
-      </div>
 
       <div className="mt-6">
         <Link
