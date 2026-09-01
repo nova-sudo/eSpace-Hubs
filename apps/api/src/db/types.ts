@@ -725,7 +725,11 @@ export type NotificationKind =
   | "goal_due_soon"
   | "goal_overdue"
   | "goal_stale"
-  | "approval_waiting";
+  | "approval_waiting"
+  // F6 — a manager changed the grading criteria governing one of the
+  // recipient's goals. The affected engineer must not discover new
+  // criteria at grading time.
+  | "tier_policy_updated";
 
 export const ALL_NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "manager_graded",
@@ -738,6 +742,7 @@ export const ALL_NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "goal_overdue",
   "goal_stale",
   "approval_waiting",
+  "tier_policy_updated",
 ] as const;
 
 // ─── scheduler stamps (job dedupe) ───────────────────────────────────
@@ -835,6 +840,16 @@ export interface GoalTierPolicy {
   _id: ObjectId;
   orgId: ObjectId;
   code: string;
+  /**
+   * F6 — the performance cycle this policy governs, "YYYY" (the calendar
+   * year, matching the app's YTD windowing everywhere else; a richer
+   * cycle entity from #227 can subdivide later without changing shape).
+   * `null` / absent = a legacy row authored before scoping existed — it
+   * applies to ANY cycle, but a cycle-scoped row for the same code
+   * outranks it. Prevents the cross-year collision where 2026's criteria
+   * silently grade 2027's goals.
+   */
+  cycleKey?: string | null;
   finalTiers: TierCriteria | null;
   cadenceTiers: TierCriteria | null;
   setBy: ObjectId;

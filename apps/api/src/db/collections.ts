@@ -626,12 +626,24 @@ async function ensureIndexes(): Promise<void> {
   ]);
 
   const tierPolicies = await getGoalTierPoliciesCollection();
+  // F6 migration: the original unique index was (org, code) — exactly one
+  // policy per code EVER, which is the cross-year collision #223 calls
+  // out. Cycle-scoped keys need cycleKey in the unique key. Drop blind:
+  // succeeds once, no-ops (already gone) on later boots — the same
+  // idempotent pattern the goal_tier_verdicts migration above uses.
+  try {
+    await tierPolicies.dropIndex("goal_tier_policies_org_code_uniq");
+  } catch {
+    /* index already gone — expected on every boot after the first */
+  }
   await tierPolicies.createIndexes([
     {
-      // One policy per (org, code). Upsert on re-set replaces it.
-      key: { orgId: 1, code: 1 },
+      // One policy per (org, code, cycle). Legacy rows have no cycleKey
+      // (indexes as null) — at most one exists per code, guaranteed by
+      // the old unique index they were written under.
+      key: { orgId: 1, code: 1, cycleKey: 1 },
       unique: true,
-      name: "goal_tier_policies_org_code_uniq",
+      name: "goal_tier_policies_org_code_cycle_uniq",
     },
   ]);
 

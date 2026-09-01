@@ -39,6 +39,7 @@ export const notificationsValidator: Document = {
           "goal_overdue",
           "goal_stale",
           "approval_waiting",
+          "tier_policy_updated",
         ],
       },
       title: { bsonType: "string", minLength: 1, maxLength: 200 },

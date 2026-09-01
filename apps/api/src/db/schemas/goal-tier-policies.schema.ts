@@ -41,6 +41,10 @@ export const goalTierPoliciesValidator: Document = {
       // against l1.code / l2.code. Not validated for format here (neither
       // is the dev-side field it matches against).
       code: { bsonType: "string", minLength: 1, maxLength: 200 },
+      // F6 — the cycle this policy governs ("YYYY"). Null/absent = a
+      // legacy pre-scoping row that applies to any cycle (a scoped row
+      // for the same code outranks it at resolution).
+      cycleKey: { bsonType: ["string", "null"], maxLength: 20 },
       finalTiers: { bsonType: ["object", "null"], ...tierCriteriaSchema },
       cadenceTiers: { bsonType: ["object", "null"], ...tierCriteriaSchema },
       setBy: { bsonType: "objectId" },

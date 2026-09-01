@@ -29,6 +29,7 @@ import {
   listDelegatedQueueHandler,
   listReportReviewPacketsHandler,
   listReportsHandler,
+  listGoalCodesHandler,
   listTierPoliciesHandler,
   putApprovalDecisionHandler,
   putGoalVerdictHandler,
@@ -101,6 +102,15 @@ managerRouter.get(
   requireAuth(),
   requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
   listTierPoliciesHandler,
+);
+
+// F6 — the codes that exist in the org, with goal/people counts. Powers
+// the policy authoring picker + "affects N goals across M people".
+managerRouter.get(
+  "/goal-codes",
+  requireAuth(),
+  requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
+  listGoalCodesHandler,
 );
 
 managerRouter.put(

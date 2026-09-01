@@ -39,6 +39,7 @@ import {
   upsertManagerVerdict,
 } from "../../lib/manager-verdicts.js";
 import {
+  currentCycleKey,
   deleteTierPolicy,
   listTierPolicies,
   upsertTierPolicy,
@@ -646,10 +647,74 @@ export async function listTierPoliciesHandler(
     res.json({
       policies: rows.map((p) => ({
         code: p.code,
+        cycleKey: p.cycleKey ?? null,
         finalTiers: p.finalTiers,
         cadenceTiers: p.cadenceTiers,
         updatedAt: p.updatedAt.toISOString(),
       })),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * F6 — the codes that actually exist, with their blast radius. Powers
+ * the authoring picker AND the "affects N goals across M people"
+ * preview, replacing the free-text input where a typo governed nobody,
+ * silently. Scans every goal tree in the org — bounded (tens of users,
+ * hundreds of goals) and manager-gated.
+ */
+export async function listGoalCodesHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const goals = await getGoalsCollection();
+    const byCode = new Map<
+      string,
+      { code: string; level: "L1" | "L2"; title: string; goals: number; people: Set<string> }
+    >();
+    const tally = (
+      code: string,
+      level: "L1" | "L2",
+      title: string,
+      userId: string,
+    ) => {
+      const key = code.trim();
+      if (!key) return;
+      let row = byCode.get(key);
+      if (!row) {
+        row = { code: key, level, title, goals: 0, people: new Set() };
+        byCode.set(key, row);
+      }
+      row.goals += 1;
+      row.people.add(userId);
+    };
+    for await (const tree of goals.find({ orgId: session.orgId })) {
+      const uid = String(tree.userId);
+      for (const l1 of tree.l1s || []) {
+        tally(l1.code || "", "L1", l1.title || "", uid);
+        for (const l2 of l1.l2s || []) {
+          tally(l2.code || "", "L2", l2.title || "", uid);
+        }
+      }
+    }
+    res.json({
+      codes: [...byCode.values()]
+        .sort((a, b) => a.code.localeCompare(b.code))
+        .map((r) => ({
+          code: r.code,
+          level: r.level,
+          title: r.title,
+          goals: r.goals,
+          people: r.people.size,
+        })),
     });
   } catch (err) {
     next(err);
@@ -674,6 +739,7 @@ export async function putTierPolicyHandler(
     const body = (req.body ?? {}) as {
       finalTiers?: unknown;
       cadenceTiers?: unknown;
+      cycleKey?: unknown;
     };
     const finalTiers = parseTierCriteria(body.finalTiers, "finalTiers");
     const cadenceTiers = parseTierCriteria(body.cadenceTiers, "cadenceTiers");
@@ -684,10 +750,21 @@ export async function putTierPolicyHandler(
         "Provide finalTiers and/or cadenceTiers.",
       );
     }
+    // F6 — every new write is cycle-scoped. Omitted → the current year;
+    // an explicit key must look like one so a typo can't mint a policy
+    // no cycle will ever resolve.
+    const cycleKey =
+      body.cycleKey === undefined || body.cycleKey === null
+        ? currentCycleKey()
+        : String(body.cycleKey).trim();
+    if (!/^\d{4}$/.test(cycleKey)) {
+      throw new HttpError(400, "invalid_cycle", 'cycleKey must be "YYYY".');
+    }
 
     const updated = await upsertTierPolicy({
       orgId: session.orgId,
       code,
+      cycleKey,
       finalTiers,
       cadenceTiers,
       setBy: session.userId,
@@ -706,15 +783,22 @@ export async function putTierPolicyHandler(
       targetType: "tier_policy",
       targetId: updated.code,
       after: {
+        cycleKey,
         finalTiers: describe(finalTiers),
         cadenceTiers: describe(cadenceTiers),
       },
       ...networkMeta(req),
     });
 
+    // F6 — the governed must hear about it: changed criteria discovered
+    // at grading time is the exact trust failure this feature exists to
+    // close. Best-effort and after the response-critical work.
+    void notifyGovernedEngineers(session.orgId, session.userId, code, cycleKey);
+
     res.json({
       policy: {
         code: updated.code,
+        cycleKey: updated.cycleKey ?? null,
         finalTiers: updated.finalTiers,
         cadenceTiers: updated.cadenceTiers,
         updatedAt: updated.updatedAt.toISOString(),
@@ -722,6 +806,45 @@ export async function putTierPolicyHandler(
     });
   } catch (err) {
     next(err);
+  }
+}
+
+/**
+ * Notify every engineer whose tree carries `code` that its grading
+ * criteria changed. Fire-and-forget from the policy PUT — a notify
+ * failure must never fail the save.
+ */
+async function notifyGovernedEngineers(
+  orgId: ObjectId,
+  actorUserId: ObjectId,
+  code: string,
+  cycleKey: string,
+): Promise<void> {
+  try {
+    const goals = await getGoalsCollection();
+    const affected = new Set<string>();
+    for await (const tree of goals.find({ orgId })) {
+      const carries = (tree.l1s || []).some(
+        (l1) =>
+          (l1.code || "").trim() === code ||
+          (l1.l2s || []).some((l2) => (l2.code || "").trim() === code),
+      );
+      if (carries) affected.add(String(tree.userId));
+    }
+    for (const uid of affected) {
+      if (uid === String(actorUserId)) continue;
+      void createNotification({
+        orgId,
+        userId: new ObjectId(uid),
+        kind: "tier_policy_updated",
+        title: `Grading criteria updated: ${code}`.slice(0, 200),
+        body: `Your manager changed the achievement-tier criteria governing Goal Code ${code} for ${cycleKey}. Your matching goal is now graded against the new ladder.`,
+        data: { code, cycleKey },
+        createdBy: actorUserId,
+      });
+    }
+  } catch {
+    /* best-effort by design */
   }
 }
 
@@ -738,7 +861,12 @@ export async function deleteTierPolicyHandler(
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
     const code = (req.params.code || "").trim();
-    const deleted = await deleteTierPolicy(session.orgId, code);
+    // Row identity: ?cycleKey=YYYY targets a scoped row; ?cycleKey=legacy
+    // (or omitted) targets the unscoped pre-F6 row. Deleting one never
+    // touches the other.
+    const rawCycle = String(req.query.cycleKey ?? "legacy").trim();
+    const cycleKey = /^\d{4}$/.test(rawCycle) ? rawCycle : null;
+    const deleted = await deleteTierPolicy(session.orgId, code, cycleKey);
     if (deleted) {
       await writeAudit({
         orgId: session.orgId,
@@ -747,6 +875,7 @@ export async function deleteTierPolicyHandler(
         action: "manager.tier_policy.delete",
         targetType: "tier_policy",
         targetId: code,
+        after: { cycleKey: cycleKey ?? "legacy" },
         ...networkMeta(req),
       });
     }

@@ -34,6 +34,9 @@ const KIND_PATH = {
   goal_overdue: "/goals",
   goal_stale: "/",
   approval_waiting: "/approvals",
+  // F6 — criteria changed under one of the recipient's goals; the tier
+  // ladder shows on the fill surface.
+  tier_policy_updated: "/",
 };
 
 function ago(iso) {

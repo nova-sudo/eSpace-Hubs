@@ -53,20 +53,33 @@ function ladderToPayload(ladder) {
   return out;
 }
 
+/** The row's identity — one policy per (code, cycle); "legacy" = pre-F6. */
+function policyKey(p) {
+  return `${p.code}::${p.cycleKey ?? "legacy"}`;
+}
+
 export function ManagerTierPolicies() {
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [openCode, setOpenCode] = useState(null);
+  const [openKey, setOpenKey] = useState(null);
   const [newCode, setNewCode] = useState("");
+  // F6 — the codes that actually exist in the org, with blast radius.
+  // Feeds the picker and the per-row "affects N goals · M people" chip.
+  const [codes, setCodes] = useState(null);
+  const currentCycle = String(new Date().getFullYear());
 
   async function reload() {
-    const r = await apiGet("/manager/tier-policies");
+    const [r, rc] = await Promise.all([
+      apiGet("/manager/tier-policies"),
+      apiGet("/manager/goal-codes"),
+    ]);
     if (!r.ok) {
       toast.error(r.error?.message || "Couldn't load tier policies.");
       setLoading(false);
       return;
     }
     setPolicies(r.data?.policies ?? []);
+    if (rc.ok) setCodes(rc.data?.codes ?? []);
     setLoading(false);
   }
 
@@ -76,7 +89,7 @@ export function ManagerTierPolicies() {
 
   function applyUpdate(policy) {
     setPolicies((prev) => {
-      const idx = prev.findIndex((p) => p.code === policy.code);
+      const idx = prev.findIndex((p) => policyKey(p) === policyKey(policy));
       if (idx < 0) return [...prev, policy].sort((a, b) => a.code.localeCompare(b.code));
       const next = [...prev];
       next[idx] = policy;
@@ -84,27 +97,56 @@ export function ManagerTierPolicies() {
     });
   }
 
-  function applyDelete(code) {
-    setPolicies((prev) => prev.filter((p) => p.code !== code));
+  function applyDelete(policy) {
+    setPolicies((prev) => prev.filter((p) => policyKey(p) !== policyKey(policy)));
   }
 
-  function handleAdd(e) {
-    e.preventDefault();
-    const code = newCode.trim();
-    if (!code) return;
-    if (policies.some((p) => p.code === code)) {
-      setOpenCode(code);
+  function addCode(code) {
+    const trimmed = code.trim();
+    if (!trimmed) return;
+    const draft = {
+      code: trimmed,
+      cycleKey: currentCycle,
+      finalTiers: null,
+      cadenceTiers: null,
+      updatedAt: null,
+    };
+    const existing = policies.find((p) => policyKey(p) === policyKey(draft));
+    if (existing) {
+      setOpenKey(policyKey(existing));
       setNewCode("");
       return;
     }
     setPolicies((prev) =>
-      [...prev, { code, finalTiers: null, cadenceTiers: null, updatedAt: null }].sort(
-        (a, b) => a.code.localeCompare(b.code),
-      ),
+      [...prev, draft].sort((a, b) => a.code.localeCompare(b.code)),
     );
-    setOpenCode(code);
+    setOpenKey(policyKey(draft));
     setNewCode("");
   }
+
+  function handleAdd(e) {
+    e.preventDefault();
+    addCode(newCode);
+  }
+
+  // Picker rows: real codes not yet governed for the current cycle,
+  // filtered by whatever's typed. The free-text path stays as an escape
+  // hatch (a code no tree carries YET), but it's labeled as governing
+  // nobody instead of failing silently.
+  const governedKeys = new Set(policies.map((p) => policyKey(p)));
+  const filter = newCode.trim().toLowerCase();
+  const pickerRows = (codes || [])
+    .filter((c) => !governedKeys.has(`${c.code}::${currentCycle}`))
+    .filter(
+      (c) =>
+        !filter ||
+        c.code.toLowerCase().includes(filter) ||
+        (c.title || "").toLowerCase().includes(filter),
+    )
+    .slice(0, 8);
+  const typedMatchesExisting = (codes || []).some(
+    (c) => c.code.toLowerCase() === filter,
+  );
 
   return (
     <main className="relative z-[2] mx-auto max-w-4xl px-10 pb-14 pt-9">
@@ -119,7 +161,9 @@ export function ManagerTierPolicies() {
             to every developer whose goal carries that code. An L2 code
             overrides its parent L1's code, field by field. A goal with
             nothing set here keeps using its own AI-extracted or
-            self-authored tiers.
+            self-authored tiers. Policies are scoped to a performance
+            cycle (year) — this year's criteria never silently grade next
+            year's goals — and affected engineers are notified on save.
           </>
         }
       />
@@ -128,18 +172,65 @@ export function ManagerTierPolicies() {
         className="mt-2 flex flex-wrap items-end gap-2"
         onSubmit={handleAdd}
       >
-        <Field label="Goal Code (L1 or L2)" className="flex-1 min-w-[200px]">
+        <Field
+          label={`Goal Code — governs cycle ${currentCycle}`}
+          className="flex-1 min-w-[200px]"
+        >
           <Input
             value={newCode}
             onChange={(e) => setNewCode(e.target.value)}
-            placeholder="R-L0-3-PSCS-L1-06 or …-L2-06-01"
+            placeholder={codes === null ? "Loading codes…" : "Filter existing codes, or type one"}
             mono
           />
         </Field>
         <Button type="submit" variant="primary" size="sm" disabled={!newCode.trim()}>
-          + Add code
+          + Govern code
         </Button>
       </form>
+
+      {/* The picker: codes that actually exist, with their blast radius —
+          the honest replacement for a free-text field where a typo
+          governed nobody, silently. */}
+      {pickerRows.length > 0 ? (
+        <div className="mt-2 flex flex-col overflow-hidden rounded-[var(--radius-sub)] border border-border">
+          {pickerRows.map((c) => (
+            <button
+              key={c.code}
+              type="button"
+              onClick={() => addCode(c.code)}
+              className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-accent-dim/25"
+            >
+              <span className="flex min-w-0 items-baseline gap-2">
+                <code
+                  className="shrink-0 text-accent"
+                  style={{ fontFamily: "var(--font-mono)", fontSize: 11.5 }}
+                >
+                  {c.code}
+                </code>
+                <span className="truncate text-muted-fg" style={{ fontSize: 11.5 }}>
+                  {c.title}
+                </span>
+              </span>
+              <span
+                className="shrink-0 text-dim-fg"
+                style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
+              >
+                {c.level} · {c.goals} goal{c.goals === 1 ? "" : "s"} · {c.people}{" "}
+                {c.people === 1 ? "person" : "people"}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {codes !== null && filter && pickerRows.length === 0 && !typedMatchesExisting ? (
+        <p
+          className="mt-2 text-[11.5px] leading-[1.5]"
+          style={{ color: "var(--warn)" }}
+        >
+          No goal in the org carries “{newCode.trim()}”. You can still govern
+          it, but it applies to nobody until a goal tree carries that code.
+        </p>
+      ) : null}
 
       <div className="mt-6">
         {loading ? (
@@ -161,10 +252,13 @@ export function ManagerTierPolicies() {
             <div className="mt-3 flex flex-col gap-2">
               {policies.map((p) => (
                 <PolicyRow
-                  key={p.code}
+                  key={policyKey(p)}
                   policy={p}
-                  expanded={openCode === p.code}
-                  onExpand={() => setOpenCode(openCode === p.code ? null : p.code)}
+                  scope={(codes || []).find((c) => c.code === p.code) || null}
+                  expanded={openKey === policyKey(p)}
+                  onExpand={() =>
+                    setOpenKey(openKey === policyKey(p) ? null : policyKey(p))
+                  }
                   onUpdate={applyUpdate}
                   onDelete={applyDelete}
                 />
@@ -177,7 +271,7 @@ export function ManagerTierPolicies() {
   );
 }
 
-function PolicyRow({ policy, expanded, onExpand, onUpdate, onDelete }) {
+function PolicyRow({ policy, scope, expanded, onExpand, onUpdate, onDelete }) {
   return (
     <div
       className="rounded-[var(--radius-tile)] border bg-card"
@@ -195,6 +289,38 @@ function PolicyRow({ policy, expanded, onExpand, onUpdate, onDelete }) {
           >
             {policy.code}
           </code>
+          <span
+            className="shrink-0 rounded-full px-1.5 py-[1px] uppercase"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              letterSpacing: "0.4px",
+              background: policy.cycleKey ? "var(--accent-dim)" : "var(--panel-2)",
+              color: policy.cycleKey ? "var(--accent)" : "var(--muted-fg)",
+            }}
+            title={
+              policy.cycleKey
+                ? `Governs the ${policy.cycleKey} cycle only.`
+                : "Authored before cycle scoping — applies to ANY cycle until re-saved (a cycle-scoped policy on the same code outranks it)."
+            }
+          >
+            {policy.cycleKey || "any cycle"}
+          </span>
+          {/* The blast radius — who this row actually governs. Zero is a
+              warning, not silence: a policy matching nothing is either a
+              typo or a stale code. */}
+          <span
+            className="shrink-0"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10,
+              color: scope && scope.goals > 0 ? "var(--dim-fg)" : "var(--warn)",
+            }}
+          >
+            {scope && scope.goals > 0
+              ? `affects ${scope.goals} goal${scope.goals === 1 ? "" : "s"} · ${scope.people} ${scope.people === 1 ? "person" : "people"}`
+              : "matches no goals"}
+          </span>
           {policy.finalTiers ? (
             <span
               className="text-muted-fg"
@@ -238,7 +364,12 @@ function PolicyEditor({ policy, onUpdate, onDelete }) {
 
   async function handleSave() {
     setSaving(true);
+    // A legacy (unscoped) row re-saves as a scoped row for the current
+    // cycle — re-touching a policy is exactly when its author confirms
+    // which year it's meant for.
+    const cycleKey = policy.cycleKey || String(new Date().getFullYear());
     const r = await apiPut(`/manager/tier-policies/${encodeURIComponent(policy.code)}`, {
+      cycleKey,
       finalTiers: ladderToPayload(finalTiers),
       cadenceTiers: ladderToPayload(cadenceTiers),
     });
@@ -247,26 +378,38 @@ function PolicyEditor({ policy, onUpdate, onDelete }) {
       toast.error(r.error?.message || "Couldn't save tier policy.");
       return;
     }
+    if (!policy.cycleKey) {
+      // Migration on touch: the save above wrote a cycle-scoped row; the
+      // old unscoped row would otherwise keep governing every OTHER
+      // cycle with the stale ladder. Remove it — re-saving IS the
+      // author's confirmation of scope.
+      void apiDelete(
+        `/manager/tier-policies/${encodeURIComponent(policy.code)}?cycleKey=legacy`,
+      );
+      onDelete(policy);
+    }
     onUpdate(r.data?.policy);
-    toast.success(`Saved tiers for "${policy.code}".`);
+    toast.success(`Saved ${cycleKey} tiers for "${policy.code}". Affected engineers are notified.`);
   }
 
   async function handleDelete() {
     if (
       !window.confirm(
-        `Remove the tier policy for "${policy.code}"?\n\nMatching goals fall back to their own AI-extracted or self-authored tiers again.`,
+        `Remove the ${policy.cycleKey || "any-cycle"} tier policy for "${policy.code}"?\n\nMatching goals fall back to their own AI-extracted or self-authored tiers again.`,
       )
     ) {
       return;
     }
     setSaving(true);
-    const r = await apiDelete(`/manager/tier-policies/${encodeURIComponent(policy.code)}`);
+    const r = await apiDelete(
+      `/manager/tier-policies/${encodeURIComponent(policy.code)}?cycleKey=${encodeURIComponent(policy.cycleKey || "legacy")}`,
+    );
     setSaving(false);
     if (!r.ok) {
       toast.error(r.error?.message || "Couldn't remove tier policy.");
       return;
     }
-    onDelete(policy.code);
+    onDelete(policy);
     toast.success(`Removed tier policy for "${policy.code}".`);
   }
 
