@@ -293,6 +293,8 @@ in detail. Notable ones still open:
    `globals.css`), with per-hub accents layered on top by the hub registry.
 2. Proper "review rounds" requires per-MR `/discussions` calls (N+1); current
    implementation is `user_notes_count` as a proxy (tracked as BL-012).
-3. Snapshot cron — still open. Auto-capture fires on dashboard visit
-   (client-side detection); a server-side scheduler is proposal F4 in the
-   2026-08 audit (#229).
+3. ~~Snapshot cron~~ — RESOLVED (F4, #229): the API scheduler
+   (`apps/api/src/scheduler/`) freezes last week server-side for any user
+   who didn't capture it by visiting — manual trackers only, stamped
+   `partial: true, gaps: ["provider-metrics"]`. Client visit-capture still
+   provides the full (provider-metric) snapshot and wins over auto.

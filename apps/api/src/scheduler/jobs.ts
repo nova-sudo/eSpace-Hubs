@@ -24,9 +24,16 @@ import {
   getGoalsCollection,
   getNotificationsCollection,
   getSchedulerStampsCollection,
+  getSnapshotsCollection,
   getUsersCollection,
 } from "../db/collections.js";
-import { WHOLE_GOAL_TIER_KEY, type GoalTree, type User } from "../db/types.js";
+import {
+  WHOLE_GOAL_TIER_KEY,
+  type GoalReading,
+  type GoalTree,
+  type Snapshot,
+  type User,
+} from "../db/types.js";
 import { createNotification } from "../lib/notifications.js";
 import { effectiveRoles } from "../lib/user-roles.js";
 import { sendEmail } from "../lib/email.js";
@@ -261,6 +268,180 @@ export async function notifyWaitingApprovals(now: Date): Promise<void> {
       logger.warn(
         { specId: String(rec._id), err: err instanceof Error ? err.message : String(err) },
         "[scheduler] approval scan failed for one spec",
+      );
+    }
+  }
+}
+
+/* ─── weekly server-side snapshots (#229, F4's second half) ─────────── */
+
+/**
+ * Sunday-anchored week number, UTC variant of the canonical
+ * apps/web/src/lib/date.js `weekNumber` (week 1 contains Jan 1; each
+ * later Sunday starts a new week). Duplicated rather than shared: the
+ * web version deliberately uses LOCAL calendar components (an
+ * Egypt-based team's browser), which a UTC server can't reproduce —
+ * the 2-3h Cairo offset can only misfile an entry logged within a few
+ * hours of Sunday midnight, an accepted imprecision for a weekly
+ * bucket.
+ */
+function sunWeekNumberUtc(d: Date): number {
+  const jan1 = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week1Sunday = Date.UTC(d.getUTCFullYear(), 0, 1 - jan1.getUTCDay());
+  const day = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  return Math.floor(Math.round((day - week1Sunday) / DAY_MS) / 7) + 1;
+}
+
+/** "W36-2026" — the snapshot week-label shape the client writes. */
+function weekLabelUtc(d: Date): string {
+  return `W${String(sunWeekNumberUtc(d)).padStart(2, "0")}-${d.getUTCFullYear()}`;
+}
+
+/** [start, end) of the Sunday-anchored week containing `d`, in UTC ms. */
+function weekBoundsUtc(d: Date): { start: number; end: number } {
+  const day = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const start = day - d.getUTCDay() * DAY_MS;
+  return { start, end: start + 7 * DAY_MS };
+}
+
+/** The cadence-window label for a week-end date — mirrors the client's
+ *  cadenceWindowFor (capture-readings.js) in UTC. */
+function cadenceWindowForUtc(cadence: string, weekEnd: Date): string {
+  const year = weekEnd.getUTCFullYear();
+  const month = weekEnd.getUTCMonth() + 1;
+  switch (cadence) {
+    case "yearly":
+      return `${year}`;
+    case "quarterly":
+      return `${year}-Q${Math.floor((month - 1) / 3) + 1}`;
+    case "monthly":
+      return `${year}-${String(month).padStart(2, "0")}`;
+    case "biweekly":
+      return `${year}-F${String(Math.ceil(sunWeekNumberUtc(weekEnd) / 2)).padStart(2, "0")}`;
+    case "weekly":
+      return weekLabelUtc(weekEnd);
+    case "daily":
+      return `${year}-${String(month).padStart(2, "0")}-${String(weekEnd.getUTCDate()).padStart(2, "0")}`;
+    default:
+      return "lifetime";
+  }
+}
+
+/**
+ * Job 5 — freeze LAST week into a snapshot for every user who didn't
+ * capture one themselves (#229: snapshots only happened on dashboard
+ * visits, so a week without a visit vanished from compliance
+ * denominators — "missed weeks stop happening silently").
+ *
+ * Scope honesty: the server can't reach provider tokens' metric math
+ * (that lives client-side by design), so this captures what the server
+ * DOES know — the manual trackers' goal-inputs — and stamps the row
+ * `partial: true, gaps: ["provider-metrics"]`. windowMet stays null
+ * (recorded, not judged): an entry's existence is the compliance
+ * signal; target judgement remains the client capture's job.
+ *
+ * Manual-wins is preserved twice over: we skip users who already have
+ * the week, and the write is $setOnInsert under the unique
+ * (org,user,week) index — a concurrent client capture can never be
+ * overwritten.
+ */
+export async function captureWeeklySnapshots(now: Date): Promise<void> {
+  // The week being frozen is LAST week — complete by definition.
+  const lastWeekDay = new Date(now.getTime() - 7 * DAY_MS);
+  const week = weekLabelUtc(lastWeekDay);
+  const { start, end } = weekBoundsUtc(lastWeekDay);
+  const weekEnd = new Date(end - DAY_MS); // inclusive last day, label anchor
+
+  const users = await getUsersCollection();
+  const specsCol = await getGoalSpecsCollection();
+  const inputsCol = await getGoalInputsCollection();
+  const snapshots = await getSnapshotsCollection();
+
+  for await (const user of users.find({ status: "active" })) {
+    try {
+      const existing = await snapshots.findOne(
+        { orgId: user.orgId, userId: user._id, week },
+        { projection: { _id: 1 } },
+      );
+      if (existing) continue;
+
+      const specs = await specsCol
+        .find({ orgId: user.orgId, userId: user._id })
+        .toArray();
+      const goalReadings: Record<string, GoalReading> = {};
+      for (const rec of specs) {
+        const spec = rec.spec as Record<string, unknown>;
+        if (!spec || typeof spec !== "object") continue;
+        if (spec.source) continue; // auto — provider metrics, client-only
+        if (spec.untrackable || spec.delegated) continue;
+        if ((spec.approval as { status?: string } | undefined)?.status === "pending") continue;
+        const manual = spec.manual as
+          | { cadence?: string; target?: { op?: string; value?: number } }
+          | undefined;
+        const cadence = manual?.cadence || "weekly";
+        const entries = await inputsCol
+          .find({
+            orgId: user.orgId,
+            userId: user._id,
+            goalId: rec.goalId,
+            ts: { $gte: new Date(start), $lt: new Date(end) },
+          })
+          .toArray();
+        // COUNTER entries carry numeric contributions; everything else
+        // reads "how many times was this touched" — same split the
+        // client capture makes, without importing its widget registry.
+        const numericSum = entries.reduce((s, e) => {
+          const n = Number(e.value);
+          return Number.isFinite(n) ? s + n : s;
+        }, 0);
+        const weekContribution =
+          spec.widget === "counter" ? numericSum : entries.length;
+        const target =
+          manual?.target &&
+          typeof manual.target.op === "string" &&
+          typeof manual.target.value === "number"
+            ? { op: manual.target.op, value: manual.target.value }
+            : null;
+        goalReadings[rec.goalId] = {
+          cadence,
+          cadenceWindow: cadenceWindowForUtc(cadence, weekEnd),
+          weekContribution,
+          cumulative: null,
+          target,
+          windowMet: null,
+          onPace: null,
+        };
+      }
+      if (Object.keys(goalReadings).length === 0) continue; // dormant account — no noise rows
+
+      const key = `snap:${user._id}:${week}`;
+      if (!(await claimStamp(key))) continue;
+      const doc: Snapshot = {
+        _id: new OID(),
+        orgId: user.orgId,
+        userId: user._id,
+        week,
+        capturedAt: now,
+        capturedBy: "auto",
+        merged: 0,
+        reviews: 0,
+        turnaround: 0,
+        linkage: 0,
+        rounds: 0,
+        note: "Server auto-capture — provider metrics unavailable; manual trackers only.",
+        goalReadings,
+        partial: true,
+        gaps: ["provider-metrics"],
+      };
+      await snapshots.updateOne(
+        { orgId: user.orgId, userId: user._id, week },
+        { $setOnInsert: doc },
+        { upsert: true },
+      );
+    } catch (err) {
+      logger.warn(
+        { userId: String(user._id), week, err: err instanceof Error ? err.message : String(err) },
+        "[scheduler] weekly snapshot capture failed for one user",
       );
     }
   }

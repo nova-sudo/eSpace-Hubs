@@ -22,6 +22,7 @@
 
 import { logger } from "../lib/logger.js";
 import {
+  captureWeeklySnapshots,
   notifyGoalDeadlines,
   notifyStaleGoals,
   notifyWaitingApprovals,
@@ -43,6 +44,10 @@ async function tick(): Promise<void> {
     ["stale", notifyStaleGoals],
     ["approvals", notifyWaitingApprovals],
     ["digest", sendWeeklyDigests],
+    // Snapshots BEFORE digest would be nicer (the digest could mention
+    // them), but order here is freshness cosmetics — every job is
+    // idempotent and the hourly tick closes any gap within the hour.
+    ["snapshots", captureWeeklySnapshots],
   ];
   for (const [name, job] of jobs) {
     try {
