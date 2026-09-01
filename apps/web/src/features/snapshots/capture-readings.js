@@ -181,7 +181,7 @@ function readMerged(spec, ctx) {
     weekContribution: weekCount,
     cumulative,
     windowMet: evalMet(cumulative, target, "sticky"),
-    onPace: evalOnPace(cumulative, target, ctx),
+    onPace: evalOnPace(cumulative, target, ctx, resolveCadence(spec)),
   });
 }
 
@@ -293,7 +293,7 @@ function readCounter(spec, goal, ctx) {
     weekContribution: weekValue,
     cumulative,
     windowMet: evalMet(cumulative, target, "sticky"),
-    onPace: evalOnPace(cumulative, target, ctx),
+    onPace: evalOnPace(cumulative, target, ctx, resolveCadence(spec)),
   });
 }
 
@@ -308,10 +308,20 @@ function readScale(spec, goal, ctx) {
   );
   const latest = inWindow[inWindow.length - 1];
   const value = latest ? Number(latest.value) : null;
+  // The spec's own target decides "met" when it has one ("maintain 4.5+"
+  // is a different bar than "reach 3"); the 4-on-a-1-5-scale heuristic is
+  // only the fallback for target-less scales (audit #237 — the hardcode
+  // ignored every authored target).
+  const target = spec.manual?.target || spec.source?.target || null;
   return baseReading(spec, ctx, {
     weekContribution: value,
     cumulative: value,
-    windowMet: value != null ? value >= 4 : null, // 4+ on a 1-5 scale = "strong"
+    windowMet:
+      value == null
+        ? null
+        : target
+          ? evalMet(value, target, "recompute")
+          : value >= 4,
   });
 }
 
@@ -381,6 +391,37 @@ function readFreeText(spec, goal, ctx) {
   });
 }
 
+/**
+ * Which way is "better" for a BEFORE_AFTER goal — the ONE answer both
+ * the snapshot capture and the evidence reading use. Before this the
+ * two hardcoded OPPOSITE assumptions (snapshot: lower-is-better,
+ * evidence: higher-is-better), so "reduce latency 800→400" exported as
+ * *regressed* in the review document while the snapshot called it met
+ * (audit #237).
+ *
+ * Resolution order:
+ *   1. An authored target op is explicit intent: "<=" → lower, ">=" → higher.
+ *   2. Directional verbs in the spec/goal text ("reduce…" vs "increase…").
+ *   3. Default lower-is-better — the shipped majority is "reduce X"
+ *      (response time, error rate, bundle size).
+ */
+export function beforeAfterDirection(spec, goal) {
+  const op = spec?.manual?.target?.op || spec?.source?.target?.op || null;
+  if (op === "<=") return "lower";
+  if (op === ">=") return "higher";
+  const text = [spec?.title, goal?.title, goal?.description]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (/\b(reduce|decrease|lower|cut|shrink|minimi[sz]e|below|fewer)\b/.test(text)) {
+    return "lower";
+  }
+  if (/\b(increase|raise|grow|boost|above|maximi[sz]e|expand)\b/.test(text)) {
+    return "higher";
+  }
+  return "lower";
+}
+
 function readBeforeAfter(spec, goal, ctx) {
   const entries = ctx.allInputs[goal.id] || [];
   const upToWeek = entries.filter((e) => e.ts <= ctx.weekEnd.getTime());
@@ -395,10 +436,8 @@ function readBeforeAfter(spec, goal, ctx) {
     });
   }
   const delta = current - baseline;
-  // Direction matters per goal — assume lower-is-better unless the
-  // spec says otherwise. The vast majority of before/after goals are
-  // "reduce X" (response time, error rate, etc.).
-  const improved = delta < 0;
+  const improved =
+    beforeAfterDirection(spec, goal) === "lower" ? delta < 0 : delta > 0;
   return baseReading(spec, ctx, {
     weekContribution: null,
     cumulative: current,
@@ -412,8 +451,14 @@ function readBeforeAfter(spec, goal, ctx) {
  * Foundation reading — fills in cadence, cadenceWindow, target, asOf —
  * leaving the per-widget fields the caller must supply.
  */
+/** The one cadence resolution — baseReading and the pace math must
+ *  never disagree on which window a goal lives in. */
+function resolveCadence(spec) {
+  return spec.manual?.cadence || inferCadenceFromSource(spec) || "weekly";
+}
+
 function baseReading(spec, ctx, fields) {
-  const cadence = spec.manual?.cadence || inferCadenceFromSource(spec) || "weekly";
+  const cadence = resolveCadence(spec);
   const target = spec.manual?.target || spec.source?.target || null;
   return {
     cadence,
@@ -549,10 +594,10 @@ function evalMet(value, target, mode) {
  * pace needed to hit the cycle's target? Simple linear pace based on
  * "fraction of window elapsed vs fraction of target hit".
  */
-function evalOnPace(cumulative, target, ctx) {
+function evalOnPace(cumulative, target, ctx, cadence) {
   if (target == null || target.value == null || cumulative == null) return null;
   if (target.op !== ">=") return null;
-  const fracElapsed = elapsedFractionOfWindow(ctx);
+  const fracElapsed = elapsedFractionOfWindow(ctx, cadence);
   if (fracElapsed == null) return null;
   const fracHit = cumulative / target.value;
   // Allow a 10% buffer so a slow week early in the cycle doesn't read
@@ -560,17 +605,47 @@ function evalOnPace(cumulative, target, ctx) {
   return fracHit + 0.1 >= fracElapsed;
 }
 
-function elapsedFractionOfWindow(ctx) {
-  // Approximation — caller could pass a more precise window start.
-  // For now, use cycle-start (year start) as the anchor when computing
-  // fraction-elapsed for yearly/quarterly cadences.
-  const yearStart = new Date(
-    Date.UTC(ctx.weekEnd.getUTCFullYear(), 0, 1),
-  ).getTime();
-  const yearEnd = new Date(
-    Date.UTC(ctx.weekEnd.getUTCFullYear() + 1, 0, 1),
-  ).getTime();
-  const span = yearEnd - yearStart;
+/**
+ * Fraction of the goal's OWN cadence window that has elapsed — the pace
+ * denominator. Dividing by the calendar year regardless of cadence
+ * (audit #237) told every quarterly goal it was "behind" for the first
+ * weeks of each quarter: two weeks into Q3, a quarterly target's honest
+ * fraction is ~0.15 of the quarter, not ~0.55 of the year. Local
+ * calendar components throughout, matching `cadenceWindowFor`.
+ */
+function elapsedFractionOfWindow(ctx, cadence) {
+  const d = ctx.weekEnd instanceof Date ? ctx.weekEnd : new Date(ctx.weekEnd);
+  const year = d.getFullYear();
+  const month = d.getMonth();
+  let start;
+  let end;
+  switch (cadence) {
+    case "quarterly": {
+      const q0 = Math.floor(month / 3) * 3;
+      start = new Date(year, q0, 1).getTime();
+      end = new Date(year, q0 + 3, 1).getTime();
+      break;
+    }
+    case "monthly":
+      start = new Date(year, month, 1).getTime();
+      end = new Date(year, month + 1, 1).getTime();
+      break;
+    case "weekly":
+    case "biweekly":
+    case "daily":
+      // The capture window IS the cadence window (or a slice of it) —
+      // measured at week end the window is effectively complete, and
+      // sticky-met already handles early hits.
+      start = ctx.weekStart.getTime();
+      end = ctx.weekEnd.getTime();
+      break;
+    default:
+      // yearly + cadence-less fall back to the calendar year (the old
+      // behaviour, correct for exactly this case).
+      start = new Date(year, 0, 1).getTime();
+      end = new Date(year + 1, 0, 1).getTime();
+  }
+  const span = end - start;
   if (span <= 0) return null;
-  return (ctx.weekEnd.getTime() - yearStart) / span;
+  return Math.min(1, Math.max(0, (d.getTime() - start) / span));
 }

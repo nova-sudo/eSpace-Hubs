@@ -40,7 +40,11 @@ import {
   readInputs,
   useAllGoalInputs,
 } from "@/features/goal-inputs";
-import { goalCompliance, useSnapshots } from "@/features/snapshots";
+import {
+  beforeAfterDirection,
+  goalCompliance,
+  useSnapshots,
+} from "@/features/snapshots";
 import { readContextFor, useAllGoalContext } from "@/features/goal-context";
 import {
   readGoalLiveReading,
@@ -585,7 +589,7 @@ function readFreeText(_spec, goal, { allInputs }) {
   };
 }
 
-function readBeforeAfter(_spec, goal, { allInputs }) {
+function readBeforeAfter(spec, goal, { allInputs }) {
   const entries = allInputs[goal.id] || [];
   const latest = entries[entries.length - 1]?.value;
   const baseline = latest?.baseline;
@@ -595,10 +599,20 @@ function readBeforeAfter(_spec, goal, { allInputs }) {
   }
   const delta = Number(current) - Number(baseline);
   const arrow = delta > 0 ? "↑" : delta < 0 ? "↓" : "→";
+  // Shared direction with the snapshot capture (audit #237): this used
+  // to hardcode higher-is-better while the snapshot assumed the
+  // opposite, so "reduce latency 800→400" exported as "regressed".
+  const improved =
+    delta === 0
+      ? null
+      : beforeAfterDirection(spec, goal) === "lower"
+        ? delta < 0
+        : delta > 0;
   return {
     value: `${baseline} → ${current} (${arrow} ${Math.abs(delta).toFixed(1)})`,
-    statusTone: delta > 0 ? TONES.OK : delta < 0 ? TONES.WARN : TONES.MUTED,
-    statusLabel: delta > 0 ? "improved" : delta < 0 ? "regressed" : "flat",
+    statusTone:
+      improved == null ? TONES.MUTED : improved ? TONES.OK : TONES.WARN,
+    statusLabel: improved == null ? "flat" : improved ? "improved" : "regressed",
   };
 }
 

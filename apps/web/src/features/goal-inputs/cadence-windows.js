@@ -102,6 +102,14 @@ function enumerateWindows(cadence, year, cycleStart, cycleEnd) {
   }
   // weekly / biweekly / daily — fixed-stride buckets from cycle start. Simple
   // and stable; exact ISO-week alignment isn't needed for a compliance view.
+  //
+  // Key year comes from the CYCLE START, never the `year` parameter (which
+  // callers derive from `now`): a Sept-2026→Feb-2027 cycle's 14th week must
+  // key "2026-W14" in December AND in January. Stamping now's year re-keyed
+  // every stride window at the calendar rollover, orphaning the entries and
+  // locks written under the old keys (audit #237). Month/quarter keys above
+  // are already cycle-derived and never had this bug.
+  const keyYear = new Date(cycleStart).getUTCFullYear();
   const DAY = 86_400_000;
   const stride =
     cadence === "daily" ? DAY : cadence === "biweekly" ? 14 * DAY : 7 * DAY;
@@ -111,7 +119,7 @@ function enumerateWindows(cadence, year, cycleStart, cycleEnd) {
     out.push({
       start: s,
       end: Math.min(s + stride, cycleEnd),
-      key: `${year}-${prefix}${i + 1}`,
+      key: `${keyYear}-${prefix}${i + 1}`,
       label: `${prefix}${i + 1}`,
     });
     i += 1;

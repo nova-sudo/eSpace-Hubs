@@ -255,6 +255,40 @@ test("deriveCycleEndIso returns null for bad input rather than a wrong date", ()
   assert.equal(deriveCycleEndIso("2026-07-01", "weekly", -1), null);
 });
 
+// Audit #237: weekly/biweekly/daily keys used to stamp the year of NOW —
+// a Sept-2026→Feb-2027 cycle's windows re-keyed from "2026-W14" to
+// "2027-W14" at the calendar rollover, orphaning every entry and lock
+// written under the old keys. Keys must derive from the cycle start.
+test("stride window keys are stable across the January boundary", () => {
+  const cycleStart = Date.UTC(2026, 8, 7); // Sept 7, 2026
+  const cycleEnd = Date.UTC(2027, 1, 28); // Feb 28, 2027
+  const before = buildCycleWindows({
+    entries: [],
+    cadence: "weekly",
+    now: Date.UTC(2026, 11, 15),
+    cycleStart,
+    cycleEnd,
+  });
+  const after = buildCycleWindows({
+    entries: [],
+    cadence: "weekly",
+    now: Date.UTC(2027, 0, 15),
+    cycleStart,
+    cycleEnd,
+  });
+  assert.deepEqual(
+    before.windows.map((w) => w.key),
+    after.windows.map((w) => w.key),
+  );
+  assert.ok(before.windows.every((w) => w.key.startsWith("2026-W")));
+  assert.equal(
+    currentPeriodKey("weekly", Date.UTC(2027, 0, 15), cycleStart, cycleEnd),
+    before.windows.find(
+      (w) => Date.UTC(2027, 0, 15) >= w.start && Date.UTC(2027, 0, 15) < w.end,
+    )?.key,
+  );
+});
+
 // The Aug 2026 production freeze: the composed widget's cycle self-heal fed
 // `goal.startDate` / `periods[0].dueAt` straight into the spec's
 // composed.cycleStart, the shared validator's strict ^\d{4}-\d{2}-\d{2}$

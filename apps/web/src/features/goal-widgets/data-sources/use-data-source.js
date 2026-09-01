@@ -44,25 +44,6 @@ import {
 } from "./source-deps";
 
 /**
- * Legacy: map a spec window → a day count. Kept for back-compat with any
- * caller that still reads it, but useDataSource no longer uses it — every auto
- * metric is now measured year-to-date (see the hook), because the L2s are
- * annual goals and a rolling 30/90-day slice clipped the very work they track.
- */
-export function windowToDays(window) {
-  switch (window) {
-    case "30d":
-      return 30;
-    case "90d":
-      return 90;
-    case "quarter":
-      return 90; // approximate; widgets can override if they care
-    default:
-      return 30;
-  }
-}
-
-/**
  * F5 — data honesty. One provenance record rides along with every metric
  * so widgets can render a chip saying what the number is actually made of
  * instead of presenting a sample with full confidence:

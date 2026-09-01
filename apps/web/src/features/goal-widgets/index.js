@@ -18,7 +18,7 @@ export { GoalWidgetsGrid } from "./goal-widgets-grid";
 export { WidgetShell, TargetChip } from "./widget-shell";
 export { WidgetErrorBoundary } from "./widget-error-boundary";
 export { registerWidget, resolveWidget, listWidgets, missingWidgetKinds } from "./registry";
-export { useDataSource, windowToDays } from "./data-sources/use-data-source";
+export { useDataSource } from "./data-sources/use-data-source";
 export { useGoalWidgetItems } from "./use-goal-widget-items";
 export { ComplianceLine } from "./compliance-line";
 export {
