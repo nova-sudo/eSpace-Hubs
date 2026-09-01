@@ -27,7 +27,7 @@ export function DeployFrequencyWidget({
   className,
   onRetry,
 }) {
-  const { data, isLoading, error, windowLabel } = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel, provenance } = useDataSource(spec.source);
   const needsScope = data?.needsScope === true;
   const count = data?.count ?? null;
   const trend = data?.trend || [];
@@ -49,6 +49,7 @@ export function DeployFrequencyWidget({
   return (
     <WidgetShell
       spec={spec}
+      provenance={provenance}
       variant={variant}
       label={`Deploys · ${windowLabel}`}
       title={goal?.title || spec.title}

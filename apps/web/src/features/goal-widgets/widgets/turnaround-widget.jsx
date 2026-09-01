@@ -8,7 +8,7 @@ import { ComplianceLine } from "../compliance-line";
 import { usePublishGoalReading } from "../use-publish-reading";
 
 export function TurnaroundWidget({ spec, goal, variant = "light", className, onRetry }) {
-  const { data, isLoading, error, windowLabel } = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel, provenance } = useDataSource(spec.source);
   const median = data?.median ?? null;
   const histogram = data?.histogram || [];
   const target = spec.source?.target;
@@ -33,6 +33,7 @@ export function TurnaroundWidget({ spec, goal, variant = "light", className, onR
   return (
     <WidgetShell
       spec={spec}
+      provenance={provenance}
       variant={variant}
       label={`Turnaround · ${windowLabel}`}
       title={goal?.title || spec.title}

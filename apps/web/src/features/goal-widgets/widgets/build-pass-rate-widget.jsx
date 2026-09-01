@@ -29,7 +29,7 @@ export function BuildPassRateWidget({
   className,
   onRetry,
 }) {
-  const { data, isLoading, error, windowLabel } = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel, provenance } = useDataSource(spec.source);
   const needsScope = data?.needsScope === true;
   const pct = data?.pct ?? null;
   const pass = data?.pass ?? 0;
@@ -53,6 +53,7 @@ export function BuildPassRateWidget({
   return (
     <WidgetShell
       spec={spec}
+      provenance={provenance}
       variant={variant}
       label={`Build pass · ${windowLabel}`}
       title={goal?.title || spec.title}

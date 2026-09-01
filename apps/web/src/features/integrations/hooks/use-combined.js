@@ -33,8 +33,17 @@ export function useCombinedMergedSince(since) {
     data,
     isLoading: gl.isLoading || gh.isLoading,
     error: gl.error || gh.error || null,
+    // The OLDEST of the two sources — "fetched Xm ago" must describe the
+    // stalest data on screen, not the freshest.
+    fetchedAt: oldestFetchedAt(gl.fetchedAt, gh.fetchedAt),
     sources: { gitlab: gl, github: gh },
   };
+}
+
+function oldestFetchedAt(a, b) {
+  if (a == null) return b ?? null;
+  if (b == null) return a;
+  return Math.min(a, b);
 }
 
 export function useCombinedEventsSince(since) {

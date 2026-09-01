@@ -7,7 +7,7 @@ import { ComplianceLine } from "../compliance-line";
 import { usePublishGoalReading } from "../use-publish-reading";
 
 export function LinkageWidget({ spec, goal, variant = "light", className, onRetry }) {
-  const { data, isLoading, error, windowLabel } = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel, provenance } = useDataSource(spec.source);
   const pct = data?.pct ?? null;
   const linked = data?.linked ?? 0;
   const loose = data?.loose ?? 0;
@@ -32,6 +32,7 @@ export function LinkageWidget({ spec, goal, variant = "light", className, onRetr
   return (
     <WidgetShell
       spec={spec}
+      provenance={provenance}
       variant={variant}
       label={`Jira linkage · ${windowLabel}`}
       title={goal?.title || spec.title}

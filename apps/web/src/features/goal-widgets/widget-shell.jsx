@@ -27,6 +27,7 @@ import { SPEC_KIND_META, SPEC_VARIANTS } from "@/features/goal-specs";
 import { useIsContextComplete } from "@/features/goal-context";
 import { CadenceStepper } from "./cadence-stepper";
 import { isGoalReady } from "./readiness";
+import { ProvenanceChip } from "./provenance-chip";
 
 const VARIANT_STYLES = {
   light: {
@@ -56,6 +57,7 @@ export function WidgetShell({
   rightChip,
   title,
   footer,
+  provenance,
   onRetry,
   className = "",
   style,
@@ -155,6 +157,15 @@ export function WidgetShell({
       SPEC_KIND_META[spec.widget]?.variant === SPEC_VARIANTS.MANUAL &&
       isGoalReady(spec, contextComplete) ? (
         <CadenceStepper spec={spec} variant={variant} />
+      ) : null}
+
+      {/* F5 data-honesty chip — what the number is made of + refresh.
+          Sits ABOVE the footer controls so it reads as part of the data,
+          not as another action chip. */}
+      {provenance ? (
+        <div className="mt-2 flex min-w-0">
+          <ProvenanceChip provenance={provenance} variant={variant} />
+        </div>
       ) : null}
 
       {(spec?.reasoning || onRetry || onReanalyze || footer || onMarkDelegated || onEditContext || onComposeOwn || onEditSetup) ? (

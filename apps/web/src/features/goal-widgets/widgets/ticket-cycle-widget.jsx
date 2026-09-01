@@ -30,7 +30,7 @@ export function TicketCycleWidget({
   className,
   onRetry,
 }) {
-  const { data, isLoading, error, windowLabel } = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel, provenance } = useDataSource(spec.source);
   const median = data?.median ?? null;
   const histogram = data?.histogram || [];
   const resolvedCount = data?.resolvedCount ?? 0;
@@ -56,6 +56,7 @@ export function TicketCycleWidget({
   return (
     <WidgetShell
       spec={spec}
+      provenance={provenance}
       variant={variant}
       label={`Ticket cycle · ${windowLabel}`}
       title={goal?.title || spec.title}

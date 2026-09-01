@@ -34,16 +34,19 @@ const CAP = 30;
 const CONCURRENCY = 4;
 
 export function useGithubReviewCounts(mrs) {
-  const targets = useMemo(() => {
-    if (!Array.isArray(mrs)) return [];
-    return mrs
+  const { targets, beyondCap } = useMemo(() => {
+    if (!Array.isArray(mrs)) return { targets: [], beyondCap: 0 };
+    const eligible = mrs
       .filter((m) => m?.source === "github" && m.number && mrRepo(m))
       .sort(
         (a, b) =>
           new Date(b.merged_at || 0).getTime() -
           new Date(a.merged_at || 0).getTime(),
-      )
-      .slice(0, CAP);
+      );
+    return {
+      targets: eligible.slice(0, CAP),
+      beyondCap: Math.max(0, eligible.length - CAP),
+    };
   }, [mrs]);
 
   const key =
@@ -87,5 +90,15 @@ export function useGithubReviewCounts(mrs) {
     );
   }, [mrs, swr.data]);
 
-  return { data, isLoading: Boolean(key) && swr.isLoading };
+  // `beyondCap` — GitHub rows past the hydration cap whose note counts are
+  // still the (undercounting) search-issue numbers. Provenance surfaces
+  // this instead of letting the widget present a partially-hydrated rate
+  // with full confidence.
+  return {
+    data,
+    isLoading: Boolean(key) && swr.isLoading,
+    error: swr.error || null,
+    beyondCap,
+    fetchedAt: swr.fetchedAt ?? null,
+  };
 }

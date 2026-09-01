@@ -111,6 +111,18 @@ export function useBuildEventsSince(source, sinceIso) {
     (provider === "jenkins" && !job) ||
     (provider === "github_actions" && !repo);
 
+  // Both fetches hard-cap at 100 (Jenkins `{,100}` range selector,
+  // Actions `per_page=100` with no pagination). A response that fills the
+  // cap means older builds inside the window were silently dropped — the
+  // provenance chip must say so rather than let "YTD" imply completeness.
+  const rawCount = wantsJenkins
+    ? (Array.isArray(jenkinsSwr.data?.builds) ? jenkinsSwr.data.builds.length : 0)
+    : wantsActions
+      ? (Array.isArray(actionsSwr.data?.workflow_runs)
+          ? actionsSwr.data.workflow_runs.length
+          : 0)
+      : 0;
+
   return {
     data: events,
     isLoading: wantsJenkins
@@ -124,6 +136,12 @@ export function useBuildEventsSince(source, sinceIso) {
         ? actionsSwr.error
         : null,
     needsScope,
+    truncated: rawCount >= 100,
+    fetchedAt: wantsJenkins
+      ? (jenkinsSwr.fetchedAt ?? null)
+      : wantsActions
+        ? (actionsSwr.fetchedAt ?? null)
+        : null,
   };
 }
 

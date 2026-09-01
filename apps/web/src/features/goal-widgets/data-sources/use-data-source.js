@@ -62,6 +62,30 @@ export function windowToDays(window) {
   }
 }
 
+/**
+ * F5 — data honesty. One provenance record rides along with every metric
+ * so widgets can render a chip saying what the number is actually made of
+ * instead of presenting a sample with full confidence:
+ *   sample    — rows the number is computed from (null while loading)
+ *   unit      — what a row is ("MRs", "tickets", "builds")
+ *   window    — the window genuinely covered (the YTD label)
+ *   fetchedAt — epoch ms the underlying fetch last resolved (null = never)
+ *   truncated — a known fetch/hydration cap was hit; the number is partial
+ *   note      — human explanation of the cap, for the chip tooltip
+ *   error     — the fetch failed; the rendered number is stale or absent
+ */
+function provenanceFor({ sample, unit, window, fetchedAt, truncated = false, note = null, error = null }) {
+  return {
+    sample: sample ?? null,
+    unit,
+    window,
+    fetchedAt: fetchedAt ?? null,
+    truncated: Boolean(truncated),
+    note: truncated ? note : null,
+    error: Boolean(error),
+  };
+}
+
 /** Resolve provider → the "merged since" hook. */
 function useMergedByProvider(provider, sinceIso) {
   const combined = useCombinedMergedSince(
@@ -147,8 +171,24 @@ export function useDataSource(source) {
   );
 
   if (!source || !metric) {
-    return { data: null, isLoading: false, error: null, windowDays: days, windowLabel };
+    return {
+      data: null,
+      isLoading: false,
+      error: null,
+      windowDays: days,
+      windowLabel,
+      provenance: null,
+    };
   }
+
+  // GitHub's PR-notes hydration cap (mirrors useGithubReviewCounts.CAP):
+  // rows beyond it keep the search-derived issue-comment counts, which
+  // undercount review feedback — the exact bug behind the frozen "130
+  // clean / 9 ping-pong" reading.
+  const notesNote =
+    reviewCounts.beyondCap > 0
+      ? `Review comments hydrated for the 30 most recent GitHub PRs; ${reviewCounts.beyondCap} older PR${reviewCounts.beyondCap === 1 ? "" : "s"} still use issue-comment counts (undercounted).`
+      : null;
 
   // Compute-on-demand — cheap, and keeps this file pure-ish.
   if (metric === SOURCE_METRICS.MERGED_COUNT) {
@@ -162,6 +202,13 @@ export function useDataSource(source) {
       error: merged.error,
       windowDays: days,
       windowLabel,
+      provenance: provenanceFor({
+        sample: windowedMerged ? windowedMerged.length : null,
+        unit: "MRs",
+        window: windowLabel,
+        fetchedAt: merged.fetchedAt,
+        error: merged.error,
+      }),
     };
   }
 
@@ -171,9 +218,18 @@ export function useDataSource(source) {
     return {
       data: { value, rawMrs: mrs },
       isLoading: merged.isLoading || reviewCounts.isLoading,
-      error: merged.error,
+      error: merged.error || reviewCounts.error,
       windowDays: days,
       windowLabel,
+      provenance: provenanceFor({
+        sample: windowedMerged ? mrs.length : null,
+        unit: "MRs",
+        window: windowLabel,
+        fetchedAt: merged.fetchedAt,
+        truncated: reviewCounts.beyondCap > 0,
+        note: notesNote,
+        error: merged.error || reviewCounts.error,
+      }),
     };
   }
 
@@ -187,6 +243,13 @@ export function useDataSource(source) {
       error: merged.error,
       windowDays: days,
       windowLabel,
+      provenance: provenanceFor({
+        sample: windowedMerged ? mrs.length : null,
+        unit: "MRs",
+        window: windowLabel,
+        fetchedAt: merged.fetchedAt,
+        error: merged.error,
+      }),
     };
   }
 
@@ -199,6 +262,13 @@ export function useDataSource(source) {
       error: merged.error,
       windowDays: days,
       windowLabel,
+      provenance: provenanceFor({
+        sample: windowedMerged ? mrs.length : null,
+        unit: "MRs",
+        window: windowLabel,
+        fetchedAt: merged.fetchedAt,
+        error: merged.error,
+      }),
     };
   }
 
@@ -213,9 +283,18 @@ export function useDataSource(source) {
     return {
       data: { ...(value || {}), rawMrs: mrs },
       isLoading: merged.isLoading || reviewCounts.isLoading,
-      error: merged.error,
+      error: merged.error || reviewCounts.error,
       windowDays: days,
       windowLabel,
+      provenance: provenanceFor({
+        sample: windowedMerged ? mrs.length : null,
+        unit: "MRs",
+        window: windowLabel,
+        fetchedAt: merged.fetchedAt,
+        truncated: reviewCounts.beyondCap > 0,
+        note: notesNote,
+        error: merged.error || reviewCounts.error,
+      }),
     };
   }
 
@@ -236,6 +315,7 @@ export function useDataSource(source) {
       error: buildEvents.error,
       windowDays: days,
       windowLabel,
+      provenance: buildProvenance(buildEvents, events, windowLabel),
     };
   }
 
@@ -252,6 +332,7 @@ export function useDataSource(source) {
       error: buildEvents.error,
       windowDays: days,
       windowLabel,
+      provenance: buildProvenance(buildEvents, events, windowLabel),
     };
   }
 
@@ -268,6 +349,7 @@ export function useDataSource(source) {
       error: buildEvents.error,
       windowDays: days,
       windowLabel,
+      provenance: buildProvenance(buildEvents, events, windowLabel),
     };
   }
 
@@ -285,6 +367,13 @@ export function useDataSource(source) {
     const resolvedInWindow = resolvedTicketsInWindow(tickets, sinceIso);
     const median = medianTicketCycleDays(resolvedInWindow);
     const histogram = ticketCycleHistogram(resolvedInWindow);
+    // Jira's fetch is a 50-row sample of the most recently UPDATED
+    // tickets, and the JQL excludes tickets resolved >90 days ago — a
+    // "YTD" label without this note is exactly the false confidence F5
+    // exists to fix.
+    const jiraTruncated =
+      tickets.length >= 50 ||
+      (typeof jira.data?.total === "number" && jira.data.total > tickets.length);
     return {
       data: {
         median,
@@ -297,6 +386,17 @@ export function useDataSource(source) {
       error: jira.error,
       windowDays: days,
       windowLabel,
+      provenance: provenanceFor({
+        sample: jira.data ? resolvedInWindow.length : null,
+        unit: "tickets",
+        window: windowLabel,
+        fetchedAt: jira.fetchedAt,
+        truncated: true,
+        note: jiraTruncated
+          ? "Jira fetch caps at the 50 most recently updated tickets, and tickets resolved more than 90 days ago are excluded — this is a sample, not the full year."
+          : "Tickets resolved more than 90 days ago are excluded from the Jira fetch — this may not cover the full year.",
+        error: jira.error,
+      }),
     };
   }
 
@@ -306,5 +406,25 @@ export function useDataSource(source) {
     error: new Error(`Unknown metric: ${metric}`),
     windowDays: days,
     windowLabel,
+    provenance: null,
   };
+}
+
+/**
+ * Shared provenance for the three CI/CD metrics: both providers hard-cap
+ * at the last 100 builds/runs, so a full page means older activity inside
+ * the window was silently dropped.
+ */
+function buildProvenance(buildEvents, events, windowLabel) {
+  return provenanceFor({
+    sample: events.length,
+    unit: "builds",
+    window: windowLabel,
+    fetchedAt: buildEvents.fetchedAt,
+    truncated: buildEvents.truncated,
+    note: buildEvents.truncated
+      ? "Fetch caps at the last 100 builds/runs — older activity inside the window is not counted."
+      : null,
+    error: buildEvents.error,
+  });
 }

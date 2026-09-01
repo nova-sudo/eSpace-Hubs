@@ -17,7 +17,7 @@ import { usePublishGoalReading } from "../use-publish-reading";
  * source (NOT a constant).
  */
 export function ReviewRoundsWidget({ spec, goal, variant = "light", className, onRetry }) {
-  const { data, isLoading, error, windowLabel } = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel, provenance } = useDataSource(spec.source);
   const value = data?.value ?? null;
   const target = spec.source?.target;
   const meets = target && value != null ? evalTarget(value, target) : null;
@@ -49,6 +49,7 @@ export function ReviewRoundsWidget({ spec, goal, variant = "light", className, o
   return (
     <WidgetShell
       spec={spec}
+      provenance={provenance}
       variant={variant}
       label={`Review rounds · ${windowLabel}`}
       title={goal?.title || spec.title}

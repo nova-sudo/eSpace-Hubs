@@ -18,6 +18,7 @@ export {
   getIntegrationsState,
 } from "./integrations-store";
 export { useIntegrations } from "./use-integrations";
+export { refreshIntegrationData } from "./refresh";
 export * from "./api-clients";
 export * from "./hooks";
 export * from "./metrics";

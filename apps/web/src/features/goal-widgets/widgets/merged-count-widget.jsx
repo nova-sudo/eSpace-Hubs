@@ -10,7 +10,7 @@ import { usePublishGoalReading } from "../use-publish-reading";
  * Reads from spec.source (provider, window, target).
  */
 export function MergedCountWidget({ spec, goal, variant = "light", className, onRetry }) {
-  const { data, isLoading, error, windowLabel } = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel, provenance } = useDataSource(spec.source);
   const count = data?.count ?? null;
   const trend = data?.trend || [];
   const target = spec.source?.target;
@@ -35,6 +35,7 @@ export function MergedCountWidget({ spec, goal, variant = "light", className, on
   return (
     <WidgetShell
       spec={spec}
+      provenance={provenance}
       variant={variant}
       label={`Merged · ${windowLabel}`}
       title={goal?.title || spec.title}
