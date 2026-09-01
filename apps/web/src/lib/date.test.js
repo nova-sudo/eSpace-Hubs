@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { weekLabel, weekNumber, weekRangeFromLabel } from "./date.js";
+import { dueStatus, weekLabel, weekNumber, weekRangeFromLabel } from "./date.js";
 
 // The DST regression: dayOfYear used to be computed by millisecond
 // division, which ran one low for every day inside a DST period — and
@@ -48,4 +48,26 @@ test("week 1 contains Jan 1, even when Jan 1 is mid-week", () => {
   assert.equal(weekNumber(new Date(2026, 0, 3)), 1); // Saturday
   assert.equal(weekNumber(new Date(2026, 0, 4)), 2); // first Sunday after
   assert.equal(weekLabel(new Date(2026, 0, 4)), "W02");
+});
+
+// ─── dueStatus (F4) ──────────────────────────────────────────────────
+// The one shared "is this date past?" comparison — every surface that
+// renders a dueDate routes through it, so the semantics live here:
+// the due day itself is due_soon (still winnable), not overdue.
+
+test("dueStatus classifies overdue / due_soon / ok around a fixed now", () => {
+  const now = new Date("2026-09-01T12:00:00Z");
+  assert.equal(dueStatus("2026-08-31", now).state, "overdue");
+  assert.equal(dueStatus("2026-08-31", now).days, -1);
+  assert.equal(dueStatus("2026-09-01", now).state, "due_soon"); // today
+  assert.equal(dueStatus("2026-09-01", now).days, 0);
+  assert.equal(dueStatus("2026-09-08", now).state, "due_soon"); // 7 days out
+  assert.equal(dueStatus("2026-09-09", now).state, "ok"); // 8 days out
+});
+
+test("dueStatus returns null for empty or malformed input", () => {
+  assert.equal(dueStatus(""), null);
+  assert.equal(dueStatus(null), null);
+  assert.equal(dueStatus("09/01/2026"), null);
+  assert.equal(dueStatus("not-a-date"), null);
 });

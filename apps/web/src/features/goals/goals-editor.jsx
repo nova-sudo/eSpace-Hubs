@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button, Field, Input, MonoLabel, Select } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { dueStatus } from "@/lib/date";
 import {
   addL1,
   addL2,
@@ -354,7 +355,22 @@ function SummaryChips({ l2 }) {
     });
   }
   if (l2.dueDate) {
-    chips.push({ key: "d", label: `due ${fmtDate(l2.dueDate)}`, tone: "muted" });
+    // F4 — the date finally knows what day it is: overdue reads red,
+    // inside a week reads accent, far-off stays muted.
+    const due = dueStatus(l2.dueDate);
+    chips.push({
+      key: "d",
+      label:
+        due?.state === "overdue"
+          ? `overdue ${fmtDate(l2.dueDate)}`
+          : `due ${fmtDate(l2.dueDate)}`,
+      tone:
+        due?.state === "overdue"
+          ? "bad"
+          : due?.state === "due_soon"
+            ? "accent"
+            : "muted",
+    });
   }
   if (chips.length === 0) return null;
   return (

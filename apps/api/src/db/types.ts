@@ -719,7 +719,13 @@ export type NotificationKind =
   | "goal_approved"
   | "goal_changes_requested"
   | "user_pending_approval"
-  | "review_packet_submitted";
+  | "review_packet_submitted"
+  // F4 scheduler kinds — written by src/scheduler/jobs.ts, never by a
+  // request handler. createdBy is always null (system events).
+  | "goal_due_soon"
+  | "goal_overdue"
+  | "goal_stale"
+  | "approval_waiting";
 
 export const ALL_NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "manager_graded",
@@ -728,7 +734,28 @@ export const ALL_NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "goal_changes_requested",
   "user_pending_approval",
   "review_packet_submitted",
+  "goal_due_soon",
+  "goal_overdue",
+  "goal_stale",
+  "approval_waiting",
 ] as const;
+
+// ─── scheduler stamps (job dedupe) ───────────────────────────────────
+
+/**
+ * One row per scheduler event that already fired — the idempotence
+ * ledger for src/scheduler/jobs.ts. `key` encodes the event identity
+ * (e.g. "due_soon:<userId>:<goalId>:<dueDate>"); a job claims the key
+ * with a unique-index insert before acting, so a restarted process (or
+ * an hourly re-tick) never re-notifies. A 120-day TTL on `at` keeps the
+ * ledger bounded — and deliberately lets a STILL-overdue goal re-nudge
+ * once a quarter instead of exactly once ever.
+ */
+export interface SchedulerStamp {
+  _id: ObjectId;
+  key: string;
+  at: Date;
+}
 
 /**
  * One in-app notification for a recipient (`userId`). Written by

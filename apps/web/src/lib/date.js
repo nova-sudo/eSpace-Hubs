@@ -107,6 +107,31 @@ export function weekNumber(date = new Date()) {
   return Math.floor(calendarDaysBetween(week1Sunday, d) / 7) + 1;
 }
 
+/**
+ * F4 — due-date state. The app rendered dueDate in four places and
+ * compared it to Date.now() in none of them; this is the one shared
+ * comparison so every surface agrees on what "overdue" means.
+ *
+ * `iso` is a YYYY-MM-DD day (goal dueDate shape). Returns
+ * `{ state, days }` where state is "overdue" | "due_soon" (≤7 days
+ * out, today included) | "ok", and days is the signed whole-day count
+ * until the due day (negative = past). Null for empty/invalid input.
+ * The due DAY itself counts as due_soon, not overdue — a goal due
+ * today is still winnable.
+ */
+export function dueStatus(iso, now = new Date()) {
+  if (typeof iso !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(iso.trim())) {
+    return null;
+  }
+  const dueMs = Date.parse(`${iso.trim()}T00:00:00Z`);
+  if (Number.isNaN(dueMs)) return null;
+  const todayIso = new Date(now).toISOString().slice(0, 10);
+  const todayMs = Date.parse(`${todayIso}T00:00:00Z`);
+  const days = Math.round((dueMs - todayMs) / DAY_MS);
+  const state = days < 0 ? "overdue" : days <= 7 ? "due_soon" : "ok";
+  return { state, days };
+}
+
 export function shortDate(iso) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-US", {

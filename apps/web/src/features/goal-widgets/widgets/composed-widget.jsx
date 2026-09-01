@@ -56,6 +56,7 @@ import {
   toIsoDay,
 } from "@/features/goal-inputs";
 import { resolvePeriodContent, resolveNestedPeriodContent, saveSpec } from "@/features/goal-specs";
+import { dueStatus } from "@/lib/date";
 import { ComposedFields } from "./composed-fields.jsx";
 
 /** Mirrors the shared validator's COMPOSED_MAX_NEST_DEPTH — a safety ceiling,
@@ -315,7 +316,20 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
               {period.label}
             </span>
             {period.dueAt ? (
-              <span style={{ color: muted }}>due {period.dueAt}</span>
+              <span
+                style={{
+                  // F4: an overdue period says so instead of blending in.
+                  color:
+                    dueStatus(period.dueAt)?.state === "overdue"
+                      ? isLight
+                        ? "rgba(255,190,190,0.95)"
+                        : "var(--bad)"
+                      : muted,
+                }}
+              >
+                {dueStatus(period.dueAt)?.state === "overdue" ? "overdue" : "due"}{" "}
+                {period.dueAt}
+              </span>
             ) : null}
           </div>
         ) : null}

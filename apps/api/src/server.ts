@@ -17,6 +17,7 @@ import { logger } from "./lib/logger.js";
 import { connect, disconnect } from "./db/client.js";
 import { bootstrap } from "./db/collections.js";
 import { seedDefaultOrg } from "./db/seed.js";
+import { startScheduler } from "./scheduler/index.js";
 import {
   resolveAnthropicBackend,
   anthropicModel,
@@ -35,6 +36,11 @@ async function main(): Promise<void> {
   void connect()
     .then(() => bootstrap())
     .then(() => seedDefaultOrg())
+    // Scheduler starts only once the DB pipeline succeeded — its jobs
+    // assume collections + indexes (the stamps unique index above all)
+    // exist. A failed bootstrap keeps it off; the container restart
+    // that fixes Mongo also brings the scheduler up.
+    .then(() => startScheduler())
     .catch((err) => {
       logger.warn(
         { err: err instanceof Error ? err.message : String(err) },

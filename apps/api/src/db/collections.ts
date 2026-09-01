@@ -37,6 +37,7 @@ import type {
   ManagerGoalVerdict,
   Notification,
   Org,
+  SchedulerStamp,
   Session,
   Snapshot,
   User,
@@ -176,6 +177,13 @@ export async function getNotificationsCollection(): Promise<
 > {
   const db = await getDb();
   return db.collection<Notification>("notifications");
+}
+
+export async function getSchedulerStampsCollection(): Promise<
+  Collection<SchedulerStamp>
+> {
+  const db = await getDb();
+  return db.collection<SchedulerStamp>("scheduler_stamps");
 }
 
 export async function getManagerGoalVerdictsCollection(): Promise<
@@ -579,6 +587,24 @@ async function ensureIndexes(): Promise<void> {
       key: { createdAt: 1 },
       expireAfterSeconds: 15_552_000,
       name: "notifications_ttl",
+    },
+  ]);
+
+  const schedulerStamps = await getSchedulerStampsCollection();
+  await schedulerStamps.createIndexes([
+    {
+      // The claim mechanism: jobs insert their event key; a duplicate-key
+      // error means "already fired" (see src/scheduler/jobs.ts).
+      key: { key: 1 },
+      unique: true,
+      name: "scheduler_stamps_key_uniq",
+    },
+    {
+      // 120-day TTL — bounded ledger; a still-overdue goal re-nudges
+      // roughly quarterly when its stamp expires.
+      key: { at: 1 },
+      expireAfterSeconds: 10_368_000,
+      name: "scheduler_stamps_ttl",
     },
   ]);
 

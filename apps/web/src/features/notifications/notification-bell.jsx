@@ -27,6 +27,13 @@ const KIND_PATH = {
   goal_submitted: "/approvals",
   user_pending_approval: "/users",
   review_packet_submitted: "/employees",
+  // F4 scheduler kinds. Deadline nudges land on the goals editor (see
+  // the date, adjust the plan); stale nudges land on the fill surface;
+  // approval waits land where the manager acts.
+  goal_due_soon: "/goals",
+  goal_overdue: "/goals",
+  goal_stale: "/",
+  approval_waiting: "/approvals",
 };
 
 function ago(iso) {

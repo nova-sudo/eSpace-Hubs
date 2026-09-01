@@ -114,6 +114,10 @@ export async function startBackend(): Promise<{ ok: boolean; message: string }> 
     // hostnames resolve to PRIVATE addresses — the cloud API's proxy
     // SSRF guard must not apply on the user's own machine.
     PROXY_ALLOW_PRIVATE_UPSTREAMS: "1",
+    // The F4 scheduler (nudges, digest emails) must run ONLY on the
+    // deployed backend. A companion pointed at the cloud Mongo would
+    // otherwise race the cloud scheduler and double-send emails.
+    SCHEDULER_ENABLED: "false",
   };
   if (settings.get<string>("storageMode", "cloud") === "local") {
     extraEnv.MONGO_URI = settings.get<string>(
