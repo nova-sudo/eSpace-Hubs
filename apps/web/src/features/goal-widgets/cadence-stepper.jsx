@@ -51,6 +51,7 @@ import {
   TIER_ORDER,
   TIER_LABELS,
   TIER_FIELD,
+  TIER_COLOR,
   useTierFillFeedback,
 } from "@/features/goal-tiers";
 import { ComposedFields } from "./widgets/composed-fields.jsx";
@@ -372,12 +373,9 @@ function NestedStepperLevel({
   );
 }
 
-const WINDOW_TIER_COLOR = {
-  not_achieved: "#b91c1c",
-  achieved: "#1D4ED8",
-  over_achieved: "#00c48a",
-  role_model: "#f59e0b",
-};
+// #239: this used to duplicate the four tier hexes locally, drifting
+// from the canonical map the badges use. One source: tier-colors.js.
+const WINDOW_TIER_COLOR = TIER_COLOR;
 
 /**
  * This ONE window's own achievement tier — same criteria as the whole-goal

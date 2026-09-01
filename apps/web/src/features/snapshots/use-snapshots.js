@@ -80,7 +80,9 @@ export function useSnapshotNow() {
       const linkage = linkagePct(mrs || [])?.pct ?? 0;
       const rounds = avgReviewerComments(mrs || []) ?? 0;
       const week = weekLabel();
-      void saveSnapshot({
+      // Return the promise so the button can hold a pending state —
+      // fire-and-forget made "Snapshot now" double-clickable (#239).
+      return saveSnapshot({
         week,
         capturedAt: new Date().toISOString(),
         capturedBy: "manual",

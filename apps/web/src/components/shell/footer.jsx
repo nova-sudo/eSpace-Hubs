@@ -2,6 +2,12 @@
 
 import { useIntegrations } from "@/features/integrations";
 
+/**
+ * Audit #239: this used to claim "refreshed just now" unconditionally
+ * (nothing measured any refresh) and linked to a GitHub repo that
+ * doesn't exist. A footer that lies twice in one line trains users to
+ * ignore it — say only what's true.
+ */
 export function Footer() {
   const { me } = useIntegrations();
   return (
@@ -10,16 +16,11 @@ export function Footer() {
       style={{ fontFamily: "var(--font-mono)" }}
     >
       <div>
-        eSpace/DevHub{me?.team ? ` · ${me.team}` : ""} · refreshed just now
+        eSpace/DevHub{me?.team ? ` · ${me.team}` : ""}
       </div>
-      <a
-        href="https://github.com/espace/devhub"
-        target="_blank"
-        rel="noreferrer"
-        className="hover:text-fg"
-      >
-        ↗ github.com/espace/devhub
-      </a>
+      <div className="text-dim-fg">
+        {new Date().getFullYear()} · eSpace
+      </div>
     </footer>
   );
 }

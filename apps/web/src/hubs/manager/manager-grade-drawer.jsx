@@ -46,6 +46,25 @@ export function ManagerGradeDrawer({
     setSaving(false);
   }, [open, goal]);
 
+  // #239: Escape closes (every other overlay in the app does), and the
+  // element that opened the drawer gets focus back on close so keyboard
+  // users aren't dropped at the top of the document.
+  useEffect(() => {
+    if (!open) return undefined;
+    const opener =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose?.();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      opener?.focus?.();
+    };
+  }, [open, onClose]);
+
   // Lock body scroll while the drawer is open — it sits over the page,
   // not in the flow, so the page underneath shouldn't scroll.
   useEffect(() => {
@@ -98,6 +117,7 @@ export function ManagerGradeDrawer({
       />
       <aside
         role="dialog"
+        aria-modal="true"
         aria-label={`Grade ${goal.title}`}
         className="fixed right-0 top-0 z-[61] flex w-[min(600px,100vw)] flex-col border-l bg-card"
         style={{

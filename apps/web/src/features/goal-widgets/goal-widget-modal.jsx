@@ -19,11 +19,20 @@ import { GoalWidget } from "./goal-widget";
 export function GoalWidgetModal({ open, onClose, spec, goal }) {
   useEffect(() => {
     if (!open) return undefined;
+    // #239: remember who opened us and hand focus back on close, so a
+    // keyboard user isn't dropped at the top of the document.
+    const opener =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     const onKey = (e) => {
       if (e.key === "Escape") onClose?.();
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      opener?.focus?.();
+    };
   }, [open, onClose]);
 
   if (!open || !spec) return null;

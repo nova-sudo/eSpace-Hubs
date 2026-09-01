@@ -71,6 +71,9 @@ export function FocusCarousel({ queue }) {
       {count > 1 ? (
         <div className="mt-3.5 flex flex-wrap items-center justify-center gap-1.5">
           {queue.map((c, i) => (
+            // #239 / WCAG 2.5.8: the BUTTON is the 24px target; the dot
+            // inside stays small. An 8px-wide button was un-tappable on
+            // any phone.
             <button
               key={c.goal.id}
               type="button"
@@ -78,13 +81,18 @@ export function FocusCarousel({ queue }) {
               aria-label={`Priority ${i + 1}: ${c.goal.title}`}
               aria-current={i === safe ? "true" : undefined}
               title={`${String(i + 1).padStart(2, "0")} · ${c.goal.title}`}
-              className="h-2 rounded-full transition-all"
-              style={{
-                width: i === safe ? 20 : 8,
-                background: i === safe ? "var(--accent)" : "var(--dot-dim)",
-                cursor: "pointer",
-              }}
-            />
+              className="grid h-6 min-w-6 place-items-center"
+              style={{ cursor: "pointer", background: "transparent" }}
+            >
+              <span
+                aria-hidden="true"
+                className="h-2 rounded-full transition-all"
+                style={{
+                  width: i === safe ? 20 : 8,
+                  background: i === safe ? "var(--accent)" : "var(--dot-dim)",
+                }}
+              />
+            </button>
           ))}
         </div>
       ) : null}

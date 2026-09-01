@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { toast } from "sonner";
 import {
   Button,
   Delta,
@@ -32,10 +33,25 @@ const METRICS = [
 ];
 
 export function SnapshotsPage() {
-  const { snapshots } = useSnapshots();
+  const { snapshots, fetched } = useSnapshots();
   const snapshotNow = useSnapshotNow();
   const link = useHubLink();
   const [metric, setMetric] = useState("merged");
+  // #239: pending state so "Snapshot now" can't double-fire, with a
+  // toast so the click visibly did something.
+  const [capturing, setCapturing] = useState(false);
+  async function handleSnapshotNow() {
+    if (capturing) return;
+    setCapturing(true);
+    try {
+      await snapshotNow();
+      toast.success("Snapshot captured.");
+    } catch (err) {
+      toast.error(`Snapshot failed: ${err?.message || err}`);
+    } finally {
+      setCapturing(false);
+    }
+  }
   const [selected, setSelected] = useState(snapshots[0]?.week);
   // Optional second selection for "compare to" — falls back to disabled when null.
   // Default it to the LAST snapshot in history so the diff is "now vs first known
@@ -56,23 +72,33 @@ export function SnapshotsPage() {
         crumb={
           snapshots.length > 0
             ? `Snapshots · ${snapshots.length} ${snapshots.length === 1 ? "week" : "weeks"}`
-            : "Snapshots · no history yet"
+            : fetched
+              ? "Snapshots · no history yet"
+              : "Snapshots · loading…"
         }
         title="Your trend, on record."
         italicWord="trend"
-        subtitle="Every Monday we freeze the dashboard into a snapshot. The line you're watching is you, vs. you."
+        // Honest cadence (#239): capture fires on dashboard visits (plus
+        // this button) — there is no Monday cron yet (F4's snapshot half).
+        subtitle="Each week you visit gets frozen into a snapshot. The line you're watching is you, vs. you."
         right={
           <div className="flex gap-2">
             <Link href={link("")}>
-              <Button variant="ghost">← Dashboard</Button>
+              <Button variant="ghost">← Intelligence</Button>
             </Link>
-            <Button onClick={() => snapshotNow()}>Snapshot now</Button>
+            <Button onClick={() => void handleSnapshotNow()} disabled={capturing}>
+              {capturing ? "Capturing…" : "Snapshot now"}
+            </Button>
           </div>
         }
       />
 
       {snapshots.length === 0 ? (
-        <EmptyState onCapture={() => snapshotNow()} />
+        // Gate on `fetched` — this used to flash "no history yet" on
+        // every load while the fetch was still in flight (#239).
+        fetched ? (
+          <EmptyState onCapture={() => void handleSnapshotNow()} />
+        ) : null
       ) : (
         <>
           <div className="mb-5 flex flex-wrap gap-1.5">
