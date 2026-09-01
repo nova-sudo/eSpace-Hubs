@@ -16,6 +16,7 @@ export interface HubTheme {
 export type HubPageSlot =
   | "dashboard"
   | "goals"
+  | "goalsv2"
   | "evidence"
   | "snapshots"
   | "reviews"
@@ -27,7 +28,10 @@ export type HubPageSlot =
   | "audit"
   // Manager-specific
   | "team"
-  | "employees";
+  | "employees"
+  | "delegated"
+  | "approvals"
+  | "tierpolicies";
 
 export interface HubDefinition {
   id: string;

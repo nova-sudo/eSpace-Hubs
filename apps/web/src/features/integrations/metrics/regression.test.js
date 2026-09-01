@@ -84,6 +84,20 @@ test("linkage percentage reads Jira keys from title, description, and branch", (
   assert.equal(linkagePct([]), null);
 });
 
+// Audit #237: the raw shape regex counted "UTF-8" / "SHA-256" /
+// "CVE-2024" as Jira keys, inflating linkage for PRs that never
+// referenced a ticket. Famous tech tokens are denied; real keys —
+// including ones sharing a line with a denied token — still count.
+test("linkage does not count tech tokens (UTF-8, SHA-256, CVE) as Jira keys", () => {
+  const result = linkagePct([
+    { merged_at: "2026-06-01T00:00:00Z", title: "Support UTF-8 output" },
+    { merged_at: "2026-06-02T00:00:00Z", title: "Bump checksums to SHA-256" },
+    { merged_at: "2026-06-03T00:00:00Z", title: "Patch CVE-2024-1234" },
+    { merged_at: "2026-06-04T00:00:00Z", title: "PAY-77 fix UTF-8 handling" },
+  ]);
+  assert.deepEqual(result, { pct: 25, linked: 1, loose: 3 });
+});
+
 test("turnaround metrics keep median, mean, histogram, and labels stable", () => {
   const mrs = [
     durationMr(1),

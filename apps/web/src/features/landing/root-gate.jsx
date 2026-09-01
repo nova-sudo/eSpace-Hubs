@@ -22,9 +22,14 @@ export function RootGate() {
   const { user, loading } = useSession();
 
   if (loading) {
-    // Dark placeholder — matches both the landing canvas and the dark app
-    // default, so the resolve is seamless whichever way it goes.
-    return <div style={{ minHeight: "100vh", background: "#050505" }} aria-busy="true" />;
+    // Theme-token placeholder (#239): the hard-coded #050505 flashed a
+    // black screen at every light-theme user on every load. The no-flash
+    // script stamps data-theme on <html> before first paint, so var(--bg)
+    // already resolves to the user's actual canvas here. A signed-OUT
+    // visitor resolves to the dark landing next — that hand-off was the
+    // only case the old hard-code served, and dark-preference users still
+    // get it via the token.
+    return <div style={{ minHeight: "100vh", background: "var(--bg)" }} aria-busy="true" />;
   }
   if (!user) return <LandingPage />;
   return <HubRedirect />;
