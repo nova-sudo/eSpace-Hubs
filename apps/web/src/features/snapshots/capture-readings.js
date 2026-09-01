@@ -36,6 +36,7 @@
 import { SPEC_KINDS } from "@/features/goal-specs";
 import {
   avgReviewerComments,
+  filterMrsByRepo,
   countMrComments,
   firstPassRatePct,
   linkagePct,
@@ -95,6 +96,15 @@ function pushReading(out, goal, ctx) {
 }
 
 /* ─────────────────────────── per-widget readers ─────────────────────────── */
+
+/**
+ * The spec's own repo scope over the shared MR list — the snapshot must
+ * count the same MRs the dashboard tile does (audit #237: evidence and
+ * snapshots ignored source.filter.repo while the tile applied it).
+ */
+function specMrs(spec, ctx) {
+  return filterMrsByRepo(ctx.mrs, spec?.source?.filter?.repo);
+}
 
 function readGoal(spec, goal, ctx) {
   // Delegated goals are tracked externally — we record the cadence
@@ -174,7 +184,7 @@ function readGoal(spec, goal, ctx) {
 
 function readMerged(spec, ctx) {
   // Merged-PR count for THIS week (between weekStart and weekEnd).
-  const weekCount = mrsInWindow(ctx.mrs, ctx.weekStart, ctx.weekEnd).length;
+  const weekCount = mrsInWindow(specMrs(spec, ctx), ctx.weekStart, ctx.weekEnd).length;
   const cumulative = cumulativeForWindow(spec, ctx, weekCount);
   const target = spec.source?.target;
   return baseReading(spec, ctx, {
@@ -186,7 +196,7 @@ function readMerged(spec, ctx) {
 }
 
 function readRounds(spec, ctx) {
-  const inWindow = mrsInWindow(ctx.mrs, ctx.weekStart, ctx.weekEnd);
+  const inWindow = mrsInWindow(specMrs(spec, ctx), ctx.weekStart, ctx.weekEnd);
   const avg = avgReviewerComments(inWindow);
   const target = spec.source?.target;
   return baseReading(spec, ctx, {
@@ -197,7 +207,7 @@ function readRounds(spec, ctx) {
 }
 
 function readTurnaround(spec, ctx) {
-  const inWindow = mrsInWindow(ctx.mrs, ctx.weekStart, ctx.weekEnd);
+  const inWindow = mrsInWindow(specMrs(spec, ctx), ctx.weekStart, ctx.weekEnd);
   const medianDays = medianTurnaroundDays(inWindow);
   const medianHours = medianDays != null ? medianDays * 24 : null;
   const target = spec.source?.target; // typically expressed in hours
@@ -209,7 +219,7 @@ function readTurnaround(spec, ctx) {
 }
 
 function readLinkage(spec, ctx) {
-  const inWindow = mrsInWindow(ctx.mrs, ctx.weekStart, ctx.weekEnd);
+  const inWindow = mrsInWindow(specMrs(spec, ctx), ctx.weekStart, ctx.weekEnd);
   const result = linkagePct(inWindow);
   const pct = result?.pct ?? null;
   const target = spec.source?.target;
@@ -232,7 +242,7 @@ function readTicketCycle(spec, ctx) {
 }
 
 function readRubric(spec, ctx) {
-  const inWindow = mrsInWindow(ctx.mrs, ctx.weekStart, ctx.weekEnd);
+  const inWindow = mrsInWindow(specMrs(spec, ctx), ctx.weekStart, ctx.weekEnd);
   return baseReading(spec, ctx, {
     weekContribution: inWindow.length,
     cumulative: inWindow.length,
@@ -241,7 +251,7 @@ function readRubric(spec, ctx) {
 }
 
 function readFirstPass(spec, ctx) {
-  const inWindow = mrsInWindow(ctx.mrs, ctx.weekStart, ctx.weekEnd);
+  const inWindow = mrsInWindow(specMrs(spec, ctx), ctx.weekStart, ctx.weekEnd);
   const result = firstPassRatePct(inWindow);
   const pct = result?.pct ?? null;
   const target = spec.source?.target;

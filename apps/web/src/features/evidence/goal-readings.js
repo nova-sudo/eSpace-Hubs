@@ -22,6 +22,7 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 import {
   avgReviewerComments,
   countMrComments,
+  filterMrsByRepo,
   fmtDurationHours,
   firstPassRatePct,
   linkagePct,
@@ -30,6 +31,16 @@ import {
   useCombinedMergedSince,
   useJiraTickets,
 } from "@/features/integrations";
+
+/**
+ * The spec's own repo scope, applied to the shared MR list. Audit #237:
+ * evidence ignored `source.filter.repo` while the dashboard applied it,
+ * so a repo-scoped tracker showed 12 on the tile and exported 47 in the
+ * review document — the export is the number people cite.
+ */
+function specMrs(spec, ctx) {
+  return filterMrsByRepo(ctx.mrs, spec?.source?.filter?.repo);
+}
 import { useGoals } from "@/features/goals";
 import { useGoalSpecs, SPEC_KINDS } from "@/features/goal-specs";
 import {
@@ -73,7 +84,7 @@ import {
   summarizeDefects,
   defectRatePct,
 } from "@/lib/defects";
-import { rubricHash, readVerdict } from "@/features/grading";
+import { rubricHash, getVerdictsState } from "@/features/grading";
 
 /* ──────────────────────────── tones ──────────────────────────── */
 
@@ -363,14 +374,14 @@ function readMergedCount(spec, ctx) {
   // reads more honestly for "did you sustain the bar?" reviews.
   const fromCompliance = readingFromCompliance(spec, ctx);
   if (fromCompliance) return fromCompliance;
-  const count = ctx.mrs.length;
+  const count = specMrs(spec, ctx).length;
   return withTarget(count, spec.source?.target, `${count} merged`);
 }
 
 function readReviewRounds(spec, ctx) {
   const fromCompliance = readingFromCompliance(spec, ctx);
   if (fromCompliance) return fromCompliance;
-  const avg = avgReviewerComments(ctx.mrs);
+  const avg = avgReviewerComments(specMrs(spec, ctx));
   if (avg == null) return empty();
   return withTarget(avg, spec.source?.target, `${avg.toFixed(1)} avg`, {
     lowerIsBetter: true,
@@ -380,7 +391,7 @@ function readReviewRounds(spec, ctx) {
 function readTurnaround(spec, ctx) {
   const fromCompliance = readingFromCompliance(spec, ctx);
   if (fromCompliance) return fromCompliance;
-  const median = medianTurnaroundDays(ctx.mrs);
+  const median = medianTurnaroundDays(specMrs(spec, ctx));
   if (median == null) return empty();
   const value = fmtDurationHours(median);
   return { value, statusTone: TONES.ACCENT, statusLabel: "tracked" };
@@ -389,7 +400,7 @@ function readTurnaround(spec, ctx) {
 function readLinkage(spec, ctx) {
   const fromCompliance = readingFromCompliance(spec, ctx);
   if (fromCompliance) return fromCompliance;
-  const result = linkagePct(ctx.mrs);
+  const result = linkagePct(specMrs(spec, ctx));
   if (!result) return empty();
   const pct = result.pct ?? 0;
   return withTarget(pct, spec.source?.target, `${pct}% linked`);
@@ -436,7 +447,10 @@ function readCodeRubric(spec, goal, _ctx) {
   }
   const pct = Math.round((sample.pass / sample.total) * 100);
   return {
-    value: `${pct}% pass · ${sample.pass}/${sample.total}`,
+    // "cached" is provenance, not decoration: this fallback pools every
+    // verdict graded under the same rubric text (across goals), not a
+    // fresh grade of THIS goal's PR list — see sampleVerdicts.
+    value: `${pct}% pass · ${sample.pass}/${sample.total} cached`,
     statusTone:
       pct >= 90 ? TONES.OK : pct >= 75 ? TONES.ACCENT : TONES.WARN,
     statusLabel: pct >= 90 ? "on target" : pct >= 75 ? "drifting" : "below",
@@ -468,25 +482,24 @@ function collectRubric(spec, answers) {
 function sampleVerdicts(rubric) {
   if (typeof window === "undefined") return { pass: 0, fail: 0, total: 0 };
   const hash = rubricHash(rubric);
-  // The grading store is a flat map; we fish out our entries by suffix.
-  let raw;
-  try {
-    raw = JSON.parse(localStorage.getItem("espace-devhub:grading") || "{}");
-  } catch {
-    raw = {};
-  }
+  // Audit #237: this used to sweep the LEGACY localStorage blob
+  // ("espace-devhub:grading"), which the store migration to the
+  // server-hydrated verdicts map left permanently stale — and the
+  // rubric-hash-only key meant one browser's blob pooled verdicts
+  // across accounts. Read the live store: server-hydrated, so it's
+  // per-account by construction. Keys are `${prId}::${rubricHash}` —
+  // matching by hash still pools across GOALS that share identical
+  // rubric text (same criteria, so the % is comparable), which is why
+  // the caller labels this reading "cached", not "measured".
+  const verdicts = getVerdictsState().verdicts;
   let pass = 0;
   let fail = 0;
-  for (const [key, entry] of Object.entries(raw)) {
+  for (const [key, entry] of verdicts.entries()) {
     if (!key.endsWith(`::${hash}`)) continue;
-    if (entry?.verdict?.errored) continue;
-    if (entry?.verdict?.pass) pass += 1;
+    if (entry?.errored) continue;
+    if (entry?.pass) pass += 1;
     else fail += 1;
   }
-  // Suppress unused param warning — we already have `hash` from rubric
-  // closure but reading the verdict map by direct lookup would require
-  // PR ids; we don't have them here. Fall back to the namespaced sweep.
-  void readVerdict;
   return { pass, fail, total: pass + fail };
 }
 
@@ -626,7 +639,7 @@ function readBeforeAfter(spec, goal, { allInputs }) {
 function readFirstPassRate(spec, ctx) {
   const fromCompliance = readingFromCompliance(spec, ctx);
   if (fromCompliance) return fromCompliance;
-  const result = firstPassRatePct(ctx.mrs);
+  const result = firstPassRatePct(specMrs(spec, ctx));
   if (!result) return empty();
   const pct = result.pct ?? 0;
   return withTarget(pct, spec.source?.target, `${pct}% clean`);

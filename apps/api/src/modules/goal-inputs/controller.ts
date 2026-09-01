@@ -131,19 +131,24 @@ export async function listGoalInputsHandler(
     }
 
     const col = await getGoalInputsCollection();
-    const entries = await col
+    // limit+1 probe: one extra row is how the response can say "there
+    // was more" without a second count round-trip. Returned newest-first
+    // (LIMIT must keep the newest entries); the client store re-sorts
+    // ascending per goal on ingest.
+    const probed = await col
       .find(filter)
       .sort({ ts: -1 })
-      .limit(limit)
+      .limit(limit + 1)
       .toArray();
+    const hasMore = probed.length > limit;
+    const entries = hasMore ? probed.slice(0, limit) : probed;
 
     res.json({
       entries: entries.map(toPublic),
-      // ASC sort is what the existing widgets expect; we fetch DESC
-      // so that LIMIT keeps the newest entries, then flip on the way
-      // out so consumers see chronological order.
-      // (Wait — actually the frontend store stores ts-ascending. Mirror
-      // that.)
+      // Audit #237: the cap used to be silent — a heavy history hit the
+      // 2000-row ceiling and every consumer (compliance's first-entry
+      // anchor above all) treated the truncated slice as complete.
+      hasMore,
     });
   } catch (err) {
     next(err);

@@ -37,13 +37,22 @@ export function mrRepo(mr) {
  * Comparison is case-insensitive. A null / empty / undefined target
  * is a no-op (returns the input unchanged) so call sites don't have
  * to gate on the presence of the filter.
+ *
+ * `repo` may be a single "owner/name" string OR an array of them — the
+ * BYO repo_select picker stores multi-repo answers as arrays, and an
+ * array used to fall through the string check and silently disable the
+ * filter entirely (audit #237): a two-repo tracker quietly counted
+ * every repo the user touched.
  */
 export function filterMrsByRepo(mrs, repo) {
   if (!Array.isArray(mrs)) return [];
-  if (!repo || typeof repo !== "string") return mrs;
-  const target = repo.trim().toLowerCase();
-  if (!target) return mrs;
-  return mrs.filter((m) => mrRepo(m) === target);
+  const targets = (Array.isArray(repo) ? repo : [repo])
+    .filter((r) => typeof r === "string")
+    .map((r) => r.trim().toLowerCase())
+    .filter(Boolean);
+  if (targets.length === 0) return mrs;
+  const set = new Set(targets);
+  return mrs.filter((m) => set.has(mrRepo(m)));
 }
 
 /**

@@ -49,6 +49,13 @@ const INITIAL_STATE = Object.freeze({
   error: null,
   /** { [goalId]: entries[] } — each list ts-ascending. */
   byGoal: {},
+  /**
+   * Audit #237: the server hit its row cap and the OLDEST entries are
+   * missing. Consumers that anchor on "the first entry" (compliance's
+   * missed-window count) must treat their anchor as approximate when
+   * this is set — the honest read is "at least", not "exactly".
+   */
+  truncated: false,
 });
 
 let state = INITIAL_STATE;
@@ -112,6 +119,12 @@ export function readInputs() {
   return state.byGoal;
 }
 
+/** True when the last hydration hit the server's row cap — the oldest
+ *  entries are missing and first-entry anchors are approximate. */
+export function readInputsTruncated() {
+  return state.truncated;
+}
+
 /** Return entries for a single goal (sorted ts-ascending). */
 export function readGoalEntries(goalId) {
   if (!goalId) return [];
@@ -147,7 +160,13 @@ export async function fetchInputs() {
     for (const goalId of Object.keys(byGoal)) {
       byGoal[goalId].sort((a, b) => a.ts - b.ts);
     }
-    setState({ loading: false, fetched: true, error: null, byGoal });
+    setState({
+      loading: false,
+      fetched: true,
+      error: null,
+      byGoal,
+      truncated: Boolean(r.data?.hasMore),
+    });
     return byGoal;
   })();
   return inflightFetch;

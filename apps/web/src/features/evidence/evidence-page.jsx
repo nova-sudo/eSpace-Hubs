@@ -7,6 +7,7 @@ import { Button, PageHeader } from "@/components/ui";
 import { useIntegrations } from "@/features/integrations";
 import { useHubLink } from "@/features/hubs";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
+import { readInputsTruncated } from "@/features/goal-inputs";
 import { ConfigPanel } from "./config-panel";
 import { DocumentPreview } from "./document-preview";
 import { ReviewPrepChecklist } from "./review-prep-checklist";
@@ -174,6 +175,15 @@ export function EvidencePage() {
               style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
             >
               {rangeLabel}
+              {readInputsTruncated() ? (
+                <span
+                  style={{ color: "var(--warn)" }}
+                  title="Your check-in history hit the server's row cap — the oldest entries aren't loaded, so totals and compliance counts read as at-least, not exact."
+                >
+                  {" "}
+                  · history capped
+                </span>
+              ) : null}
             </span>
           }
         />
@@ -193,7 +203,7 @@ export function EvidencePage() {
             <Button onClick={() => void retryGoals()}>Retry</Button>
           </div>
         ) : (
-        <div className="grid grid-cols-[minmax(0,1fr)_300px] items-start gap-[26px]">
+        <div className="grid grid-cols-1 items-start gap-[26px] lg:grid-cols-[minmax(0,1fr)_300px]">
           <GoalEvidenceBoard
             groups={evidence.groups}
             loading={loading}

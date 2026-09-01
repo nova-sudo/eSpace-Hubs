@@ -7,6 +7,7 @@ export {
   INPUTS_STORAGE_KEY,
   readGoalEntries,
   readInputs,
+  readInputsTruncated,
   removeEntry,
   replaceGoalEntries,
 } from "./inputs-store";
