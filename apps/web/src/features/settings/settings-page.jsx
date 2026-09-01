@@ -111,7 +111,7 @@ export function SettingsPage() {
       };
 
   return (
-    <main className="relative z-[2] px-10 pb-14 pt-9">
+    <main className="relative z-[2] px-4 sm:px-10 pb-14 pt-9">
       <PageHeader
         crumb={header.crumb}
         title={header.title}

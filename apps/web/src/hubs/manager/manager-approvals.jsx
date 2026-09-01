@@ -71,7 +71,7 @@ export function ManagerApprovals() {
   }
 
   return (
-    <main className="relative z-[2] mx-auto max-w-4xl px-10 pb-16 pt-9">
+    <main className="relative z-[2] mx-auto max-w-4xl px-4 sm:px-10 pb-16 pt-9">
       <PageHeader
         crumb="Build-Your-Own goals · pending your approval"
         title="Custom trackers, on hold."

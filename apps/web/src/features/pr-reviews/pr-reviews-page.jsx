@@ -74,7 +74,7 @@ export function PrReviewsPage() {
   const selected = inWindow.find((t) => String(t.pr.id) === String(selectedId));
 
   return (
-    <main className="relative z-[2] px-10 pb-14 pt-9">
+    <main className="relative z-[2] px-4 sm:px-10 pb-14 pt-9">
       <PageHeader
         crumb={
           inWindow.length > 0
@@ -120,7 +120,7 @@ export function PrReviewsPage() {
 
 function Empty({ label }) {
   return (
-    <div className="rounded-[var(--radius-tile)] border border-dashed border-border-strong bg-card px-10 py-16 text-center">
+    <div className="rounded-[var(--radius-tile)] border border-dashed border-border-strong bg-card px-4 sm:px-10 py-16 text-center">
       <MonoLabel>Review log</MonoLabel>
       <h2
         className="mx-auto mt-3 max-w-[520px] font-semibold"

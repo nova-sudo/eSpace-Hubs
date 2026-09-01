@@ -29,7 +29,7 @@ export function ManagerPlaceholder({ slot = "employees" }) {
   const slotLabel = SLOT_LABELS[slot] ?? slot;
 
   return (
-    <main className="relative z-[2] px-10 pb-14 pt-9">
+    <main className="relative z-[2] px-4 sm:px-10 pb-14 pt-9">
       <PageHeader
         crumb={`${hub.label} · ${slotLabel}`}
         title="Landing in the next drop."

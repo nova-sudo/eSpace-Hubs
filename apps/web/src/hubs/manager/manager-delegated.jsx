@@ -76,7 +76,7 @@ export function ManagerDelegated() {
   const pending = items.filter((it) => !it.verdict).length;
 
   return (
-    <main className="relative z-[2] mx-auto max-w-4xl px-10 pb-16 pt-9">
+    <main className="relative z-[2] mx-auto max-w-4xl px-4 sm:px-10 pb-16 pt-9">
       <PageHeader
         crumb="Delegated to you · your judgement required"
         title="Goals only you can score."

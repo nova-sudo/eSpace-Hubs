@@ -38,7 +38,7 @@ export function QaDashboard() {
   const link = useHubLink();
 
   return (
-    <main className="relative z-[2] px-10 pb-14 pt-9">
+    <main className="relative z-[2] px-4 sm:px-10 pb-14 pt-9">
       <PageHeader
         crumb={`${hub?.label ?? "QA Hub"} · performance`}
         title="Test quality, on the record."

@@ -30,7 +30,7 @@ export function SnapshotsPrefsTab() {
       </Section>
       <Section num="02 /" title="Snapshot schedule">
         <Card className="p-6">
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <Field
               label="Frequency"
               hint="Weekly is recommended. Daily creates noise; monthly misses deltas."

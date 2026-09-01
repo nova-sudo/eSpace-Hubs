@@ -149,7 +149,7 @@ export function ManagerTierPolicies() {
   );
 
   return (
-    <main className="relative z-[2] mx-auto max-w-4xl px-10 pb-14 pt-9">
+    <main className="relative z-[2] mx-auto max-w-4xl px-4 sm:px-10 pb-14 pt-9">
       <PageHeader
         crumb="Manager · achievement-tier governance"
         title="Set tiers by Goal Code."

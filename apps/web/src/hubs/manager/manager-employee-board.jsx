@@ -156,7 +156,7 @@ export function ManagerEmployeeBoard({ userId }) {
 
   if (loading) {
     return (
-      <main className="relative z-[2] mx-auto max-w-4xl px-10 pb-14 pt-9">
+      <main className="relative z-[2] mx-auto max-w-4xl px-4 sm:px-10 pb-14 pt-9">
         {back}
         <div className="rounded-md border border-dashed border-border bg-card p-6 text-[13px] text-muted-fg">
           Loading the board…
@@ -167,7 +167,7 @@ export function ManagerEmployeeBoard({ userId }) {
 
   if (error || !data) {
     return (
-      <main className="relative z-[2] mx-auto max-w-4xl px-10 pb-14 pt-9">
+      <main className="relative z-[2] mx-auto max-w-4xl px-4 sm:px-10 pb-14 pt-9">
         {back}
         <div className="rounded-md border border-dashed border-border bg-card p-6 text-[13px] text-muted-fg">
           {error === "not_found"
@@ -182,7 +182,7 @@ export function ManagerEmployeeBoard({ userId }) {
   const hasGoals = summary.total > 0;
 
   return (
-    <main className="relative z-[2] mx-auto max-w-4xl px-10 pb-16 pt-9">
+    <main className="relative z-[2] mx-auto max-w-4xl px-4 sm:px-10 pb-16 pt-9">
       {back}
 
       <div className="flex items-center gap-4">

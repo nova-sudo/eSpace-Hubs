@@ -100,7 +100,7 @@ export function AdminUsers() {
 
   if (!canManage) {
     return (
-      <main className="relative z-[2] mx-auto max-w-3xl px-10 pb-14 pt-10">
+      <main className="relative z-[2] mx-auto max-w-3xl px-4 sm:px-10 pb-14 pt-10">
         <PageHeader
           crumb="Admin · user management"
           title="Not authorised."
@@ -112,7 +112,7 @@ export function AdminUsers() {
   }
 
   return (
-    <main className="relative z-[2] mx-auto max-w-5xl px-10 pb-14 pt-10">
+    <main className="relative z-[2] mx-auto max-w-5xl px-4 sm:px-10 pb-14 pt-10">
       <PageHeader
         crumb="Admin · user management"
         title="Members of your org."

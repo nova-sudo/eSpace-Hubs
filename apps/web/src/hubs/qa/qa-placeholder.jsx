@@ -32,7 +32,7 @@ export function QaPlaceholder({ slot = "dashboard" }) {
   const widgets = Array.isArray(hub.widgets) ? hub.widgets : [];
 
   return (
-    <main className="relative z-[2] px-10 pb-14 pt-9">
+    <main className="relative z-[2] px-4 sm:px-10 pb-14 pt-9">
       <PageHeader
         crumb={`${hub.label} · ${slotLabel}`}
         title="We're still building this."

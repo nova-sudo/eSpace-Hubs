@@ -23,7 +23,7 @@ export function DateRangeToolbar() {
 
 function ToolbarSkeleton() {
   return (
-    <div className="relative z-[2] flex items-center gap-3 px-10 pb-5">
+    <div className="relative z-[2] flex items-center gap-3 px-4 sm:px-10 pb-5">
       <MonoLabel>Range</MonoLabel>
       <div className="h-7 w-64 rounded-[var(--radius-sub)] bg-card-alt" />
     </div>
@@ -34,7 +34,7 @@ function DateRangeToolbarInner() {
   const { preset, setPreset, range } = useDateRange();
 
   return (
-    <div className="relative z-[2] flex flex-wrap items-center justify-between gap-3 px-10 pb-5">
+    <div className="relative z-[2] flex flex-wrap items-center justify-between gap-3 px-4 sm:px-10 pb-5">
       <div className="flex items-center gap-3">
         <MonoLabel>Range</MonoLabel>
         <div className="flex flex-wrap gap-1">

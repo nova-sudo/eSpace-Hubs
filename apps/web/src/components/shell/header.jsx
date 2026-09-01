@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Menu, X } from "lucide-react";
 import { LogoMark } from "./logo-mark";
 import { ThemeToggle } from "./theme-toggle";
 import { AnalystActivator } from "@/features/analyst";
@@ -97,89 +99,144 @@ const VERSION = "v0.3.1";
 export function Header() {
   const pathname = usePathname();
   const hub = useActiveHub();
+  // F10 — mobile nav. Below md the nav collapses behind a hamburger;
+  // the panel closes on any route change so a tap never strands it open.
+  const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
 
   // Build the hub-prefixed link for each nav slot. Without an active
   // hub (brief loading window) fall back to root — the redirect at
   // `/` will route the user back to their primary hub.
   const hubPrefix = hub ? `/${hub.id}` : "";
 
+  // Resolved once — the desktop row and the mobile panel render the
+  // same list, so slot visibility can never drift between the two.
+  const navItems = NAV_ITEMS.flatMap((item) => {
+    if (hub && !hub.pages[item.slot]) return [];
+    if (hub && HUB_HIDDEN_NAV_SLOTS[hub.id]?.includes(item.slot)) return [];
+    const label = labelFor(item.slot, hub?.id);
+    const href = `${hubPrefix}${item.subpath}` || "/";
+    // Dashboard slot is the home tab. It highlights only on the
+    // home route itself now — the old reviews/snapshots drill-downs
+    // are no longer part of the Intelligence home (Sprint-1 revamp).
+    const dashboardHome = `${hubPrefix}` || "/";
+    const active =
+      item.slot === "dashboard"
+        ? pathname === dashboardHome
+        : pathname?.startsWith(href);
+    return [{ slot: item.slot, label, href, active }];
+  });
+
   return (
     <header
-      className="sticky top-0 z-20 flex items-center justify-between border-b border-border px-10 py-3.5 backdrop-blur-xl"
+      className="sticky top-0 z-20 border-b border-border backdrop-blur-xl"
       style={{ background: "color-mix(in srgb, var(--bg) 82%, transparent)" }}
     >
-      <div className="flex items-center gap-8">
-        <Link href={hubPrefix || "/"} className="flex items-center gap-2.5">
-          <LogoMark />
-          <div
-            className="font-semibold"
-            style={{ fontFamily: "var(--font-display)", fontSize: 15, letterSpacing: "-0.2px" }}
+      <div className="flex items-center justify-between px-4 sm:px-10 py-3.5">
+        <div className="flex min-w-0 items-center gap-3 md:gap-8">
+          {/* Hamburger — mobile only. Sits left of the wordmark, thumb reach. */}
+          <button
+            type="button"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-fg transition-colors hover:bg-accent-dim/60 md:hidden"
+            aria-label={menuOpen ? "Close navigation" : "Open navigation"}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((o) => !o)}
           >
-            eSpace<span style={{ color: "var(--accent)" }}>/</span>
-            <span style={{ fontFamily: "var(--font-dot)", fontWeight: 700, letterSpacing: "1px" }}>
-              {hub?.label?.replace(/ Hub$/, "") ?? "DevHub"}
+            {menuOpen ? <X className="h-4.5 w-4.5" /> : <Menu className="h-4.5 w-4.5" />}
+          </button>
+          <Link href={hubPrefix || "/"} className="flex min-w-0 items-center gap-2.5">
+            <LogoMark />
+            <div
+              className="truncate font-semibold"
+              style={{ fontFamily: "var(--font-display)", fontSize: 15, letterSpacing: "-0.2px" }}
+            >
+              eSpace<span style={{ color: "var(--accent)" }}>/</span>
+              <span style={{ fontFamily: "var(--font-dot)", fontWeight: 700, letterSpacing: "1px" }}>
+                {hub?.label?.replace(/ Hub$/, "") ?? "DevHub"}
+              </span>
+            </div>
+            <span
+              className="hidden rounded-[4px] border border-border px-1.5 py-0.5 text-[10px] text-dim-fg sm:inline"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              {VERSION}
             </span>
+          </Link>
+          {/* Multi-hub users see a switcher chip here. Single-hub users
+              see nothing (HubSwitcher self-hides when |hubs| <= 1). */}
+          <div className="hidden md:block">
+            <HubSwitcher />
           </div>
-          <span
-            className="rounded-[4px] border border-border px-1.5 py-0.5 text-[10px] text-dim-fg"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            {VERSION}
-          </span>
-        </Link>
-        {/* Multi-hub users see a switcher chip here. Single-hub users
-            see nothing (HubSwitcher self-hides when |hubs| <= 1). */}
-        <HubSwitcher />
-        <nav className="flex gap-0.5" style={{ fontFamily: "var(--font-mono)" }}>
-          {NAV_ITEMS.map((item) => {
-            if (hub && !hub.pages[item.slot]) return null;
-            if (hub && HUB_HIDDEN_NAV_SLOTS[hub.id]?.includes(item.slot)) {
-              return null;
-            }
-            const label = labelFor(item.slot, hub?.id);
-            const href = `${hubPrefix}${item.subpath}` || "/";
-            // Dashboard slot is the home tab. It highlights only on the
-            // home route itself now — the old reviews/snapshots drill-downs
-            // are no longer part of the Intelligence home (Sprint-1 revamp).
-            const dashboardHome = `${hubPrefix}` || "/";
-            const active =
-              item.slot === "dashboard"
-                ? pathname === dashboardHome
-                : pathname?.startsWith(href);
-            return (
+          <nav className="hidden gap-0.5 md:flex" style={{ fontFamily: "var(--font-mono)" }}>
+            {navItems.map((item) => (
               <Link
                 key={item.slot}
-                href={href}
+                href={item.href}
                 className={cn(
                   "rounded-md px-3 py-1.5 text-[12px] uppercase tracking-[0.4px] transition-colors",
-                  active
+                  item.active
                     ? "bg-accent-dim font-semibold text-fg"
                     : "text-muted-fg hover:bg-accent-dim/60",
                 )}
               >
-                {label}
+                {item.label}
               </Link>
-            );
-          })}
+            ))}
+          </nav>
+        </div>
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3.5">
+          {/* Light/dark switch — persists to localStorage('espace-theme'),
+              which the no-flash script in layout.jsx reads on first paint. */}
+          <ThemeToggle />
+          {/* Inverse-themed activator — opens the accent-ground analyst page.
+              Analysis is the dev goal-classification feature, so gate it on the
+              hub actually exposing the analyst surface (dev only). Without this
+              it leaked "Resume analysis" into manager/qa/admin. Hidden on
+              phones — analysis is a desk journey; the header space isn't. */}
+          {hub?.pages?.analyst ? (
+            <div className="hidden sm:block">
+              <AnalystActivator />
+            </div>
+          ) : null}
+          {/* Companion-routing indicator — self-hides when the user has
+              no companion. Engagement-agnostic; espace devs see nothing. */}
+          <CompanionIndicator />
+          {/* In-app inbox — manager grades (and, later, approvals). */}
+          <NotificationBell />
+          {/* Session-aware chip with logout dropdown. */}
+          <UserChip />
+        </div>
+      </div>
+
+      {/* Mobile nav panel — a plain vertical list under the bar. In-flow
+          (not absolutely positioned) so it can never overlap content it
+          doesn't push down; route changes close it via the effect above. */}
+      {menuOpen ? (
+        <nav
+          className="flex flex-col gap-0.5 border-t border-border px-4 pb-3 pt-2 md:hidden"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          <div className="pb-1">
+            <HubSwitcher />
+          </div>
+          {navItems.map((item) => (
+            <Link
+              key={item.slot}
+              href={item.href}
+              className={cn(
+                "rounded-md px-3 py-2.5 text-[13px] uppercase tracking-[0.4px] transition-colors",
+                item.active
+                  ? "bg-accent-dim font-semibold text-fg"
+                  : "text-muted-fg hover:bg-accent-dim/60",
+              )}
+            >
+              {item.label}
+            </Link>
+          ))}
         </nav>
-      </div>
-      <div className="flex items-center gap-3.5">
-        {/* Light/dark switch — persists to localStorage('espace-theme'),
-            which the no-flash script in layout.jsx reads on first paint. */}
-        <ThemeToggle />
-        {/* Inverse-themed activator — opens the accent-ground analyst page.
-            Analysis is the dev goal-classification feature, so gate it on the
-            hub actually exposing the analyst surface (dev only). Without this
-            it leaked "Resume analysis" into manager/qa/admin. */}
-        {hub?.pages?.analyst ? <AnalystActivator /> : null}
-        {/* Companion-routing indicator — self-hides when the user has
-            no companion. Engagement-agnostic; espace devs see nothing. */}
-        <CompanionIndicator />
-        {/* In-app inbox — manager grades (and, later, approvals). */}
-        <NotificationBell />
-        {/* Session-aware chip with logout dropdown. */}
-        <UserChip />
-      </div>
+      ) : null}
     </header>
   );
 }

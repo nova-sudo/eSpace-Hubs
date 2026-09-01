@@ -107,7 +107,7 @@ export function AccountTab() {
     <>
       <Section num="01 /" title="Profile">
         <Card className="p-6">
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <Field label="Display name">
               <Input
                 value={displayName}

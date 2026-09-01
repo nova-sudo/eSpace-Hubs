@@ -51,7 +51,7 @@ export function SnapshotsPage() {
     : null;
 
   return (
-    <main className="relative z-[2] px-10 pb-14 pt-9">
+    <main className="relative z-[2] px-4 sm:px-10 pb-14 pt-9">
       <PageHeader
         crumb={
           snapshots.length > 0
@@ -391,7 +391,7 @@ function CompareGrid({ base, other }) {
 
 function EmptyState({ onCapture }) {
   return (
-    <div className="rounded-[var(--radius-tile)] border border-dashed border-border-strong bg-card px-10 py-16 text-center">
+    <div className="rounded-[var(--radius-tile)] border border-dashed border-border-strong bg-card px-4 sm:px-10 py-16 text-center">
       <MonoLabel>No snapshots yet</MonoLabel>
       <h2
         className="mx-auto mt-3 max-w-[520px] font-bold uppercase"

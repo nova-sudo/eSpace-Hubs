@@ -64,7 +64,7 @@ export function AdminDashboard() {
   }, []);
 
   return (
-    <main className="relative z-[2] mx-auto max-w-6xl px-10 pb-14 pt-10">
+    <main className="relative z-[2] mx-auto max-w-6xl px-4 sm:px-10 pb-14 pt-10">
       <header className="mb-8">
         <div
           className="mb-2 uppercase tracking-[0.5px] text-muted-fg"

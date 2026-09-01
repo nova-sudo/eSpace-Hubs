@@ -424,7 +424,7 @@ export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel,
   };
 
   return (
-    <div className="flex w-[320px] flex-col gap-2">
+    <div className="flex w-full max-w-[320px] flex-col gap-2">
       <div
         className="flex items-baseline justify-between text-[11px] text-muted-fg"
         style={{ fontFamily: "var(--font-mono)" }}

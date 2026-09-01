@@ -45,7 +45,7 @@ export function ManagerDashboard() {
   ).length;
 
   return (
-    <main className="relative z-[2] mx-auto max-w-5xl px-10 pb-14 pt-9">
+    <main className="relative z-[2] mx-auto max-w-5xl px-4 sm:px-10 pb-14 pt-9">
       <PageHeader
         crumb={`${hub.label} · team`}
         title="Your team, at a glance."

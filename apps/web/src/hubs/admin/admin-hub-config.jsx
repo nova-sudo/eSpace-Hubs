@@ -107,7 +107,7 @@ export function AdminHubConfig() {
 
   if (!canConfigure) {
     return (
-      <main className="relative z-[2] mx-auto max-w-3xl px-10 pb-14 pt-10">
+      <main className="relative z-[2] mx-auto max-w-3xl px-4 sm:px-10 pb-14 pt-10">
         <PageHeader
           crumb="Admin · hub configuration"
           title="Not authorised."
@@ -119,7 +119,7 @@ export function AdminHubConfig() {
   }
 
   return (
-    <main className="relative z-[2] mx-auto max-w-4xl px-10 pb-14 pt-10">
+    <main className="relative z-[2] mx-auto max-w-4xl px-4 sm:px-10 pb-14 pt-10">
       <PageHeader
         crumb="Admin · hub configuration"
         title="Per-hub overrides."

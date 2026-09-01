@@ -48,8 +48,8 @@ export function OverviewSection() {
           so it doesn't disturb the 4-tile glance grid below. */}
       <SinceLastVisitTile />
       {/* DateRangeToolbar pre-dates the section shell and paints its own
-          `px-10` paddings. The Section already applies 40px horizontal
-          padding, so we cancel the toolbar's `px-10` with a `-mx-10` wrapper
+          `px-4 sm:px-10` paddings. The Section already applies 40px horizontal
+          padding, so we cancel the toolbar's `px-4 sm:px-10` with a `-mx-10` wrapper
           to keep its internal flex layout (gap, MonoLabel, chips) intact. */}
       <div className="-mx-10">
         <DateRangeToolbar />

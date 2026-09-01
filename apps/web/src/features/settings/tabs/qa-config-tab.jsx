@@ -91,7 +91,7 @@ export function QaConfigTab() {
             powers the automation-health tiles. Changes apply immediately on
             save — refresh the dashboard tab to see them.
           </p>
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <Field
               label="Jira project key"
               hint="Project that owns your team's bug tickets. Uppercase by convention (e.g. ESPQA, QA)."

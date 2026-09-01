@@ -160,7 +160,7 @@ export function EvidencePage() {
   // ── Board view (primary): goal evidence, grouped by L1 ──
   if (view === "board") {
     return (
-      <main className="relative z-[2] px-10 pb-14 pt-9">
+      <main className="relative z-[2] px-4 sm:px-10 pb-14 pt-9">
         <div className="mb-6 no-print">
           <ReviewPrepChecklist />
         </div>
@@ -216,7 +216,7 @@ export function EvidencePage() {
 
   // ── Compile view: the goals-only document builder ──
   return (
-    <main className="relative z-[2] px-10 pb-14 pt-9">
+    <main className="relative z-[2] px-4 sm:px-10 pb-14 pt-9">
       <div className="mb-6 no-print">
         <ReviewPrepChecklist />
       </div>

@@ -70,7 +70,7 @@ export function IntegrationsTab() {
 
       <Section num="02 /" title="How tokens are stored">
         <Card className="p-6">
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <PrivacyPoint
               title="localStorage only"
               body="Your Jira email, GitLab PAT, and GitHub OAuth token live in your browser's localStorage — scoped to this origin. They never touch our server."
@@ -98,7 +98,7 @@ export function IntegrationsTab() {
           believable everywhere else. */}
       <Section num="03 /" title="What the AI sees">
         <Card className="p-6">
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <PrivacyPoint
               title="AI text does leave"
               body="Unlike your tokens, what you type into the AI surfaces — goal descriptions, tracker descriptions, chat — is sent to our API and on to the provider you picked in Account (Claude, Mistral, GLM, OpenRouter). There's no on-device model; that trip is how you get an answer."

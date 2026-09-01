@@ -42,7 +42,7 @@ export function IntelligencePage() {
   const needCount = queue?.length ?? 0;
 
   return (
-    <main className="relative z-[2] mx-auto max-w-[760px] px-10 pb-16 pt-9">
+    <main className="relative z-[2] mx-auto max-w-[760px] px-4 sm:px-10 pb-16 pt-9">
       {/* Centered Focus header (IntelB): mono crumb + Doto title, accent dot. */}
       <div className="mb-[26px] text-center">
         <div

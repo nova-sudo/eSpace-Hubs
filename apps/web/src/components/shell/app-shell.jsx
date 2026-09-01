@@ -81,7 +81,7 @@ function AppShellInner({ children, hideFooter }) {
         <SubTabsTag />
         <div>{children}</div>
         {hideFooter ? null : (
-          <div className="px-10">
+          <div className="px-4 sm:px-10">
             <Footer />
           </div>
         )}

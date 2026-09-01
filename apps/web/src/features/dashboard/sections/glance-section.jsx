@@ -34,8 +34,8 @@ export function GlanceSection() {
         />
       ) : (
         <>
-          {/* AttentionBand has its own `px-10 pb-5` padding (it pre-dates the
-              section shell). The `-mx-10` wrapper lets the band's inner `px-10`
+          {/* AttentionBand has its own `px-4 sm:px-10 pb-5` padding (it pre-dates the
+              section shell). The `-mx-10` wrapper lets the band's inner `px-4 sm:px-10`
               align content back to the section's inner padding edge instead of
               doubling it. `pb-5` is harmless because the Section's `gap: 18px`
               dominates. */}

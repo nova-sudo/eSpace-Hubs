@@ -34,7 +34,7 @@ export function AttentionBand() {
   if (items.length === 0) return null;
 
   return (
-    <section className="relative z-[2] px-10 pb-5">
+    <section className="relative z-[2] px-4 sm:px-10 pb-5">
       <div
         className="rounded-[var(--radius-tile)] border border-border bg-card px-4.5 py-3.5"
         style={{ borderLeft: "3px solid var(--accent)" }}

@@ -42,7 +42,7 @@ export function EvidenceDrawer({ onClose }) {
   return (
     <aside
       aria-label="Evidence"
-      className="flex h-full w-[320px] shrink-0 flex-col overflow-y-auto border-l border-border bg-panel"
+      className="flex h-full w-[320px] max-w-[85vw] shrink-0 flex-col overflow-y-auto border-l border-border bg-panel"
     >
       <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
         <span

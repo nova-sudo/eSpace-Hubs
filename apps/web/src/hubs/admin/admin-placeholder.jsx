@@ -37,7 +37,7 @@ export function AdminPlaceholder({ slot = "default" }) {
   const copy = COPY[slot] ?? COPY.default;
 
   return (
-    <main className="relative z-[2] mx-auto max-w-2xl px-10 pb-14 pt-10">
+    <main className="relative z-[2] mx-auto max-w-2xl px-4 sm:px-10 pb-14 pt-10">
       <div
         className="mb-2 uppercase tracking-[0.5px] text-muted-fg"
         style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}

@@ -20,7 +20,7 @@ export function BackfillBanner() {
     <div
       role="status"
       aria-live="polite"
-      className="flex items-center justify-between gap-3 px-10 py-1.5"
+      className="flex items-center justify-between gap-3 px-4 sm:px-10 py-1.5"
       style={{
         background: "var(--accent-dim)",
         color: "var(--accent)",
