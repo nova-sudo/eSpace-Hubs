@@ -73,6 +73,9 @@ const USER_SCOPED_KEYS = Object.freeze([
   // in-memory store resets on the auth event, but the blob itself must
   // go too or the next sign-in reloads the previous user's readings.
   "espace-devhub:goal-live-readings",
+  // Evidence review-narrative draft (#238) — a half-written review
+  // summary is personal text; the next sign-in must not inherit it.
+  "espace-devhub:evidence-narrative",
 ]);
 
 /**

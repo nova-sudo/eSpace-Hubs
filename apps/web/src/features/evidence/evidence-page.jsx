@@ -22,6 +22,8 @@ import { yearToDateLabel } from "@/lib/date";
 import { apiGet, apiPost } from "@/lib/api-client";
 import { generateEvidencePdf } from "./pdf/generate-pdf";
 
+const NARRATIVE_DRAFT_KEY = "espace-devhub:evidence-narrative";
+
 export function EvidencePage() {
   const { me } = useIntegrations();
   const searchParams = useSearchParams();
@@ -38,7 +40,30 @@ export function EvidencePage() {
   }, [searchParams]);
 
   const [level, setLevel] = useState("L1 → L2");
+  // #238: the narrative used to be bare useState — one navigation away
+  // and a half-written review summary was gone. Draft lives in
+  // localStorage (wiped on sign-out; the submitted packet is the record).
+  // Load on mount (not in the initializer) so server and client render
+  // the same empty textarea first — no hydration mismatch.
   const [narrative, setNarrative] = useState("");
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  useEffect(() => {
+    try {
+      setNarrative(window.localStorage.getItem(NARRATIVE_DRAFT_KEY) || "");
+    } catch {
+      /* storage unavailable — start empty */
+    }
+    setDraftLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!draftLoaded) return; // never clobber the stored draft with the initial ""
+    try {
+      if (narrative) window.localStorage.setItem(NARRATIVE_DRAFT_KEY, narrative);
+      else window.localStorage.removeItem(NARRATIVE_DRAFT_KEY);
+    } catch {
+      /* storage unavailable — draft just isn't persisted */
+    }
+  }, [narrative, draftLoaded]);
   // Goal-oriented review: only the summary narrative + the per-goal readings.
   // (The old integration sections — metrics, PRs, tickets, reviews — are gone;
   // GitHub/Jira aren't tracked anymore.)
