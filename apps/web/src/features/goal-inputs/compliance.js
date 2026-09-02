@@ -28,29 +28,26 @@
  *
  * Bucketing window boundaries
  * ───────────────────────────
- * From the first entry's timestamp, forward. So if your first entry was
- * 10 weeks ago and we're on a weekly cadence, you have 10 windows. As
- * time moves forward, the next window opens automatically and starts
- * counting against you if you haven't logged.
+ * The SAME windows the cadence stepper shows and the snapshot capture
+ * keys on: `buildCycleWindows` (calendar months / quarters, fixed
+ * strides for weekly / biweekly / daily, anchored on the cycle — the
+ * calendar year). Audit #237: this used to bucket from the FIRST ENTRY
+ * in fixed 30-day "months" and 91-day "quarters", so a window the
+ * stepper called "March" could be compliance's "days 30–59 since your
+ * first log" — three surfaces, three answers. Windows counted run from
+ * the one containing the first entry through the one containing now.
  *
- * We don't pre-compute "expected windows since the goal was created"
- * (we don't track that), so a brand-new goal starts at "1 of 1 windows"
- * → 100% the moment you log once. The compliance only stops being
- * trivial after at least one full cadence has elapsed.
+ * A brand-new goal still starts at "1 of 1 windows" → 100% on the first
+ * log; compliance only stops being trivial once a full window has
+ * elapsed.
+ *
+ * ponytail: weekly strides here are Jan-1-anchored (cadence-windows'
+ * keys), while snapshot week labels are Sunday-anchored — a residual
+ * few-day skew on weekly goals only. Unifying that means migrating every
+ * stored weekly periodKey; do it when the skew is actually observed.
  */
 
-const CADENCE_DAYS = Object.freeze({
-  daily: 1,
-  weekly: 7,
-  biweekly: 14,
-  monthly: 30, // approximate — calendar-month variance washes out at scale
-  quarterly: 91,
-  // The remaining cadences either don't bucket (continuous, milestone)
-  // or are situational (per-incident). We fall back to lifetime totals
-  // for those — see callers.
-});
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { buildCycleWindows } from "./cadence-windows";
 
 /**
  * Compute compliance for a manual-widget entry log against a target.
@@ -74,31 +71,30 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * } | null}
  *   `null` when there's no usable data (no target, no entries, unsupported cadence).
  */
-export function computeCompliance(entries, target, cadence) {
+export function computeCompliance(entries, target, cadence, now = Date.now()) {
   if (!Array.isArray(entries) || entries.length === 0) return null;
   if (!target || target.value == null || !Number.isFinite(target.value)) {
     return null;
   }
-  const cadDays = CADENCE_DAYS[cadence];
-  if (!cadDays) return null;
+  const cycle = buildCycleWindows({ entries, cadence, now });
+  if (cycle.mode === "pip" || !Array.isArray(cycle.windows)) return null;
 
-  const cadMs = cadDays * DAY_MS;
-  const firstTs = entries[0].ts;
-  const now = Date.now();
-  const elapsed = Math.max(0, now - firstTs);
+  const firstTs = Math.min(...entries.map((e) => e.ts));
+  // Windows from the one containing the first entry through the one
+  // containing now. Entries outside the cycle (last year's) bucket into
+  // the edge windows rather than vanishing — the cycle IS the review
+  // period, but a log is never silently dropped.
+  const inRange = cycle.windows.filter((w) => w.end > firstTs && w.start <= now);
+  const windows = inRange.length > 0 ? inRange : cycle.windows.slice(-1);
+  const windowCount = windows.length;
 
-  // Number of windows since the first entry. At least 1 — even if the
-  // first log was today, we count "this window" so the user sees their
-  // log immediately reflected.
-  const windowCount = Math.max(1, Math.ceil(elapsed / cadMs));
-
-  // Bucket entries into windows from first entry forward.
   const buckets = new Array(windowCount).fill(0);
   for (const e of entries) {
-    const offset = e.ts - firstTs;
-    const idx = Math.min(windowCount - 1, Math.max(0, Math.floor(offset / cadMs)));
     const v = Number(e.value);
-    if (Number.isFinite(v)) buckets[idx] += v;
+    if (!Number.isFinite(v)) continue;
+    let idx = windows.findIndex((w) => e.ts >= w.start && e.ts < w.end);
+    if (idx < 0) idx = e.ts < windows[0].start ? 0 : windowCount - 1;
+    buckets[idx] += v;
   }
 
   const op = target.op || ">=";
