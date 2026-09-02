@@ -1,22 +1,15 @@
 "use client";
 
 /**
- * Manager Hub — team-wide goal-tracking rollup.
- *
- * The team dashboard needs an at-a-glance "who's on track" signal, but
- * there's no dedicated aggregate endpoint yet — goal-health is computed
- * per report (GET /manager/reports/:userId/goal-health). A manager's
- * roster is small (single-digit to low double-digit reports), so this
- * fans out one goal-health call per report in parallel and reduces
- * client-side rather than adding a new server aggregate for what's
- * still a light read. Revisit as a real endpoint if rosters grow.
+ * Manager Hub — team-wide goal-tracking rollup, one request:
+ * GET /manager/team-summary returns every direct report's goal-health
+ * summary (the board groups are omitted; this page only needs counts).
+ * Replaces the browser fanning out one goal-health call per report.
  *
  * Returns { loading, error, totals, perReport }, where perReport is a
  * Map<userId, { total, graded, needsAttention }> — needsAttention counts
  * goals that are ready-to-track but have no data yet, or need context
- * before they can start (needs_setup + no_data): the set a manager
- * should actually look at, as opposed to auto-tracked or already-graded
- * goals that don't need their attention right now.
+ * before they can start (needs_setup + no_data).
  */
 
 import { useEffect, useState } from "react";
@@ -43,32 +36,20 @@ export function useTeamGoalSummary(reports) {
 
   useEffect(() => {
     if (reports.length === 0) {
-      setState({
-        loading: false,
-        error: null,
-        totals: EMPTY_TOTALS,
-        perReport: new Map(),
-      });
+      setState({ loading: false, error: null, totals: EMPTY_TOTALS, perReport: new Map() });
       return undefined;
     }
     let cancelled = false;
     setState((s) => ({ ...s, loading: true, error: null }));
-    (async () => {
-      const results = await Promise.all(
-        reports.map((r) =>
-          apiGet(`/manager/reports/${encodeURIComponent(r.id)}/goal-health`),
-        ),
-      );
+    void apiGet("/manager/team-summary").then((r) => {
       if (cancelled) return;
-
+      if (!r.ok || !Array.isArray(r.data?.reports)) {
+        setState((s) => ({ ...s, loading: false, error: "error" }));
+        return;
+      }
       const totals = { ...EMPTY_TOTALS };
       const perReport = new Map();
-      let anyOk = false;
-      for (let i = 0; i < reports.length; i += 1) {
-        const r = results[i];
-        if (!r.ok || !r.data?.summary) continue;
-        anyOk = true;
-        const s = r.data.summary;
+      for (const { id, summary: s } of r.data.reports) {
         totals.goals += s.total ?? 0;
         totals.graded += s.graded ?? 0;
         totals.needsSetup += s.needsSetup ?? 0;
@@ -76,19 +57,14 @@ export function useTeamGoalSummary(reports) {
         totals.tracking += s.tracking ?? 0;
         totals.auto += s.auto ?? 0;
         totals.delegatedToYou += s.delegatedToYou ?? 0;
-        perReport.set(reports[i].id, {
+        perReport.set(id, {
           total: s.total ?? 0,
           graded: s.graded ?? 0,
           needsAttention: (s.needsSetup ?? 0) + (s.noData ?? 0),
         });
       }
-      setState({
-        loading: false,
-        error: anyOk || reports.length === 0 ? null : "error",
-        totals,
-        perReport,
-      });
-    })();
+      setState({ loading: false, error: null, totals, perReport });
+    });
     return () => {
       cancelled = true;
     };

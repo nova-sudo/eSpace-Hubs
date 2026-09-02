@@ -190,14 +190,14 @@ async function resolveReport(
   return { session, target };
 }
 
-export async function getReportGoalHealthHandler(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const { session, target } = await resolveReport(req);
-    const scope = { orgId: session.orgId, userId: target._id };
+/**
+ * One report's full board — extracted so the team summary can compute it
+ * server-side for every report in one request instead of the browser
+ * fanning out N goal-health calls (#238).
+ */
+async function computeGoalHealth(orgId: ObjectId, target: User) {
+  {
+    const scope = { orgId, userId: target._id };
 
     const [tree, specDocs, ctxDocs, verdictDocs, activity, managerVerdictMap] =
       await Promise.all([
@@ -234,7 +234,7 @@ export async function getReportGoalHealthHandler(
             ])
             .toArray(),
         ),
-        getManagerVerdictMap(session.orgId, target._id),
+        getManagerVerdictMap(orgId, target._id),
       ]);
     // Latest review packet: the one server-side source of a real number
     // for AUTO goals (the dev's client froze it at submit time).
@@ -336,10 +336,47 @@ export async function getReportGoalHealthHandler(
       }),
     }));
 
+    return { user: toReportCard(target), summary, groups };
+  }
+}
+
+export async function getReportGoalHealthHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { session, target } = await resolveReport(req);
+    res.json(await computeGoalHealth(session.orgId, target));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /manager/team-summary — every direct report's goal-health summary
+ * in one round trip (the board `groups` are omitted; the team page only
+ * needs the counts). Same managerId scoping as /reports.
+ */
+export async function getTeamSummaryHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const users = await getUsersCollection();
+    const reports = await users
+      .find({ orgId: session.orgId, managerId: session.userId, status: { $ne: "disabled" } })
+      .toArray();
+    const health = await Promise.all(
+      reports.map((u) => computeGoalHealth(session.orgId, u)),
+    );
     res.json({
-      user: toReportCard(target),
-      summary,
-      groups,
+      reports: health.map((h) => ({ id: h.user.id, summary: h.summary })),
     });
   } catch (err) {
     next(err);

@@ -25,6 +25,7 @@ import {
   deleteTierPolicyHandler,
   getReportGoalDetailHandler,
   getReportGoalHealthHandler,
+  getTeamSummaryHandler,
   listApprovalsHandler,
   listDelegatedQueueHandler,
   listReportReviewPacketsHandler,
@@ -43,6 +44,14 @@ managerRouter.get(
   requireAuth(),
   requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
   listReportsHandler,
+);
+
+// Team rollup in one request — replaces the browser's per-report fan-out.
+managerRouter.get(
+  "/team-summary",
+  requireAuth(),
+  requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
+  getTeamSummaryHandler,
 );
 
 managerRouter.get(
