@@ -57,26 +57,42 @@ export interface CompanionRoutingRequest {
   headers: IncomingHttpHeaders;
 }
 
+export interface CompanionRouting {
+  /** Tunnel origin to proxy to, or null to serve locally. */
+  origin: string | null;
+  /** Set when the user HAS a companion but its heartbeat went stale —
+   *  callers decide whether "serve locally" is honest for the route. */
+  staleHostname: string | null;
+}
+
+/** Origin-only view — the shape both proxies historically consumed. */
 export async function resolveCompanionOrigin(
   req: CompanionRoutingRequest,
 ): Promise<string | null> {
+  return (await resolveCompanionRouting(req)).origin;
+}
+
+export async function resolveCompanionRouting(
+  req: CompanionRoutingRequest,
+): Promise<CompanionRouting> {
+  const local: CompanionRouting = { origin: null, staleHostname: null };
   try {
     const cookieHeader = req.headers.cookie;
-    if (!cookieHeader || typeof cookieHeader !== "string") return null;
+    if (!cookieHeader || typeof cookieHeader !== "string") return local;
 
     const cookies = parseCookieHeader(cookieHeader);
     const raw = cookies[SESSION_COOKIE_NAME];
-    if (!raw) return null;
+    if (!raw) return local;
 
     // Express's signed cookies are stored with an "s:" prefix on the
     // value followed by a "." separator and the HMAC signature. We
     // strip the prefix and unsign to recover the original sessionId.
-    if (!raw.startsWith("s:")) return null;
+    if (!raw.startsWith("s:")) return local;
     const unsigned = unsign(raw.slice(2), env.SESSION_SECRET);
-    if (!unsigned) return null;
+    if (!unsigned) return local;
 
     const session = await lookupSession(unsigned);
-    if (!session) return null;
+    if (!session) return local;
 
     const users = await getUsersCollection();
     const user = await users.findOne(
@@ -84,7 +100,7 @@ export async function resolveCompanionOrigin(
       { projection: { companionTunnel: 1 } },
     );
     const tunnel = user?.companionTunnel;
-    if (!tunnel || !tunnel.hostname) return null;
+    if (!tunnel || !tunnel.hostname) return local;
 
     const ageMs = Date.now() - new Date(tunnel.lastSeenAt).getTime();
     if (ageMs >= COMPANION_STALE_AFTER_MS) {
@@ -101,10 +117,10 @@ export async function resolveCompanionOrigin(
         },
         "[companion-routing] registration is stale — serving locally",
       );
-      return null;
+      return { origin: null, staleHostname: tunnel.hostname };
     }
 
-    return `https://${tunnel.hostname}`;
+    return { origin: `https://${tunnel.hostname}`, staleHostname: null };
   } catch (err) {
     // Defensive: ANY failure during routing resolution falls through to
     // serving the request here. A transient Mongo blip must not 500 a
@@ -117,6 +133,6 @@ export async function resolveCompanionOrigin(
       { err: err instanceof Error ? err.message : String(err) },
       "[companion-routing] resolution threw — falling back to local",
     );
-    return null;
+    return local;
   }
 }

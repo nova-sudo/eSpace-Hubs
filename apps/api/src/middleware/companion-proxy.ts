@@ -50,7 +50,7 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import https from "node:https";
 import http from "node:http";
-import { resolveCompanionOrigin } from "../lib/companion-routing.js";
+import { resolveCompanionRouting } from "../lib/companion-routing.js";
 import { logger } from "../lib/logger.js";
 
 /**
@@ -235,9 +235,32 @@ export function companionProxy(): RequestHandler {
       next();
     };
 
-    void resolveCompanionOrigin(req)
-      .then((origin) => {
-        if (!origin) return serveLocally();
+    void resolveCompanionRouting(req)
+      .then(({ origin, staleHostname }) => {
+        if (!origin) {
+          // A STALE companion (heartbeat gone quiet) used to fall through
+          // to this process for everything — including /integrations/*,
+          // whose whole point is reaching upstreams only the user's own
+          // network can see. The cloud answered with confidently wrong
+          // (empty) provider data instead of an error (audit #238,
+          // BL-001/2). Provider routes now fail the same honest way a
+          // dead tunnel does; the client already turns this code into a
+          // single "Companion offline" toast. Cloud-authoritative routes
+          // (goals, specs, inputs…) keep serving.
+          if (
+            staleHostname &&
+            (req.originalUrl || req.url || "").startsWith("/api/v1/integrations/")
+          ) {
+            res.status(502).json({
+              error: {
+                code: "companion_unreachable",
+                message: `Your companion (${staleHostname}) hasn't checked in for a while, and this data only exists on its side of the VPN. Open the desktop app to resume.`,
+              },
+            });
+            return;
+          }
+          return serveLocally();
+        }
         logger.debug(
           { method: req.method, path: req.path, origin },
           "[companion-proxy] routing to companion",
