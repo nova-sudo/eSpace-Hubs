@@ -21,6 +21,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { Button } from "@/components/ui";
 import { useHubLink } from "@/features/hubs";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
 import { useAllGoalInputs } from "@/features/goal-inputs";
@@ -47,27 +48,19 @@ function usePaneWidth() {
   return [ref, width];
 }
 
+/** Toolbar toggle — the shared Button, `active` picks the filled variant. */
 function TitleBarButton({ onClick, active, children, ...rest }) {
   return (
-    <button
+    <Button
       type="button"
+      size="sm"
+      variant={active ? "primary" : "ghost"}
       onClick={onClick}
-      className="whitespace-nowrap rounded-[var(--radius-sub)] border px-2.5 py-1.5"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 10,
-        fontWeight: 700,
-        textTransform: "uppercase",
-        letterSpacing: "0.6px",
-        cursor: "pointer",
-        borderColor: active ? "var(--accent)" : "var(--border)",
-        background: active ? "var(--accent)" : "transparent",
-        color: active ? "var(--accent-on)" : "var(--muted-fg)",
-      }}
+      className={active ? "" : "text-muted-fg"}
       {...rest}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 

@@ -46,21 +46,26 @@ what a feature is allowed to import from.
 
 | Feature | Route |
 |---|---|
-| `intelligence` | `/` (Goal Intelligence Hub — Dev home) |
-| `dashboard` | legacy perf bento (retired from nav; slated for removal) |
-| `evidence` | `/evidence` |
-| `checkin` | `/checkin` |
-| `settings` | `/settings` |
-| `pr-reviews` | `/pr-reviews` |
-| `goals` | `/goals` |
+| `intelligence` | `/[hub]` (Goal Intelligence Hub — Dev home) |
+| `goals` | `/[hub]/goals` (goals tree + evidence tiles + AI-tracked widgets; `goals-page/`) |
+| `goals-flow` | `/[hub]/goals-v2` (flow-map preview, reachable via ⌘K) |
+| `evidence` | `/[hub]/evidence` |
+| `settings` | `/[hub]/settings` |
+| `pr-reviews` | `/[hub]/reviews` |
+| `snapshots` | `/[hub]/snapshots` (also a shared domain — the store) |
 | `onboarding` | `/onboarding` |
+| `landing` | `/` signed-out (root gate → landing or hub redirect) |
 | `chat` | overlay |
+
+Hub-specific pages (manager / admin / qa surfaces) live under `src/hubs/<hub>/`,
+not `src/features/`. The legacy perf dashboard (`features/dashboard`) and the
+check-in slice are gone; `/[hub]/checkin` only redirects old bookmarks.
 
 **Shared domains** — cross-cutting data, hooks, or logic consumed by many surfaces:
 
 `auth` · `hubs` · `integrations` · `goal-specs` · `goal-inputs` · `goal-context`
-· `goal-tiers` · `snapshots` · `grading` · `goal-widgets` · `goal-editors`
-· `goal-locks`
+· `goal-tiers` · `goal-locks` · `goal-widgets` · `goal-editors` · `snapshots`
+· `grading` · `notifications` · `date-range`
 
 **Platform utilities** — infrastructure helpers with no page of their own:
 
@@ -77,113 +82,64 @@ Import rules by category:
 - ❌ Any deep cross-feature path — the architecture-boundaries test enforces this
 
 ```
-src/
+apps/web/src/
 ├── app/                              # Next.js App Router — thin.
-│   ├── layout.jsx                    # Loads fonts, mounts <Toaster>.
-│   ├── page.jsx                      # → <DashboardPage />
-│   ├── evidence/page.jsx             # → <EvidencePage />
-│   ├── snapshots/page.jsx            # → <SnapshotsPage />
-│   ├── settings/page.jsx             # → <SettingsPage />
-│   ├── onboarding/page.jsx           # → <OnboardingPage />
-│   ├── oauth/github/                 # OAuth callback (client component)
-│   ├── api/                          # Stateless API proxies
-│   │   ├── jira/[...path]/route.js
-│   │   ├── gitlab/[...path]/route.js
-│   │   ├── github/[...path]/route.js
-│   │   └── oauth/github/exchange/route.js
+│   ├── layout.jsx                    # Fonts, no-flash theme script, <Toaster>
+│   ├── page.jsx                      # → <RootGate /> (landing or hub redirect)
+│   ├── [hub]/                        # Every product page is hub-prefixed
+│   │   ├── page.jsx                  # dev → Intelligence · manager → Team · admin/qa → Overview
+│   │   ├── goals/ · goals-v2/ · evidence/ · snapshots/ · reviews/ · settings/
+│   │   ├── employees/ · delegated/ · approvals/ · tier-policies/   # manager
+│   │   ├── users/ · audit/ · hub-config/                            # admin
+│   │   └── checkin/                  # redirect only (retired slice)
+│   ├── onboarding/ · login/ · oauth/github/
 │   └── globals.css                   # Design tokens + Tailwind theme mapping
+├── pages/api/v1/[...path].ts         # API catch-all (bundled topology / companion routing)
 │
 ├── components/
 │   ├── ui/                           # Presentational primitives. No logic.
-│   │   ├── bento-tile.jsx
 │   │   ├── button.jsx                # The ONE button — all CTAs use it
-│   │   ├── card.jsx
-│   │   ├── checkbox.jsx
-│   │   ├── delta.jsx
-│   │   ├── dither-field.jsx          # Dither + DitherDisc + DitherBars
-│   │   ├── grain.jsx                 # Page noise overlay
 │   │   ├── input.jsx                 # Input + Field
-│   │   ├── mono-label.jsx
-│   │   ├── page-header.jsx           # Editorial H1 w/ italic-serif accent
-│   │   ├── pill.jsx
-│   │   ├── section.jsx               # "01 / Something" section header
-│   │   ├── sparkline.jsx
-│   │   ├── star-glyph.jsx
-│   │   ├── stat.jsx
+│   │   ├── use-focus-trap.js         # Dialog focus trap
+│   │   ├── bento-tile · card · pill · mono-label · page-header · section
+│   │   ├── sparkline · line-spark · bars · dither-field · grain · loader …
 │   │   └── index.js                  # Barrel — always import from here
-│   └── shell/                        # Page chrome (header, footer, grain)
-│       ├── app-shell.jsx             # Composes the whole frame
-│       ├── header.jsx
-│       ├── footer.jsx
-│       └── logo-mark.jsx             # Hex-dot SVG logo
+│   └── shell/                        # Header (hamburger < md, ⌘K chip), footer, app-shell
 │
-├── features/                         # Domain slices. Each is self-contained.
-│   ├── integrations/                 # Cross-cutting — the provider layer.
-│   │   ├── providers.js              # PROVIDERS metadata
-│   │   ├── integrations-store.js     # localStorage CRUD (no React)
-│   │   ├── use-integrations.js       # React hook over the store
-│   │   ├── api-clients/              # One file per provider (jira/gitlab/github)
-│   │   │   ├── proxy-fetch.js        # Shared transport → /api/{provider}/...
-│   │   │   ├── jira.js · gitlab.js · github.js
-│   │   │   └── index.js
-│   │   ├── hooks/                    # SWR hooks — one per resource
-│   │   │   ├── use-swr-if.js         # Conditional SWR wrapper
-│   │   │   ├── use-jira-tickets.js
-│   │   │   ├── use-gitlab-open-mrs.js
-│   │   │   ├── use-gitlab-merged.js
-│   │   │   ├── use-gitlab-events.js
-│   │   │   ├── use-github-pulls.js
-│   │   │   └── index.js
-│   │   ├── metrics/                  # Pure derivations. No React, no IO.
-│   │   │   ├── merged.js · turnaround.js · rounds.js
-│   │   │   ├── linkage.js · reviews.js · activity.js
-│   │   │   ├── attention.js
-│   │   │   └── index.js
-│   │   └── index.js                  # Public surface
-│   │
-│   ├── dashboard/
-│   │   ├── dashboard-page.jsx
-│   │   ├── hero.jsx
-│   │   ├── attention-band.jsx
-│   │   ├── tiles/                    # One file per bento tile (12 total)
-│   │   │   ├── integrations-tile.jsx · merged-tile.jsx
-│   │   │   ├── rounds-tile.jsx · linkage-tile.jsx
-│   │   │   ├── tickets-tile.jsx · prs-tile.jsx
-│   │   │   ├── activity-tile.jsx · turnaround-tile.jsx
-│   │   │   ├── reviews-tile.jsx · snapshots-tile.jsx
-│   │   │   ├── export-tile.jsx · commits-tile.jsx
-│   │   │   └── index.js
-│   │   └── index.js
-│   │
-│   ├── evidence/
-│   │   ├── evidence-page.jsx
-│   │   ├── config-panel.jsx · document-preview.jsx · evidence-picker.jsx
-│   │   ├── evidence-store.js · use-evidence.js
-│   │   ├── markdown-export.js        # Pure renderer + download helpers
-│   │   └── index.js
-│   │
-│   ├── snapshots/
-│   │   ├── snapshots-page.jsx · trend-chart.jsx
-│   │   ├── snapshots-store.js · use-snapshots.js
-│   │   └── index.js
-│   │
-│   ├── settings/
-│   │   ├── settings-page.jsx · token-forms.jsx
-│   │   ├── tabs/                     # integrations · account · snapshots-prefs · danger
-│   │   └── index.js
-│   │
-│   └── onboarding/
-│       ├── onboarding-page.jsx · wizard.jsx
-│       ├── dashboard-preview.jsx · value-props.jsx
-│       └── index.js
+├── hubs/                             # Hub-specific pages (NOT features)
+│   ├── dev/ · manager/ · admin/ · qa/
+│   └── dashboard-registry.jsx        # slot → component
+│
+├── features/                         # Domain slices — see "Feature categories"
+│   ├── intelligence/                 # Dev home: focus hero, health grid, action queue
+│   ├── goals/                        # Goals editor, import, past cycles, goals-page/ (route body)
+│   ├── goals-flow/                   # Flow-map preview (/goals-v2)
+│   ├── evidence/                     # Evidence board, document builder, .md/.pdf export, pdf/
+│   ├── snapshots/                    # Store + page + capture-readings (per-goal readings) + compliance summary
+│   ├── goal-specs/ · goal-inputs/ · goal-context/ · goal-locks/ · goal-tiers/
+│   ├── goal-widgets/                 # Widget resolver, data-sources/use-data-source (provenance), cadence stepper
+│   ├── goal-editors/ · grading/ · notifications/ · date-range/
+│   ├── integrations/                 # Provider layer: api-clients/, hooks/ (SWR), metrics/ (pure), refresh.js
+│   ├── analyst/ · command-palette/ · companion/ · migrate/ · prefs/
+│   ├── auth/ · hubs/ · landing/ · onboarding/ · settings/ · pr-reviews/ · chat/
+│   └── architecture-boundaries.test.js  # Enforces barrel-only cross-feature imports
 │
 └── lib/                              # Framework-agnostic helpers.
-    ├── cn.js                         # classname merge (tailwind-merge + clsx)
-    ├── date.js                       # weekLabel, isoDaysAgo, shortDate, ...
-    ├── fmt.js                        # fmtNumber, fmtDays, fmtPct, fmtRelative
-    ├── oauth-pkce.js                 # GitHub OAuth starter
-    └── regex.js                      # JIRA_KEY_RE
+    ├── api-client.js                 # fetch wrapper: 401 redirect, companion-offline toast
+    ├── cn.js · date.js (weekNumber, dueStatus, …) · fmt.js · regex.js (hasJiraKey)
+    └── oauth-pkce.js
+
+apps/api/src/
+├── modules/<name>/{routes,controller,schemas}.ts   # one Express module per resource
+├── scheduler/                        # Hourly jobs: nudges, digest, weekly snapshots (idempotent via scheduler_stamps)
+├── middleware/                       # session, require-auth/-capability/-role, companion-proxy, rate-limit
+├── lib/                              # email, notifications, audit, goal-tier-policies, companion-routing …
+└── db/                               # collections.ts (accessors + indexes), schemas/ ($jsonSchema validators), types.ts
 ```
+
+The landing page (`features/landing`) deliberately ships its own scoped
+dark-only palette under `.lp` — it's a marketing surface, not a themed app
+screen; don't "fix" it onto the app tokens.
 
 ## Rules of the road
 
@@ -270,19 +226,19 @@ npm run dev                  # http://localhost:3000
 
 | Feature | Live data | Source |
 |---|---|---|
-| Dashboard tickets | ✅ | Jira `/search/jql` |
-| Dashboard PRs (mine + review) | ✅ | GitLab `merge_requests` + GitHub search |
-| Merged this week + trend | ✅ | GitLab `merge_requests?state=merged` |
-| Turnaround histogram | ✅ | Derived from merged MRs |
-| Linkage % | ✅ | Regex over merged MR titles/descriptions |
-| Reviewer comments | ✅ | `user_notes_count` on merged MRs |
-| Reviews given | ✅ | GitLab `/events?action=commented` |
-| Activity timeline | ✅ | GitLab `/events` bucketed daily |
-| Recent commits | ✅ | GitLab `/events?action=pushed` |
-| Attention band | ✅ | Derived from open MRs + Jira tickets |
-| Snapshots | ✅ server-persisted | Auto-captured on dashboard visit + manual "Snapshot now" |
-| Evidence export (.md) | ✅ | Client-side renderer → blob download |
-| Evidence export (.pdf) | ✅ | `@react-pdf/renderer` (dynamically imported) — `features/evidence/pdf/` |
+| AUTO goal widgets (merged count, review rounds, turnaround, linkage, first-pass rate) | ✅ | GitLab `merge_requests` + GitHub search, YTD, per-spec repo filter; GitHub review comments hydrated for the 30 most recent PRs |
+| Ticket cycle time | ⚠️ sample | Jira `/search/jql` — 50 most-recently-updated, resolved >90d excluded (provenance chip says so) |
+| CI/CD widgets (deploy freq, lead time, pass rate) | ⚠️ last 100 | Jenkins / GitHub Actions, capped at 100 builds |
+| Manual widgets (counter, scale, date log, incidents, composed…) | ✅ | `goal_inputs` via API, cadence windows from `goal-inputs/cadence-windows.js` |
+| Tier grading | ✅ | AI verdicts (`goal_tier_verdicts`) · manager verdicts outrank · manager tier POLICIES by Goal Code, scoped per year |
+| Snapshots | ✅ server-persisted | Captured on dashboard visit + "Snapshot now"; the API scheduler freezes unvisited weeks (manual trackers only, `partial: true`) |
+| Scheduler | ✅ | `apps/api/src/scheduler/` — hourly: due/overdue/stale nudges, approval waits, Monday digest email, weekly snapshots |
+| Notifications | ✅ | Inbox rows + 90s bell poll + email (Resend, log-mode without a key); rows deep-link |
+| Review packets | ✅ | Frozen markdown per submission; managers read + download; latest headline shows on the team board |
+| Cycle archives | ✅ | Replace-import freezes the tree + a per-goal report card (`goal_cycles`); "Past cycles" viewer |
+| Evidence export (.md / .pdf) | ✅ | Client renderer → blob; `@react-pdf/renderer` (dynamic import) |
+| Companion (Crealogix) | ✅ | Desktop app tunnels `/integrations/*`; a stale heartbeat now 502s provider routes instead of serving cloud data |
+| Performance cycles model | ✗ by convention | Cycle = calendar year everywhere (#227); no `performance_cycles` collection |
 
 ## Open questions
 

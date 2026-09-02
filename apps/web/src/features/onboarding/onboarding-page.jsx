@@ -45,6 +45,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { apiPost } from "@/lib/api-client";
+import { Button, Input } from "@/components/ui";
 import { useSession } from "@/features/auth";
 import { resetHubsStore } from "@/features/hubs";
 import { CompanionGateStep } from "./companion-gate-step.jsx";
@@ -214,13 +215,12 @@ export function OnboardingPage() {
               label="Display name"
               hint="What we'll call you in the chrome."
             >
-              <input
+              <Input
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Your name"
                 autoComplete="name"
-                className="w-full rounded-[var(--radius-sub)] border border-border-strong bg-card px-3.5 py-3 text-[14.5px] text-fg outline-none transition-colors placeholder:text-dim-fg focus:border-accent"
               />
             </OnboardingField>
 
@@ -228,13 +228,11 @@ export function OnboardingPage() {
               label="Employee ID"
               hint="Whatever your HR system calls it. Zoho will overwrite this later if it differs."
             >
-              <input
+              <Input
                 type="text"
                 value={employeeId}
                 onChange={(e) => setEmployeeId(e.target.value)}
                 placeholder="e.g. EMP-1042"
-                className="w-full rounded-[var(--radius-sub)] border border-border-strong bg-card px-3.5 py-3 text-[13px] text-fg outline-none transition-colors placeholder:text-dim-fg focus:border-accent"
-                style={{ fontFamily: "var(--font-mono)" }}
               />
             </OnboardingField>
 
@@ -266,28 +264,18 @@ export function OnboardingPage() {
                   );
                 })}
               </div>
-              <input
+              <Input
                 type="text"
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
                 placeholder="e.g. QA"
-                className="w-full rounded-[var(--radius-sub)] border border-border-strong bg-card px-3.5 py-3 text-[14.5px] text-fg outline-none transition-colors placeholder:text-dim-fg focus:border-accent"
               />
             </OnboardingField>
 
             <div className="mt-1.5 flex items-center gap-3.5">
-              <button
-                type="submit"
-                disabled={submitting}
-                className="rounded-[var(--radius-sub)] px-[22px] py-3 text-[11px] font-bold uppercase tracking-[1px] transition-opacity disabled:opacity-60"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  background: "var(--accent)",
-                  color: "var(--accent-on)",
-                }}
-              >
+              <Button type="submit" size="lg" disabled={submitting}>
                 {submitting ? "Saving…" : "Continue →"}
-              </button>
+              </Button>
             </div>
           </form>
         </div>

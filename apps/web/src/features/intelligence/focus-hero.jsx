@@ -13,7 +13,7 @@
  */
 
 import { useState } from "react";
-import { Pill } from "@/components/ui";
+import { Button, Pill } from "@/components/ui";
 import { SPEC_KIND_META, specCadence } from "@/features/goal-specs";
 import { cadenceWindowLabel } from "@/features/goal-inputs";
 import { readinessLabel, GoalWidgetModal } from "@/features/goal-widgets";
@@ -211,39 +211,19 @@ export function FocusHero({ card }) {
           )}
 
           <div className="mt-6 flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setModalOpen(true)}
-              className="rounded-[11px] uppercase tracking-[1px] transition-[filter] hover:brightness-110"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 12,
-                fontWeight: 700,
-                color: "var(--accent-on)",
-                background: "var(--accent)",
-                border: "1px solid var(--accent)",
-                padding: "15px 26px",
-              }}
-            >
+            <Button size="lg" onClick={() => setModalOpen(true)}>
               {needsSetup ? "Set up →" : "Fill →"}
-            </button>
+            </Button>
 
             {canSkip ? (
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="lg"
                 onClick={() => skipWindow(goal, windowKey)}
-                className="rounded-[11px] uppercase tracking-[0.8px] text-muted-fg transition-colors hover:text-fg"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
-                  background: "transparent",
-                  border: "1px solid var(--border-strong)",
-                  padding: "15px 18px",
-                }}
                 title="Nothing to report this period — settle it and move on"
               >
                 Skip for now
-              </button>
+              </Button>
             ) : null}
           </div>
         </div>

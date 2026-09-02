@@ -6,6 +6,8 @@
  * document builder. Goal-oriented — no integration tallies.
  */
 
+import { Button } from "@/components/ui";
+
 const ROWS = [
   { key: "onTrack", label: "On track", color: "var(--good)" },
   { key: "inProgress", label: "In progress", color: "var(--accent)" },
@@ -57,22 +59,9 @@ export function EvidenceSummary({ rangeLabel, summary, onCompile, loading }) {
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={onCompile}
-        className="rounded-[11px] uppercase tracking-[1px] transition-[filter] hover:brightness-110"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 12,
-          fontWeight: 700,
-          color: "var(--accent-on)",
-          background: "var(--accent)",
-          border: "1px solid var(--accent)",
-          padding: 15,
-        }}
-      >
+      <Button size="lg" className="w-full" onClick={onCompile}>
         Compile into review →
-      </button>
+      </Button>
     </div>
   );
 }
