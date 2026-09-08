@@ -42,6 +42,7 @@ import { goalInputsRouter } from "./modules/goal-inputs/routes.js";
 import { snapshotsRouter } from "./modules/snapshots/routes.js";
 import { gradingVerdictsRouter } from "./modules/grading-verdicts/routes.js";
 import { evidenceRouter } from "./modules/evidence/routes.js";
+import { goalEvidenceRouter } from "./modules/goal-evidence/routes.js";
 import { integrationsRouter } from "./modules/integrations/routes.js";
 import { migrateRouter } from "./modules/migrate/routes.js";
 import { hubsRouter } from "./modules/hubs/routes.js";
@@ -49,6 +50,7 @@ import { hubConfigsRouter } from "./modules/hub-configs/routes.js";
 import { onboardingRouter } from "./modules/onboarding/routes.js";
 import { adminRouter } from "./modules/admin/routes.js";
 import { managerRouter } from "./modules/manager/routes.js";
+import { myReportsRouter } from "./modules/my-reports/routes.js";
 import { notificationsRouter } from "./modules/notifications/routes.js";
 import { goalVerdictsRouter } from "./modules/goal-verdicts/routes.js";
 import { tierPoliciesRouter } from "./modules/tier-policies/routes.js";
@@ -163,6 +165,9 @@ export function buildApp(): Application {
   app.use("/api/v1/snapshots", snapshotsRouter);
   app.use("/api/v1/grading-verdicts", gradingVerdictsRouter);
   app.use("/api/v1/evidence", evidenceRouter);
+  // Evidence FILES (GridFS) attached to a goal period — distinct from
+  // /evidence, which stars links to existing artifacts.
+  app.use("/api/v1/goal-evidence", goalEvidenceRouter);
   app.use("/api/v1/integrations", integrationsRouter);
   app.use("/api/v1/migrate", migrateRouter);
   app.use("/api/v1/hubs", hubsRouter);
@@ -170,6 +175,9 @@ export function buildApp(): Application {
   app.use("/api/v1/onboarding", onboardingRouter);
   app.use("/api/v1/admin", adminRouter);
   app.use("/api/v1/manager", managerRouter);
+  // A team lead's own minimal read of their direct reports, authorised by the
+  // managerId link alone — no manager-hub capability. See the module header.
+  app.use("/api/v1/my-reports", myReportsRouter);
   app.use("/api/v1/notifications", notificationsRouter);
   app.use("/api/v1/goal-verdicts", goalVerdictsRouter);
   app.use("/api/v1/tier-policies", tierPoliciesRouter);

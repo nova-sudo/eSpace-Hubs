@@ -516,6 +516,18 @@ async function ensureIndexes(): Promise<void> {
     },
   ]);
 
+  // GridFS evidence FILES. The bucket's own `files`/`chunks` indexes are
+  // created by the driver on first upload; this one covers the query the app
+  // actually makes — "what's attached to this goal, for this user" — which
+  // reads metadata the driver knows nothing about.
+  const db = await getDb();
+  await db
+    .collection("goal_evidence.files")
+    .createIndex(
+      { "metadata.orgId": 1, "metadata.userId": 1, "metadata.goalId": 1, uploadDate: -1 },
+      { name: "goal_evidence_org_user_goal" },
+    );
+
   // ─── M6 collection ────────────────────────────────────────────────
 
   const integrations = await getIntegrationsCollection();
