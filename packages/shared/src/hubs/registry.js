@@ -55,10 +55,10 @@ export const ALL_PROVIDERS = Object.freeze(["github", "gitlab", "jira", "jenkins
 export const PAGE_SLOTS = Object.freeze([
   "dashboard",
   "goals",
-  // Dev-only flow-map preview of Goals (phased build; reachable from
-  // the Goals page header). #239: this and tierpolicies were used in
-  // hub `pages` maps but missing here — the contract list must cover
-  // every slot a hub actually registers.
+  // Vestigial: the flow map graduated to being the `goals` page itself, so
+  // /[hub]/goals-v2 is now just a redirect and doesn't gate on this slot.
+  // Kept because dev's `pages` map still registers it and stored hub configs
+  // may reference it — the contract list must cover every registered slot.
   "goalsv2",
   "evidence",
   "snapshots",

@@ -47,8 +47,8 @@ what a feature is allowed to import from.
 | Feature | Route |
 |---|---|
 | `intelligence` | `/[hub]` (Goal Intelligence Hub — Dev home) |
-| `goals` | `/[hub]/goals` (goals tree + evidence tiles + AI-tracked widgets; `goals-page/`) |
-| `goals-flow` | `/[hub]/goals-v2` (flow-map preview, reachable via ⌘K) |
+| `goals-flow` | `/[hub]/goals` (the flow map — L1 cards → L2 rows, expand in place) |
+| `goals` | goals editor / import / past cycles (mounted in Settings → Onboarding). `goals-page/` is the pre-cutover two-section page — kept, no longer routed. |
 | `evidence` | `/[hub]/evidence` |
 | `settings` | `/[hub]/settings` |
 | `pr-reviews` | `/[hub]/reviews` |
@@ -88,7 +88,7 @@ apps/web/src/
 │   ├── page.jsx                      # → <RootGate /> (landing or hub redirect)
 │   ├── [hub]/                        # Every product page is hub-prefixed
 │   │   ├── page.jsx                  # dev → Intelligence · manager → Team · admin/qa → Overview
-│   │   ├── goals/ · goals-v2/ · evidence/ · snapshots/ · reviews/ · settings/
+│   │   ├── goals/ (flow map) · goals-v2/ (redirect) · evidence/ · snapshots/ · reviews/ · settings/
 │   │   ├── employees/ · delegated/ · approvals/ · tier-policies/   # manager
 │   │   ├── users/ · audit/ · hub-config/                            # admin
 │   │   └── checkin/                  # redirect only (retired slice)
@@ -112,8 +112,8 @@ apps/web/src/
 │
 ├── features/                         # Domain slices — see "Feature categories"
 │   ├── intelligence/                 # Dev home: focus hero, health grid, action queue
-│   ├── goals/                        # Goals editor, import, past cycles, goals-page/ (route body)
-│   ├── goals-flow/                   # Flow-map preview (/goals-v2)
+│   ├── goals/                        # Goals editor, import, past cycles, goals-page/ (unrouted)
+│   ├── goals-flow/                   # The Goals page (/goals) — flow map
 │   ├── evidence/                     # Evidence board, document builder, .md/.pdf export, pdf/
 │   ├── snapshots/                    # Store + page + capture-readings (per-goal readings) + compliance summary
 │   ├── goal-specs/ · goal-inputs/ · goal-context/ · goal-locks/ · goal-tiers/

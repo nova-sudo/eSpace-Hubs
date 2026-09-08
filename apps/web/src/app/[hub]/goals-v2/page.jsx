@@ -1,26 +1,22 @@
 "use client";
 
 /**
- * /[hub]/goals-v2 — flow-map preview of the Goals page (Phase 1).
- *
- * Dev-hub only, and deliberately NOT in the nav — reachable only by direct
- * URL while this is being built out in phases. See
- * docs/plans (design handoff) for the full design; `features/goals-flow`
- * for the implementation phases.
+ * /[hub]/goals-v2 — RETIRED as a separate route. The flow map graduated from
+ * preview to being the Goals page itself, so this only redirects the links
+ * and bookmarks that pointed at the preview.
  */
 
-import { AppShell } from "@/components/shell/app-shell";
-import { useHubSlotGuard } from "@/features/hubs";
-import { GoalsFlowPage } from "@/features/goals-flow";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useHubLink } from "@/features/hubs";
 
 export const dynamic = "force-dynamic";
 
 export default function Page() {
-  const exposed = useHubSlotGuard("goalsv2");
-  if (!exposed) return null;
-  return (
-    <AppShell>
-      <GoalsFlowPage />
-    </AppShell>
-  );
+  const link = useHubLink();
+  const router = useRouter();
+  useEffect(() => {
+    router.replace(link("/goals"));
+  }, [router, link]);
+  return null;
 }

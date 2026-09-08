@@ -4,9 +4,11 @@ Design source: the `design_handoff_goals_flow_map` bundle (`README.md`,
 `FEATURE_PARITY.md`, `AUDIT_PASS1.md`, `PASS2_RESOLUTIONS.md`,
 `Goals Map.dc.html`), reviewed against `nova-sudo/eSpace-Hubs@main`.
 
-Route: `/[hub]/goals-v2`, dev-hub only, gated by the `goalsv2` hub slot,
-**not in the nav** — reachable only by direct URL. `/[hub]/goals` (the
-current two-section page) is completely untouched.
+Route: **`/[hub]/goals`** — cut over. The flow map is the Goals page for
+every hub that exposes the `goals` slot (dev, qa), in the nav and behind
+`HubSlotGate slot="goals"`. `/[hub]/goals-v2` now only redirects here.
+The old two-section page (`features/goals/goals-page/`) is kept but
+unrouted; reverting is swapping one component in the route file.
 
 ## What's built (Phases 1–8)
 
@@ -68,20 +70,21 @@ the mockup's actual behavior.
   a new per-goal classify action — there's no existing per-goal classify
   entry point elsewhere in the app to point to instead.
 
-## Before cutover (flipping `/goals` → this page)
+## Cutover — done, with these still open
 
-1. Live walkthrough against the testing checklist (separate doc).
-2. Decide whether the visual-fidelity gap above needs closing first, or
-   ships as a v1 with a follow-up polish pass.
-3. Decide the sub-800px stacked-layout treatment — Phase 1's `layoutFlow`
-   doesn't yet implement a distinct narrow-width mode (the original
-   handoff explicitly left this "not yet designed"; the current page
-   just lets the canvas's own `minCanvas` floor create horizontal scroll
-   below ~560px content width, which is not the same as a real stacked
-   fallback).
-4. Retire, per `FEATURE_PARITY.md` §C: the structured tree tile, the
-   two-section scroll-snap shell, the section rail/counter, the 3-column
-   widget grid — only once this page is confirmed as the replacement, not
-   before.
-5. Add the route to nav and remove the `/goals-v2` "not yet linked"
-   posture.
+The route swap shipped (`/goals` renders this page; `/goals-v2` redirects;
+the ⌘K "preview" entry folded into the plain Goals entry). What the
+pre-cutover checklist listed as prerequisites and what's now follow-up:
+
+1. Live walkthrough against the testing checklist (separate doc) — still
+   worth doing against the real route.
+2. The visual-fidelity gap above ships as v1; the polish pass to the
+   mockup's bespoke expanded-row layout is a follow-up.
+3. Sub-800px stacked layout is still undesigned — `layoutFlow` has no
+   distinct narrow-width mode, so below ~560px content width the canvas's
+   `minCanvas` floor produces horizontal scroll rather than a real stacked
+   fallback. Highest-priority follow-up now that this is the main page.
+4. Not yet retired, per `FEATURE_PARITY.md` §C: the structured tree tile,
+   the two-section scroll-snap shell, the section rail/counter, the
+   3-column widget grid. The code is unrouted, not deleted — delete once
+   this page is confirmed in use.

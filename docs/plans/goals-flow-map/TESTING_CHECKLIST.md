@@ -1,6 +1,6 @@
 # Goals flow map — live testing checklist
 
-Route: `/[hub]/goals-v2` on the **dev hub**, logged in as a dev-hub user
+Route: `/[hub]/goals` on the **dev hub**, logged in as a dev-hub user
 with a classified goal tree (mix of widget kinds, at least one unclassified
 L2, at least one cadenced goal that's currently owed, ideally one that's
 manager-governed via `/manager/tier-policies`).
@@ -130,8 +130,10 @@ BEFORE_AFTER, an AUTO kind like MERGED_COUNT):
 
 - [ ] Nothing about this work changed `/[hub]/goals` itself — spot check
       it still looks and behaves exactly as before.
-- [ ] `/[hub]/goals-v2` is NOT reachable from the nav — only by typing the
-      URL directly.
+- [ ] The header nav's **Goals** entry lands on this page, and `/[hub]/goals-v2`
+      redirects here rather than rendering a second copy.
+- [ ] `/manager/goals` and `/admin/goals` still 404/redirect via the slot gate
+      (those hubs don't expose the `goals` slot).
 
 ## Known gaps to expect (not bugs — see STATUS.md)
 

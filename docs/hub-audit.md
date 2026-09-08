@@ -227,7 +227,8 @@ Verified across all 17 route files under `apps/web/src/app/[hub]/`:
 | `evidence/page.jsx` | ❌ **none** |
 | `checkin/page.jsx`, `checkin/grid/page.jsx` | ❌ none (retired routes) |
 | `settings/page.jsx` | ❌ none (intentional — every hub has settings) |
-| everything else (`users`, `audit`, `employees`, `delegated`, `approvals`, `tier-policies`, `hub-config`, `snapshots`, `reviews`, `goals-v2`) | ✅ guarded |
+| `goals-v2/page.jsx` | ❌ none (retired route — redirects to `/goals`) |
+| everything else (`users`, `audit`, `employees`, `delegated`, `approvals`, `tier-policies`, `hub-config`, `snapshots`, `reviews`) | ✅ guarded |
 
 The manager hub's `pages` map has no `goals` and no `evidence` key; the admin
 hub has neither either. So `/manager/evidence`, `/manager/goals`,

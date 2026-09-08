@@ -18,15 +18,12 @@
 
 const ROUTES = [
   { label: "Performance", path: "/", keywords: ["dashboard", "home", "main", "metrics"] },
-  { label: "Goals", path: "/goals", keywords: ["objectives", "tracking", "ai", "tree"] },
-  // #239: the flow-map preview shipped with ZERO entry points — now
-  // reachable here (the ⌘K chip in the header makes the palette itself
-  // discoverable) while it stays out of the main nav during the phased
-  // build.
   {
-    label: "Goals flow map (preview)",
-    path: "/goals-v2",
-    keywords: ["flow", "map", "v2", "canvas", "preview"],
+    label: "Goals",
+    path: "/goals",
+    // The flow map IS the Goals page now (the /goals-v2 preview route only
+    // redirects here), so its old preview-only keywords ride along.
+    keywords: ["objectives", "tracking", "ai", "tree", "flow", "map", "canvas"],
   },
   {
     label: "Evidence",

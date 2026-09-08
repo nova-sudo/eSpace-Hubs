@@ -20,3 +20,8 @@ export {
   GOALS_SCHEMA_VERSION,
 } from "./goals-store";
 export { parseImportFile, mergeImport } from "./import-parser";
+
+// Pre-cutover Goals page (tree tile + evidence strip + widget grid).
+// `/[hub]/goals` renders the flow map (`features/goals-flow`) now; this stays
+// exported so the route swap is reversible in one line.
+export { GoalsPage } from "./goals-page/goals-page";
