@@ -292,6 +292,10 @@ export interface SpecComposedPeriod {
   dueAt?: string;
   prompt?: string;
   fields?: SpecField[];
+  /** What the source document said this period is FOR. Display-only. */
+  detail?: SpecDetail;
+  /** Risks/notes attached to THIS period. Plan-wide ones live on SpecComposed. */
+  notes?: SpecNote[];
   /**
    * A whole second cadence living INSIDE this one window (a quarter
    * containing weeks, each with their own form). Recursive — `nested` can
@@ -301,6 +305,52 @@ export interface SpecComposedPeriod {
    * pre-existing COMPOSED spec.
    */
   nested?: SpecComposed;
+}
+
+export const SPEC_NOTE_KINDS: readonly ["note", "risk"];
+export type SpecNoteKind = (typeof SPEC_NOTE_KINDS)[number];
+
+export const SPEC_NOTE_LEVELS: readonly ["low", "medium", "high"];
+export type SpecNoteLevel = (typeof SPEC_NOTE_LEVELS)[number];
+
+export const DETAIL_MAX_ACTIVITIES: number;
+export const DETAIL_MAX_DELIVERABLES: number;
+export const NOTES_MAX: number;
+
+/**
+ * One named artifact a period must produce. `label` is what it is; `format`
+ * and `criteria` are how it has to look — the "documented team norms, as
+ * AGENTS.md in the repo" half of a plan that a bare label throws away.
+ */
+export interface SpecDeliverable {
+  label: string;
+  format?: string;
+  criteria?: string;
+}
+
+/**
+ * A period's narrative context, carried verbatim from the source document.
+ * Display-only by design: it never reaches the grader, so adding it can't
+ * change what any tier means.
+ */
+export interface SpecDetail {
+  focus?: string;
+  activities?: string[];
+  deliverables?: SpecDeliverable[];
+}
+
+/**
+ * Qualitative content that is real but not trackable as a field — a risks and
+ * mitigations table being the case this exists for. `likelihood`/`impact`/
+ * `mitigation` are only meaningful when `kind` is "risk".
+ */
+export interface SpecNote {
+  kind: SpecNoteKind;
+  label: string;
+  body?: string;
+  likelihood?: SpecNoteLevel;
+  impact?: SpecNoteLevel;
+  mitigation?: string;
 }
 
 /** The cadence + prompt frame around a COMPOSED widget's fields. */
@@ -330,6 +380,18 @@ export interface SpecComposed {
    * the identical role there.
    */
   fields?: SpecField[];
+  /**
+   * Plan-level notes — the document's risks/mitigations table, which belongs
+   * to the tracker as a whole rather than to any one window.
+   */
+  notes?: SpecNote[];
+  /**
+   * The management half of a plan whose owner leads people — their own
+   * cadence, periods and deliverables for what they owe their reports, kept
+   * separate from their individual development track rather than interleaved
+   * with it. Only ever present on a top-level block.
+   */
+  management?: SpecComposed;
 }
 
 /** What `resolvePeriodContent`/`resolveNestedPeriodContent` resolve a window to. */
@@ -342,6 +404,10 @@ export interface ResolvedPeriodContent {
   authored: boolean;
   /** The window's nested sub-cadence, if it authored one — see SpecComposedPeriod.nested. */
   nested: SpecComposed | null;
+  /** This window's own narrative context; never inherited from a neighbour. */
+  detail: SpecDetail | null;
+  /** This window's own notes. Plan-level notes are read off the spec instead. */
+  notes: SpecNote[];
 }
 
 /**

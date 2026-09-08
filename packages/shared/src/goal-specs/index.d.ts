@@ -23,6 +23,13 @@ export {
   SINGLE_RECORD_WIDGET_KINDS,
   isSingleRecordWidget,
   SPEC_SCHEMA_VERSION,
+  SPEC_NOTE_KINDS,
+  SPEC_NOTE_LEVELS,
+  DETAIL_MAX_ACTIVITIES,
+  DETAIL_MAX_DELIVERABLES,
+  NOTES_MAX,
+  resolvePeriodContent,
+  resolveNestedPeriodContent,
 } from "./types.js";
 
 export type {
@@ -30,6 +37,13 @@ export type {
   ComposedFieldKind,
   SpecField,
   SpecComposed,
+  SpecComposedPeriod,
+  SpecDetail,
+  SpecDeliverable,
+  SpecNote,
+  SpecNoteKind,
+  SpecNoteLevel,
+  ResolvedPeriodContent,
   SourceMetric,
   SpecVariant,
   SourceProvider,

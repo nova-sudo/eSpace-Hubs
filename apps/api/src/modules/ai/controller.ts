@@ -810,6 +810,20 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   '    "prompt":  <one short line shown above the form>,',
   '    "cycleStart": <OPTIONAL "YYYY-MM-DD" — ONLY with periods. See CYCLE',
   "                    START below. Omit if the document doesn't say>,",
+  "    \"notes\": [<OPTIONAL — the plan's own risks / caveats / guidance that no",
+  "               field can capture. See NOTES AND RISKS below>",
+  "      {",
+  '        "kind": "risk" | "note",',
+  '        "label": <the risk or note itself, one line>,',
+  '        "body": <optional elaboration>,',
+  '        "likelihood": "low"|"medium"|"high",  (risks only)',
+  '        "impact": "low"|"medium"|"high",      (risks only)',
+  '        "mitigation": <what the document says to do about it>',
+  "      }",
+  "    ],",
+  '    "management": <OPTIONAL — a WHOLE SECOND composed block (cadence,',
+  "                   prompt, periods, notes) for the part of the plan about",
+  "                   leading people. See MANAGEMENT PLAN below>,",
   '    "periods": [<OPTIONAL — see PER-PERIOD CONTENT below. Omit for a plan',
   "                 where every period asks for the same thing>",
   "      {",
@@ -818,6 +832,11 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   '        "dueAt":  <optional "YYYY-MM-DD">,',
   '        "prompt": <optional, overrides composed.prompt for this period>,',
   '        "fields": <optional, overrides the top-level fields for this period>,',
+  '        "detail": <RECOMMENDED whenever the source says more than a title —',
+  "                    see PERIOD DETAIL below. {focus, activities[],",
+  "                    deliverables[{label, format, criteria}]}>,",
+  '        "notes":  <OPTIONAL risks/notes for THIS period — same shape as',
+  "                    composed.notes below>,",
   '        "nested": <OPTIONAL — see NESTED CADENCES below. A whole SECOND',
   "                    composed block (cadence/prompt/cycleStart/fields/periods)",
   '                    living INSIDE this one window, e.g. weeks inside a quarter>',
@@ -909,19 +928,71 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   "  - Do NOT use it when every period asks for the same thing (\"log hours",
   "    mentored each week\"). A uniform tracker should stay flat — that's",
   "    simpler for the user and identical in behaviour.",
-  "  - BE TERSE. Almost every entry should be `key` + `label` + `dueAt` and",
-  "    nothing else. Add `prompt` only when the instruction genuinely differs",
-  "    from the shared one, and `fields` ONLY when that period captures a",
-  "    different SHAPE of data. Omitted keys inherit the top-level values, so a",
-  "    plan of 13 near-identical weeks should still be 13 SHORT entries.",
-  "    Keep each `label` under ~70 characters: name the deliverable, don't",
-  "    restate the document's sentence about it. Verbosity here is the single",
-  "    biggest cause of a slow reply, and a reply that takes too long is",
-  "    delivered to the user as a failure.",
+  "  - Keep each `label` under ~70 characters — it is a HEADING, not the",
+  "    content: name the period's deliverable, don't restate the document's",
+  "    sentence about it. The document's actual content goes in `detail`",
+  "    (see PERIOD DETAIL), which is where a reader looks for what the week",
+  "    is really about. A short label with a full detail block is the target;",
+  "    a long label with no detail is the failure mode.",
+  "  - Add `prompt` only when the instruction genuinely differs from the shared",
+  "    one. Omitted keys inherit the top-level values.",
+  "  - Add `fields` when that period asks for something the shared fields",
+  "    can't record — including when it names SPECIFIC artifacts. A week whose",
+  '    deliverable is "a team charter plus AGENTS.md and project.md" is served',
+  "    by a field per named artifact (a link or a checkbox each), not by one",
+  '    generic "checkpoint completed" checkbox that cannot tell a finished week',
+  "    from a half-finished one.",
   "  - Requires a cadence. Max 53 entries.",
   "  - This is how a plan with per-period deliverables gets tracked properly",
   "    instead of collapsing to one generic status — if you use it, that",
   "    content is REPRESENTED and does not belong in `unrepresented`.",
+  "",
+  "PERIOD DETAIL (`periods[].detail`) — WHAT THE PERIOD IS FOR:",
+  "  - A tracker that records only that week 1 happened is worthless six",
+  "    months later. `detail` is where the document's own content survives:",
+  '      "detail": {',
+  '        "focus": "AI orientation",',
+  '        "activities": ["Claude 101", "AI Fluency Framework",',
+  '                       "Team kickoff session to align on ways of working"],',
+  '        "deliverables": [',
+  '          { "label": "Team charter",',
+  '            "format": "AGENTS.md + project.md committed to the repo root",',
+  '            "criteria": "Lists the agreed norms and who signed off" },',
+  '          { "label": "Shared memory-bank skeleton" }',
+  "        ]",
+  "      }",
+  "  - Emit it for EVERY period the document describes in more than a title.",
+  "    Take the wording from the document — its focus line, its bullet list of",
+  "    activities, its stated deliverable. Do not invent, summarise away, or",
+  "    merge two periods' content.",
+  "  - `format` and `criteria` are the document's answer to \"what does the",
+  '    finished thing look like?\" — the file it must be, where it lives, what',
+  "    it must contain, who signs it off. Include them WHENEVER the document",
+  "    says so; omit them when it doesn't. This is the difference between a",
+  '    user reading "documented team norms" and knowing what to hand in.',
+  "  - detail is DISPLAY-ONLY: it is shown to the user, never graded. So it",
+  "    costs nothing to be faithful here, and it is not a substitute for",
+  "    `fields` — what the user LOGS still has to be a field.",
+  "  - Detail is not an excuse to skip `fields`, and fields are not an excuse",
+  "    to skip detail. A good period has both.",
+  "",
+  "NOTES AND RISKS (`composed.notes`, `periods[].notes`):",
+  "  - Real documents carry content that is not trackable and not disposable:",
+  '    a risks-and-mitigations table, a constraint ("the team is 4 people"),',
+  "    a caveat about when the approach doesn't apply. Put it here.",
+  '  - A risks table row like "SDD creates too much overhead for small tasks |',
+  '    Likelihood: High | Mitigation: scale ceremony to task size" becomes',
+  '    { "kind": "risk", "label": "SDD creates too much overhead for small',
+  '      tasks", "likelihood": "high", "mitigation": "Scale the ceremony to',
+  '      the size of the task" }.',
+  "  - Plan-wide content goes on `composed.notes`; something that applies to",
+  "    ONE period goes on that period's own `notes`.",
+  "  - Do NOT invent risks the document doesn't state, and do NOT turn a note",
+  "    into a field — asking the user to retype a risk every week is exactly",
+  "    the failure this replaces. Notes are shown behind a small affordance,",
+  "    so they cost the user nothing until they look.",
+  "  - Content you capture in `notes` is REPRESENTED — it does not belong in",
+  "    `unrepresented`.",
   "",
   "CYCLE START (`composed.cycleStart`):",
   "  - When `periods` is used, also set `cycleStart` to the date period 1",
@@ -935,6 +1006,28 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   "    January instead of from Q3 — period 1 lands in the wrong week entirely.",
   "  - Omit it when the document gives no date to anchor on. Guessing a wrong",
   "    date is worse than omitting it — the caller has its own fallback.",
+  "",
+  "MANAGEMENT PLAN (`composed.management`):",
+  "  - Some development plans belong to someone who LEADS people, and describe",
+  "    two different jobs: their own practice, and what they owe their reports",
+  '    (1:1 cadence, coaching, review turnaround, team adoption of a practice,',
+  "    onboarding someone new). Those two do not belong in one list of",
+  "    periods — flattened together, nobody can tell which half is which.",
+  "  - When the document has that second half, put it in `management`: a whole",
+  "    second composed block with its own `cadence`, `prompt`, `fields`,",
+  "    `periods` (each with their own `detail`/`notes`, same rules as above)",
+  "    and `notes`. The individual half stays at the top level.",
+  '  - Trigger on what the DOCUMENT says — a section addressed to them as a',
+  '    lead, deliverables about their team ("run weekly 1:1s", "get the team',
+  '    to adopt the review checklist", "onboard the new hire"). Do NOT emit it',
+  "    because a job title sounds senior, and do NOT invent management",
+  "    deliverables the document doesn't state.",
+  "  - The app resolves WHO they manage on its own, from the reporting links",
+  "    already on file. Never ask for names or emails in a field, and never",
+  "    invent a roster — a field asking a lead to retype their team is both",
+  "    busywork and a fiction the app would have no way to honour.",
+  "  - Only at the top level. A management block inside a period is not a",
+  "    thing, and a management block cannot contain another one.",
   "",
   "NESTED CADENCES (`composed.periods[].nested`):",
   "  - Use it when a plan genuinely has TWO cadences at once — a quarterly",
@@ -974,10 +1067,18 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   '      "cadence": "monthly",',
   '      "prompt": "Log this month\'s checkpoint.",',
   '      "periods": [',
-  '        { "key": "m1", "label": "Month 1 — Part 1 + concept review with the Lead",',
-  '          "dueAt": "2026-08-01" },',
+  '        { "key": "m1", "label": "Month 1 — Part 1 + concept review",',
+  '          "dueAt": "2026-08-01",',
+  '          "detail": { "focus": "Part 1 and the concept review",',
+  '                      "activities": ["Complete Part 1", "Sit the concept',
+  '                                      review with the Lead"],',
+  '                      "deliverables": [{ "label": "Concept review passed",',
+  '                                         "criteria": "Signed off by the Lead" }] } },',
   '        { "key": "m2", "label": "Month 2 — Part 2 + written case study",',
-  '          "dueAt": "2026-09-01" }',
+  '          "dueAt": "2026-09-01",',
+  '          "detail": { "focus": "Part 2 and the written case study",',
+  '                      "deliverables": [{ "label": "Written case study",',
+  '                                         "format": "Submitted document" }] } }',
   "      ]",
   "    },",
   '    "fields": [',
@@ -988,7 +1089,10 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   "  }",
   "  Note what did NOT happen: the six distinct checkpoints were not flattened",
   '  into one "milestone completed" checkbox, and no "Which month" field was',
-  "  invented — the record already knows its own period.",
+  "  invented — the record already knows its own period. Note also what the",
+  "  labels did NOT have to carry: the activities and the acceptance criteria",
+  "  live in `detail`, so the label stays a heading and nothing from the",
+  "  document is lost.",
   "",
   "WORKED EXAMPLE (nested) — a document containing:",
   '    "Each quarter, rate overall progress 1-5. Within each quarter, log a',
@@ -1601,12 +1705,35 @@ const COMPOSE_TIMEOUT_MS = 25_000;
  */
 const COMPOSE_STREAM_TIMEOUT_MS = 240_000;
 
+interface CleanDeliverable {
+  label: string;
+  format?: string;
+  criteria?: string;
+}
+
+interface CleanDetail {
+  focus?: string;
+  activities?: string[];
+  deliverables?: CleanDeliverable[];
+}
+
+interface CleanNote {
+  kind: "note" | "risk";
+  label: string;
+  body?: string;
+  likelihood?: string;
+  impact?: string;
+  mitigation?: string;
+}
+
 interface CleanComposedBlock {
   cadence?: string;
   prompt?: string;
   periods?: CleanPeriod[];
   cycleStart?: string;
   fields?: Array<Record<string, unknown>>;
+  notes?: CleanNote[];
+  management?: CleanComposedBlock;
 }
 
 interface CleanPeriod {
@@ -1616,6 +1743,8 @@ interface CleanPeriod {
   prompt?: string;
   fields?: Array<Record<string, unknown>>;
   nested?: CleanComposedBlock;
+  detail?: CleanDetail;
+  notes?: CleanNote[];
 }
 
 /**
@@ -1626,6 +1755,126 @@ interface CleanPeriod {
  * deep.
  */
 const COMPOSED_MAX_NEST_DEPTH = 8;
+
+/**
+ * Caps mirroring the shared validator's (`DETAIL_MAX_LEN` there). Duplicated
+ * rather than imported because this layer's job is to hand the validator
+ * something it will accept — if the two ever disagree, the validator wins and
+ * simply truncates again. Both are deliberately generous next to the old
+ * ceiling, where a 160-char label was a whole week's budget.
+ */
+const DETAIL_LIMITS = {
+  focus: 240,
+  activity: 240,
+  activities: 12,
+  deliverableLabel: 160,
+  deliverableFormat: 240,
+  deliverableCriteria: 400,
+  deliverables: 8,
+  noteLabel: 200,
+  noteBody: 600,
+  noteMitigation: 400,
+  notes: 12,
+} as const;
+
+const NOTE_LEVELS = new Set(["low", "medium", "high"]);
+
+function cleanStr(v: unknown, max: number): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const t = v.trim();
+  return t ? t.slice(0, max) : undefined;
+}
+
+/**
+ * The narrative half of a period — what the document SAID this week is for,
+ * as opposed to what the user logs. Display-only downstream, which is why
+ * nothing in here can fail a compose: an unusable detail block yields less
+ * context, never a rejected plan.
+ */
+export function cleanComposedDetail(raw: unknown): CleanDetail | undefined {
+  const focusOnly = cleanStr(raw, DETAIL_LIMITS.focus);
+  if (focusOnly) return { focus: focusOnly };
+  if (!raw || typeof raw !== "object") return undefined;
+  const d = raw as Record<string, unknown>;
+  const out: CleanDetail = {};
+
+  const focus = cleanStr(d.focus, DETAIL_LIMITS.focus);
+  if (focus) out.focus = focus;
+
+  if (Array.isArray(d.activities)) {
+    const activities: string[] = [];
+    for (const a of d.activities) {
+      if (activities.length >= DETAIL_LIMITS.activities) break;
+      const v = cleanStr(a, DETAIL_LIMITS.activity);
+      if (v) activities.push(v);
+    }
+    if (activities.length) out.activities = activities;
+  }
+
+  if (Array.isArray(d.deliverables)) {
+    const deliverables: CleanDeliverable[] = [];
+    for (const item of d.deliverables) {
+      if (deliverables.length >= DETAIL_LIMITS.deliverables) break;
+      const bare = cleanStr(item, DETAIL_LIMITS.deliverableLabel);
+      if (bare) {
+        deliverables.push({ label: bare });
+        continue;
+      }
+      if (!item || typeof item !== "object") continue;
+      const o = item as Record<string, unknown>;
+      const label = cleanStr(o.label, DETAIL_LIMITS.deliverableLabel);
+      if (!label) continue;
+      const one: CleanDeliverable = { label };
+      const format = cleanStr(o.format, DETAIL_LIMITS.deliverableFormat);
+      if (format) one.format = format;
+      const criteria = cleanStr(o.criteria, DETAIL_LIMITS.deliverableCriteria);
+      if (criteria) one.criteria = criteria;
+      deliverables.push(one);
+    }
+    if (deliverables.length) out.deliverables = deliverables;
+  }
+
+  return Object.keys(out).length ? out : undefined;
+}
+
+/**
+ * Risks and notes — the qualitative content a plan carries that no field can
+ * hold. A risks/mitigations table used to have two possible fates here:
+ * silently dropped, or turned into a `text` field asking the user to retype it
+ * every period. This is the third option.
+ */
+export function cleanComposedNotes(raw: unknown): CleanNote[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CleanNote[] = [];
+  for (const item of raw) {
+    if (out.length >= DETAIL_LIMITS.notes) break;
+    const bare = cleanStr(item, DETAIL_LIMITS.noteLabel);
+    if (bare) {
+      out.push({ kind: "note", label: bare });
+      continue;
+    }
+    if (!item || typeof item !== "object") continue;
+    const n = item as Record<string, unknown>;
+    const label = cleanStr(n.label, DETAIL_LIMITS.noteLabel);
+    if (!label) continue;
+    const note: CleanNote = {
+      kind: n.kind === "risk" ? "risk" : "note",
+      label,
+    };
+    const body = cleanStr(n.body, DETAIL_LIMITS.noteBody);
+    if (body) note.body = body;
+    if (typeof n.likelihood === "string" && NOTE_LEVELS.has(n.likelihood)) {
+      note.likelihood = n.likelihood;
+    }
+    if (typeof n.impact === "string" && NOTE_LEVELS.has(n.impact)) {
+      note.impact = n.impact;
+    }
+    const mitigation = cleanStr(n.mitigation, DETAIL_LIMITS.noteMitigation);
+    if (mitigation) note.mitigation = mitigation;
+    out.push(note);
+  }
+  return out;
+}
 
 /**
  * Coerce the model's `composed.periods` into shapes the shared validator will
@@ -1685,6 +1934,11 @@ export function cleanComposedPeriods(
       const fields = cleanComposedFields(p.fields, ctx);
       if (fields.length > 0) period.fields = fields;
     }
+    // The plan's own words about this period, and any risk attached to it.
+    const detail = cleanComposedDetail(p.detail);
+    if (detail) period.detail = detail;
+    const notes = cleanComposedNotes(p.notes);
+    if (notes.length) period.notes = notes;
     // A nested cadence — dropped silently past the depth ceiling rather than
     // failing the whole compose; the flat/shallower tracker underneath it is
     // still perfectly usable.
@@ -1719,6 +1973,18 @@ export function cleanComposedBlock(
     if (cadence) out.cadence = cadence;
     if (typeof c.prompt === "string" && c.prompt.trim()) {
       out.prompt = c.prompt.trim();
+    }
+    // PLAN-level notes — a risks/mitigations table belongs to the tracker as a
+    // whole, not to any one window. Kept even for a cadence-less tracker,
+    // which is why this sits outside the `if (cadence)` below.
+    const planNotes = cleanComposedNotes(c.notes);
+    if (planNotes.length) out.notes = planNotes;
+    // The management half of a plan that has one — a whole second composed
+    // block, cleaned at depth + 1 (so it can't itself carry another) and only
+    // ever read at the top level.
+    if (depth === 0 && c.management !== undefined && c.management !== null) {
+      const management = cleanComposedBlock(c.management, ctx, depth + 1);
+      if (management) out.management = management;
     }
     // Periods annotate cycle windows, so without a cadence there is nothing to
     // annotate and the validator would reject them. Drop rather than fail: the

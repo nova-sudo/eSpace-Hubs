@@ -95,6 +95,42 @@ export const COMPOSED_FIELD_KINDS = Object.freeze([
   "link",
 ]);
 
+/**
+ * A period's narrative context — what a document SAID this period is for, as
+ * opposed to what the user has to log. Display-only, and deliberately so: it
+ * never reaches the grader, so carrying a plan's full prose can't change what
+ * a tier means or what any existing spec grades to.
+ *
+ * It exists because the tracker was throwing the plan away. A period could
+ * hold `label`, `dueAt`, `prompt` and its fields — so "Week 1 — AI
+ * orientation" was structurally the ENTIRE surviving record of a week whose
+ * source document listed a focus, three activities and four named artifacts.
+ * Six months later nobody could reconstruct what that week asked for.
+ *
+ *   focus        — the period's theme, one line ("AI orientation")
+ *   activities   — what happens during it, in the document's own order
+ *   deliverables — what must EXIST at the end, each with its own format and
+ *                  acceptance criteria (see SpecDeliverable)
+ */
+export const DETAIL_MAX_ACTIVITIES = 12;
+export const DETAIL_MAX_DELIVERABLES = 8;
+
+/**
+ * Qualitative content a plan carries that is real, actionable, and not
+ * trackable as a field — a risks-and-mitigations table being the case that
+ * forced this. Before it existed, such a table had two possible fates: a
+ * `text` field asking the user to retype it every period, or silence.
+ *
+ * `risk` earns `likelihood`/`impact`/`mitigation`; a plain `note` is a
+ * caveat, a constraint, or a piece of guidance worth keeping next to the work.
+ */
+export const SPEC_NOTE_KINDS = Object.freeze(["note", "risk"]);
+
+/** Qualitative bands for a risk. Ordered low → high; the UI colours on this. */
+export const SPEC_NOTE_LEVELS = Object.freeze(["low", "medium", "high"]);
+
+export const NOTES_MAX = 12;
+
 export const ALL_SPEC_KINDS = Object.freeze(Object.values(SPEC_KINDS));
 
 export const SOURCE_METRICS = Object.freeze({
@@ -258,6 +294,12 @@ function resolveWindowContent(baseFields, composedBlock, windowIndex) {
       authored: false,
       // No authored period at this window → nothing to nest into either.
       nested: null,
+      // Detail and notes are per-period only. A window with no authored period
+      // has no plan text of its own to show; the block's own `notes` are the
+      // PLAN's (rendered once at widget level), not this window's, so they
+      // deliberately don't leak in here.
+      detail: null,
+      notes: [],
     };
   }
 
@@ -278,6 +320,11 @@ function resolveWindowContent(baseFields, composedBlock, windowIndex) {
     // it (composed-widget.jsx and cadence-stepper.jsx both do, via
     // resolveNestedPeriodContent).
     nested: period.nested ?? null,
+    // What the source document said this period was FOR — never merged with a
+    // block-level fallback, because a neighbouring week's focus is worse than
+    // no focus at all.
+    detail: period.detail ?? null,
+    notes: Array.isArray(period.notes) ? period.notes : [],
   };
 }
 

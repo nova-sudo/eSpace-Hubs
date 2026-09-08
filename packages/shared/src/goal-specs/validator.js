@@ -18,9 +18,14 @@ import {
   COMPOSED_FIELD_KINDS,
   CONTEXT_QUESTION_KINDS,
   DELEGATED_JUDGES,
+  DETAIL_MAX_ACTIVITIES,
+  DETAIL_MAX_DELIVERABLES,
   MANUAL_CADENCES,
   normalizeCadence,
+  NOTES_MAX,
   SOURCE_WINDOWS,
+  SPEC_NOTE_KINDS,
+  SPEC_NOTE_LEVELS,
   SPEC_KIND_META,
   SPEC_SCHEMA_VERSION,
   SPEC_VARIANTS,
@@ -632,6 +637,133 @@ function validateOptionalFields(fields, errors, label) {
  * validated by `validateComposed` at `depth + 1`, so a nested block can itself
  * nest another one, arbitrarily deep, gated only by COMPOSED_MAX_NEST_DEPTH.
  */
+/**
+ * Caps on the narrative block. Generous next to the old ceiling (a 160-char
+ * label was the entire budget for a week) but bounded — this text is rendered
+ * verbatim and stored on every spec, so an unbounded paste would land in the
+ * approval view, the review packet and the manager's screen.
+ *
+ * Over-long strings are TRUNCATED, never rejected. A plan losing the tail of
+ * one sentence is a cosmetic problem; a plan that won't save because week 9's
+ * focus ran long is the user's whole document bouncing.
+ */
+const DETAIL_MAX_LEN = Object.freeze({
+  focus: 240,
+  activity: 240,
+  deliverableLabel: 160,
+  deliverableFormat: 240,
+  deliverableCriteria: 400,
+  noteLabel: 200,
+  noteBody: 600,
+  noteMitigation: 400,
+});
+
+function trimTo(v, max) {
+  return v.trim().slice(0, max);
+}
+
+/** A list of short strings — trimmed, de-blanked, capped in count and length. */
+function stringList(raw, maxItems, maxLen) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const item of raw) {
+    if (out.length >= maxItems) break;
+    if (!isNonEmptyString(item)) continue;
+    out.push(trimTo(item, maxLen));
+  }
+  return out;
+}
+
+/**
+ * One named artifact the period has to produce. `label` is what it IS; the
+ * other two are how it has to look — the part a plan states ("documented team
+ * norms for AI-assisted development, in the repo as AGENTS.md") and the
+ * tracker used to drop, leaving the user to guess what "done" meant.
+ */
+function validateDeliverable(d) {
+  if (isNonEmptyString(d)) {
+    return { label: trimTo(d, DETAIL_MAX_LEN.deliverableLabel) };
+  }
+  if (!isObject(d) || !isNonEmptyString(d.label)) return null;
+  const out = { label: trimTo(d.label, DETAIL_MAX_LEN.deliverableLabel) };
+  if (isNonEmptyString(d.format)) {
+    out.format = trimTo(d.format, DETAIL_MAX_LEN.deliverableFormat);
+  }
+  if (isNonEmptyString(d.criteria)) {
+    out.criteria = trimTo(d.criteria, DETAIL_MAX_LEN.deliverableCriteria);
+  }
+  return out;
+}
+
+/**
+ * The period's narrative context. Everything is optional and everything is
+ * display-only; a detail block that ends up empty returns null so it never
+ * serialises as `{}`.
+ *
+ * Nothing in here can fail a spec. It is annotation on top of a tracker that
+ * was already valid without it, so a malformed detail block degrades to less
+ * context rather than to a rejected plan.
+ */
+function validateDetail(detail) {
+  if (isNonEmptyString(detail)) {
+    return { focus: trimTo(detail, DETAIL_MAX_LEN.focus) };
+  }
+  if (!isObject(detail)) return null;
+  const out = {};
+  if (isNonEmptyString(detail.focus)) {
+    out.focus = trimTo(detail.focus, DETAIL_MAX_LEN.focus);
+  }
+  const activities = stringList(
+    detail.activities,
+    DETAIL_MAX_ACTIVITIES,
+    DETAIL_MAX_LEN.activity,
+  );
+  if (activities.length) out.activities = activities;
+
+  if (Array.isArray(detail.deliverables)) {
+    const deliverables = [];
+    for (const d of detail.deliverables) {
+      if (deliverables.length >= DETAIL_MAX_DELIVERABLES) break;
+      const v = validateDeliverable(d);
+      if (v) deliverables.push(v);
+    }
+    if (deliverables.length) out.deliverables = deliverables;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * Risks and notes. Same posture as `validateDetail` — permissive, truncating,
+ * never fatal. An unrecognised `kind` becomes "note" rather than an error:
+ * the content is what matters, and a mislabelled risk still beats a dropped
+ * one.
+ */
+function validateNotes(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const n of raw) {
+    if (out.length >= NOTES_MAX) break;
+    const source = isNonEmptyString(n) ? { label: n } : n;
+    if (!isObject(source) || !isNonEmptyString(source.label)) continue;
+    const note = {
+      kind: SPEC_NOTE_KINDS.includes(source.kind) ? source.kind : "note",
+      label: trimTo(source.label, DETAIL_MAX_LEN.noteLabel),
+    };
+    if (isNonEmptyString(source.body)) {
+      note.body = trimTo(source.body, DETAIL_MAX_LEN.noteBody);
+    }
+    if (SPEC_NOTE_LEVELS.includes(source.likelihood)) {
+      note.likelihood = source.likelihood;
+    }
+    if (SPEC_NOTE_LEVELS.includes(source.impact)) note.impact = source.impact;
+    if (isNonEmptyString(source.mitigation)) {
+      note.mitigation = trimTo(source.mitigation, DETAIL_MAX_LEN.noteMitigation);
+    }
+    out.push(note);
+  }
+  return out;
+}
+
 function validatePeriod(p, i, errors, depth) {
   if (!isObject(p)) {
     errors.push(`composed.periods[${i}]: must be an object`);
@@ -656,6 +788,13 @@ function validatePeriod(p, i, errors, depth) {
     const fields = validateFields(p.fields, errors);
     if (fields) out.fields = fields;
   }
+  // What the plan SAYS about this period, and any risk attached to it. Both
+  // are display-only annotation — they take no `errors` argument because
+  // nothing they contain can invalidate a tracker that is otherwise fine.
+  const detail = validateDetail(p.detail);
+  if (detail) out.detail = detail;
+  const notes = validateNotes(p.notes);
+  if (notes.length) out.notes = notes;
   if (p.nested !== undefined && p.nested !== null) {
     if (depth + 1 >= COMPOSED_MAX_NEST_DEPTH) {
       errors.push(
@@ -710,6 +849,26 @@ function validateComposed(composed, errors, depth = 0) {
     const fields = validateOptionalFields(composed.fields, errors, "composed.fields");
     if (fields) out.fields = fields;
   }
+
+  // THE MANAGEMENT HALF of a plan that has one. A development plan for
+  // someone who leads people describes two different jobs — their own
+  // practice, and what they owe the people reporting to them — and flattening
+  // those into one list of periods loses which is which.
+  //
+  // Shape-wise it is just another composed block (its own cadence, periods,
+  // detail, notes), validated at depth + 1 so it can't recurse forever and
+  // can't itself carry a second management plan. Only meaningful at the top
+  // level: a management plan nested inside a quarter is not a thing.
+  if (depth === 0 && isObject(composed.management)) {
+    const management = validateComposed(composed.management, errors, depth + 1);
+    if (management) out.management = management;
+  }
+
+  // PLAN-level notes — the document's risks/mitigations table, which belongs
+  // to the whole tracker rather than to any one window. Per-period notes live
+  // on the period (see validatePeriod); these render once, at widget level.
+  const notes = validateNotes(composed.notes);
+  if (notes.length) out.notes = notes;
 
   if (Array.isArray(composed.periods) && composed.periods.length > 0) {
     if (!cadence) {

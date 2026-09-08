@@ -131,6 +131,8 @@ apps/web/src/
 
 apps/api/src/
 ├── modules/<name>/{routes,controller,schemas}.ts   # one Express module per resource
+│   ├── goal-evidence/                # GridFS evidence files (the app's 2nd multipart route)
+│   └── my-reports/                   # a lead's own reports — authorised by the managerId link alone
 ├── scheduler/                        # Hourly jobs: nudges, digest, weekly snapshots (idempotent via scheduler_stamps)
 ├── middleware/                       # session, require-auth/-capability/-role, companion-proxy, rate-limit
 ├── lib/                              # email, notifications, audit, goal-tier-policies, companion-routing …
@@ -230,6 +232,9 @@ npm run dev                  # http://localhost:3000
 | Ticket cycle time | ⚠️ sample | Jira `/search/jql` — 50 most-recently-updated, resolved >90d excluded (provenance chip says so) |
 | CI/CD widgets (deploy freq, lead time, pass rate) | ⚠️ last 100 | Jenkins / GitHub Actions, capped at 100 builds |
 | Manual widgets (counter, scale, date log, incidents, composed…) | ✅ | `goal_inputs` via API, cadence windows from `goal-inputs/cadence-windows.js` |
+| Period detail + risks on a COMPOSED spec | ✅ | `composed.periods[].detail` (focus / activities / deliverables with format + criteria) and `.notes` / `composed.notes` (risks with likelihood + mitigation). Display-only — never graded. |
+| Evidence FILES per period | ✅ | GridFS (`goal_evidence` bucket) via `/api/v1/goal-evidence`; 10 MB, allow-listed types, always served as a download |
+| Management plan half | ✅ | `composed.management` — a second composed block for a lead's team-facing track, plus a roster read from `/api/v1/my-reports` |
 | Tier grading | ✅ | AI verdicts (`goal_tier_verdicts`) · manager verdicts outrank · manager tier POLICIES by Goal Code, scoped per year |
 | Snapshots | ✅ server-persisted | Captured on dashboard visit + "Snapshot now"; the API scheduler freezes unvisited weeks (manual trackers only, `partial: true`) |
 | Scheduler | ✅ | `apps/api/src/scheduler/` — hourly: due/overdue/stale nudges, approval waits, Monday digest email, weekly snapshots |

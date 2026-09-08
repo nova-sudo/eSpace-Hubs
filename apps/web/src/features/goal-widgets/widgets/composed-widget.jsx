@@ -58,6 +58,9 @@ import {
 import { resolvePeriodContent, resolveNestedPeriodContent, saveSpec } from "@/features/goal-specs";
 import { dueStatus } from "@/lib/date";
 import { ComposedFields } from "./composed-fields.jsx";
+import { PeriodDetail, NotesAffordance } from "../period-detail.jsx";
+import { EvidenceAttachments } from "../evidence-attachments.jsx";
+import { ManagementRoster } from "../management-roster.jsx";
 
 /** Mirrors the shared validator's COMPOSED_MAX_NEST_DEPTH — a safety ceiling,
  * not a product limit, so a malformed spec can't recurse this component into
@@ -183,6 +186,9 @@ function NestedCadenceLevel({
           ) : null}
         </div>
       ) : null}
+      {/* This sub-window's own brief — same treatment as the top level, so a
+          nested week reads like a week rather than a bare label. */}
+      <PeriodDetail detail={period.detail} notes={period.notes} variant={variant} />
       {fields.length > 0 ? (
         <ComposedFields
           goalId={goalId}
@@ -342,12 +348,26 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
             </span>
           ) : null}
         </div>
+        {/* What THIS window is for, per the source document. Collapsed by
+            default — the form below is still the widget's job. */}
+        <PeriodDetail detail={period.detail} notes={period.notes} variant={variant} />
+        {/* Plan-level risks/notes: the document's own caveats, which belong to
+            the tracker rather than to any one window. */}
+        <NotesAffordance notes={spec.composed?.notes} variant={variant} />
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           <ComposedFields
             goalId={goal?.id}
             fields={fields}
             periodKey={currentKey}
             variant={variant}
+          />
+          {/* The artifact itself, pinned to this window — for deliverables
+              that have no URL to paste into a link field. */}
+          <EvidenceAttachments
+            goalId={goal?.id}
+            periodKey={currentKey}
+            variant={variant}
+            className="mt-2"
           />
           {period.nested ? (
             <NestedCadenceLevel
@@ -359,6 +379,43 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
               variant={variant}
               depth={1}
             />
+          ) : null}
+          {/* THE MANAGEMENT HALF. A plan for someone who leads people
+              describes two jobs; this is the second one, kept visually
+              separate rather than interleaved with their own track. Its
+              periods run on their own cadence (it's a whole composed block),
+              and the roster above them is what their reports have logged. */}
+          {spec.composed?.management ? (
+            <div
+              className="mt-3 flex flex-col gap-2"
+              style={{
+                borderTop: `1px solid ${isLight ? "rgba(255,255,255,0.28)" : "var(--border-strong)"}`,
+                paddingTop: 10,
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 9,
+                  letterSpacing: "0.6px",
+                  textTransform: "uppercase",
+                  color: isLight ? "#ffffff" : "var(--fg)",
+                  fontWeight: 700,
+                }}
+              >
+                Management plan
+              </span>
+              <ManagementRoster variant={variant} />
+              <NestedCadenceLevel
+                goalId={goal?.id}
+                composedBlock={spec.composed.management}
+                periodKeyPrefix="mgmt"
+                fallbackStart={windowStart}
+                fallbackEnd={windowEnd}
+                variant={variant}
+                depth={1}
+              />
+            </div>
           ) : null}
         </div>
       </div>

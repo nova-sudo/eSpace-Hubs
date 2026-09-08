@@ -21,6 +21,22 @@ export { registerWidget, resolveWidget, listWidgets, missingWidgetKinds } from "
 export { useDataSource } from "./data-sources/use-data-source";
 export { useGoalWidgetItems } from "./use-goal-widget-items";
 export { ComplianceLine } from "./compliance-line";
+// The narrative half of a period (focus / activities / deliverables) and the
+// notes affordance. Exported because the compose preview and the manager's
+// approval view show the same content the widget does — a manager judging
+// whether the AI read the document faithfully needs to see what it kept.
+export { PeriodDetail, NotesAffordance } from "./period-detail";
+// Evidence FILES for a period — the deliverable itself when it has no URL.
+export { EvidenceAttachments } from "./evidence-attachments";
+export { ManagementRoster } from "./management-roster";
+export {
+  EVIDENCE_ACCEPT,
+  EVIDENCE_MAX_BYTES,
+  deleteEvidenceFile,
+  evidenceFileUrl,
+  listEvidenceFiles,
+  uploadEvidenceFile,
+} from "./evidence-files";
 export {
   goalReadiness,
   isGoalReady,

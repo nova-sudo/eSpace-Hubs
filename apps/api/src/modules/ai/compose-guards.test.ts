@@ -354,3 +354,110 @@ test("nesting past the depth ceiling is dropped, not carried through", () => {
   }
   assert.ok(depth < 9, `expected nesting to stop before depth 9, got ${depth}`);
 });
+
+// ─── period detail / notes / management ──────────────────────────────
+
+/**
+ * These three carry the document's own content — the focus, the activities,
+ * the named artifacts, the risks table, and the half of a plan that is about
+ * leading people. Everything here used to be dropped on the floor by the
+ * cleaner, silently, because the period shape had nowhere to put it.
+ *
+ * The invariant worth pinning: none of it can fail a compose. It is
+ * annotation on a tracker that was already valid without it, so malformed
+ * input degrades to less context and never to a rejected plan.
+ */
+
+test("a period keeps its focus, activities and deliverables", () => {
+  const [period] = cleanComposedPeriods([
+    {
+      key: "w1",
+      label: "Week 1 — AI orientation",
+      detail: {
+        focus: "AI orientation",
+        activities: ["Claude 101", "AI Fluency Framework"],
+        deliverables: [
+          {
+            label: "Team charter",
+            format: "AGENTS.md + project.md in the repo root",
+            criteria: "Lists the agreed norms",
+          },
+          "Shared memory-bank skeleton",
+        ],
+      },
+    },
+  ]);
+  assert.equal(period.detail?.focus, "AI orientation");
+  assert.deepEqual(period.detail?.activities, ["Claude 101", "AI Fluency Framework"]);
+  assert.equal(period.detail?.deliverables?.length, 2);
+  assert.equal(period.detail?.deliverables?.[0].criteria, "Lists the agreed norms");
+  // A bare string is a legitimate deliverable — a name with no stated format.
+  assert.equal(period.detail?.deliverables?.[1].label, "Shared memory-bank skeleton");
+});
+
+test("a risk keeps its likelihood and mitigation; junk levels are dropped", () => {
+  const block = cleanComposedBlock({
+    cadence: "weekly",
+    notes: [
+      {
+        kind: "risk",
+        label: "SDD creates too much overhead for small tasks",
+        likelihood: "high",
+        mitigation: "Scale the ceremony to the size of the task",
+      },
+      { kind: "risk", label: "Model drift", likelihood: "catastrophic" },
+      { label: "A plain note" },
+      { body: "no label, dropped" },
+    ],
+    periods: [{ key: "w1", label: "Week 1" }],
+  });
+  assert.equal(block?.notes?.length, 3);
+  assert.equal(block?.notes?.[0].likelihood, "high");
+  assert.equal(block?.notes?.[1].likelihood, undefined, "unknown level is dropped");
+  assert.equal(block?.notes?.[2].kind, "note", "an unlabelled kind defaults to note");
+});
+
+test("detail and notes that are junk cost nothing — the period still survives", () => {
+  const [period] = cleanComposedPeriods([
+    { key: "w1", label: "Week 1", detail: 42, notes: "not an array" },
+  ]);
+  assert.equal(period.label, "Week 1");
+  assert.equal(period.detail, undefined);
+  assert.equal(period.notes, undefined);
+});
+
+test("over-long detail truncates rather than bouncing the plan", () => {
+  const [period] = cleanComposedPeriods([
+    {
+      key: "w1",
+      label: "Week 1",
+      detail: {
+        focus: "x".repeat(1000),
+        activities: Array.from({ length: 40 }, (_, i) => "activity " + i),
+      },
+    },
+  ]);
+  assert.equal(period.detail?.focus?.length, 240);
+  assert.equal(period.detail?.activities?.length, 12);
+});
+
+test("a management block is carried at the top level only, and never nests", () => {
+  const block = cleanComposedBlock({
+    cadence: "weekly",
+    periods: [{ key: "w1", label: "Week 1" }],
+    management: {
+      cadence: "monthly",
+      prompt: "What did you do for the team this month?",
+      periods: [{ key: "m1", label: "Month 1 — onboard the new hire" }],
+      // A management plan inside a management plan is not a thing.
+      management: { cadence: "weekly", periods: [{ key: "x", label: "Nope" }] },
+    },
+  });
+  assert.equal(block?.management?.cadence, "monthly");
+  assert.equal(block?.management?.periods?.[0].label, "Month 1 — onboard the new hire");
+  assert.equal(
+    (block?.management as { management?: unknown })?.management,
+    undefined,
+    "depth > 0 must not read `management`",
+  );
+});

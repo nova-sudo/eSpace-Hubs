@@ -55,6 +55,8 @@ import {
   useTierFillFeedback,
 } from "@/features/goal-tiers";
 import { ComposedFields } from "./widgets/composed-fields.jsx";
+import { PeriodDetail } from "./period-detail.jsx";
+import { EvidenceAttachments } from "./evidence-attachments.jsx";
 
 /** Mirrors the shared validator's COMPOSED_MAX_NEST_DEPTH — a safety ceiling. */
 const MAX_NEST_DEPTH = 8;
@@ -333,6 +335,14 @@ function NestedStepperLevel({
           {selectedPeriod.dueAt ? ` · due ${selectedPeriod.dueAt}` : ""}
         </div>
       ) : null}
+      {/* Backfilling week 9 six weeks late is exactly when the plan's own
+          words matter most — the brief travels with the window. */}
+      <PeriodDetail
+        detail={selectedPeriod?.detail}
+        notes={selectedPeriod?.notes}
+        variant="dark"
+        className="mb-2"
+      />
       {selectedPeriod?.fields?.length > 0 ? (
         <ComposedFields
           goalId={goalId}
@@ -342,6 +352,12 @@ function NestedStepperLevel({
           variant="dark"
         />
       ) : null}
+      <EvidenceAttachments
+        goalId={goalId}
+        periodKey={fullSelectedKey}
+        variant="dark"
+        className="mt-2"
+      />
       {selectedPeriod?.nested ? (
         <NestedStepperLevel
           goalId={goalId}
@@ -625,12 +641,24 @@ export function CadenceStepper({ spec, variant = "light" }) {
               {selectedPeriod.dueAt ? ` · due ${selectedPeriod.dueAt}` : ""}
             </div>
           ) : null}
+          <PeriodDetail
+            detail={selectedPeriod?.detail}
+            notes={selectedPeriod?.notes}
+            variant="dark"
+            className="mb-2"
+          />
           <ComposedFields
             goalId={goalId}
             fields={selectedPeriod?.fields ?? spec.fields}
             periodKey={selected.key}
             writeTs={Math.floor((selected.start + selected.end) / 2)}
             variant="dark"
+          />
+          <EvidenceAttachments
+            goalId={goalId}
+            periodKey={selected.key}
+            variant="dark"
+            className="mt-2"
           />
           {selectedPeriod?.nested ? (
             <NestedStepperLevel
