@@ -1,12 +1,12 @@
 "use client";
 
-import { Section } from "../scroll-shell";
+import { PlainSection as Section } from "./plain-section";
 import {
   GoalsTile,
   SnapshotsTile,
   ExportTile,
   CommitsTile,
-} from "../tiles";
+} from "./tiles";
 
 /**
  * GOALS TAB · SECTION 01 — Performance goals & evidence

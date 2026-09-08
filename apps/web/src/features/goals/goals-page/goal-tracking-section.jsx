@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Section } from "../scroll-shell";
+import { PlainSection as Section } from "./plain-section";
 import { GoalWidgetsGrid, useGoalWidgetItems } from "@/features/goal-widgets";
 import { useAnalyst, ANALYST_MODES } from "@/features/analyst";
 import { removeSpec } from "@/features/goal-specs";

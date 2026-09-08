@@ -37,7 +37,7 @@ import {
   fmtMs,
   usePrReviewTimings,
 } from "@/features/integrations";
-import { useDateRange, DateRangeToolbar, splitByRange } from "@/features/dashboard";
+import { useDateRange, DateRangeToolbar, splitByRange } from "@/features/date-range";
 import { useHubLink } from "@/features/hubs";
 import { fullDate } from "@/lib/date";
 
