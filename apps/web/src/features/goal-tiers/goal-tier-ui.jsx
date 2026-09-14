@@ -27,13 +27,29 @@ const CELL_TONE_CLASS = {
 
 /**
  * One-line tier chip for the goal tree's L2 rows. A tone-matched Badge +
- * a tooltip carrying the AI's reasoning. Shows a lemon "Grading…" Badge
- * while the first grade is in flight, and nothing at all when the goal
- * has no tiers yet.
+ * a tooltip carrying the AI's reasoning, or a lemon "Grading…" Badge while
+ * the first grade is in flight.
+ *
+ * A CLASSIFIED goal whose spec carries no `tiers` used to render nothing
+ * at all, which is indistinguishable from "graded fine" — the goal simply
+ * looked blank forever with no way to tell why. Specs classified before the
+ * classifier emitted tiers are exactly this case, so say so and point at
+ * the fix. An UNCLASSIFIED goal (no spec) still renders nothing: the
+ * surfaces that show this badge already mark those as unclassified.
  */
 export function GoalTierBadge({ goalId, spec }) {
   const { hasTiers, verdict, loading } = useGoalTier(goalId, spec);
-  if (!hasTiers) return null;
+  if (!hasTiers) {
+    if (!spec) return null;
+    return (
+      <Badge
+        tone="neutral"
+        title="This goal was classified before achievement levels were set, so there is nothing to grade against. Re-analyze it to generate them."
+      >
+        No levels set
+      </Badge>
+    );
+  }
   if (!verdict) {
     return loading ? <Badge tone="lemon">Grading…</Badge> : null;
   }
@@ -81,7 +97,24 @@ export function GoalTierLadder({ spec, variant: _variant = "light" }) {
   );
   const [editing, setEditing] = useState(false);
   const [regrading, setRegrading] = useState(false);
-  if (!hasTiers) return null;
+  // Same gap as the badge above: a classified goal with no tiers rendered an
+  // empty space where the ladder belongs. Explain it and name the action.
+  if (!hasTiers) {
+    if (!spec) return null;
+    return (
+      <div
+        className="flex flex-col gap-2 rounded-[var(--radius-xl)] bg-card p-5"
+        style={{ boxShadow: "var(--shadow-card)" }}
+      >
+        <Label>Achievement levels</Label>
+        <p className="text-[13px] leading-[1.5] text-muted-fg">
+          This goal has no levels to grade against, so it can&apos;t be scored. That
+          happens when it was classified before levels were part of a tracker.
+          Re-analyzing the goal writes them from its rubric.
+        </p>
+      </div>
+    );
+  }
 
   // Manual re-grade — the escape hatch from the once-a-day throttle. Grading is
   // otherwise deferred to the next day's first view; this forces a fresh grade
