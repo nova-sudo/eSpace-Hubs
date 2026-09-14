@@ -239,9 +239,15 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
   // own simply inherits its containing window's bounds at render time (see
   // NestedCadenceLevel) — correct behaviour, not a gap, so there's nothing to
   // self-heal there.
+  //
+  // A FLAT tracker (no periods) that states a `periodCount` heals the same
+  // way — a 13-week plan whose weeks all ask the same thing is still a
+  // 13-window plan, and without this it too fell back to 53 calendar-year
+  // cells. A flat tracker with no stated length is left alone: there is
+  // nothing to size it from, and the plan editor is where the user sets it.
   useEffect(() => {
     const composed = spec?.composed;
-    const periodCount = composed?.periods?.length || 0;
+    const periodCount = composed?.periods?.length || composed?.periodCount || 0;
     if (periodCount === 0 || !composed?.cadence) return;
     // Last-resort anchor when the goal itself has no startDate (common —
     // many goals never get one): period 1's own authored `dueAt`, if the AI
@@ -251,7 +257,7 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
     // action from the user — a tracker composed before the AI knew about
     // cycleStart has no more precise anchor available to self-heal from.
     const cycleStart = toIsoDay(
-      composed.cycleStart || goal?.startDate || composed.periods[0]?.dueAt,
+      composed.cycleStart || goal?.startDate || composed.periods?.[0]?.dueAt,
     );
     if (!cycleStart) return;
     const cycleEnd = deriveCycleEndIso(cycleStart, composed.cadence, periodCount);

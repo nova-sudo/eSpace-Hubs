@@ -372,3 +372,38 @@ test("a top-level composed.fields is accepted but plays no role — spec.fields 
   assert.ok(built.ok, JSON.stringify(built.errors));
   assert.equal(built.spec.composed.fields, undefined);
 });
+
+// ─── composed.periodCount ─────────────────────────────────────────────
+
+test("a flat cadenced tracker keeps a stated periodCount", () => {
+  const built = composedSpec({ composed: { cadence: "weekly", periodCount: 13 } });
+  assert.ok(built.ok, JSON.stringify(built.errors));
+  assert.equal(built.spec.composed.periodCount, 13);
+});
+
+test("periodCount is dropped once periods are authored — their length is the count", () => {
+  const built = composedSpec({
+    composed: {
+      cadence: "weekly",
+      periodCount: 13,
+      periods: [{ key: "w1", label: "Week 1" }, { key: "w2", label: "Week 2" }],
+    },
+  });
+  assert.ok(built.ok, JSON.stringify(built.errors));
+  assert.equal(built.spec.composed.periodCount, undefined);
+  assert.equal(built.spec.composed.periods.length, 2);
+});
+
+test("periodCount needs a cadence and a sane integer, and never fails the spec", () => {
+  for (const composed of [
+    { periodCount: 13 }, // no cadence → no windows to count
+    { cadence: "weekly", periodCount: 0 },
+    { cadence: "weekly", periodCount: 54 },
+    { cadence: "weekly", periodCount: 2.5 },
+    { cadence: "weekly", periodCount: "13" },
+  ]) {
+    const built = composedSpec({ composed: { prompt: "x", ...composed } });
+    assert.ok(built.ok, JSON.stringify(built.errors));
+    assert.equal(built.spec.composed.periodCount, undefined, JSON.stringify(composed));
+  }
+});

@@ -62,7 +62,13 @@ export type {
   ValidatedSpec,
 } from "./types.js";
 
-export { buildSpec, isSpec, validateSpec } from "./validator.js";
+export { buildSpec, COMPOSED_MAX_PERIODS, isSpec, validateSpec } from "./validator.js";
+export {
+  CYCLE_MAX_WINDOWS,
+  cycleEndForCount,
+  snapCycleStart,
+  windowCountForCycle,
+} from "./cycle.js";
 export type { ValidationResult, BuildSpecInput } from "./validator.js";
 
 export {

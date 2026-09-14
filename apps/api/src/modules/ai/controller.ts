@@ -54,6 +54,7 @@ import {
 } from "./schemas.js";
 import {
   buildSpec,
+  cycleEndForCount,
   normalizeCadence,
   COMPOSED_FIELD_KINDS,
   CONTEXT_QUESTION_KINDS,
@@ -808,8 +809,13 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   '  "composed": {',
   '    "cadence": <one of: daily, weekly, biweekly, monthly, quarterly — or null>,',
   '    "prompt":  <one short line shown above the form>,',
-  '    "cycleStart": <OPTIONAL "YYYY-MM-DD" — ONLY with periods. See CYCLE',
-  "                    START below. Omit if the document doesn't say>,",
+  '    "cycleStart": <OPTIONAL "YYYY-MM-DD" — the day period 1 begins. See',
+  "                    CYCLE START below. Omit if the document doesn't say>,",
+  '    "periodCount": <OPTIONAL integer — how many cadence windows the plan',
+  "                    spans (a 13-week plan on a weekly cadence → 13). See",
+  "                    CYCLE LENGTH below. Set it even for a flat tracker>,",
+  '    "cycleEnd":   <OPTIONAL "YYYY-MM-DD" — the plan\'s last day, ONLY when',
+  "                    the document states an end date and no window count>,",
   "    \"notes\": [<OPTIONAL — the plan's own risks / caveats / guidance that no",
   "               field can capture. See NOTES AND RISKS below>",
   "      {",
@@ -1006,6 +1012,26 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   "    January instead of from Q3 — period 1 lands in the wrong week entirely.",
   "  - Omit it when the document gives no date to anchor on. Guessing a wrong",
   "    date is worse than omitting it — the caller has its own fallback.",
+  "",
+  "CYCLE LENGTH (`composed.periodCount`) — HOW LONG THE PLAN RUNS:",
+  "  - Whenever the document states or clearly implies a length, set",
+  "    `periodCount` to the number of cadence windows it spans: \"a 13-week",
+  '    programme" on a weekly cadence → 13; "six months" on monthly → 6;',
+  '    "Q3" on weekly → 13; "Q3 and Q4" on quarterly → 2. Count in the',
+  "    cadence you chose, not in the document's own unit.",
+  "  - Set it EVEN WHEN YOU EMIT NO `periods` — a flat weekly tracker for a",
+  "    13-week plan is still a 13-window plan. Without it the tracker falls",
+  "    back to the whole calendar year (53 weekly windows), which is the",
+  "    single worst mismatch this prompt can produce: the user sees 53",
+  "    empty cells for a plan that has 13, and every consistency grade is",
+  "    computed against 40 windows that never existed.",
+  "  - When you DO emit `periods`, `periodCount` must equal their length —",
+  "    never pad periods to fill a year, and never emit more periods than the",
+  "    document describes.",
+  "  - Use `cycleEnd` only when the document states an END DATE but no",
+  "    count you can derive it from; `periodCount` is preferred because it",
+  "    can't drift from the cadence. Omit both when the document says",
+  "    nothing about length — the user sets it on the next screen.",
   "",
   "MANAGEMENT PLAN (`composed.management`):",
   "  - Some development plans belong to someone who LEADS people, and describe",
@@ -1731,6 +1757,8 @@ interface CleanComposedBlock {
   prompt?: string;
   periods?: CleanPeriod[];
   cycleStart?: string;
+  cycleEnd?: string;
+  periodCount?: number;
   fields?: Array<Record<string, unknown>>;
   notes?: CleanNote[];
   management?: CleanComposedBlock;
@@ -2008,12 +2036,44 @@ export function cleanComposedBlock(
       // a 13-week Q3 sub-plan) — so this is trusted over any client-side
       // fallback when present. Malformed output is dropped, not fatal: the
       // client's own goal-date fallback still applies.
-      if (
-        periods.length > 0 &&
-        typeof c.cycleStart === "string" &&
-        ISO_DATE_RE.test(c.cycleStart.trim())
-      ) {
+      //
+      // Read for ANY cadenced block now, not only one with periods: a flat
+      // weekly tracker for a 13-week plan anchors on the same date.
+      if (typeof c.cycleStart === "string" && ISO_DATE_RE.test(c.cycleStart.trim())) {
         out.cycleStart = c.cycleStart.trim();
+      }
+      // HOW LONG the plan runs. Three sources, in order of trust:
+      //   1. authored periods — their length IS the count, structurally;
+      //   2. the model's `periodCount` ("a 13-week programme" → 13);
+      //   3. the model's `cycleEnd`, only when nothing counted the windows.
+      // Whatever wins is turned into a stored `cycleEnd` right here when a
+      // start is known, so the tracker reaches the client already bounded.
+      // The bug this closes: a flat tracker arrived with no end, fell back
+      // to the calendar year, and rendered 53 weekly cells for a 13-week
+      // plan. `periodCount` is stored too (flat case only — the validator
+      // drops it beside periods) so the client can still size the cycle
+      // when there was no start to derive an end from.
+      const modelCount =
+        typeof c.periodCount === "number" && Number.isInteger(c.periodCount)
+          ? c.periodCount
+          : typeof c.periodCount === "string" && /^\d{1,2}$/.test(c.periodCount.trim())
+            ? Number(c.periodCount.trim())
+            : 0;
+      const count =
+        periods.length > 0
+          ? periods.length
+          : modelCount >= 1 && modelCount <= MAX_COMPOSED_PERIODS
+            ? modelCount
+            : 0;
+      if (count > 0 && periods.length === 0) out.periodCount = count;
+      if (out.cycleStart) {
+        const derived = count > 0 ? cycleEndForCount(out.cycleStart, cadence, count) : null;
+        const stated =
+          typeof c.cycleEnd === "string" && ISO_DATE_RE.test(c.cycleEnd.trim())
+            ? c.cycleEnd.trim()
+            : null;
+        const cycleEnd = derived ?? stated;
+        if (cycleEnd && cycleEnd > out.cycleStart) out.cycleEnd = cycleEnd;
       }
     }
   }

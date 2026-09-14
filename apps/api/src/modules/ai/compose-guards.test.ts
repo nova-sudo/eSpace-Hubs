@@ -234,12 +234,107 @@ test("drops a malformed cycleStart rather than failing the whole compose", () =>
   assert.equal(out?.periods?.length, 1, "the periods themselves still survive");
 });
 
-test("drops cycleStart when there are no periods to anchor — it's meaningless alone", () => {
+test("keeps cycleStart on a FLAT cadenced tracker — a 13-week plan with uniform weeks still starts somewhere", () => {
   const out = cleanComposedBlock({
     cadence: "weekly",
     cycleStart: "2026-07-01",
   });
+  assert.equal(out?.cycleStart, "2026-07-01");
+});
+
+// ─── cleanComposedBlock: cycle LENGTH (periodCount / cycleEnd) ────────
+//
+// The other half of the same bug. Anchoring the start wasn't enough: a flat
+// weekly tracker (no periods) for a 13-week plan still had no END, so the
+// client fell back to the calendar year — "0/53 filled" for a 13-week plan.
+// The model now states a length, and the cleaner turns it into a stored
+// cycleEnd so the tracker arrives bounded.
+
+test("periods win: cycleEnd is derived from their count, and periodCount is not stored beside them", () => {
+  const out = cleanComposedBlock({
+    cadence: "weekly",
+    cycleStart: "2026-09-01",
+    periodCount: 53, // the model padded — ignored in favour of what it authored
+    periods: [
+      { key: "w1", label: "Week 1" },
+      { key: "w2", label: "Week 2" },
+      { key: "w3", label: "Week 3" },
+    ],
+  });
+  assert.equal(out?.cycleEnd, "2026-09-21");
+  assert.equal(out?.periodCount, undefined);
+});
+
+test("a flat tracker with a stated periodCount is bounded to exactly that many windows", () => {
+  const out = cleanComposedBlock({
+    cadence: "weekly",
+    cycleStart: "2026-09-01",
+    periodCount: 13,
+  });
+  assert.equal(out?.periodCount, 13);
+  assert.equal(out?.cycleEnd, "2026-11-30");
+});
+
+test("a numeric-string periodCount is tolerated", () => {
+  const out = cleanComposedBlock({ cadence: "monthly", cycleStart: "2026-08-01", periodCount: "6" });
+  assert.equal(out?.periodCount, 6);
+  assert.equal(out?.cycleEnd, "2027-01-31");
+});
+
+test("periodCount without a start is still kept, so the client can size the cycle from its own anchor", () => {
+  const out = cleanComposedBlock({ cadence: "weekly", periodCount: 13 });
+  assert.equal(out?.periodCount, 13);
   assert.equal(out?.cycleStart, undefined);
+  assert.equal(out?.cycleEnd, undefined);
+});
+
+test("the model's own cycleEnd is used only when nothing counted the windows", () => {
+  const stated = cleanComposedBlock({
+    cadence: "weekly",
+    cycleStart: "2026-09-01",
+    cycleEnd: "2026-10-15",
+  });
+  assert.equal(stated?.cycleEnd, "2026-10-15");
+  const counted = cleanComposedBlock({
+    cadence: "weekly",
+    cycleStart: "2026-09-01",
+    cycleEnd: "2027-08-31", // a whole year — contradicts the count
+    periodCount: 13,
+  });
+  assert.equal(counted?.cycleEnd, "2026-11-30");
+});
+
+test("an inverted or malformed cycleEnd, or an out-of-range count, is dropped rather than fatal", () => {
+  assert.equal(
+    cleanComposedBlock({ cadence: "weekly", cycleStart: "2026-09-01", cycleEnd: "2026-08-01" })?.cycleEnd,
+    undefined,
+  );
+  assert.equal(
+    cleanComposedBlock({ cadence: "weekly", cycleStart: "2026-09-01", cycleEnd: "soon" })?.cycleEnd,
+    undefined,
+  );
+  const tooMany = cleanComposedBlock({ cadence: "weekly", cycleStart: "2026-09-01", periodCount: 99 });
+  assert.equal(tooMany?.periodCount, undefined);
+  assert.equal(tooMany?.cycleEnd, undefined);
+  const zero = cleanComposedBlock({ cadence: "weekly", cycleStart: "2026-09-01", periodCount: 0 });
+  assert.equal(zero?.periodCount, undefined);
+});
+
+test("a nested block states its own length the same way", () => {
+  const out = cleanComposedBlock({
+    cadence: "quarterly",
+    cycleStart: "2026-07-01",
+    periods: [
+      {
+        key: "q3",
+        label: "Q3",
+        nested: { cadence: "weekly", cycleStart: "2026-07-06", periodCount: 12 },
+      },
+    ],
+  });
+  assert.equal(out?.cycleEnd, "2026-09-30");
+  assert.equal(out?.periods?.[0]?.nested?.periodCount, 12);
+  assert.equal(out?.periods?.[0]?.nested?.cycleEnd, "2026-09-27");
 });
 
 test("drops cycleStart when there's no cadence — periods themselves get rejected first", () => {

@@ -373,6 +373,12 @@ export interface SpecComposed {
   cycleStart?: string;
   cycleEnd?: string;
   /**
+   * Stated plan length in cadence windows, for a FLAT tracker (no authored
+   * `periods`) whose document still says how long it runs ("13 weeks").
+   * Dropped when `periods` is present — their length is the count then.
+   */
+  periodCount?: number;
+  /**
    * Default fields for THIS cadence level's periods when a period doesn't
    * specify its own — the nested-level equivalent of top-level `spec.fields`.
    * Only meaningful (and only ever stored) on a NESTED block; the top-level

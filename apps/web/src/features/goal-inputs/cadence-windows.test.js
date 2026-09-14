@@ -305,3 +305,49 @@ test("toIsoDay normalizes datetimes to the day and rejects non-dates", () => {
   assert.equal(toIsoDay(null), null);
   assert.equal(toIsoDay(20260907), null, "non-string");
 });
+
+// ─── composedCycleBounds derives a missing end from the plan's length ──
+//
+// A spec can state how long it runs without storing an end day: authored
+// periods (structurally), or `periodCount` on a flat tracker. Falling
+// through to the caller's calendar-year default there is the 53-windows bug,
+// so the length is honoured directly rather than waiting for a self-heal
+// save that only fires on a mounted widget.
+
+test("a stored cycleStart/cycleEnd pair still wins and is unchanged", () => {
+  const b = composedCycleBounds({
+    composed: { cadence: "weekly", cycleStart: "2026-09-01", cycleEnd: "2026-11-30", periodCount: 53 },
+  });
+  assert.equal(b.cycleStart, Date.parse("2026-09-01"));
+  assert.equal(b.cycleEnd, Date.parse("2026-11-30") + 86_400_000);
+});
+
+test("periodCount sizes the cycle when no end is stored", () => {
+  const b = composedCycleBounds({
+    composed: { cadence: "weekly", cycleStart: "2026-09-01", periodCount: 13 },
+  });
+  const cycle = buildCycleWindows({ entries: [], cadence: "weekly", now: Date.parse("2026-09-01"), ...b });
+  assert.equal(cycle.total, 13);
+});
+
+test("authored periods size the cycle when no end is stored", () => {
+  const periods = Array.from({ length: 6 }, (_, i) => ({ key: `m${i + 1}`, label: `Month ${i + 1}` }));
+  const b = composedCycleBounds({ composed: { cadence: "monthly", cycleStart: "2026-08-01", periods } });
+  const cycle = buildCycleWindows({ entries: [], cadence: "monthly", now: Date.parse("2026-08-01"), ...b });
+  assert.equal(cycle.total, 6);
+});
+
+test("no start, or a length nothing states, still falls back to the calendar year", () => {
+  assert.deepEqual(composedCycleBounds({ composed: { cadence: "weekly", periodCount: 13 } }), {});
+  assert.deepEqual(composedCycleBounds({ composed: { cadence: "weekly", cycleStart: "2026-09-01" } }), {});
+  assert.deepEqual(composedCycleBounds({ composed: {} }), {});
+  assert.deepEqual(composedCycleBounds({}), {});
+});
+
+test("an inverted stored end falls back to the derived length rather than to a year", () => {
+  const b = composedCycleBounds({
+    composed: { cadence: "weekly", cycleStart: "2026-09-01", cycleEnd: "2026-08-01", periodCount: 4 },
+  });
+  const cycle = buildCycleWindows({ entries: [], cadence: "weekly", now: Date.parse("2026-09-01"), ...b });
+  assert.equal(cycle.total, 4);
+});

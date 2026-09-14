@@ -33,6 +33,7 @@ import { UntrackableCard } from "./state-shells/untrackable-card";
 import { ContextCollector } from "./state-shells/context-collector";
 import { ComposeWidgetModal } from "./compose-widget-modal";
 import { EditSetupModal } from "./edit-setup-modal";
+import { EditPlanModal } from "./plan-editor/edit-plan-modal";
 import { useIsContextComplete, readContextFor } from "@/features/goal-context";
 import { saveSpec } from "@/features/goal-specs";
 import { clearGoalEntries } from "@/features/goal-inputs";
@@ -77,6 +78,7 @@ export function GoalWidget({
   // "Edit setup" modal — adjust targets / scorecard weights on the current
   // committed widget without re-running the AI.
   const [editSetupOpen, setEditSetupOpen] = useState(false);
+  const [editPlanOpen, setEditPlanOpen] = useState(false);
 
   // Optional handle to the analyst overlay (null when there's no provider
   // above — e.g. an isolated render). Re-analyze uses it to open the
@@ -107,6 +109,20 @@ export function GoalWidget({
       spec={spec}
       goal={goal}
       onSaved={() => setEditSetupOpen(false)}
+    />
+  );
+
+  // "Edit plan" — the bigger view of a COMPOSED tracker's cycle and
+  // per-window content (fix a 53-week cycle, remap activities, nest a
+  // cadence). Same widget, keeps history; a structural change on an
+  // approved BYO tracker resubmits it.
+  const editPlanModal = (
+    <EditPlanModal
+      open={editPlanOpen}
+      onClose={() => setEditPlanOpen(false)}
+      spec={spec}
+      goal={goal}
+      onSaved={() => setEditPlanOpen(false)}
     />
   );
 
@@ -285,6 +301,9 @@ export function GoalWidget({
     // "Edit setup": adjust this widget's targets / scorecard weights in place
     // — same widget, keeps history (no AI, no wipe).
     onEditSetup: () => setEditSetupOpen(true),
+    // "Edit plan": COMPOSED only — the cycle + per-window map. Other kinds
+    // have no plan to lay out, so the chip stays hidden for them.
+    onEditPlan: spec.widget === "COMPOSED" ? () => setEditPlanOpen(true) : null,
     // Embedder overrides (e.g. sub-component modal disables re-analyze).
     ...(controlsOverride || {}),
   };
@@ -304,6 +323,7 @@ export function GoalWidget({
       </WidgetErrorBoundary>
       {composeModal}
       {editSetupModal}
+      {editPlanModal}
     </>
   );
 }

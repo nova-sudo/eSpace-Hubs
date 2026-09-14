@@ -121,7 +121,7 @@ apps/web/src/
 │   ├── evidence/                     # Evidence board, document builder, .md/.pdf export, pdf/
 │   ├── snapshots/                    # Store + page + capture-readings (per-goal readings) + compliance summary
 │   ├── goal-specs/ · goal-inputs/ · goal-context/ · goal-locks/ · goal-tiers/
-│   ├── goal-widgets/                 # Widget resolver, data-sources/use-data-source (provenance), cadence stepper
+│   ├── goal-widgets/                 # Widget resolver, data-sources/use-data-source (provenance), cadence stepper, plan-editor/ (cycle + per-window map)
 │   ├── goal-editors/ · grading/ · notifications/ · date-range/
 │   ├── integrations/                 # Provider layer: api-clients/, hooks/ (SWR), metrics/ (pure), refresh.js
 │   ├── analyst/ · command-palette/ · companion/ · migrate/ · prefs/
@@ -235,6 +235,7 @@ npm run dev                  # http://localhost:3000
 | Ticket cycle time | ⚠️ sample | Jira `/search/jql` — 50 most-recently-updated, resolved >90d excluded (provenance chip says so) |
 | CI/CD widgets (deploy freq, lead time, pass rate) | ⚠️ last 100 | Jenkins / GitHub Actions, capped at 100 builds |
 | Manual widgets (counter, scale, date log, incidents, composed…) | ✅ | `goal_inputs` via API, cadence windows from `goal-inputs/cadence-windows.js` |
+| Plan cycle on a COMPOSED spec | ✅ | `composed.cycleStart` + `cycleEnd`, or `periodCount` for a flat plan. The composer stamps them from the document's stated length (shared `cycleEndForCount`); `goal-widgets/plan-editor/` is where a user reviews or fixes them. Without a length a cycle still falls back to the calendar year — that is what the plan step exists to catch. |
 | Period detail + risks on a COMPOSED spec | ✅ | `composed.periods[].detail` (focus / activities / deliverables with format + criteria) and `.notes` / `composed.notes` (risks with likelihood + mitigation). Display-only — never graded. |
 | Evidence FILES per period | ✅ | GridFS (`goal_evidence` bucket) via `/api/v1/goal-evidence`; 10 MB, allow-listed types, always served as a download |
 | Management plan half | ✅ | `composed.management` — a second composed block for a lead's team-facing track, plus a roster read from `/api/v1/my-reports` |

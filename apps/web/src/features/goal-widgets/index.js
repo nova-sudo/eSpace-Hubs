@@ -14,6 +14,12 @@ import "./widgets/_register.jsx";
 export { GoalWidget } from "./goal-widget";
 export { GoalWidgetModal } from "./goal-widget-modal";
 export { ComposeWidgetModal } from "./compose-widget-modal";
+// The plan editor — the bigger view of a COMPOSED tracker's cycle and its
+// per-window content. The compose modal mounts it to review what the AI
+// generated; the widget's "Edit plan" action mounts it on a live tracker.
+export { PlanEditor } from "./plan-editor/plan-editor";
+export { EditPlanModal } from "./plan-editor/edit-plan-modal";
+export { resolvePlanBounds, describeCycle, stampBounds } from "./plan-editor/plan-model";
 export { GoalWidgetsGrid } from "./goal-widgets-grid";
 export { WidgetShell, TargetChip } from "./widget-shell";
 export { WidgetErrorBoundary } from "./widget-error-boundary";

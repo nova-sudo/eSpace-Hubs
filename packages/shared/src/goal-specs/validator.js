@@ -549,7 +549,21 @@ function validateFields(fields, errors) {
  * longest cadence anyone realistically authors by hand) with room to spare;
  * past that the document is describing a programme, not a goal.
  */
-const COMPOSED_MAX_PERIODS = 53;
+export const COMPOSED_MAX_PERIODS = 53;
+
+/**
+ * `composed.periodCount` — how many cadence windows the plan spans, for a
+ * FLAT tracker (no authored `periods[]`) whose document still states a
+ * length ("a 13-week programme", "six months"). Authored periods make the
+ * count structural, so it's only stored when there are none; with periods
+ * present `periods.length` is the count and this key is dropped. Optional,
+ * a positive integer, capped at the same ceiling as periods.
+ */
+function validatePeriodCount(raw) {
+  if (typeof raw !== "number" || !Number.isInteger(raw)) return null;
+  if (raw < 1 || raw > COMPOSED_MAX_PERIODS) return null;
+  return raw;
+}
 
 /**
  * Safety ceiling on how deep `composed.periods[].nested` may recurse — a
@@ -894,6 +908,14 @@ function validateComposed(composed, errors, depth = 0) {
       });
       if (periods.length) out.periods = periods;
     }
+  }
+
+  // A stated plan length for a flat tracker. Meaningless without a cadence
+  // (no windows to count) and redundant once periods are authored (their
+  // length IS the count), so it's only kept for the flat, cadenced case.
+  if (cadence && !out.periods) {
+    const periodCount = validatePeriodCount(composed.periodCount);
+    if (periodCount) out.periodCount = periodCount;
   }
 
   return Object.keys(out).length ? out : null;

@@ -8,6 +8,8 @@ export type ValidationResult =
   | { ok: true; spec: ValidatedSpec }
   | { ok: false; errors: string[] };
 
+export const COMPOSED_MAX_PERIODS: number;
+
 export function validateSpec(obj: unknown): ValidationResult;
 
 export function isSpec(value: unknown): boolean;

@@ -1,5 +1,5 @@
 /**
- * Public API for the shared goal-specs domain — constants, normaliser,
+ * Public API for the shared goal-specs domain â constants, normaliser,
  * validator. Consumed by both apps/web and apps/api.
  *
  * Subpath import:
@@ -36,11 +36,21 @@ export {
   TARGET_OPS,
 } from "./types.js";
 
-export { buildSpec, isSpec, validateSpec } from "./validator.js";
+export { buildSpec, COMPOSED_MAX_PERIODS, isSpec, validateSpec } from "./validator.js";
+
+// Cycle-length arithmetic (plan length ↔ inclusive end day). Shared so the
+// composer stamps `composed.cycleEnd` server-side with the same math the web
+// plan editor uses — one definition of "13 weeks from 1 Sep".
+export {
+  CYCLE_MAX_WINDOWS,
+  cycleEndForCount,
+  snapCycleStart,
+  windowCountForCycle,
+} from "./cycle.js";
 
 // Source-backed COMPOSED fields: the allowlisted query registry. Exported from
 // the barrel because the composer prompt, the approval UI and the API executor
-// all need the SAME list — a second copy of "which queries are allowed" is a
+// all need the SAME list â a second copy of "which queries are allowed" is a
 // second thing to forget to tighten.
 export {
   buildProviderRequest,

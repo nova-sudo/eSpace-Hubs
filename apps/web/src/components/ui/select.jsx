@@ -98,7 +98,7 @@ export function Select({
         <RS.Content
           position="popper"
           sideOffset={5}
-          className="z-[70] overflow-hidden rounded-[var(--radius-lg)] bg-card p-1.5 text-fg"
+          className="z-[200] overflow-hidden rounded-[var(--radius-lg)] bg-card p-1.5 text-fg"
           style={{
             boxShadow: "var(--shadow-float)",
             minWidth: "var(--radix-select-trigger-width)",

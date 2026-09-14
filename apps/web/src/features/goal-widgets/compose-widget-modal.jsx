@@ -49,7 +49,7 @@
  * own") and from a mounted widget's "build my own" control.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { FileText, Paperclip, Sparkles, X } from "lucide-react";
@@ -60,13 +60,21 @@ import {
   extractComposeAttachment,
 } from "@/features/analyst";
 import { saveSpec } from "@/features/goal-specs";
-import { clearGoalEntries, deriveCycleEndIso, toIsoDay } from "@/features/goal-inputs";
+import { clearGoalEntries } from "@/features/goal-inputs";
 import { clearGoalLocks } from "@/features/goal-locks";
 import { apiPost } from "@/lib/api-client";
+import { cn } from "@/lib/cn";
 import { Badge, Button, IconButton, Label } from "@/components/ui";
 import { useIsContextComplete } from "@/features/goal-context";
 import { ContextCollector } from "./state-shells/context-collector";
 import { WidgetErrorBoundary } from "./widget-error-boundary";
+import { PlanEditor } from "./plan-editor/plan-editor";
+import {
+  describeCycle,
+  isPlanCadence,
+  resolvePlanBounds,
+  stampBounds,
+} from "./plan-editor/plan-model";
 // Namespace import for the same reason composed-fields.jsx uses one: the
 // plain-English sentence for a query belongs to the shared registry, and a
 // named import would make this modal fail to build against an older shared
@@ -79,6 +87,7 @@ const PHASE = {
   EXTRACT_REVIEW: "extract_review",
   BUSY: "busy",
   PREVIEW: "preview",
+  PLAN: "plan",
   CONTEXT: "context",
 };
 
@@ -94,6 +103,7 @@ const PHASE_ANNOUNCEMENT = {
   [PHASE.EXTRACT_REVIEW]: "Document read. Check the text before we design the tracker.",
   [PHASE.BUSY]: "Designing your tracker.",
   [PHASE.PREVIEW]: "Tracker ready to review.",
+  [PHASE.PLAN]: "The plan, laid out window by window. Check the cycle before submitting.",
   [PHASE.CONTEXT]: "A few answers are needed before this tracker can read your repository.",
 };
 
@@ -115,6 +125,12 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
   const [phase, setPhase] = useState(PHASE.INPUT);
   const [error, setError] = useState(null);
   const [preview, setPreview] = useState(null); // { spec, seeded, unrepresented }
+  // The composed block the user is reviewing in the PLAN step — seeded from
+  // the AI's, then theirs to correct. Held apart from `preview` so
+  // "Re-describe" throws the AI's proposal away without carrying a stale
+  // plan forward, and so the preview object stays exactly what the server
+  // returned.
+  const [planDraft, setPlanDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   // The attached File stays in state across failures on purpose — a transient
   // 500 should never cost the user a second upload.
@@ -135,6 +151,7 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
       setPhase(PHASE.INPUT);
       setError(null);
       setPreview(null);
+      setPlanDraft(null);
       setSaving(false);
       setFile(null);
       setExtracted(null);
@@ -181,6 +198,16 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
   const contextComplete = useIsContextComplete(preview?.spec || null);
   const needsContext =
     Boolean(preview?.spec?.context?.required) && !contextComplete;
+
+  // The cycle the plan step resolves — computed here (not only inside the
+  // step) because the PREVIEW summary shows it too: "13 weeks · 1 Sep – 30
+  // Nov" is the single most checkable thing about a document-derived
+  // tracker, and the one the AI most often gets wrong.
+  const planBounds = useMemo(
+    () => (planDraft ? resolvePlanBounds(planDraft, { goal }) : null),
+    [planDraft, goal],
+  );
+  const hasPlan = Boolean(planDraft && isPlanCadence(planDraft.cadence));
 
   if (!open) return null;
   if (typeof document === "undefined") return null;
@@ -314,6 +341,7 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
           : undefined,
       });
       setPreview(result);
+      setPlanDraft(result?.spec?.composed ? { ...result.spec.composed } : null);
       setPhase(PHASE.PREVIEW);
     } catch (err) {
       setError(err?.message || String(err));
@@ -340,32 +368,22 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
     // (bypasses saveSpec's locked-tiers preserve) so it keeps the previewed
     // tiers.
     //
-    // Anchor authored periods to when the plan actually starts. Preferred
-    // source: the AI's own cycleStart, read off the document itself ("Q3",
-    // an explicit date) — it's the only thing that actually read the plan.
-    // Falls back to the goal's own startDate, but that's a weaker signal: a
-    // goal's stored dates are frequently unset, or describe a WIDER window
-    // than the document's own sub-plan (an annual goal containing a 13-week
-    // Q3 plan) — trusting it for cycleEnd was the exact bug that stretched a
-    // 13-week plan into 53 weeks. The END is never taken from either date
-    // source: it's derived from the period COUNT, which makes a tail of
-    // unlabeled windows past the last authored period structurally
-    // impossible regardless of where cycleStart came from.
+    // The cycle is whatever the PLAN step resolved and the user accepted —
+    // stamped on explicitly (start + end, plus periodCount for a flat plan)
+    // so the saved tracker can never fall back to the calendar year. That
+    // fallback is the 53-weeks-for-a-13-week-plan bug: a plan with no stored
+    // end tiles a whole year of windows, and every window past the plan's
+    // real length is an empty cell the user is told they owe.
+    //
+    // resolvePlanBounds applies the same precedence the plan editor showed:
+    // authored periods > the AI's stated length > a stored end > a year.
+    // The AI's own cycleStart wins over the goal's startDate (it read the
+    // document; a goal's stored date is often unset or describes a wider
+    // window), which is what resolvePlanBounds does with `goal` passed in.
     const previewSpec = preview.spec;
-    const periodCount = previewSpec.composed?.periods?.length || 0;
-    const cycleStart = toIsoDay(
-      previewSpec.composed?.cycleStart || goal?.startDate,
-    );
-    const cycleEnd =
-      periodCount > 0 && cycleStart
-        ? deriveCycleEndIso(cycleStart, previewSpec.composed.cadence, periodCount)
-        : null;
-    // Only attach a pair the validator will keep (end strictly after
-    // start) — a dropped pair just means the calendar-year default.
-    const composed =
-      cycleEnd && cycleStart < cycleEnd
-        ? { ...previewSpec.composed, cycleStart, cycleEnd }
-        : previewSpec.composed;
+    const block = planDraft || previewSpec.composed;
+    const bounds = resolvePlanBounds(block, { goal });
+    const composed = bounds ? stampBounds(block, bounds) : block;
     const pendingSpec = {
       ...previewSpec,
       composed,
@@ -438,8 +456,14 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
       }}
       className="fixed inset-0 z-[60] flex items-center justify-center bg-fg/40 p-5"
     >
+      {/* The plan step lays out up to 53 windows with chips inside them, so
+          it gets the wider card; every other step stays at the 560px
+          single-column width the rest of the modal family uses. */}
       <div
-        className="flex max-h-[86vh] w-full max-w-[560px] flex-col overflow-hidden rounded-[var(--radius-xl)] bg-card"
+        className={cn(
+          "flex max-h-[86vh] w-full flex-col overflow-hidden rounded-[var(--radius-xl)] bg-card",
+          phase === PHASE.PLAN ? "max-w-[980px]" : "max-w-[560px]",
+        )}
         style={{ boxShadow: "var(--shadow-float)" }}
       >
         {/* Header */}
@@ -468,16 +492,30 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
               goal={goal}
               onSaved={() => {
                 // The collector has committed the answers by now, so the
-                // completeness hook has already flipped. Going back to PREVIEW
+                // completeness hook has already flipped. Going back
                 // unconditionally is safe: if something is still blank,
                 // `needsContext` keeps the primary button pointing right back
                 // here rather than letting an unresolvable tracker through.
+                // Back to wherever the submit button lives for this tracker —
+                // the plan step for a cadenced one, the preview otherwise.
                 setError(null);
-                setPhase(PHASE.PREVIEW);
+                setPhase(hasPlan ? PHASE.PLAN : PHASE.PREVIEW);
               }}
             />
+          ) : phase === PHASE.PLAN && planDraft ? (
+            <div className="flex flex-col gap-3">
+              <div>
+                <h2 className="text-[18px] font-bold tracking-[-0.01em] text-fg">Check the plan</h2>
+                <div className="mt-1 text-[12.5px] leading-[1.5] text-muted-fg">
+                  This is the cycle the tracker will run on, window by window. Fix the length or
+                  the start date if they don&apos;t match your plan, and drag anything that landed
+                  in the wrong window.
+                </div>
+              </div>
+              <PlanEditor block={planDraft} onChange={setPlanDraft} goal={goal} />
+            </div>
           ) : phase === PHASE.PREVIEW && preview?.spec ? (
-            <SpecPreview preview={preview} needsContext={needsContext} />
+            <SpecPreview preview={preview} needsContext={needsContext} planBounds={planBounds} />
           ) : phase === PHASE.EXTRACTING ? (
             <ExtractingPanel filename={file?.name} />
           ) : phase === PHASE.BUSY ? (
@@ -557,7 +595,7 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
                 size="sm"
                 onClick={() => {
                   setError(null);
-                  setPhase(PHASE.PREVIEW);
+                  setPhase(hasPlan ? PHASE.PLAN : PHASE.PREVIEW);
                 }}
               >
                 Back to tracker
@@ -570,19 +608,18 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
                 Answers save with the form above
               </span>
             </>
-          ) : phase === PHASE.PREVIEW ? (
+          ) : phase === PHASE.PLAN ? (
             <>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  setPhase(PHASE.INPUT);
-                  setPreview(null);
                   setError(null);
+                  setPhase(PHASE.PREVIEW);
                 }}
               >
-                Re-describe
+                Back to tracker
               </Button>
               <Button
                 type="button"
@@ -597,11 +634,53 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
                 }
                 disabled={saving}
               >
+                {saving ? "Submitting…" : needsContext ? "Set up auto-fill" : "Submit for approval"}
+              </Button>
+            </>
+          ) : phase === PHASE.PREVIEW ? (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setPhase(PHASE.INPUT);
+                  setPreview(null);
+                  setPlanDraft(null);
+                  setError(null);
+                }}
+              >
+                Re-describe
+              </Button>
+              {/* A cadenced tracker goes through the plan step before it can
+                  be submitted. That step is where a mis-sized cycle gets
+                  caught, and it's cheap to pass through when the AI got it
+                  right — so it's the path, not an optional detour. */}
+              <Button
+                type="button"
+                variant="ink"
+                onClick={
+                  hasPlan
+                    ? () => {
+                        setError(null);
+                        setPhase(PHASE.PLAN);
+                      }
+                    : needsContext
+                      ? () => {
+                          setError(null);
+                          setPhase(PHASE.CONTEXT);
+                        }
+                      : handleUse
+                }
+                disabled={saving}
+              >
                 {saving
                   ? "Submitting…"
-                  : needsContext
-                    ? "Set up auto-fill"
-                    : "Submit for approval"}
+                  : hasPlan
+                    ? "Check the plan"
+                    : needsContext
+                      ? "Set up auto-fill"
+                      : "Submit for approval"}
               </Button>
             </>
           ) : phase === PHASE.EXTRACTING ? (
@@ -909,8 +988,8 @@ function describeSource(source) {
   }
 }
 
-/** Read-only preview of the generated COMPOSED spec: cadence + fields + tiers. */
-function SpecPreview({ preview, needsContext }) {
+/** Read-only preview of the generated COMPOSED spec: cycle + fields + tiers. */
+function SpecPreview({ preview, needsContext, planBounds }) {
   const spec = preview.spec;
   const fields = Array.isArray(spec.fields) ? spec.fields : [];
   const cadence = spec.composed?.cadence || null;
@@ -956,6 +1035,25 @@ function SpecPreview({ preview, needsContext }) {
             elsewhere, or re-describe to prioritise it.
           </div>
         </WarnBanner>
+      ) : null}
+
+      {/* The cycle, in plain terms, before anything else about the tracker.
+          A document-derived plan is wrong about its LENGTH far more often
+          than about its fields, and "53 weeks" is instantly recognisable as
+          wrong to the person who wrote the plan — where "weekly record"
+          tells them nothing. A length nobody stated is flagged in the same
+          lemon voice as every other uncertainty here. */}
+      {planBounds ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={planBounds.lengthSource === "default" ? "lemon" : "lav"}>
+            {describeCycle(planBounds)}
+          </Badge>
+          {planBounds.lengthSource === "default" ? (
+            <span className="text-[12.5px] text-lemon-ink">
+              No length was stated, so this is a full year. Check the plan to set it.
+            </span>
+          ) : null}
+        </div>
       ) : null}
 
       <div className="flex items-center gap-2">

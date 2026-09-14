@@ -193,14 +193,43 @@ export function cadenceConsistency(cycle) {
  * upper bound.
  */
 export function composedCycleBounds(spec) {
-  const cs = spec?.composed?.cycleStart;
-  const ce = spec?.composed?.cycleEnd;
-  if (typeof cs !== "string" || typeof ce !== "string") return {};
+  const composed = spec?.composed;
+  const cs = composed?.cycleStart;
+  if (typeof cs !== "string") return {};
   const start = Date.parse(cs);
-  const endDay = Date.parse(ce);
-  if (Number.isNaN(start) || Number.isNaN(endDay) || endDay <= start) return {};
+  if (Number.isNaN(start)) return {};
   const DAY = 86_400_000;
-  return { cycleStart: start, cycleEnd: endDay + DAY };
+
+  const ce = composed?.cycleEnd;
+  if (typeof ce === "string") {
+    const endDay = Date.parse(ce);
+    if (!Number.isNaN(endDay) && endDay > start) {
+      return { cycleStart: start, cycleEnd: endDay + DAY };
+    }
+  }
+
+  // No stored end, but the plan states its LENGTH — either structurally
+  // (authored periods) or as `periodCount` ("a 13-week programme" on a flat
+  // tracker). Derive the end rather than falling through to the caller's
+  // calendar-year default, which is the 53-windows-for-a-13-week-plan bug:
+  // every window past the plan's real length renders as a cell the user is
+  // told they owe, and cadence-consistency grades against periods that were
+  // never part of the plan.
+  //
+  // This makes the fix hold for a spec the composed widget's self-heal
+  // hasn't rewritten yet (it only fires on a mounted widget, and only once
+  // per session), so the stepper, the widget, the Intelligence Hub and the
+  // grader all agree on the same cycle immediately.
+  const count = composed.periods?.length || composed.periodCount || 0;
+  const derivedEnd =
+    count > 0 ? deriveCycleEndIso(cs.trim().slice(0, 10), composed.cadence, count) : null;
+  if (derivedEnd) {
+    const endDay = Date.parse(derivedEnd);
+    if (!Number.isNaN(endDay) && endDay > start) {
+      return { cycleStart: start, cycleEnd: endDay + DAY };
+    }
+  }
+  return {};
 }
 
 /** Generous per-window upper bound (days) — just needs to exceed the real window length. */
