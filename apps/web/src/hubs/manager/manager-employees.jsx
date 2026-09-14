@@ -15,7 +15,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { MonoLabel, PageHeader, Input, Select, Pill } from "@/components/ui";
+import { ArrowRight } from "lucide-react";
+import { Badge, FilterChip, Label, PageHeader, Input, Select } from "@/components/ui";
 import { useHubLink } from "@/features/hubs";
 import { cn } from "@/lib/cn";
 import { useManagerReports } from "./use-manager-reports";
@@ -68,15 +69,14 @@ export function ManagerEmployees() {
   }, [filtered, grouped]);
 
   return (
-    <main className="relative z-[2] mx-auto max-w-4xl px-4 sm:px-10 pb-14 pt-9">
+    <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
       <PageHeader
         crumb="Employees · pick someone to open their board"
         title="Every report, in depth."
-        italicWord="depth"
         subtitle="Open a teammate to see their full goal board and where each goal stands on the achievement tiers."
       />
 
-      <div className="mt-2 flex flex-wrap items-center gap-2.5">
+      <div className="flex flex-wrap items-center gap-2.5">
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -97,25 +97,14 @@ export function ManagerEmployees() {
             </option>
           ))}
         </Select>
-        <button
-          type="button"
+        <FilterChip
+          label="Group"
+          value="by department"
+          active={grouped}
           onClick={() => setGrouped((g) => !g)}
-          aria-pressed={grouped}
-          className="rounded-[var(--radius-sub)] border px-3 py-2 text-[11px] uppercase tracking-[0.3px] transition-colors"
-          style={{
-            fontFamily: "var(--font-mono)",
-            borderColor: grouped ? "var(--accent)" : "var(--border-strong)",
-            background: grouped ? "var(--accent-dim)" : "var(--card)",
-            color: grouped ? "var(--accent)" : "var(--fg)",
-          }}
-        >
-          Group by department
-        </button>
+        />
         {(query || dept) && !loading ? (
-          <span
-            className="text-muted-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-          >
+          <span className="text-[12.5px] text-muted-fg">
             {filtered.length} of {reports.length}
           </span>
         ) : null}
@@ -133,7 +122,7 @@ export function ManagerEmployees() {
           <EmptyCard>
             No direct reports are assigned to you yet. An admin sets each
             engineer's manager under{" "}
-            <span className="text-fg">User management</span>.
+            <span className="text-fg font-bold">User management</span>.
           </EmptyCard>
         ) : filtered.length === 0 ? (
           <EmptyCard>No one matches that search.</EmptyCard>
@@ -141,16 +130,16 @@ export function ManagerEmployees() {
           <div className="grid gap-7">
             {groups.map(([d, rows]) => (
               <div key={d}>
-                <MonoLabel>
+                <Label>
                   {d} · {rows.length}
-                </MonoLabel>
+                </Label>
                 <ReportList rows={rows} link={link} className="mt-3" />
               </div>
             ))}
           </div>
         ) : (
           <>
-            <MonoLabel>Your reports</MonoLabel>
+            <Label>Your reports</Label>
             <ReportList rows={filtered} link={link} className="mt-3" />
           </>
         )}
@@ -166,34 +155,22 @@ function ReportList({ rows, link, className }) {
         <li key={r.id}>
           <Link
             href={link(`/employees/${r.id}`)}
-            className="flex items-center gap-4 rounded-md border border-border bg-card px-4 py-3 transition-colors hover:bg-accent-dim/40"
+            className="flex items-center gap-4 rounded-[var(--radius-xl)] bg-card px-4 py-3.5 transition-colors hover:bg-card-alt"
+            style={{ boxShadow: "var(--shadow-card)" }}
           >
-            <span
-              className="grid h-10 w-10 flex-none place-items-center rounded-full bg-panel-2 text-muted-fg"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontWeight: 700,
-                fontSize: 12,
-              }}
-            >
+            <span className="grid h-10 w-10 flex-none place-items-center rounded-full bg-lav text-lav-ink text-[12px] font-bold">
               {initials(r.displayName)}
             </span>
             <div className="min-w-0 flex-1">
-              <div className="text-[14px] font-semibold">{r.displayName}</div>
-              <div
-                className="mt-0.5 truncate text-muted-fg"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-              >
+              <div className="text-[14.5px] font-bold">{r.displayName}</div>
+              <div className="mt-0.5 truncate text-[12px] text-muted-fg">
                 {[r.role, r.department, r.level].filter(Boolean).join(" · ") ||
                   r.email}
               </div>
             </div>
-            {r.level ? <Pill tone="muted">{r.level}</Pill> : null}
-            <span
-              className="text-accent"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-            >
-              View board →
+            {r.level ? <Badge>{r.level}</Badge> : null}
+            <span className="flex items-center gap-1 text-[12.5px] font-bold text-fg">
+              View board <ArrowRight size={13} />
             </span>
           </Link>
         </li>
@@ -204,7 +181,10 @@ function ReportList({ rows, link, className }) {
 
 function EmptyCard({ children }) {
   return (
-    <div className="rounded-md border border-dashed border-border bg-card p-6 text-[13px] leading-[1.6] text-muted-fg">
+    <div
+      className="rounded-[var(--radius-xl)] bg-card p-6 text-[13px] leading-[1.6] text-muted-fg"
+      style={{ boxShadow: "var(--shadow-card)" }}
+    >
       {children}
     </div>
   );

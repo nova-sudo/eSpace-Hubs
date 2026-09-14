@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { BentoTile } from "@/components/ui";
+import { ArrowUpRight } from "lucide-react";
+import { Badge, BentoTile } from "@/components/ui";
 import { ProviderStateCallout } from "@/features/integrations";
 import { useSnapshots } from "@/features/snapshots";
 import { useHubLink } from "@/features/hubs";
@@ -27,10 +28,10 @@ export function SnapshotsTile() {
       right={
         <Link
           href={link("/snapshots")}
-          className="font-bold text-accent hover:underline"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
+          className="inline-flex items-center gap-1 text-[12px] font-bold text-fg"
         >
-          SEE ALL ↗
+          See all
+          <ArrowUpRight size={12} />
         </Link>
       }
     >
@@ -46,26 +47,18 @@ export function SnapshotsTile() {
           <div className="text-[13px] font-semibold leading-tight">
             {latest.note || "Latest snapshot"}
           </div>
-          <div
-            className="flex items-center justify-between gap-2 text-muted-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-          >
+          <div className="flex items-center justify-between gap-2 text-[11px] text-muted-fg">
             <span>{fullDate(latest.capturedAt)}</span>
-            <span className="text-accent">
+            <span className="font-semibold text-fg">
               {latest.merged ?? 0} merged · {latest.reviews ?? 0} reviews ·{" "}
               {latest.linkage ?? 0}%
             </span>
           </div>
           {latest.partial ? (
-            <div
-              className="mt-0.5 text-[10px]"
-              style={{ fontFamily: "var(--font-mono)", color: "var(--warn)" }}
-            >
-              ⚠ Partial data
-              {latest.gaps?.length > 0
-                ? ` — ${latest.gaps.join(", ")} unavailable`
-                : ""}
-            </div>
+            <Badge tone="lemon" className="mt-0.5 w-fit">
+              Partial data
+              {latest.gaps?.length > 0 ? ` — ${latest.gaps.join(", ")} unavailable` : ""}
+            </Badge>
           ) : null}
         </div>
       )}

@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Download, FileText, Upload, X } from "lucide-react";
 import { toast } from "sonner";
-import { Button, Card, MonoLabel, Pill, Select } from "@/components/ui";
+import { Badge, Button, Card, IconButton, Label, SegmentedControl, Select } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { appendGoals, replaceGoals } from "./goals-store";
 import {
@@ -154,7 +154,7 @@ export function GoalsImport({ onClose }) {
     <Card className="p-6">
       <header className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <MonoLabel>Import from Zoho</MonoLabel>
+          <Label>Import from Zoho</Label>
           <p className="mt-1 max-w-xl text-[13px] leading-[1.55] text-muted-fg">
             Drop the L1 View <code className="font-mono text-fg">.csv</code>{" "}
             and the L2 View <code className="font-mono text-fg">.xls</code>{" "}
@@ -164,15 +164,7 @@ export function GoalsImport({ onClose }) {
             title.
           </p>
         </div>
-        {onClose ? (
-          <button
-            onClick={onClose}
-            className="rounded-full p-1 text-dim-fg hover:bg-card-alt hover:text-fg"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        ) : null}
+        {onClose ? <IconButton label="Close" size="sm" onCard onClick={onClose}><X size={16} /></IconButton> : null}
       </header>
 
       <DropZone
@@ -199,13 +191,15 @@ export function GoalsImport({ onClose }) {
       ) : null}
 
       {warnings.length > 0 ? (
-        <ul className="mt-3 rounded-[var(--radius-sub)] border border-dashed border-[color-mix(in_srgb,var(--bad)_30%,transparent)] bg-[color-mix(in_srgb,var(--bad)_6%,transparent)] p-3 text-[12px] text-bad">
-          {warnings.map((w, i) => (
-            <li key={i} className="py-0.5">
-              ⚠ {w}
-            </li>
-          ))}
-        </ul>
+        <Card tone="peach" radius="lg" className="mt-3">
+          <ul className="text-[12px] text-peach-ink">
+            {warnings.map((w, i) => (
+              <li key={i} className="py-0.5">
+                {w}
+              </li>
+            ))}
+          </ul>
+        </Card>
       ) : null}
 
       {parsed ? (
@@ -225,14 +219,14 @@ export function GoalsImport({ onClose }) {
             }
             l1Options={baseMerged?.tree.l1s || []}
           />
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4">
+          <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-4">
             <ModeSwitch mode={mode} onChange={setMode} />
             <div className="flex gap-2">
-              <Button variant="ghost" onClick={clearAll}>
+              <Button variant="soft" size="sm" onClick={clearAll}>
                 Clear
               </Button>
-              <Button onClick={commit}>
-                <Upload className="h-4 w-4" />
+              <Button size="sm" onClick={commit}>
+                <Upload size={14} />
                 {mode === "replace" ? "Replace & import" : "Append"}{" "}
                 {parsed.stats.l1Count} L1
               </Button>
@@ -262,22 +256,17 @@ function DropZone({ onDropFiles, onClick, disabled }) {
       }}
       disabled={disabled}
       className={cn(
-        "flex w-full flex-col items-center justify-center gap-2 rounded-[var(--radius-tile)] border-2 border-dashed px-6 py-10 transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-        over
-          ? "border-accent bg-accent-dim"
-          : "border-border bg-card-alt hover:border-border-strong",
+        "flex w-full flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] px-6 py-10 transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        over ? "bg-sky text-sky-ink" : "bg-card-alt hover:bg-card-alt/70",
       )}
     >
-      <Download className="h-5 w-5 text-accent" />
+      <Download size={20} className={over ? "text-sky-ink" : "text-fg"} />
       <div className="text-[13px] font-medium">
         {disabled ? "Parsing…" : "Drop files or click to browse"}
       </div>
-      <div
-        className="text-dim-fg"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-      >
+      <Label className={over ? "text-sky-ink" : undefined}>
         Accepts .csv · .xls · .xlsx · multi-file
-      </div>
+      </Label>
     </button>
   );
 }
@@ -285,7 +274,7 @@ function DropZone({ onDropFiles, onClick, disabled }) {
 /**
  * One row per dropped file: name, what the sniffer detected, an L1/L2
  * toggle to re-parse at the other level, and a remove button. The toggle
- * mirrors ModeSwitch's segmented-pill look.
+ * uses the shared SegmentedControl.
  */
 function FileList({ files, disabled, onFlip, onRemove }) {
   return (
@@ -293,49 +282,29 @@ function FileList({ files, disabled, onFlip, onRemove }) {
       {files.map((f) => (
         <li
           key={f.id}
-          className="flex items-center gap-2 rounded-[var(--radius-sub)] border border-border bg-card-alt px-3 py-2"
+          className="flex items-center gap-2 rounded-[var(--radius-lg)] bg-card-alt px-3 py-2"
         >
-          <FileText className="h-3.5 w-3.5 shrink-0 text-accent" />
+          <FileText size={14} className="shrink-0 text-fg" />
           <span className="min-w-0 flex-1 truncate text-[12.5px]" title={f.filename}>
             {f.filename}
           </span>
-          <Pill tone={f.detectedType ? "muted" : "warn"} mono>
-            {f.detectedType
-              ? `detected ${f.detectedType.toUpperCase()}`
-              : "unrecognized"}
-          </Pill>
-          <div className="flex items-center gap-1 rounded-full border border-border bg-card p-0.5">
-            {["l1", "l2"].map((level) => (
-              <button
-                key={level}
-                type="button"
-                disabled={disabled}
-                onClick={() => onFlip(f.id, level)}
-                title={`Treat this file's rows as ${level.toUpperCase()}`}
-                className={cn(
-                  "rounded-full px-2.5 py-0.5 uppercase tracking-[0.4px] disabled:cursor-not-allowed disabled:opacity-50",
-                  f.chosenType === level
-                    ? "bg-fg text-bg"
-                    : "text-muted-fg hover:text-fg",
-                )}
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 10,
-                  fontWeight: 700,
-                }}
-              >
-                {level.toUpperCase()}
-              </button>
-            ))}
+          <Badge tone={f.detectedType ? "neutral" : "lemon"}>
+            {f.detectedType ? `Detected ${f.detectedType.toUpperCase()}` : "Unrecognized"}
+          </Badge>
+          <div className={disabled ? "pointer-events-none opacity-50" : undefined}>
+            <SegmentedControl
+              size="sm"
+              options={[
+                { value: "l1", label: "L1" },
+                { value: "l2", label: "L2" },
+              ]}
+              value={f.chosenType}
+              onChange={(v) => onFlip(f.id, v)}
+            />
           </div>
-          <button
-            type="button"
-            onClick={() => onRemove(f.id)}
-            className="rounded-full p-1 text-dim-fg hover:bg-card hover:text-fg"
-            aria-label={`Remove ${f.filename}`}
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+          <IconButton label={`Remove ${f.filename}`} size="sm" onCard onClick={() => onRemove(f.id)}>
+            <X size={14} />
+          </IconButton>
         </li>
       ))}
     </ul>
@@ -343,42 +312,17 @@ function FileList({ files, disabled, onFlip, onRemove }) {
 }
 
 function ModeSwitch({ mode, onChange }) {
-  const options = [
-    {
-      value: "replace",
-      label: "Replace existing",
-      hint: "Wipe local goals and replace with the import.",
-    },
-    {
-      value: "append",
-      label: "Append",
-      hint: "Keep existing; add new L1s (deduped by code).",
-    },
-  ];
   return (
-    <div className="flex items-center gap-1 rounded-full border border-border bg-card-alt p-0.5">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          onClick={() => onChange(o.value)}
-          title={o.hint}
-          className={cn(
-            "rounded-full px-3 py-1 uppercase tracking-[0.4px]",
-            mode === o.value
-              ? "bg-fg text-bg"
-              : "text-muted-fg hover:text-fg",
-          )}
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            fontWeight: 700,
-          }}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      size="sm"
+      onCard
+      options={[
+        { value: "replace", label: "Replace existing" },
+        { value: "append", label: "Append" },
+      ]}
+      value={mode}
+      onChange={onChange}
+    />
   );
 }
 
@@ -388,33 +332,27 @@ function ModeSwitch({ mode, onChange }) {
 function Preview({ parsed, baseOrphans, assignments, onAssign, l1Options }) {
   const { tree, stats } = parsed;
   return (
-    <div className="mt-4 rounded-[var(--radius-sub)] border border-border bg-card p-4">
+    <div className="mt-4 rounded-[var(--radius-lg)] bg-card-alt p-4">
       <div className="mb-3 flex items-center justify-between">
-        <MonoLabel>Preview</MonoLabel>
+        <Label>Preview</Label>
         <div className="flex gap-2">
-          <Pill tone="accent">{stats.l1Count} L1</Pill>
-          <Pill tone="ok">{stats.l2Matched} L2 matched</Pill>
+          <Badge tone="lav">{stats.l1Count} L1</Badge>
+          <Badge tone="mint">{stats.l2Matched} L2 matched</Badge>
           {stats.l2Unmatched > 0 ? (
-            <Pill tone="warn">{stats.l2Unmatched} orphaned</Pill>
+            <Badge tone="lemon">{stats.l2Unmatched} orphaned</Badge>
           ) : null}
         </div>
       </div>
 
       <ul className="flex flex-col gap-2">
         {tree.l1s.map((l1) => (
-          <li
-            key={l1.id}
-            className="rounded-[var(--radius-sub)] border border-border bg-card-alt px-3 py-2"
-          >
+          <li key={l1.id} className="rounded-[var(--radius-lg)] bg-card px-3 py-2">
             <div className="mb-1 flex items-start gap-2">
-              <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
+              <FileText size={14} className="mt-0.5 shrink-0 text-fg" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
                   {l1.code ? (
-                    <span
-                      className="text-accent"
-                      style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 700 }}
-                    >
+                    <span className="font-mono text-[11px] font-bold text-muted-fg">
                       {l1.code}
                     </span>
                   ) : null}
@@ -425,10 +363,7 @@ function Preview({ parsed, baseOrphans, assignments, onAssign, l1Options }) {
                 </div>
               </div>
             </div>
-            <div
-              className="ml-5 text-dim-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-            >
+            <div className="ml-5 text-[11.5px] text-dim-fg">
               └ {l1.l2s.length} L2{" "}
               {l1.l2s.length === 1 ? "child" : "children"} mapped
             </div>
@@ -437,16 +372,13 @@ function Preview({ parsed, baseOrphans, assignments, onAssign, l1Options }) {
       </ul>
 
       {baseOrphans.length > 0 ? (
-        <div className="mt-3 rounded-[var(--radius-sub)] border border-dashed border-[color-mix(in_srgb,var(--warn)_30%,transparent)] bg-[color-mix(in_srgb,var(--warn)_6%,transparent)] p-3">
-          <div
-            className="mb-1 uppercase tracking-[0.5px] text-warn"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, fontWeight: 700 }}
-          >
+        <Card tone="lemon" radius="lg" className="mt-3">
+          <Label className="mb-1 text-lemon-ink">
             {baseOrphans.length} L2{" "}
             {baseOrphans.length === 1 ? "row" : "rows"} couldn&apos;t find a
             parent L1
-          </div>
-          <p className="mb-2 text-[11.5px] leading-[1.4] text-muted-fg">
+          </Label>
+          <p className="mb-2 text-[11.5px] leading-[1.4] text-lemon-ink">
             Assign each row to an L1 below, or leave it out. Rows left out
             will NOT be imported.
           </p>
@@ -454,16 +386,11 @@ function Preview({ parsed, baseOrphans, assignments, onAssign, l1Options }) {
             {baseOrphans.map((l2) => (
               <li key={l2.id} className="flex items-center gap-2">
                 <span
-                  className="min-w-0 flex-1 truncate text-[12px]"
+                  className="min-w-0 flex-1 truncate text-[12px] text-lemon-ink"
                   title={l2.parentTitle ? `Zoho parent: ${l2.parentTitle}` : undefined}
                 >
                   {l2.code ? (
-                    <span
-                      className="mr-1.5 text-warn"
-                      style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 700 }}
-                    >
-                      {l2.code}
-                    </span>
+                    <span className="mr-1.5 font-mono text-[11px] font-bold">{l2.code}</span>
                   ) : null}
                   {l2.title || "(no title)"}
                 </span>
@@ -484,7 +411,7 @@ function Preview({ parsed, baseOrphans, assignments, onAssign, l1Options }) {
               </li>
             ))}
           </ul>
-        </div>
+        </Card>
       ) : null}
     </div>
   );

@@ -12,11 +12,10 @@
  */
 
 import { useMemo, useState } from "react";
-import { MonoLabel } from "@/components/ui";
+import { Button, Card, Label, Section } from "@/components/ui";
 import { resolveCompletedWorkWeek } from "@/lib/date";
-import { cn } from "@/lib/cn";
 import { GoalHealthCard } from "./goal-health-card";
-import { NEEDS_ATTENTION } from "./status";
+import { HEALTH, NEEDS_ATTENTION } from "./status";
 
 export function GoalHealthGrid({ groups, fillHref }) {
   const [showAll, setShowAll] = useState(false);
@@ -39,6 +38,16 @@ export function GoalHealthGrid({ groups, fillHref }) {
     () => (groups || []).reduce((sum, g) => sum + g.cards.length, 0),
     [groups],
   );
+  const onPaceCount = useMemo(
+    () =>
+      (groups || []).reduce(
+        (sum, g) =>
+          sum +
+          g.cards.filter((c) => c.health.status === HEALTH.ON_PACE || c.health.status === HEALTH.AUTO).length,
+        0,
+      ),
+    [groups],
+  );
 
   // In focus mode, drop healthy cards and any group left empty by the filter.
   const visibleGroups = useMemo(() => {
@@ -52,75 +61,45 @@ export function GoalHealthGrid({ groups, fillHref }) {
   }, [groups, showAll]);
 
   return (
-    <div className="flex flex-col gap-5">
-      {/* Toggle bar */}
-      <div className="flex items-center justify-between">
-        <MonoLabel>
-          {showAll
-            ? `All goals · ${totalCount}`
-            : `Needs attention · ${attentionCount}`}
-        </MonoLabel>
-        <button
-          type="button"
-          onClick={() => setShowAll((v) => !v)}
-          className="rounded-[var(--radius-sub)] border border-border bg-card px-2.5 py-1 text-[10px] uppercase tracking-[0.4px] text-muted-fg transition-colors hover:border-border-strong hover:text-fg"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          {showAll ? `Focus · ${attentionCount} need you` : `Show all · ${totalCount}`}
-        </button>
+    <Section
+      title="Full board"
+      right={
+        <div className="flex items-center gap-3">
+          <span className="text-[13px] text-muted-fg">
+            {totalCount} goal{totalCount === 1 ? "" : "s"} · {onPaceCount} on pace
+          </span>
+          <Button variant="soft" size="sm" onClick={() => setShowAll((v) => !v)}>
+            {showAll ? `Focus · ${attentionCount} need you` : `Show all · ${totalCount}`}
+          </Button>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-5">
+        {visibleGroups.length === 0 ? (
+          <AllClear total={totalCount} />
+        ) : (
+          visibleGroups.map((group) => (
+            <GroupBlock key={group.l1.id} group={group} fillHref={fillHref} week={week} />
+          ))
+        )}
       </div>
-
-      {visibleGroups.length === 0 ? (
-        <AllClear total={totalCount} />
-      ) : (
-        visibleGroups.map((group) => (
-          <GroupBlock
-            key={group.l1.id}
-            group={group}
-            fillHref={fillHref}
-            week={week}
-          />
-        ))
-      )}
-    </div>
+    </Section>
   );
 }
 
 function GroupBlock({ group, fillHref, week }) {
   return (
     <section className="flex flex-col gap-2.5">
-      <div className="flex items-baseline gap-2.5 border-b border-border pb-1.5">
-        <span
-          className="font-semibold uppercase"
-          style={{
-            fontFamily: "var(--font-dot)",
-            fontSize: 16,
-            letterSpacing: "0.5px",
-          }}
-        >
+      <div className="flex items-baseline gap-2.5">
+        <Label>
           {group.l1.title}
-        </span>
-        {group.l1.category ? (
-          <span
-            className="text-[10px] uppercase tracking-[0.4px] text-muted-fg/70"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            {group.l1.category}
-          </span>
-        ) : null}
-        <span
-          className="ml-auto text-[10px] tabular-nums text-muted-fg/70"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
+          {group.l1.category ? ` · ${group.l1.category}` : ""}
+        </Label>
+        <span className="ml-auto text-[12px] tabular-nums text-dim-fg">
           {group.cards.length} goal{group.cards.length === 1 ? "" : "s"}
         </span>
       </div>
-      <div
-        className={cn(
-          "grid gap-3",
-          "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3",
-        )}
-      >
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {group.cards.map((card) => (
           <GoalHealthCard
             key={card.goal.id}
@@ -139,17 +118,11 @@ function GroupBlock({ group, fillHref, week }) {
 
 function AllClear({ total }) {
   return (
-    <div className="flex flex-col items-center gap-1.5 rounded-md border border-dashed border-border bg-card/40 px-6 py-10 text-center">
-      <div
-        className="text-[18px] font-semibold uppercase text-fg"
-        style={{ fontFamily: "var(--font-dot)", letterSpacing: "0.5px" }}
-      >
-        Everything&rsquo;s up to date
+    <Card tone="mint" padding={24} className="flex flex-col items-center gap-1.5 text-center">
+      <div className="text-[15px] font-bold text-mint-ink">Everything&rsquo;s up to date</div>
+      <div className="text-[13px] text-mint-ink/80">
+        All {total} tracked goals are on pace or auto-tracked. Nothing needs you right now.
       </div>
-      <div className="text-[12px] text-muted-fg">
-        All {total} tracked goals are on pace or auto-tracked. Nothing needs you
-        right now.
-      </div>
-    </div>
+    </Card>
   );
 }

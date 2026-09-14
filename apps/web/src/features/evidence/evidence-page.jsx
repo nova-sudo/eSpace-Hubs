@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Button, PageHeader } from "@/components/ui";
+import { Badge, Button, Card, PageHeader, SegmentedControl } from "@/components/ui";
 import { useIntegrations } from "@/features/integrations";
 import { useHubLink } from "@/features/hubs";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
@@ -23,6 +23,11 @@ import { apiGet, apiPost } from "@/lib/api-client";
 import { generateEvidencePdf } from "./pdf/generate-pdf";
 
 const NARRATIVE_DRAFT_KEY = "espace-devhub:evidence-narrative";
+
+const VIEW_OPTIONS = [
+  { value: "board", label: "Board" },
+  { value: "compile", label: "Document" },
+];
 
 export function EvidencePage() {
   const { me } = useIntegrations();
@@ -91,13 +96,13 @@ export function EvidencePage() {
   // "set up your goals" empty state.
   const loading = !ready;
 
-  // F1 — submission status. The compile view shows when this document
-  // was last submitted; submitting freezes it server-side as a review
-  // packet the manager grades against.
+  // F1 — submission status. The "Review packet" sidebar shows when this
+  // document was last submitted; submitting freezes it server-side as a
+  // review packet the manager grades against. Fetched once on mount (not
+  // gated on `view`) so the sidebar can show it from the board view too.
   const [submitting, setSubmitting] = useState(false);
   const [lastPacket, setLastPacket] = useState(null); // {submittedAt, hasManager} | null
   useEffect(() => {
-    if (view !== "compile") return;
     let cancelled = false;
     void apiGet("/review-packets/mine").then((r) => {
       if (cancelled || !r.ok) return;
@@ -106,7 +111,7 @@ export function EvidencePage() {
     return () => {
       cancelled = true;
     };
-  }, [view]);
+  }, []);
 
   function buildDocProps() {
     return {
@@ -167,154 +172,141 @@ export function EvidencePage() {
     }
   }
 
-  async function handleExport() {
-    const props = buildDocProps();
-    if (format === "pdf") {
-      const t = toast.loading("Generating PDF…");
-      try {
-        await generateEvidencePdf(props, "performance-review-ytd.pdf");
-        toast.success("PDF downloaded", { id: t });
-      } catch (err) {
-        toast.error(`PDF export failed: ${err?.message || err}`, { id: t });
-      }
-      return;
-    }
-    downloadMarkdown("performance-review-ytd.md", renderMarkdown(props));
+  async function handleDownloadMarkdown() {
+    downloadMarkdown("performance-review-ytd.md", renderMarkdown(buildDocProps()));
     toast.success("Markdown downloaded");
   }
 
-  // ── Board view (primary): goal evidence, grouped by L1 ──
-  if (view === "board") {
+  async function handleExportPdf() {
+    const t = toast.loading("Generating PDF…");
+    try {
+      await generateEvidencePdf(buildDocProps(), "performance-review-ytd.pdf");
+      toast.success("PDF downloaded", { id: t });
+    } catch (err) {
+      toast.error(`PDF export failed: ${err?.message || err}`, { id: t });
+    }
+  }
+
+  function SubmitCard() {
     return (
-      <main className="relative z-[2] px-4 sm:px-10 pb-14 pt-9">
-        <div className="mb-6 no-print">
-          <ReviewPrepChecklist />
-        </div>
-        <PageHeader
-          crumb="Evidence · goals"
-          title="Proof for your review."
-          italicWord="."
-          right={
-            <span
-              className="uppercase tracking-[0.6px] text-muted-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-            >
-              {rangeLabel}
-              {readInputsTruncated() ? (
-                <span
-                  style={{ color: "var(--warn)" }}
-                  title="Your check-in history hit the server's row cap — the oldest entries aren't loaded, so totals and compliance counts read as at-least, not exact."
-                >
-                  {" "}
-                  · history capped
-                </span>
-              ) : null}
-            </span>
-          }
-        />
-        {goalsError && !ready ? (
-          // Failed /goals fetch: without this branch the board reads
-          // "Reading your goals…" forever (the store no longer auto-retries).
-          <div className="flex flex-col items-start gap-3 rounded-[var(--radius-sub)] border border-dashed border-[color-mix(in_srgb,var(--bad)_35%,transparent)] bg-[color-mix(in_srgb,var(--bad)_6%,transparent)] p-5">
-            <div
-              className="uppercase tracking-[1px] text-bad"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-            >
-              Couldn&apos;t load your goals
-            </div>
-            <p className="text-[13px] leading-[1.5] text-muted-fg">
-              {goalsError.message || "The server didn't respond. Check your connection and try again."}
-            </p>
-            <Button onClick={() => void retryGoals()}>Retry</Button>
+      <Card tone="sky" className="flex flex-col gap-3">
+        <div className="text-[14px] font-bold">Submit for review</div>
+        <p className="text-[13px] leading-[1.5] opacity-85">
+          Freezes the document as it stands and notifies your manager. You can
+          submit again after changes.
+        </p>
+        <Button
+          size="sm"
+          onClick={handleSubmitForReview}
+          disabled={submitting || loading}
+          className="self-start"
+        >
+          {submitting ? "Submitting…" : "Submit packet"}
+        </Button>
+        {lastPacket?.submittedAt ? (
+          <div className="text-[12px] opacity-75">
+            Last submitted{" "}
+            {new Date(lastPacket.submittedAt).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+            })}
           </div>
-        ) : (
-        <div className="grid grid-cols-1 items-start gap-[26px] lg:grid-cols-[minmax(0,1fr)_300px]">
-          <GoalEvidenceBoard
-            groups={evidence.groups}
-            loading={loading}
-            goalsHref={link("/goals")}
-          />
-          <div className="flex flex-col gap-[13px]">
-            <EvidenceSummary
-              rangeLabel={rangeLabel}
-              summary={evidence.summary}
-              onCompile={() => setView("compile")}
-              loading={loading}
-            />
-            <StarredEvidenceCard />
-          </div>
-        </div>
-        )}
-      </main>
+        ) : null}
+      </Card>
     );
   }
 
-  // ── Compile view: the goals-only document builder ──
   return (
     <main className="relative z-[2] px-4 sm:px-10 pb-14 pt-9">
-      <div className="mb-6 no-print">
-        <ReviewPrepChecklist />
-      </div>
       <PageHeader
-        crumb="Evidence · year-to-date goal review"
+        crumb={`Evidence · ${rangeLabel}`}
         title="Make the case."
-        italicWord="case"
-        subtitle="Compile your goals — what each was set up to achieve, where it landed, and the evidence you logged — into one reviewable document."
+        subtitle="Compile your goals — what each was set up to achieve, where it landed, and the evidence you logged — into one reviewable document your manager can review."
         right={
-          <div className="flex flex-col items-end gap-1.5 no-print">
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setView("board")}>
-                ← Goals
-              </Button>
-              <Button variant="ghost" onClick={handleExport}>
-                Export {format === "markdown" ? ".md" : ".pdf"}
-              </Button>
-              <Button size="lg" onClick={handleSubmitForReview} disabled={submitting || loading}>
-                {submitting ? "Submitting…" : "Submit for review"}
-              </Button>
-            </div>
-            {lastPacket?.submittedAt ? (
-              <span
-                className="uppercase tracking-[0.5px] text-dim-fg"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-              >
-                Last submitted{" "}
-                {new Date(lastPacket.submittedAt).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                })}
-              </span>
-            ) : null}
+          <div className="flex items-center gap-2 no-print">
+            <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={setView} />
+            <Button variant="soft" onClick={handleDownloadMarkdown}>
+              Download .md
+            </Button>
+            <Button arrow onClick={handleExportPdf}>
+              Export PDF
+            </Button>
           </div>
         }
       />
 
-      <div className="grid grid-cols-[320px_minmax(0,1fr)] items-start gap-5">
-        <div className="no-print">
-          <ConfigPanel
-            format={format}
-            setFormat={setFormat}
-            level={level}
-            setLevel={setLevel}
-            include={include}
-            setInclude={setInclude}
-            rangeLabel={rangeLabel}
-          />
+      {readInputsTruncated() ? (
+        <div className="mb-5 no-print">
+          <Badge
+            tone="lemon"
+            title="Your check-in history hit the server's row cap — the oldest entries aren't loaded, so totals and compliance counts read as at-least, not exact."
+          >
+            History capped
+          </Badge>
         </div>
+      ) : null}
 
-        <div className="flex min-w-0 flex-col gap-[18px]">
-          <DocumentPreview
-            format={format}
-            level={level}
-            narrative={narrative}
-            setNarrative={setNarrative}
-            include={include}
-            goalReadings={goalReadings}
-            starred={starred}
-            rangeLabel={rangeLabel}
-          />
+      {view === "board" ? (
+        goalsError && !ready ? (
+          <Card className="flex flex-col items-start gap-3">
+            <div className="text-[15px] font-bold text-peach-ink">Couldn&apos;t load your goals</div>
+            <p className="text-[13px] leading-[1.5] text-muted-fg">
+              {goalsError.message || "The server didn't respond. Check your connection and try again."}
+            </p>
+            <Button onClick={() => void retryGoals()}>Retry</Button>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <GoalEvidenceBoard
+              groups={evidence.groups}
+              loading={loading}
+              goalsHref={link("/goals")}
+            />
+            <div className="flex flex-col gap-4 no-print">
+              <Card>
+                <ReviewPrepChecklist />
+              </Card>
+              <EvidenceSummary
+                rangeLabel={rangeLabel}
+                summary={evidence.summary}
+                onCompile={() => setView("compile")}
+                loading={loading}
+                lastPacket={lastPacket}
+              />
+              <SubmitCard />
+              <StarredEvidenceCard />
+            </div>
+          </div>
+        )
+      ) : (
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+          <div className="flex flex-col gap-4 no-print">
+            <ConfigPanel
+              format={format}
+              setFormat={setFormat}
+              level={level}
+              setLevel={setLevel}
+              include={include}
+              setInclude={setInclude}
+              rangeLabel={rangeLabel}
+            />
+            <SubmitCard />
+          </div>
+
+          <div className="flex min-w-0 flex-col gap-4">
+            <DocumentPreview
+              format={format}
+              level={level}
+              narrative={narrative}
+              setNarrative={setNarrative}
+              include={include}
+              goalReadings={goalReadings}
+              starred={starred}
+              rangeLabel={rangeLabel}
+            />
+          </div>
         </div>
-      </div>
+      )}
     </main>
   );
 }

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { X } from "lucide-react";
+import { Button, IconButton, Input, Label } from "@/components/ui";
 import { WidgetShell } from "../widget-shell";
 import { useGoalInputs } from "@/features/goal-inputs";
 import { fullDate } from "@/lib/date";
@@ -39,37 +41,16 @@ export function DateLogWidget({ spec, goal, variant = "light", className, onRetr
     >
       <div className="flex h-full flex-col gap-2">
         <div className="flex items-baseline gap-2">
-          <div
-            className="font-semibold leading-none"
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 44,
-              letterSpacing: "-1.5px",
-            }}
-          >
+          <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
             {entries.length}
           </div>
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              color: variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)",
-            }}
-          >
+          <span className="text-[13px] text-muted-fg">
             {spec.manual?.unit || "events"}
             {target ? ` · target ${target.op} ${target.value}` : ""}
-            {reachedTarget ? " · ✓" : ""}
-          </div>
+            {reachedTarget ? " · reached" : ""}
+          </span>
         </div>
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            color: variant === "light" ? "rgba(255,255,255,0.68)" : "var(--muted-fg)",
-          }}
-        >
-          {spec.manual?.prompt || "Log dated events"}
-        </div>
+        <Label>{spec.manual?.prompt || "Log dated events"}</Label>
         {/* Input row.
             Native <input type="date"> has a chunky intrinsic width
             (~150px in Chrome) and the <input> "note" wants to grow.
@@ -77,97 +58,39 @@ export function DateLogWidget({ spec, goal, variant = "light", className, onRetr
             shrinkable child, the row pushes wider than the card and the
             tile clips. The button stays `shrink-0` so it always shows. */}
         <div className="flex min-w-0 items-center gap-1.5">
-          <input
+          <Input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="min-w-0 flex-1 rounded-[var(--radius-sub)] bg-transparent px-2 py-1.5 outline-none"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              color: variant === "light" ? "#ffffff" : "var(--fg)",
-              border:
-                variant === "light"
-                  ? "1px solid rgba(255,255,255,0.25)"
-                  : "1px solid var(--border-strong)",
-              colorScheme: variant === "light" ? "dark" : "light",
-            }}
+            className="min-w-0 flex-1"
           />
-          <input
+          <Input
             placeholder="note (optional)"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            className="min-w-0 flex-1 rounded-[var(--radius-sub)] bg-transparent px-2 py-1.5 outline-none"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              color: variant === "light" ? "#ffffff" : "var(--fg)",
-              border:
-                variant === "light"
-                  ? "1px solid rgba(255,255,255,0.22)"
-                  : "1px solid var(--border-strong)",
-            }}
+            className="min-w-0 flex-1"
           />
-          <button
-            type="button"
-            onClick={logEntry}
-            className="shrink-0 rounded-[var(--radius-sub)] px-3 py-1.5 font-bold uppercase"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10.5,
-              letterSpacing: "0.4px",
-              background: variant === "light" ? "#ffffff" : "var(--accent)",
-              color:
-                variant === "light" ? "var(--accent)" : "var(--accent-on)",
-            }}
-          >
+          <Button size="sm" className="shrink-0" onClick={logEntry}>
             Log
-          </button>
+          </Button>
         </div>
-        <ul
-          className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-        >
+        <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1 text-[13px]">
           {entries.slice().reverse().map((e) => (
             <li
               key={e.ts}
-              className="group flex items-center gap-2 rounded-[var(--radius-sub)] px-1.5 py-1"
-              style={{
-                background:
-                  variant === "light"
-                    ? "rgba(255,255,255,0.06)"
-                    : "var(--card-alt)",
-              }}
+              className="group flex items-center gap-2 rounded-[var(--radius-md)] bg-card-alt px-2 py-1.5"
             >
-              <span className="shrink-0 font-semibold">
-                {fullDate(e.value)}
-              </span>
-              <span
-                className="flex-1 truncate"
-                style={{
-                  color:
-                    variant === "light"
-                      ? "rgba(255,255,255,0.78)"
-                      : "var(--muted-fg)",
-                }}
-              >
-                {e.note || "—"}
-              </span>
-              <button
-                type="button"
-                onClick={() => remove(e.ts)}
+              <span className="shrink-0 font-bold text-fg">{fullDate(e.value)}</span>
+              <span className="flex-1 truncate text-muted-fg">{e.note || "—"}</span>
+              <IconButton
+                label="Remove"
+                size="sm"
+                onCard
                 className="opacity-0 transition-opacity group-hover:opacity-100"
-                style={{
-                  fontSize: 10,
-                  color:
-                    variant === "light"
-                      ? "rgba(255,255,255,0.5)"
-                      : "var(--dim-fg)",
-                }}
-                aria-label="Remove"
+                onClick={() => remove(e.ts)}
               >
-                ✕
-              </button>
+                <X size={14} />
+              </IconButton>
             </li>
           ))}
         </ul>

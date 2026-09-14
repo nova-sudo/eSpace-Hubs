@@ -18,6 +18,8 @@
  */
 
 import Link from "next/link";
+import { ArrowUpRight } from "lucide-react";
+import { IconButton, Label } from "@/components/ui";
 import { useSnapshots } from "@/features/snapshots";
 import { useCombinedEventsSince } from "@/features/integrations";
 import { useHubLink } from "@/features/hubs";
@@ -40,108 +42,74 @@ export function EvidenceDrawer({ onClose }) {
     }));
 
   return (
-    <aside
-      aria-label="Evidence"
-      className="flex h-full w-[320px] max-w-[85vw] shrink-0 flex-col overflow-y-auto border-l border-border bg-panel"
-    >
-      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-        <span
-          className="text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.7px" }}
-        >
-          Evidence
-        </span>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close evidence"
-          className="border-0 bg-transparent text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 11, cursor: "pointer" }}
-        >
-          ✕
-        </button>
-      </div>
+    <>
+      <div aria-hidden="true" className="fixed inset-0 z-40 bg-fg/40" onClick={onClose} />
+      <aside
+        aria-label="Evidence"
+        className="fixed right-0 top-0 z-50 flex h-full w-[340px] max-w-[90vw] flex-col overflow-y-auto bg-card"
+        style={{ boxShadow: "var(--shadow-float)", borderTopLeftRadius: "var(--radius-xl)", borderBottomLeftRadius: "var(--radius-xl)" }}
+      >
+        <div className="flex items-center justify-between gap-2 border-b border-line px-5 py-4">
+          <span className="text-[18px] font-bold tracking-[-0.01em] text-fg">Evidence</span>
+          <IconButton label="Close evidence" size="sm" onCard onClick={onClose}>
+            <ArrowUpRight size={15} className="rotate-45" />
+          </IconButton>
+        </div>
 
-      <div className="flex flex-col gap-4.5 p-4">
-        <section className="flex flex-col gap-2">
-          <span
-            className="text-muted-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.6px" }}
-          >
-            Export bundle · YTD
-          </span>
-          <span className="text-dim-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.5 }}>
-            goals · readings · logged evidence · tier verdicts
-          </span>
-          <Link
-            href={link("/evidence")}
-            className="inline-flex w-fit items-center rounded-[var(--radius-sub)] border border-accent bg-accent px-2.5 py-1.5 text-accent-on"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}
-          >
-            Open evidence builder ↗
-          </Link>
-        </section>
-
-        <section className="flex flex-col gap-2 border-t border-border pt-4">
-          <div className="flex items-baseline justify-between gap-2">
-            <span
-              className="text-muted-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.6px" }}
-            >
-              Weekly snapshots · {snapshots.length}
+        <div className="flex flex-col gap-5 p-5">
+          <section className="flex flex-col gap-2">
+            <Label>Export bundle · YTD</Label>
+            <span className="text-[12.5px] leading-[1.5] text-muted-fg">
+              goals · readings · logged evidence · tier verdicts
             </span>
             <Link
-              href={link("/snapshots")}
-              className="text-accent"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.5px" }}
+              href={link("/evidence")}
+              className="inline-flex w-fit items-center gap-1.5 text-[12.5px] font-bold text-fg"
             >
-              see all ↗
+              Open evidence builder
+              <ArrowUpRight size={13} />
             </Link>
-          </div>
-          {snapshots.length === 0 ? (
-            <span className="text-dim-fg" style={{ fontSize: 11 }}>
-              No snapshots yet.
-            </span>
-          ) : (
-            snapshots.slice(0, 3).map((s) => (
-              <div key={s.capturedAt} className="flex flex-col gap-0.5 border-b border-border pb-1.5">
-                <span className="text-[12px] font-semibold">{s.note || "Snapshot"}</span>
-                <span className="text-muted-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}>
-                  {fullDate(s.capturedAt)} · {s.merged ?? 0} merged · {s.reviews ?? 0} reviews
-                </span>
-              </div>
-            ))
-          )}
-        </section>
+          </section>
 
-        <section className="flex flex-col gap-2 border-t border-border pt-4">
-          <span
-            className="text-muted-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.6px" }}
-          >
-            Recent commits · {commits.length} in 14d
-          </span>
-          {commits.length === 0 ? (
-            <span className="text-dim-fg" style={{ fontSize: 11 }}>
-              No recent pushes.
-            </span>
-          ) : (
-            commits.map((c) => (
-              <div key={c.sha + c.when} className="flex flex-col gap-0.5">
-                <div className="flex items-baseline gap-1.5">
-                  <span className="font-bold text-accent" style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}>
-                    {c.sha}
+          <section className="flex flex-col gap-2 border-t border-line pt-4">
+            <div className="flex items-baseline justify-between gap-2">
+              <Label>Weekly snapshots · {snapshots.length}</Label>
+              <Link href={link("/snapshots")} className="text-[12px] font-bold text-fg">
+                See all
+              </Link>
+            </div>
+            {snapshots.length === 0 ? (
+              <span className="text-[12px] text-dim-fg">No snapshots yet.</span>
+            ) : (
+              snapshots.slice(0, 3).map((s) => (
+                <div key={s.capturedAt} className="flex flex-col gap-0.5 border-b border-line pb-2">
+                  <span className="text-[12.5px] font-bold text-fg">{s.note || "Snapshot"}</span>
+                  <span className="text-[11.5px] text-muted-fg">
+                    {fullDate(s.capturedAt)} · {s.merged ?? 0} merged · {s.reviews ?? 0} reviews
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-[11.5px]">{c.msg}</span>
                 </div>
-                <span className="text-dim-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}>
-                  {c.when} ago
-                </span>
-              </div>
-            ))
-          )}
-        </section>
-      </div>
-    </aside>
+              ))
+            )}
+          </section>
+
+          <section className="flex flex-col gap-2 border-t border-line pt-4">
+            <Label>Recent commits · {commits.length} in 14d</Label>
+            {commits.length === 0 ? (
+              <span className="text-[12px] text-dim-fg">No recent pushes.</span>
+            ) : (
+              commits.map((c) => (
+                <div key={c.sha + c.when} className="flex flex-col gap-0.5">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-[11.5px] font-bold text-fg">{c.sha}</span>
+                    <span className="min-w-0 flex-1 truncate text-[12.5px] text-fg">{c.msg}</span>
+                  </div>
+                  <span className="text-[11.5px] text-dim-fg">{c.when} ago</span>
+                </div>
+              ))
+            )}
+          </section>
+        </div>
+      </aside>
+    </>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Button, Loader } from "@/components/ui";
 import { apiGet, apiPost } from "@/lib/api-client";
 
 /**
@@ -24,8 +25,6 @@ import { apiGet, apiPost } from "@/lib/api-client";
  * than an honest "12 windows filled · last week".
  */
 
-const MONO = { fontFamily: "var(--font-mono)", fontSize: 10 };
-
 function relativeDay(ts) {
   if (!ts) return "never";
   const days = Math.floor((Date.now() - ts) / 86_400_000);
@@ -48,19 +47,7 @@ function parseEmails(raw) {
   ].slice(0, 25);
 }
 
-export function ManagementRoster({ variant = "dark", className = "" }) {
-  const isLight = variant === "light";
-  const tone = useMemo(
-    () => ({
-      fg: isLight ? "#ffffff" : "var(--fg)",
-      muted: isLight ? "rgba(255,255,255,0.68)" : "var(--muted-fg)",
-      faint: isLight ? "rgba(255,255,255,0.45)" : "var(--border-strong)",
-      rule: isLight ? "rgba(255,255,255,0.22)" : "var(--border)",
-      surface: isLight ? "rgba(255,255,255,0.10)" : "var(--card-alt)",
-    }),
-    [isLight],
-  );
-
+export function ManagementRoster({ className = "" }) {
   const [state, setState] = useState({ status: "loading", reports: [] });
   const [draft, setDraft] = useState("");
   const [checking, setChecking] = useState(false);
@@ -102,8 +89,8 @@ export function ManagementRoster({ variant = "dark", className = "" }) {
 
   if (state.status === "loading") {
     return (
-      <span style={{ ...MONO, fontSize: 9.5, color: tone.faint }} className={className}>
-        loading your team&hellip;
+      <span className={`inline-flex items-center gap-2 text-[12.5px] text-muted-fg ${className}`}>
+        <Loader size="sm" label="Loading your team" /> Loading your team…
       </span>
     );
   }
@@ -111,10 +98,10 @@ export function ManagementRoster({ variant = "dark", className = "" }) {
   const reports = state.reports || [];
 
   return (
-    <div className={`flex flex-col gap-2 ${className}`}>
+    <div className={`flex flex-col gap-2.5 ${className}`}>
       {reports.length === 0 ? (
-        <div className="flex flex-col gap-1.5">
-          <span style={{ ...MONO, fontSize: 9.5, color: tone.muted, lineHeight: 1.5 }}>
+        <div className="flex flex-col gap-2">
+          <span className="text-[12.5px] leading-[1.5] text-muted-fg">
             Who do you manage? Add their work emails — you&apos;ll see what they&apos;ve
             been logging, once an admin has assigned them to you.
           </span>
@@ -123,49 +110,25 @@ export function ManagementRoster({ variant = "dark", className = "" }) {
             onChange={(e) => setDraft(e.target.value)}
             rows={2}
             placeholder="someone@espace.com.eg, another@espace.com.eg"
-            className="w-full rounded-[var(--radius-sub)] px-2 py-1.5"
-            style={{
-              ...MONO,
-              fontSize: 10,
-              color: tone.fg,
-              background: "transparent",
-              border: `1px solid ${tone.rule}`,
-              resize: "vertical",
-            }}
+            className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt px-3 py-2 text-[13px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
           />
-          <button
-            type="button"
-            onClick={() => void check()}
-            disabled={checking}
-            className="w-fit rounded-[var(--radius-sub)] px-2 py-1 uppercase"
-            style={{
-              ...MONO,
-              fontSize: 9,
-              letterSpacing: "0.5px",
-              color: tone.fg,
-              background: "transparent",
-              border: `1px solid ${tone.rule}`,
-              cursor: checking ? "default" : "pointer",
-            }}
-          >
-            {checking ? "checking…" : "check"}
-          </button>
+          <Button type="button" variant="soft" size="sm" className="w-fit" onClick={() => void check()} disabled={checking}>
+            {checking ? "Checking…" : "Check"}
+          </Button>
 
           {checkResult?.unlinked?.length > 0 ? (
-            <span style={{ ...MONO, fontSize: 9.5, color: tone.muted, lineHeight: 1.5 }}>
+            <span className="text-[12.5px] leading-[1.5] text-muted-fg">
               Not linked to you yet: {checkResult.unlinked.join(", ")}. An admin sets
               who reports to whom — ask them to assign these people to you, then
               check again.
             </span>
           ) : null}
           {checkResult?.empty ? (
-            <span style={{ ...MONO, fontSize: 9.5, color: tone.faint }}>
-              Add at least one email address.
-            </span>
+            <span className="text-[12.5px] text-dim-fg">Add at least one email address.</span>
           ) : null}
         </div>
       ) : (
-        <ul className="flex list-none flex-col gap-1 p-0">
+        <ul className="flex list-none flex-col gap-1.5 p-0">
           {reports.map((r) => {
             const windows = (r.goals || []).reduce(
               (n, g) => n + (g.filled?.length || 0),
@@ -175,24 +138,19 @@ export function ManagementRoster({ variant = "dark", className = "" }) {
             return (
               <li
                 key={r.id}
-                className="flex items-center justify-between gap-2 rounded-[var(--radius-sub)] px-2 py-1.5"
-                style={{ background: tone.surface }}
+                className="flex items-center justify-between gap-2 rounded-[var(--radius-lg)] bg-card-alt px-3 py-2"
               >
                 <span className="flex min-w-0 flex-col">
-                  <span className="truncate" style={{ ...MONO, fontSize: 10.5, color: tone.fg }}>
-                    {r.name}
-                  </span>
-                  <span style={{ ...MONO, fontSize: 9, color: tone.faint }}>
+                  <span className="truncate text-[13px] font-bold text-fg">{r.name}</span>
+                  <span className="text-[11.5px] text-dim-fg">
                     {tracked} {tracked === 1 ? "goal" : "goals"} logged
                   </span>
                 </span>
                 <span className="flex shrink-0 flex-col items-end">
-                  <span style={{ ...MONO, fontSize: 10, color: tone.fg }}>
+                  <span className="text-[12.5px] font-semibold text-fg">
                     {windows} {windows === 1 ? "window" : "windows"}
                   </span>
-                  <span style={{ ...MONO, fontSize: 9, color: tone.muted }}>
-                    {relativeDay(r.lastAt)}
-                  </span>
+                  <span className="text-[11.5px] text-muted-fg">{relativeDay(r.lastAt)}</span>
                 </span>
               </li>
             );

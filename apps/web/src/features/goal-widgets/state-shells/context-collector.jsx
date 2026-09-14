@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Select } from "@/components/ui";
+import { Button, Label, Select } from "@/components/ui";
 import { WidgetShell } from "../widget-shell";
 import { useGoalContext } from "@/features/goal-context";
 import { RepoMultiPicker, isRepoQuestion } from "./repo-multi-picker";
@@ -15,10 +15,6 @@ import { RepoMultiPicker, isRepoQuestion } from "./repo-multi-picker";
  * resolver swaps back to the real widget automatically — no page reload,
  * no explicit "save and render" click.
  *
- * UI contract: stays visually consistent with every other widget tile.
- * Inputs are inverse-themed on section 5 / analyst page (`variant="light"`)
- * and default-themed on a regular dashboard tile (`variant="dark"`).
- *
  * Phase C: when `onReclassify` is provided, an opt-in
  * "Re-analyze with these answers" button appears next to "Save".
  * Clicking it commits the draft AND triggers a single-goal
@@ -29,7 +25,6 @@ import { RepoMultiPicker, isRepoQuestion } from "./repo-multi-picker";
 export function ContextCollector({
   spec,
   goal,
-  variant = "light",
   className,
   onRetry,
   onSaved,
@@ -109,7 +104,6 @@ export function ContextCollector({
   return (
     <WidgetShell
       spec={spec}
-      variant={variant}
       label="Define before tracking"
       title={goal?.title || spec.title}
       onRetry={onRetry}
@@ -139,20 +133,10 @@ export function ContextCollector({
           }
         }}
       >
-        <div
-          className="flex items-center justify-between gap-2"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            color: variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)",
-            lineHeight: 1.45,
-          }}
-        >
-          <span>Define before tracking</span>
+        <div className="flex items-center justify-between gap-2">
+          <Label>Define before tracking</Label>
           {questions.length > 1 ? (
-            <span style={{ opacity: 0.8 }}>
-              {activeStep + 1} / {questions.length}
-            </span>
+            <Label>{activeStep + 1} / {questions.length}</Label>
           ) : null}
         </div>
         <div className="flex flex-1 flex-col gap-2.5 overflow-y-auto pr-1">
@@ -163,53 +147,25 @@ export function ContextCollector({
               value={draft[questions[activeStep].id]}
               onChange={(v) => update(questions[activeStep].id, v)}
               onBlur={persistOnBlur}
-              variant={variant}
             />
           ) : null}
         </div>
         {reclassifyError ? (
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10,
-              color: variant === "light" ? "#ffd5d5" : "var(--danger)",
-              lineHeight: 1.4,
-            }}
-          >
+          <div className="text-[12.5px] leading-[1.4] text-peach-ink">
             Re-analyze failed: {reclassifyError}
           </div>
         ) : null}
         <div className="flex flex-wrap items-center gap-2">
           {activeStep > 0 ? (
-            <button
-              type="button"
-              onClick={() => setStep(activeStep - 1)}
-              disabled={busy}
-              className="uppercase tracking-[0.5px]"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                color: variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)",
-              }}
-            >
-              ← Back
-            </button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setStep(activeStep - 1)} disabled={busy}>
+              Back
+            </Button>
           ) : null}
-          <button
+          <Button
             type="submit"
+            variant="ink"
+            size="sm"
             disabled={busy}
-            className="rounded-[var(--radius-sub)] px-3 py-1.5 font-bold uppercase transition-opacity"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10.5,
-              letterSpacing: "0.5px",
-              background:
-                variant === "light" ? "#ffffff" : "var(--accent)",
-              color:
-                variant === "light" ? "var(--accent)" : "var(--accent-on)",
-              opacity: busy ? 0.55 : 1,
-              cursor: busy ? "not-allowed" : "pointer",
-            }}
             title={
               onReclassify
                 ? "Save your answers and re-run the AI classifier so it re-scopes this goal to your definitions (it may even pick a different widget)."
@@ -217,31 +173,26 @@ export function ContextCollector({
             }
           >
             {!onLastStep
-              ? "Next →"
+              ? "Next"
               : onReclassify
                 ? busy
                   ? "Saving & re-analyzing…"
                   : "Save & re-analyze"
                 : "Save answers"}
-          </button>
+          </Button>
         </div>
         {onCompose ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
+            className="self-start"
             onClick={onCompose}
             disabled={busy}
-            className="self-start uppercase tracking-[0.5px] transition-opacity hover:opacity-90"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9.5,
-              letterSpacing: "0.5px",
-              color: variant === "light" ? "rgba(255,255,255,0.6)" : "var(--dim-fg)",
-              background: "transparent",
-            }}
             title="None of these fit? Describe in your own words how you want to track this goal and the AI builds a custom tracker."
           >
-            None of these fit? Build your own tracker →
-          </button>
+            None of these fit? Build your own tracker
+          </Button>
         ) : null}
       </form>
     </WidgetShell>
@@ -285,43 +236,18 @@ function serializeAnswer(value, kind) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function QuestionField({ question: q, value, onChange, onBlur, variant }) {
-  const labelStyle = {
-    fontFamily: "var(--font-mono)",
-    fontSize: 10,
-    letterSpacing: "0.5px",
-    color: variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)",
-  };
-  const inputStyle = {
-    fontFamily: "var(--font-mono)",
-    fontSize: 11,
-    color: variant === "light" ? "#ffffff" : "var(--fg)",
-    background: variant === "light" ? "rgba(255,255,255,0.08)" : "var(--card-alt)",
-    border:
-      variant === "light"
-        ? "1px solid rgba(255,255,255,0.22)"
-        : "1px solid var(--border)",
-    borderRadius: "var(--radius-sub)",
-    padding: "6px 8px",
-    width: "100%",
-    outline: "none",
-  };
+const FIELD_CLASS =
+  "w-full rounded-[var(--radius-lg)] bg-card-alt px-3 py-2 text-[13.5px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink";
 
+function QuestionField({ question: q, value, onChange, onBlur }) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="uppercase" style={labelStyle}>
-        {q.prompt}
-      </span>
+    <label className="flex flex-col gap-1.5">
+      <Label>{q.prompt}</Label>
       {isRepoQuestion(q) ? (
         // Repo questions get the multi-select picker — including legacy
         // resource_link questions with the "owner/name" placeholder, so
         // specs composed before `repo_select` existed pick it up too.
-        <RepoMultiPicker
-          value={value}
-          onChange={onChange}
-          onBlur={onBlur}
-          variant={variant}
-        />
+        <RepoMultiPicker value={value} onChange={onChange} onBlur={onBlur} />
       ) : q.kind === "text" ? (
         <input
           type="text"
@@ -329,7 +255,7 @@ function QuestionField({ question: q, value, onChange, onBlur, variant }) {
           placeholder={q.placeholder || ""}
           onChange={(e) => onChange(e.target.value)}
           onBlur={onBlur}
-          style={inputStyle}
+          className={FIELD_CLASS}
         />
       ) : q.kind === "number" ? (
         <input
@@ -341,7 +267,7 @@ function QuestionField({ question: q, value, onChange, onBlur, variant }) {
             onChange(n);
           }}
           onBlur={onBlur}
-          style={inputStyle}
+          className={FIELD_CLASS}
         />
       ) : q.kind === "list" ? (
         <textarea
@@ -350,7 +276,7 @@ function QuestionField({ question: q, value, onChange, onBlur, variant }) {
           placeholder={q.placeholder || "One item per line"}
           onChange={(e) => onChange(e.target.value)}
           onBlur={onBlur}
-          style={{ ...inputStyle, resize: "vertical" }}
+          className={`${FIELD_CLASS} resize-y`}
         />
       ) : q.kind === "resource_link" ? (
         <textarea
@@ -362,7 +288,7 @@ function QuestionField({ question: q, value, onChange, onBlur, variant }) {
           }
           onChange={(e) => onChange(e.target.value)}
           onBlur={onBlur}
-          style={{ ...inputStyle, resize: "vertical" }}
+          className={`${FIELD_CLASS} resize-y`}
         />
       ) : q.kind === "select" ? (
         <Select
@@ -374,7 +300,6 @@ function QuestionField({ question: q, value, onChange, onBlur, variant }) {
             // undefined so the draft holds the value until re-analyze runs.
             if (onBlur) setTimeout(onBlur, 0);
           }}
-          tone={variant === "light" ? "inverse" : "default"}
           size="sm"
           className="w-full"
         >

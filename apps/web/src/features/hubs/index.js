@@ -11,6 +11,9 @@
  *                              full-bleed cards for multi-hub users.
  *                               Mounted by HubRedirect.
  *   <HubSwitcher />            header dropdown to swap hubs mid-session.
+ *   <RootGate />               mount at app/page.jsx; redirects a
+ *                               signed-out visitor to /login, otherwise
+ *                               renders <HubRedirect />.
  *
  *   useAvailableHubs()          reactive — { status, hubs, primaryHubId, … }
  *   useActiveHub()              the hub for the current URL, or null
@@ -26,6 +29,7 @@ export { HubProvider } from "./hub-provider.jsx";
 export { HubRedirect } from "./hub-redirect.jsx";
 export { HubPicker } from "./hub-picker.jsx";
 export { HubSwitcher } from "./hub-switcher.jsx";
+export { RootGate } from "./root-gate.jsx";
 export { useAvailableHubs } from "./use-available-hubs.js";
 export { useActiveHub, useActiveHubStrict, HubContext } from "./hub-context.js";
 export { useHubLink } from "./use-hub-link.js";

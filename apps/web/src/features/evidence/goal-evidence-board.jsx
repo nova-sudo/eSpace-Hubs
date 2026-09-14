@@ -4,212 +4,123 @@
  * Goal evidence board — the primary Evidence surface.
  *
  * The Evidence page is goal-oriented: it shows your goals grouped by L1, each
- * with what it tracks, its current reading + status, its AI tier standing, and
- * the concrete evidence you've logged against it (check-in notes, per-item /
- * per-field proof, links) over the period. This is the "proof for my review"
- * view; "Compile into review →" turns it into the exportable document.
+ * with its achievement verdict and the concrete evidence you've logged
+ * against it (check-in notes, per-item / per-field proof, links) over the
+ * period. This is the "proof for my review" view; the compile view turns it
+ * into the exportable document.
  *
  * Presentation only — groups come from buildGoalEvidenceGroups().
  */
 
 import Link from "next/link";
-import { Pill } from "@/components/ui";
-import { SPEC_KIND_META } from "@/features/goal-specs";
+import { ChevronRight } from "lucide-react";
+import { Badge, Card, InsightRow, StarGlyph } from "@/components/ui";
 import { GoalTierBadge } from "@/features/goal-tiers";
 import { useHubLink } from "@/features/hubs";
-import { formatExpected } from "./format-expected";
-
-const TONE_PILL = { ok: "ok", accent: "accent", warn: "warn", muted: "muted" };
-
-function relAgo(ts) {
-  if (!ts) return null;
-  const d = Math.round((Date.now() - ts) / 86_400_000);
-  if (d <= 0) return "today";
-  return `${d}d ago`;
-}
-
-/** Short calendar date for an evidence timestamp — the "when". */
-function fmtDate(ts) {
-  if (!ts) return "";
-  return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
 
 export function GoalEvidenceBoard({ groups, loading, goalsHref }) {
   const link = useHubLink();
   if (loading && (!groups || groups.length === 0)) {
     return (
-      <div
-        className="rounded-[10px] border border-border bg-card px-4 py-10 text-center text-[13px] text-muted-fg"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
+      <Card className="px-4 py-10 text-center text-[13px] text-muted-fg">
         Reading your goals…
-      </div>
+      </Card>
     );
   }
   if (!groups || groups.length === 0) {
     return (
-      <div
-        className="rounded-[10px] border border-dashed border-border-strong bg-card px-4 py-10 text-center text-[13px] text-muted-fg"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
-        No classified goals yet.{" "}
-        <Link href={goalsHref || link("/goals")} className="text-accent hover:underline">
-          Set up your goals →
+      <Card className="px-4 py-10 text-center">
+        <div className="text-[15px] font-bold text-fg">No classified goals yet</div>
+        <p className="mt-1.5 text-[13px] text-muted-fg">
+          Classify your goals to start collecting evidence against them.
+        </p>
+        <Link
+          href={goalsHref || link("/goals")}
+          className="mt-3 inline-block text-[13px] font-bold text-fg hover:underline"
+        >
+          Set up your goals
         </Link>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div className="flex flex-col gap-7">
+    <div className="flex flex-col gap-4">
       {groups.map((g) => (
-        <section key={g.l1?.id} className="flex flex-col gap-3">
-          <div className="flex items-baseline gap-3 border-b border-border pb-2">
-            <span
-              className="uppercase text-fg"
-              style={{ fontFamily: "var(--font-dot)", fontWeight: 900, fontSize: 15, letterSpacing: "0.5px" }}
-            >
-              {g.l1?.title || "Ungrouped"}
-            </span>
-            {g.l1Reading ? (
-              <span
-                className="uppercase tracking-[0.5px] text-muted-fg"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}
-              >
-                {g.l1Reading.value}
-              </span>
-            ) : null}
-            <span
-              className="ml-auto text-muted-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}
-            >
-              {g.goals.length} goal{g.goals.length === 1 ? "" : "s"}
-            </span>
-          </div>
-          <div className="flex flex-col gap-2.5">
-            {g.goals.map((row) => (
-              <GoalEvidenceCard key={row.goal.id} row={row} />
-            ))}
-          </div>
-        </section>
+        <L1Card key={g.l1?.id} group={g} goalsHref={goalsHref} />
       ))}
     </div>
   );
 }
 
-function GoalEvidenceCard({ row }) {
-  const { goal, spec, reading, verdict, evidence, checkinDays, lastTs } = row;
-  const kindLabel = SPEC_KIND_META[spec?.widget]?.label ?? "Goal";
-  const tone = TONE_PILL[reading?.statusTone] || "muted";
-  const logged = relAgo(lastTs);
-  const expected = formatExpected(spec);
-  // The grader's one-line "why this tier" — the HOW. Only show it once there's
-  // a real verdict (not the awaiting / needs-setup placeholder states).
-  const reasoning =
-    verdict && !verdict.awaiting && !verdict.pendingSetup && verdict.reasoning
-      ? verdict.reasoning
-      : null;
+function L1Card({ group, goalsHref }) {
+  const total = group.goals.length;
+  const evidencedCount = group.goals.filter((row) => row.evidence.length > 0).length;
+  const countTone = total > 0 && evidencedCount / total >= 0.5 ? "mint" : "lemon";
+  // One card-level insight: the first goal that has a grader's reasoning
+  // worth surfacing (skips awaiting/pending-setup placeholder states).
+  const insightRow = group.goals.find(
+    (row) => row.verdict && !row.verdict.awaiting && !row.verdict.pendingSetup && row.verdict.reasoning,
+  );
 
   return (
-    <div className="rounded-[10px] border border-border bg-card px-4 py-3.5">
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span
-              className="shrink-0 rounded-[3px] border border-border px-1 py-px uppercase tracking-[0.6px] text-muted-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}
-            >
-              {kindLabel}
-            </span>
-            <span className="truncate text-[13.5px] font-medium text-fg" title={goal.title}>
-              {goal.title}
-            </span>
-          </div>
-          {/* WHAT: what the goal was set up to achieve → where it landed. */}
-          {reading?.value ? (
-            <div className="mt-1.5 text-[12px] text-fg/85">
-              <LabelTag>Achieved</LabelTag> {reading.value}
-            </div>
-          ) : null}
-          {expected ? (
-            <div className="mt-0.5 text-[11px] text-muted-fg">
-              <LabelTag>Target</LabelTag> {expected}
-            </div>
-          ) : null}
+    <Card className="flex flex-col gap-0">
+      <div className="flex items-center justify-between pb-3">
+        <div className="flex items-baseline gap-2.5">
+          <span className="text-[17px] font-bold tracking-[-0.01em] text-fg">
+            {group.l1?.title || "Ungrouped"}
+          </span>
+          <span className="text-[12.5px] text-muted-fg">
+            {group.l1?.weightage ? `${group.l1.weightage}% · ` : ""}
+            {total} goal{total === 1 ? "" : "s"}
+          </span>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <GoalTierBadge goalId={goal.id} spec={spec} />
-          {reading?.statusLabel ? (
-            <Pill tone={tone}>{reading.statusLabel}</Pill>
-          ) : null}
-        </div>
+        <Badge tone={countTone}>
+          {evidencedCount} of {total} evidenced
+        </Badge>
       </div>
 
-      {/* HOW: the grader's assessment of what tier this reached and why. */}
-      {reasoning ? (
-        <div className="mt-2 text-[11.5px] leading-[1.45] text-muted-fg">
-          <LabelTag>Assessment</LabelTag> {reasoning}
-          {verdict.confidence === "low" ? (
-            <span className="text-dim-fg"> · low confidence</span>
-          ) : null}
-        </div>
-      ) : null}
+      {group.goals.map((row) => (
+        <GoalRow key={row.goal.id} row={row} />
+      ))}
 
-      {/* WHEN + proof: the dated evidence the user logged against this goal. */}
-      {evidence.length > 0 ? (
-        <ul className="mt-3 flex flex-col gap-1.5 border-t border-border pt-2.5">
-          {evidence.map((ev, i) => (
-            <li key={i} className="flex items-start gap-2 text-[11.5px] leading-[1.4]">
-              <span
-                className="mt-px shrink-0 uppercase tracking-[0.3px] text-dim-fg"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 9, width: 40 }}
-              >
-                {fmtDate(ev.ts)}
-              </span>
-              {/* Display the full text, but link to the EXTRACTED url (not the
-                  "label: url" text, which would resolve as a broken relative link). */}
-              <span className="min-w-0 text-fg/85">
-                {ev.text}
-                {ev.url ? (
-                  <>
-                    {" "}
-                    <a
-                      href={ev.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-accent hover:underline"
-                    >
-                      ↗
-                    </a>
-                  </>
-                ) : null}
-              </span>
-            </li>
-          ))}
-        </ul>
+      {insightRow ? (
+        <InsightRow
+          tone="lav"
+          className="mt-2"
+          action={{ label: "Review", href: goalsHref }}
+        >
+          {insightRow.verdict.reasoning}
+        </InsightRow>
       ) : null}
-
-      <div
-        className="mt-2.5 flex items-center gap-2 uppercase tracking-[0.4px] text-dim-fg"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}
-      >
-        {checkinDays > 0
-          ? `logged on ${checkinDays} day${checkinDays === 1 ? "" : "s"} this period`
-          : "no check-ins this period"}
-        {logged ? <span>· last logged {logged}</span> : null}
-      </div>
-    </div>
+    </Card>
   );
 }
 
-/** Tiny uppercase mono field label used inline before a value. */
-function LabelTag({ children }) {
+function GoalRow({ row }) {
+  const { goal, spec, evidence, checkinDays } = row;
+  const hasFiles = evidence.length > 0;
+
   return (
-    <span
-      className="uppercase tracking-[0.4px] text-dim-fg"
-      style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}
-    >
-      {children}
-    </span>
+    <div className="flex items-center gap-4 border-t border-line py-3.5">
+      <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-card-alt">
+        <StarGlyph on={hasFiles} />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-fg" title={goal.title}>
+        {goal.title}
+      </span>
+      <GoalTierBadge goalId={goal.id} spec={spec} />
+      <span className="w-[90px] shrink-0 text-[12.5px] text-muted-fg">
+        {checkinDays || 0} reading{checkinDays === 1 ? "" : "s"}
+      </span>
+      {hasFiles ? (
+        <span className="w-[56px] shrink-0 text-[12.5px] text-muted-fg">
+          {evidence.length} file{evidence.length === 1 ? "" : "s"}
+        </span>
+      ) : (
+        <span className="w-[56px] shrink-0 text-[12.5px] font-bold text-peach-ink">No files</span>
+      )}
+      <ChevronRight size={16} className="shrink-0 text-muted-fg" aria-hidden="true" />
+    </div>
   );
 }

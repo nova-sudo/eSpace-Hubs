@@ -29,20 +29,11 @@ import { useSession } from "@/features/auth";
 import { useAvailableHubs } from "./use-available-hubs";
 import { HubContext } from "./hub-context";
 
-function themeStyle(hub) {
-  // Base hubs share the single cobalt accent from globals.css; `--primary`
-  // is exposed here for any non-accent hub references. Hubs that need a full
-  // re-skin (e.g. the Manager hub's warm-white/orange identity) do it via a
-  // `[data-hub="<id>"]` token scope in globals.css — stamped through the
-  // `data-hub` attribute on the wrapper below — which dark-switches cleanly,
-  // unlike the old inline per-hub accents.
+function themeStyle(_hub) {
+  // Per-hub accent skins are retired (docs/design-system-v2.md §9) — hubs
+  // differ by content, not by color. `data-hub` still stamps the DOM (other
+  // code reads it) but no longer drives any CSS variable override here.
   return {
-    "--primary": hub.theme.primary,
-    // Paint the (possibly per-hub-overridden) surface token as the page
-    // ground. Without this the body — which sits OUTSIDE this [data-hub]
-    // scope — keeps painting the base --bg, so a re-skinned hub's whiter
-    // background never actually showed. min-height keeps it covering the
-    // viewport even on short pages.
     background: "var(--bg)",
     minHeight: "100dvh",
   };

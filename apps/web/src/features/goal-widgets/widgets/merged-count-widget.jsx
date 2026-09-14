@@ -1,6 +1,6 @@
 "use client";
 
-import { LineSpark } from "@/components/ui";
+import { LineSpark, Badge } from "@/components/ui";
 import { WidgetShell, TargetChip } from "../widget-shell";
 import { useDataSource } from "../data-sources/use-data-source";
 import { usePublishGoalReading } from "../use-publish-reading";
@@ -45,48 +45,15 @@ export function MergedCountWidget({ spec, goal, variant = "light", className, on
     >
       <div className="flex h-full flex-col justify-between gap-2">
         <div className="flex items-baseline gap-3">
-          <div
-            className="font-semibold leading-none"
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 56,
-              letterSpacing: "-1.8px",
-            }}
-          >
-            {error ? "!" : isLoading ? "…" : count ?? 0}
+          <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
+            {error ? "!" : isLoading ? "…" : (count ?? 0)}
           </div>
-          {hit != null ? (
-            <div
-              className="uppercase tracking-[0.5px]"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                color: hit ? "var(--accent-2)" : "rgba(255,255,255,0.7)",
-              }}
-            >
-              {hit ? "on target" : "below target"}
-            </div>
-          ) : null}
+          {hit != null ? <Badge tone={hit ? "mint" : "peach"}>{hit ? "On target" : "Below target"}</Badge> : null}
         </div>
         {trend.length >= 2 ? (
-          <LineSpark
-            data={trend}
-            color={variant === "light" ? "#ffffff" : "var(--accent)"}
-            height={40}
-            strokeWidth={2}
-            fillOpacity={variant === "light" ? 0.22 : 0.2}
-            showDots
-          />
+          <LineSpark data={trend} color="var(--ink)" height={40} strokeWidth={2} fillOpacity={0.16} showDots />
         ) : (
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10.5,
-              color: variant === "light" ? "rgba(255,255,255,0.6)" : "var(--dim-fg)",
-            }}
-          >
-            Trend builds after 2+ weeks of merges.
-          </div>
+          <div className="text-[12.5px] text-muted-fg">Trend builds after 2+ weeks of merges.</div>
         )}
       </div>
     </WidgetShell>

@@ -2,24 +2,33 @@
 
 /**
  * Focus hero — the one goal in the carousel, big and decisive. Renders a card
- * from useGoalHealth (tier-ranked, worst first): a status/tier pill, the primary
+ * from useGoalHealth (tier-ranked, worst first): a status badge, the primary
  * signal, the cadence fill strip, then EITHER the grader's reasoning (for a
- * Not-achieved goal) or a fill nudge, and a primary action that opens the goal's
- * widget in a MODAL — the ContextCollector for a needs-setup goal, or the widget
- * body + cadence stepper to fill/backfill missing periods — so the user acts
- * without leaving the page.
+ * Not-achieved goal) or a fill nudge, and a primary action that opens the
+ * goal's widget in a MODAL — the ContextCollector for a needs-setup goal, or
+ * the widget body + cadence stepper to fill/backfill missing periods — so
+ * the user acts without leaving the page.
+ *
+ * The carousel's prev/next pager renders here (bottom-right of the action
+ * row) via the optional `pager` prop; FocusCarousel still owns the index
+ * state, this component just renders the two buttons.
  *
  * Presentation only — data comes pre-derived on the card.
  */
 
 import { useState } from "react";
-import { Button, Pill } from "@/components/ui";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Badge, Button, Card, FillStrip, IconButton, InsightRow, Label } from "@/components/ui";
 import { SPEC_KIND_META, specCadence } from "@/features/goal-specs";
 import { cadenceWindowLabel } from "@/features/goal-inputs";
 import { readinessLabel, GoalWidgetModal } from "@/features/goal-widgets";
 import { currentWindowKey } from "@/features/goal-locks";
 import { skipWindow } from "./skip-window";
 import { HEALTH } from "./status";
+
+function capitalize(s) {
+  return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
 
 function daysSince(ts) {
   if (!ts) return null;
@@ -42,21 +51,21 @@ function heroSignal(health) {
 }
 
 function statusChip(health) {
-  if (health?.overdue) return { tone: "bad", label: "Gone quiet" };
+  if (health?.overdue) return { tone: "peach", label: "Gone quiet" };
   switch (health?.status) {
     case HEALTH.NEEDS_SETUP:
-      return { tone: "warn", label: "Needs setup" };
+      return { tone: "lemon", label: "Needs setup" };
     case HEALTH.BEHIND:
-      return { tone: "bad", label: "Behind target" };
+      return { tone: "peach", label: "Behind target" };
     case HEALTH.STALE:
-      return { tone: "warn", label: "Gone quiet" };
+      return { tone: "lemon", label: "Gone quiet" };
     case HEALTH.NO_DATA:
     default:
-      return { tone: "warn", label: "Not logged yet" };
+      return { tone: "lemon", label: "Not logged yet" };
   }
 }
 
-export function FocusHero({ card }) {
+export function FocusHero({ card, pager }) {
   const [modalOpen, setModalOpen] = useState(false);
   const { goal, spec, health, l1, tier, tierReasoning } = card;
   const needsSetup = health?.status === HEALTH.NEEDS_SETUP;
@@ -64,19 +73,21 @@ export function FocusHero({ card }) {
   // as "Not achieved" rather than by its fill status.
   const notAchieved = tier === "not_achieved";
 
-  const chip = notAchieved
-    ? { tone: "bad", label: "Not achieved" }
-    : statusChip(health);
+  const chip = notAchieved ? { tone: "peach", label: "Not achieved" } : statusChip(health);
   const kindLabel = SPEC_KIND_META[spec?.widget]?.label ?? "Goal";
   const context = [kindLabel, l1?.category || l1?.title].filter(Boolean).join(" · ");
   const signal = heroSignal(health);
-  const signalColor = chip.tone === "bad" ? "var(--bad)" : "var(--warn)";
 
   const cadence = specCadence(spec);
   const windowKey = currentWindowKey(cadence);
   // Only a fill goal gets "Skip for now" — settling a window doesn't answer
   // setup questions or fix a failing tier.
   const canSkip = !needsSetup && !notAchieved && !!windowKey;
+
+  const targetVal = spec?.manual?.target;
+  const sub = [cadence ? capitalize(cadence) : null, targetVal?.value != null ? `target ${targetVal.op} ${targetVal.value}` : null]
+    .filter(Boolean)
+    .join(" · ");
 
   // Fill strip — cycle windows from deriveGoalHealth (oldest→newest objects),
   // capped to the 8 windows ENDING at the current one. total===0 = a
@@ -92,142 +103,115 @@ export function FocusHero({ card }) {
       : fill.windows.length - 1;
     return fill.windows.slice(Math.max(0, idx - STRIP_CAP + 1), idx + 1);
   })();
+  const stripCells = stripWindows.map((w) => ({ key: w?.key, label: w?.label, state: w?.state || "future" }));
   const noun = cadenceWindowLabel(cadence)[1];
+
+  let insight;
+  if (notAchieved && tierReasoning) {
+    insight = { text: tierReasoning, action: { label: "Why this grade", onClick: () => setModalOpen(true) } };
+  } else if (needsSetup) {
+    insight = { text: readinessLabel(health?.readiness) || "This goal needs setup before it can be tracked." };
+  } else if (notAchieved) {
+    insight = { text: "Graded “Not achieved” — fill more, or open it to see what it takes to reach the next tier." };
+  } else {
+    insight = { text: "This is your most-slipping goal right now. Logging it keeps the goal healthy — it takes about a minute." };
+  }
 
   return (
     <>
-      <div
-        className="relative overflow-hidden rounded-[16px] p-[30px]"
-        style={{
-          border: "1px solid var(--accent)",
-          background: "linear-gradient(180deg, var(--accent-dim), transparent)",
-        }}
-      >
-        {/* Accent dot-field corner (masked) */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -right-10 -top-10 h-[280px] w-[280px]"
-          style={{
-            backgroundImage: "radial-gradient(var(--accent) 1.3px, transparent 1.3px)",
-            backgroundSize: "12px 12px",
-            opacity: 0.14,
-            WebkitMaskImage: "radial-gradient(circle at 70% 30%, #000, transparent 70%)",
-            maskImage: "radial-gradient(circle at 70% 30%, #000, transparent 70%)",
-          }}
-        />
+      <Card padding={28} className="flex flex-col gap-5">
+        <div className="flex items-center gap-2.5">
+          <Badge dot tone={chip.tone}>
+            {chip.label}
+          </Badge>
+          <Label>{context}</Label>
+        </div>
 
-        <div className="relative">
-          <div className="mb-[18px] flex items-center gap-2.5">
-            <Pill tone={chip.tone}>
-              <span
-                className="inline-block h-[6px] w-[6px] rounded-full"
-                style={{ background: chip.tone === "bad" ? "var(--bad)" : "var(--warn)" }}
-              />
-              {chip.label}
-            </Pill>
-            <span
-              className="uppercase tracking-[1px] text-muted-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}
-            >
-              {context}
-            </span>
-          </div>
-
+        <div>
           <h2
-            className="m-0 leading-[1.05] text-fg"
-            style={{ fontFamily: "var(--font-sans)", fontWeight: 800, fontSize: 30, letterSpacing: "-0.5px" }}
+            className="m-0 text-[22px] font-bold leading-[1.25] tracking-[-0.02em] text-fg"
             title={goal?.title}
           >
             {goal?.title || spec?.title || "Untitled goal"}
           </h2>
+          {sub ? <div className="mt-1 text-[13.5px] text-muted-fg">{sub}</div> : null}
+        </div>
 
-          <div className="mt-[22px] flex items-end gap-[26px]">
-            <div>
-              <div
-                style={{ fontFamily: "var(--font-dot)", fontWeight: 900, fontSize: 66, lineHeight: 0.78, color: signalColor }}
-              >
+        <div className="flex flex-wrap items-end gap-8">
+          <div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-[56px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg">
                 {signal.big}
-                {signal.unit ? (
-                  <span style={{ fontSize: 30, color: "var(--dim-fg)" }}>{signal.unit}</span>
-                ) : null}
+              </span>
+              {signal.unit ? <span className="text-[20px] font-semibold text-muted-fg">{signal.unit}</span> : null}
+            </div>
+            <div className="mt-1.5 text-[13px] text-muted-fg">{signal.sub}</div>
+          </div>
+
+          {stripCells.length > 0 ? (
+            <div className="flex min-w-[220px] flex-1 flex-col gap-2">
+              <div className="flex items-center justify-between text-[12.5px] font-semibold text-muted-fg">
+                <span>Last {stripCells.length} {noun}</span>
+                <span className="tabular-nums">
+                  {fill.filledCount} of {fill.total} filled
+                </span>
               </div>
-              <div
-                className="mt-2 uppercase tracking-[1px] text-muted-fg"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}
-              >
-                {signal.sub}
+              <FillStrip cells={stripCells} size="md" />
+              <div className="flex items-center justify-between text-[11.5px] text-dim-fg">
+                <span>{stripWindows[0]?.label}</span>
+                <span>{stripWindows[stripWindows.length - 1]?.label}</span>
               </div>
             </div>
-
-            {stripWindows.length > 0 ? (
-              <>
-                <div className="h-[60px] w-px" style={{ background: "var(--border)" }} />
-                <div>
-                  <div className="flex gap-1.5">
-                    {stripWindows.map((w, i) => (
-                      <span
-                        key={w?.key ?? i}
-                        className="h-3 w-3 rounded-full"
-                        style={{ background: w?.filled ? "var(--accent)" : "var(--dot-dim)" }}
-                      />
-                    ))}
-                  </div>
-                  <div
-                    className="mt-2.5 uppercase tracking-[1px] text-muted-fg"
-                    style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}
-                  >
-                    {fill.filledCount} of {fill.total} {noun}
-                  </div>
-                </div>
-              </>
-            ) : null}
-          </div>
-
-          {notAchieved && tierReasoning ? (
-            <p
-              className="mt-[22px] max-w-[460px] leading-[1.55] text-fg/85"
-              style={{ fontFamily: "var(--font-sans)", fontSize: 14 }}
-            >
-              <span
-                className="mr-1.5 uppercase tracking-[0.6px] text-muted-fg"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-              >
-                Why:
-              </span>
-              {tierReasoning}
-            </p>
-          ) : (
-            <p
-              className="mt-[22px] max-w-[440px] leading-[1.55] text-muted-fg"
-              style={{ fontFamily: "var(--font-sans)", fontSize: 14 }}
-            >
-              {needsSetup
-                ? readinessLabel(health?.readiness) ||
-                  "This goal needs setup before it can be tracked."
-                : notAchieved
-                  ? "Graded “Not achieved” — fill more, or open it to see what it takes to reach the next tier."
-                  : "This is your most-slipping goal right now. Logging it keeps the goal healthy — it takes about a minute."}
-            </p>
-          )}
-
-          <div className="mt-6 flex items-center gap-3">
-            <Button size="lg" onClick={() => setModalOpen(true)}>
-              {needsSetup ? "Set up →" : "Fill →"}
-            </Button>
-
-            {canSkip ? (
-              <Button
-                variant="ghost"
-                size="lg"
-                onClick={() => skipWindow(goal, windowKey)}
-                title="Nothing to report this period — settle it and move on"
-              >
-                Skip for now
-              </Button>
-            ) : null}
-          </div>
+          ) : null}
         </div>
-      </div>
+
+        <InsightRow tone="lav" action={insight.action}>
+          {insight.text}
+        </InsightRow>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button size="lg" arrow onClick={() => setModalOpen(true)}>
+            {needsSetup ? "Set up" : "Fill this window"}
+          </Button>
+
+          {canSkip ? (
+            <Button
+              variant="soft"
+              size="lg"
+              onClick={() => skipWindow(goal, windowKey)}
+              title="Nothing to report this period — settle it and move on"
+            >
+              Skip for now
+            </Button>
+          ) : null}
+
+          {pager && pager.count > 1 ? (
+            <div className="ml-auto flex items-center gap-2">
+              <IconButton
+                label="Higher priority"
+                size="sm"
+                onCard
+                disabled={pager.index === 0}
+                onClick={pager.onPrev}
+              >
+                <ChevronLeft size={15} />
+              </IconButton>
+              <span className="text-[12.5px] tabular-nums text-dim-fg">
+                {pager.index + 1} / {pager.count}
+              </span>
+              <IconButton
+                label="Next priority"
+                size="sm"
+                onCard
+                disabled={pager.index === pager.count - 1}
+                onClick={pager.onNext}
+              >
+                <ChevronRight size={15} />
+              </IconButton>
+            </div>
+          ) : null}
+        </div>
+      </Card>
 
       <GoalWidgetModal
         open={modalOpen}

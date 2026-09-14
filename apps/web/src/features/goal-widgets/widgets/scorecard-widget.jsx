@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ArrowUpRight } from "lucide-react";
+import { Badge, Label } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { WidgetShell, TargetChip } from "../widget-shell";
 import { useDataSource } from "../data-sources/use-data-source";
 import { useGoalInputs } from "@/features/goal-inputs";
@@ -158,34 +161,11 @@ export function ScorecardWidget({
         className={className}
       >
         <div className="flex h-full flex-col gap-2">
-          <Headline
-            score={score}
-            pass={pass}
-            total={total}
-            variant={variant}
-          />
-          <div
-            className="h-1.5 w-full overflow-hidden rounded-full"
-            style={{
-              background:
-                variant === "light"
-                  ? "rgba(255,255,255,0.18)"
-                  : "var(--border)",
-            }}
-          >
-            <div
-              className="h-full"
-              style={{
-                width: `${score ?? 0}%`,
-                background:
-                  variant === "light" ? "#ffffff" : "var(--accent)",
-              }}
-            />
+          <Headline score={score} pass={pass} total={total} />
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-card-alt">
+            <div className="h-full bg-ink" style={{ width: `${score ?? 0}%` }} />
           </div>
-          <ul
-            className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-          >
+          <ul className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
             {components.map((c, i) => (
               <ComponentRow
                 key={`${c.widget}-${i}`}
@@ -195,7 +175,6 @@ export function ScorecardWidget({
                 loading={scoredEntries[i]?.loading}
                 error={scoredEntries[i]?.error}
                 rubric={rows[i]?.rubric}
-                variant={variant}
                 onExpand={() => setActiveIndex(i)}
               />
             ))}
@@ -218,32 +197,15 @@ export function ScorecardWidget({
  * Top-line score + "M/N components on target" subtitle. Renders "—"
  * when there's nothing scoreable so the user doesn't read it as 0%.
  */
-function Headline({ score, pass, total, variant }) {
-  const muted =
-    variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)";
-  const monoStyle = {
-    fontFamily: "var(--font-mono)",
-    fontSize: 11,
-    color: muted,
-    lineHeight: 1.4,
-  };
+function Headline({ score, pass, total }) {
   return (
     <div className="flex items-baseline gap-2">
-      <div
-        className="font-semibold leading-none"
-        style={{
-          fontFamily: "var(--font-display)",
-          fontSize: 48,
-          letterSpacing: "-1.6px",
-        }}
-      >
+      <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
         {score == null ? "—" : `${score}%`}
       </div>
-      <div style={monoStyle}>
-        {total === 0
-          ? "no scoreable components"
-          : `${pass}/${total} on target`}
-      </div>
+      <span className="text-[13px] text-muted-fg">
+        {total === 0 ? "no scoreable components" : `${pass}/${total} on target`}
+      </span>
     </div>
   );
 }
@@ -256,16 +218,7 @@ function Headline({ score, pass, total, variant }) {
  * embedding the full widget body to keep the row compact + scannable
  * — a SCORECARD with 3 full widget tiles inside would be unreadable.
  */
-function ComponentRow({
-  component,
-  data,
-  score,
-  loading,
-  error,
-  rubric,
-  variant,
-  onExpand,
-}) {
+function ComponentRow({ component, data, score, loading, error, rubric, onExpand }) {
   const label =
     component?.label?.trim() ||
     component?.widget?.replace(/_/g, " ").toLowerCase() ||
@@ -291,113 +244,33 @@ function ComponentRow({
           onExpand?.();
         }
       }}
-      className="group flex cursor-pointer flex-col gap-1 rounded-[var(--radius-sub)] px-2 py-1.5 transition-colors"
-      style={{
-        background:
-          variant === "light"
-            ? "rgba(255,255,255,0.06)"
-            : "var(--card-alt)",
-      }}
+      className="group flex cursor-pointer flex-col gap-1 rounded-[var(--radius-md)] bg-card-alt px-2.5 py-2 transition-colors"
       title="Click to open the full widget"
     >
       <div className="flex items-baseline gap-2">
-        <span
-          className="flex-1 truncate uppercase"
-          style={{
-            fontSize: 9.5,
-            letterSpacing: "0.5px",
-            color:
-              variant === "light"
-                ? "rgba(255,255,255,0.75)"
-                : "var(--muted-fg)",
-          }}
-        >
-          {label}
-        </span>
+        <Label className="min-w-0 flex-1 truncate">{label}</Label>
         <span
           aria-hidden="true"
-          className="opacity-0 transition-opacity group-hover:opacity-100"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            color:
-              variant === "light"
-                ? "rgba(255,255,255,0.75)"
-                : "var(--muted-fg)",
-            letterSpacing: "0.5px",
-          }}
+          className="flex shrink-0 items-center gap-0.5 text-[11px] text-muted-fg opacity-0 transition-opacity group-hover:opacity-100"
           title="Open the full widget view"
         >
-          expand ↗
+          Expand <ArrowUpRight size={12} />
         </span>
-        <TargetChip target={target} unit={isPercent ? "%" : ""} variant={variant} />
-        <span
-          className="rounded-full px-1.5 py-0.5"
-          style={{
-            fontSize: 9.5,
-            letterSpacing: "0.4px",
-            background:
-              score == null
-                ? variant === "light"
-                  ? "rgba(255,255,255,0.10)"
-                  : "rgba(160,160,160,0.10)"
-                : score >= 100
-                  ? variant === "light"
-                    ? "rgba(120,255,180,0.20)"
-                    : "rgba(80,200,120,0.18)"
-                  : variant === "light"
-                    ? "rgba(255,200,180,0.18)"
-                    : "rgba(220,120,80,0.18)",
-            color:
-              score == null
-                ? variant === "light"
-                  ? "rgba(255,255,255,0.55)"
-                  : "var(--dim-fg)"
-                : variant === "light"
-                  ? "#ffffff"
-                  : "var(--fg)",
-          }}
-        >
+        <TargetChip target={target} unit={isPercent ? "%" : ""} variant="dark" />
+        <Badge tone={score == null ? "neutral" : score >= 100 ? "mint" : "peach"}>
           {score == null ? "n/a" : `${score}%`}
-        </span>
+        </Badge>
       </div>
-      <div
-        className="flex items-baseline gap-2"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 11,
-          color: variant === "light" ? "#ffffff" : "var(--fg)",
-        }}
-      >
-        <span className="font-semibold">
-          {error
-            ? "!"
-            : loading
-              ? "…"
-              : value == null
-                ? "—"
-                : formatValue(value, component?.widget)}
+      <div className="flex items-baseline gap-2 text-[13px] text-fg">
+        <span className="font-bold">
+          {error ? "!" : loading ? "…" : value == null ? "—" : formatValue(value, component?.widget)}
         </span>
-        <span
-          style={{
-            fontSize: 9.5,
-            color:
-              variant === "light"
-                ? "rgba(255,255,255,0.55)"
-                : "var(--dim-fg)",
-          }}
-        >
+        <span className="text-[11px] text-dim-fg">
           {weightCopy(component?.weight)}
           {component?.firstReviewOnly ? " · first-review only" : ""}
         </span>
       </div>
-      {isRubric ? (
-        <RubricRowFooter
-          rubric={rubric}
-          data={data}
-          variant={variant}
-        />
-      ) : null}
+      {isRubric ? <RubricRowFooter rubric={rubric} data={data} /> : null}
     </li>
   );
 }
@@ -414,12 +287,8 @@ function ComponentRow({
  * Rendered conditionally only for CODE_RUBRIC components — the
  * regular ComponentRow stays compact for AUTO/MANUAL components.
  */
-function RubricRowFooter({ rubric, data, variant }) {
+function RubricRowFooter({ rubric, data }) {
   if (!rubric) return null;
-  const muted =
-    variant === "light"
-      ? "rgba(255,255,255,0.6)"
-      : "var(--dim-fg)";
   const isRunning = rubric.progress?.running === true;
   const criteriaCount = rubric.criteriaCount ?? 0;
   const ungraded = data?.ungraded ?? 0;
@@ -430,15 +299,7 @@ function RubricRowFooter({ rubric, data, variant }) {
     criteriaCount > 0 &&
     typeof rubric.gradeAll === "function";
   return (
-    <div
-      className="flex items-center justify-between gap-2"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 9.5,
-        color: muted,
-        letterSpacing: "0.3px",
-      }}
-    >
+    <div className="flex items-center justify-between gap-2 text-[11px] text-dim-fg">
       <span>
         {criteriaCount === 0
           ? "no criteria yet — edit in Review pane"
@@ -457,25 +318,12 @@ function RubricRowFooter({ rubric, data, variant }) {
             if (canGrade) rubric.gradeAll();
           }}
           disabled={!canGrade}
-          className="uppercase tracking-[0.5px] transition-opacity disabled:opacity-40"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9.5,
-            letterSpacing: "0.5px",
-            color: variant === "light" ? "#ffffff" : "var(--fg)",
-            background: "transparent",
-            border:
-              variant === "light"
-                ? "1px solid rgba(255,255,255,0.35)"
-                : "1px solid var(--border)",
-            borderRadius: "var(--radius-sub)",
-            padding: "2px 6px",
-            cursor: canGrade ? "pointer" : "not-allowed",
-          }}
+          className={cn(
+            "rounded-[var(--radius-pill)] bg-card px-2.5 py-1 text-[11px] font-bold text-fg transition-opacity disabled:opacity-40",
+            canGrade ? "cursor-pointer" : "cursor-not-allowed",
+          )}
         >
-          {isRunning
-            ? `Grading… ${rubric.progress?.done ?? 0}/${rubric.progress?.total ?? 0}`
-            : "Grade now"}
+          {isRunning ? `Grading… ${rubric.progress?.done ?? 0}/${rubric.progress?.total ?? 0}` : "Grade now"}
         </button>
       ) : null}
     </div>

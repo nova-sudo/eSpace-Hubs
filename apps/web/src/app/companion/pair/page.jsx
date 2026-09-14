@@ -25,15 +25,7 @@ export const dynamic = "force-dynamic";
 
 export default function CompanionPairPage() {
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "var(--bg)",
-        color: "var(--fg)",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
+    <main className="flex min-h-screen flex-col bg-bg text-fg">
       <Suspense fallback={null}>
         <CompanionPairForm />
       </Suspense>

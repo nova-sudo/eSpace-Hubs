@@ -1,5 +1,6 @@
 "use client";
 
+import { Badge } from "@/components/ui";
 import { WidgetShell, TargetChip } from "../widget-shell";
 import { useDataSource } from "../data-sources/use-data-source";
 import { evalTarget } from "./merged-count-widget";
@@ -62,83 +63,30 @@ export function BuildPassRateWidget({
       className={className}
     >
       {needsScope ? (
-        <NeedsScopeBanner provider={spec.source?.provider} variant={variant} />
+        <NeedsScopeBanner provider={spec.source?.provider} />
       ) : (
         <div className="flex h-full flex-col justify-between gap-2">
           <div className="flex items-baseline gap-2">
-            <div
-              className="font-semibold leading-none"
-              style={{
-                fontFamily: "var(--font-display)",
-                fontSize: 52,
-                letterSpacing: "-1.8px",
-              }}
-            >
-              {error
-                ? "!"
-                : isLoading
-                  ? "…"
-                  : pct == null
-                    ? "—"
-                    : `${pct}%`}
+            <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
+              {error ? "!" : isLoading ? "…" : pct == null ? "—" : `${pct}%`}
             </div>
             {meets != null ? (
-              <div
-                className="ml-auto uppercase tracking-[0.5px]"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 10,
-                  color: meets ? "var(--accent-2)" : "rgba(255,255,255,0.7)",
-                }}
-              >
-                {meets ? "on target" : "below target"}
-              </div>
+              <Badge tone={meets ? "mint" : "peach"} className="ml-auto">
+                {meets ? "On target" : "Below target"}
+              </Badge>
             ) : null}
           </div>
-          <div
-            className="flex items-center gap-3"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10.5,
-              color:
-                variant === "light"
-                  ? "rgba(255,255,255,0.75)"
-                  : "var(--muted-fg)",
-            }}
-          >
+          <div className="flex items-center gap-3 text-[12.5px] text-muted-fg">
             <span>
-              pass: <strong>{pass}</strong>
+              pass: <strong className="text-fg">{pass}</strong>
             </span>
-            <span
-              style={{
-                color:
-                  variant === "light"
-                    ? "rgba(255,255,255,0.4)"
-                    : "var(--dim-fg)",
-              }}
-            >
-              ·
-            </span>
+            <span className="text-dim-fg">·</span>
             <span>
-              fail: <strong>{fail}</strong>
+              fail: <strong className="text-fg">{fail}</strong>
             </span>
           </div>
-          <div
-            className="flex h-2 w-full overflow-hidden rounded-full"
-            style={{
-              background:
-                variant === "light"
-                  ? "rgba(255,255,255,0.18)"
-                  : "var(--border)",
-            }}
-          >
-            <div
-              style={{
-                width: `${pct ?? 0}%`,
-                background:
-                  variant === "light" ? "#ffffff" : "var(--accent)",
-              }}
-            />
+          <div className="flex h-2 w-full overflow-hidden rounded-full bg-card-alt">
+            <div className="bg-ink" style={{ width: `${pct ?? 0}%` }} />
           </div>
         </div>
       )}

@@ -18,6 +18,8 @@
  *     but for v1 we let the user paste their existing one.
  */
 
+import { ArrowUpRight } from "lucide-react";
+import { Badge, Card } from "@/components/ui";
 import { useApiOrigin } from "./use-api-origin.js";
 
 export function CompanionSetupGuide() {
@@ -26,167 +28,128 @@ export function CompanionSetupGuide() {
   const stale = source === "bundled" && !!staleHostname;
 
   return (
-    <section
-      style={{
-        border: "1px solid var(--border-strong)",
-        borderRadius: "var(--radius-sub, 3px)",
-        background: "var(--card)",
-        padding: 16,
-        display: "flex",
-        flexDirection: "column",
-        gap: 12,
-        marginBottom: 16,
-      }}
-    >
+    <Card className="p-6">
       <StatusLine live={live} stale={stale} hostname={hostname || staleHostname} />
 
-      <Step
-        num={1}
-        title="Install the companion app"
-        body={
-          <>
-            <p style={{ margin: "0 0 10px 0" }}>
-              Download and run the installer. The companion runs in your
-              system tray; it starts a local copy of the backend and
-              forwards requests through a Cloudflare Tunnel.
-            </p>
-            <a
-              href="https://github.com/nova-sudo/eSpace-Hubs/releases/latest"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-[var(--radius-sub)] px-3.5 py-2 text-[11px] font-normal uppercase tracking-[0.8px] transition-opacity hover:opacity-90"
-              style={{
-                fontFamily: "var(--font-mono)",
-                background: "var(--accent)",
-                color: "var(--accent-on)",
-              }}
-            >
-              Download for Windows ↗
-            </a>
-            <span
-              style={{
-                display: "block",
-                marginTop: 6,
-                fontSize: 11,
-                color: "var(--muted-fg)",
-              }}
-            >
-              macOS/Linux builds are on the same{" "}
+      <div className="mt-4 flex flex-col gap-4">
+        <Step
+          num={1}
+          title="Install the companion app"
+          body={
+            <>
+              <p className="mb-2.5">
+                Download and run the installer. The companion runs in your
+                system tray; it starts a local copy of the backend and
+                forwards requests through a Cloudflare Tunnel.
+              </p>
               <a
                 href="https://github.com/nova-sudo/eSpace-Hubs/releases/latest"
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ color: "var(--accent)" }}
+                className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-pill)] bg-ink px-4 text-[13px] font-bold text-ink-on transition-opacity hover:opacity-90"
               >
-                releases page
+                Download for Windows
+                <ArrowUpRight size={14} />
               </a>
-              .
-            </span>
-          </>
-        }
-      />
+              <span className="mt-1.5 block text-[11.5px] text-muted-fg">
+                macOS/Linux builds are on the same{" "}
+                <a
+                  href="https://github.com/nova-sudo/eSpace-Hubs/releases/latest"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-bold text-fg hover:underline"
+                >
+                  releases page
+                </a>
+                .
+              </span>
+            </>
+          }
+        />
 
-      <Step
-        num={2}
-        title="Set up a Cloudflare Tunnel"
-        body={
-          <>
-            From the Cloudflare Zero Trust dashboard, create a tunnel
-            and copy its <Code>token</Code>. In the companion's Settings
-            section, paste the token AND the public hostname you bound
-            to the tunnel (e.g. <Code>your-name.cf-tunnel.com</Code>).
-            Phase 4 will mint a named tunnel for you automatically; for
-            now you provide the hostname yourself.
-          </>
-        }
-      />
+        <Step
+          num={2}
+          title="Set up a Cloudflare Tunnel"
+          body={
+            <>
+              From the Cloudflare Zero Trust dashboard, create a tunnel
+              and copy its <Code>token</Code>. In the companion's Settings
+              section, paste the token AND the public hostname you bound
+              to the tunnel (e.g. <Code>your-name.cf-tunnel.com</Code>).
+              Phase 4 will mint a named tunnel for you automatically; for
+              now you provide the hostname yourself.
+            </>
+          }
+        />
 
-      <Step
-        num={3}
-        title="Pair this browser with your companion"
-        body={
-          <>
-            In the companion, click <strong>Pair this device</strong>.
-            Your browser opens to <Code>/companion/pair?code=…</Code>,
-            shows the pairing code and the IP that initiated it, and
-            asks you to confirm. Approve only pairings you started.
-          </>
-        }
-      />
+        <Step
+          num={3}
+          title="Pair this browser with your companion"
+          body={
+            <>
+              In the companion, click <strong>Pair this device</strong>.
+              Your browser opens to <Code>/companion/pair?code=…</Code>,
+              shows the pairing code and the IP that initiated it, and
+              asks you to confirm. Approve only pairings you started.
+            </>
+          }
+        />
 
-      <Step
-        num={4}
-        title="Start the backend"
-        body={
-          <>
-            Click <strong>Start backend</strong> in the companion. The
-            Docker stack comes up, the tunnel hostname is registered
-            with the Dev Hub, and a heartbeat keeps it fresh every 60
-            seconds. The chip in the top-right of this page flips green
-            once routing is live.
-          </>
-        }
-      />
+        <Step
+          num={4}
+          title="Start the backend"
+          body={
+            <>
+              Click <strong>Start backend</strong> in the companion. The
+              Docker stack comes up, the tunnel hostname is registered
+              with the Dev Hub, and a heartbeat keeps it fresh every 60
+              seconds. The chip in the top-right of this page turns mint
+              once routing is live.
+            </>
+          }
+        />
+      </div>
 
-      <p
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10.5,
-          color: "var(--muted-fg)",
-          lineHeight: 1.6,
-          margin: 0,
-        }}
-      >
+      <p className="mt-5 text-[12px] leading-[1.6] text-dim-fg">
         Auth model: the companion holds a per-device bearer token
         encrypted by your OS keychain (DPAPI on Windows, Keychain on
         macOS). The token never leaves your machine; revoking from the
         list below makes it useless on the next request.
       </p>
-    </section>
+    </Card>
   );
 }
 
 function StatusLine({ live, stale, hostname }) {
   if (live) {
     return (
-      <p
-        style={{
-          margin: 0,
-          fontSize: 12.5,
-          color: "var(--good)",
-          fontFamily: "var(--font-mono)",
-        }}
-      >
-        ● Routing live via <strong>{hostname}</strong>. Your /api/v1/*
-        calls are reaching your laptop's backend.
-      </p>
+      <div className="flex flex-wrap items-center gap-2.5">
+        <Badge tone="mint" dot>
+          Routing live
+        </Badge>
+        <span className="text-[12.5px] text-muted-fg">
+          via <strong className="text-fg">{hostname}</strong> — your /api/v1/*
+          calls are reaching your laptop's backend.
+        </span>
+      </div>
     );
   }
   if (stale) {
     return (
-      <p
-        style={{
-          margin: 0,
-          fontSize: 12.5,
-          color: "var(--warn)",
-          fontFamily: "var(--font-mono)",
-        }}
-      >
-        ● Companion offline — last heartbeat from <strong>{hostname}</strong>{" "}
-        went stale. Open the desktop app to resume routing; we're
-        falling back to the bundled API in the meantime.
-      </p>
+      <div className="flex flex-wrap items-center gap-2.5">
+        <Badge tone="lemon" dot>
+          Companion offline
+        </Badge>
+        <span className="text-[12.5px] text-muted-fg">
+          last heartbeat from <strong className="text-fg">{hostname}</strong>{" "}
+          went stale. Open the desktop app to resume routing; we're falling
+          back to the bundled API in the meantime.
+        </span>
+      </div>
     );
   }
   return (
-    <p
-      style={{
-        margin: 0,
-        fontSize: 12.5,
-        color: "var(--muted-fg)",
-        fontFamily: "var(--font-mono)",
-      }}
-    >
+    <p className="text-[12.5px] text-muted-fg">
       No companion registered. Follow the steps below if your engagement
       requires routing through your local laptop (Crealogix, etc.).
     </p>
@@ -195,31 +158,13 @@ function StatusLine({ live, stale, hostname }) {
 
 function Step({ num, title, body }) {
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "28px 1fr",
-        gap: 12,
-        alignItems: "start",
-      }}
-    >
-      <span
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: "0.5px",
-          color: "var(--accent)",
-          paddingTop: 2,
-        }}
-      >
-        {String(num).padStart(2, "0")}
+    <div className="grid grid-cols-[28px_1fr] items-start gap-3">
+      <span className="grid h-7 w-7 place-items-center rounded-full bg-card-alt text-[12px] font-bold text-fg">
+        {num}
       </span>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <span style={{ fontSize: 13.5, fontWeight: 600 }}>{title}</span>
-        <div style={{ fontSize: 12.5, lineHeight: 1.6, color: "var(--fg)" }}>
-          {body}
-        </div>
+      <div className="flex flex-col gap-1">
+        <span className="text-[13.5px] font-bold text-fg">{title}</span>
+        <div className="text-[12.5px] leading-[1.6] text-muted-fg">{body}</div>
       </div>
     </div>
   );
@@ -227,16 +172,7 @@ function Step({ num, title, body }) {
 
 function Code({ children }) {
   return (
-    <code
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 11,
-        background: "var(--bg)",
-        border: "1px solid var(--border-strong)",
-        borderRadius: 2,
-        padding: "1px 5px",
-      }}
-    >
+    <code className="rounded-[var(--radius-md)] bg-card-alt px-1.5 py-0.5 font-mono text-[11px] text-fg">
       {children}
     </code>
   );

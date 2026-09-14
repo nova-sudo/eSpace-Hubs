@@ -14,7 +14,8 @@
 
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { useFocusTrap } from "@/components/ui";
+import { X } from "lucide-react";
+import { IconButton, useFocusTrap } from "@/components/ui";
 import { GoalWidget } from "./goal-widget";
 
 export function GoalWidgetModal({ open, onClose, spec, goal }) {
@@ -63,54 +64,29 @@ export function GoalWidgetModal({ open, onClose, spec, goal }) {
       role="dialog"
       aria-modal="true"
       aria-label={`${title} — fill`}
-      className="fixed inset-0 z-[120] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-fg/40 p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose?.();
       }}
-      style={{ background: "rgba(10,10,20,0.55)", backdropFilter: "blur(2px)" }}
     >
       <div
         ref={trapRef}
-        className="flex w-full max-w-[560px] flex-col overflow-hidden rounded-[var(--radius-tile)]"
+        className="flex w-full max-w-[560px] flex-col overflow-hidden rounded-[var(--radius-xl)] bg-card"
         onClick={(e) => e.stopPropagation()}
-        style={{
-          maxHeight: "88vh",
-          background: "var(--bg)",
-          border: "1px solid var(--border)",
-          boxShadow: "0 24px 72px rgba(0,0,0,0.35)",
-        }}
+        style={{ maxHeight: "88vh", boxShadow: "var(--shadow-float)" }}
       >
-        <div
-          className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3"
-          style={{ borderColor: "var(--border)" }}
-        >
-          <span
-            className="min-w-0 truncate font-semibold text-fg"
-            style={{ fontFamily: "var(--font-display)", fontSize: 16, letterSpacing: "-0.3px" }}
-            title={title}
-          >
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-5 py-4">
+          <span className="min-w-0 truncate text-[18px] font-bold tracking-[-0.01em] text-fg" title={title}>
             {title}
           </span>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="shrink-0 rounded-[var(--radius-sub)] px-2.5 py-1 text-muted-fg transition-colors hover:text-fg"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10.5,
-              letterSpacing: "0.5px",
-              background: "transparent",
-              border: "1px solid var(--border-strong)",
-            }}
-          >
-            ✕ ESC
-          </button>
+          <IconButton label="Close" onCard onClick={onClose}>
+            <X size={16} />
+          </IconButton>
         </div>
         {/* Plain block scroll body — the widget renders at natural height and
             THIS scrolls it. No flex bounding on the widget (see note above). */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <GoalWidget spec={spec} goal={goal} variant="dark" onRetry={null} />
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+          <GoalWidget spec={spec} goal={goal} onRetry={null} />
         </div>
       </div>
     </div>,

@@ -23,7 +23,8 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
-import { Button, Card, Field, Input, Section } from "@/components/ui";
+import { ArrowRight } from "lucide-react";
+import { Badge, Button, Card, Field, Input, Section } from "@/components/ui";
 import { apiPatch } from "@/lib/api-client";
 import { useSession } from "@/features/auth";
 import {
@@ -104,8 +105,8 @@ export function AccountTab() {
   }
 
   return (
-    <>
-      <Section num="01 /" title="Profile">
+    <div className="flex flex-col gap-8">
+      <Section title="Profile">
         <Card className="p-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <Field label="Display name">
@@ -123,7 +124,6 @@ export function AccountTab() {
               <Input
                 value={user?.email ?? ""}
                 readOnly
-                mono
                 style={{ opacity: 0.7, cursor: "default" }}
               />
             </Field>
@@ -136,7 +136,6 @@ export function AccountTab() {
                 onChange={(e) => setEmployeeId(e.target.value)}
                 placeholder="e.g. EMP-0421"
                 disabled={saving}
-                mono
               />
             </Field>
             <Field
@@ -152,7 +151,7 @@ export function AccountTab() {
             </Field>
           </div>
 
-          <div className="mt-5 flex items-center justify-between">
+          <div className="mt-5 flex items-center justify-between border-t border-line pt-4">
             <ProfileMeta user={user} />
             <Button
               type="button"
@@ -166,7 +165,7 @@ export function AccountTab() {
         </Card>
       </Section>
 
-      <Section num="02 /" title="Security">
+      <Section title="Security">
         <Card className="p-6">
           <SecurityRow
             label="Two-factor authentication"
@@ -176,7 +175,7 @@ export function AccountTab() {
                 : "Not enabled — you should never see this row. Contact admin."
             }
             badge={user?.totpEnrolled ? "Enrolled" : "Not enrolled"}
-            badgeColor={user?.totpEnrolled ? "var(--good)" : "var(--bad)"}
+            badgeTone={user?.totpEnrolled ? "mint" : "peach"}
           />
           <SecurityRow
             label="Password"
@@ -190,23 +189,17 @@ export function AccountTab() {
                 href="/forgot-password"
                 target="_blank"
                 rel="noreferrer"
-                className="text-accent hover:underline"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
-                  letterSpacing: "0.5px",
-                  textTransform: "uppercase",
-                  fontWeight: 700,
-                }}
+                className="inline-flex items-center gap-1 text-[12.5px] font-bold text-fg hover:underline"
               >
-                Reset →
+                Reset
+                <ArrowRight size={13} />
               </a>
             }
           />
         </Card>
       </Section>
 
-      <Section num="03 /" title="Local preferences">
+      <Section title="Local preferences">
         <Card className="p-6">
           <Field
             label="Last review date"
@@ -216,12 +209,11 @@ export function AccountTab() {
               type="date"
               value={lastReview}
               onChange={(e) => writeLastReviewDate(e.target.value)}
-              mono
             />
           </Field>
         </Card>
       </Section>
-    </>
+    </div>
   );
 }
 
@@ -235,52 +227,16 @@ function ProfileMeta({ user }) {
     user.primaryHub ? `primary hub: ${user.primaryHub}` : null,
     user.onboardingCompletedAt ? "onboarded" : "onboarding pending",
   ].filter(Boolean);
-  return (
-    <div
-      className="text-muted-fg"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 10.5,
-        letterSpacing: "0.2px",
-      }}
-    >
-      {items.join(" · ")}
-    </div>
-  );
+  return <div className="text-[12px] text-muted-fg">{items.join(" · ")}</div>;
 }
 
-function SecurityRow({ label, value, badge, badgeColor, action }) {
+function SecurityRow({ label, value, badge, badgeTone, action }) {
   return (
-    <div
-      className="flex items-start justify-between gap-4 border-b border-border py-3.5 last:border-b-0"
-      style={{ borderStyle: "dashed" }}
-    >
+    <div className="flex items-start justify-between gap-4 border-t border-line py-3.5 first:border-t-0 first:pt-0 last:pb-0">
       <div>
         <div className="flex items-center gap-2">
-          <div
-            className="font-semibold"
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 14,
-            }}
-          >
-            {label}
-          </div>
-          {badge ? (
-            <span
-              className="rounded-full px-2 py-0.5"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 9.5,
-                letterSpacing: "0.4px",
-                textTransform: "uppercase",
-                color: badgeColor,
-                border: `1px solid ${badgeColor}`,
-              }}
-            >
-              {badge}
-            </span>
-          ) : null}
+          <div className="text-[14.5px] font-bold text-fg">{label}</div>
+          {badge ? <Badge tone={badgeTone}>{badge}</Badge> : null}
         </div>
         <div className="mt-1 text-[12.5px] leading-[1.5] text-muted-fg">
           {value}

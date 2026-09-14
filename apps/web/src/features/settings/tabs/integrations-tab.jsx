@@ -1,7 +1,7 @@
 "use client";
 
 import { toast } from "sonner";
-import { Button, Card, Section } from "@/components/ui";
+import { Badge, Button, Card, Section } from "@/components/ui";
 import {
   DASHBOARD_PROVIDER_DEPENDENCIES,
   disconnectProvider,
@@ -43,24 +43,21 @@ export function IntegrationsTab() {
   const hiddenCount = totalCatalog - allowed.length;
 
   return (
-    <>
-      <Section num="00 /" title="Integration health">
+    <div className="flex flex-col gap-8">
+      <Section title="Integration health">
         <IntegrationHealthSummary providers={allowed} />
       </Section>
 
-      <Section num="01 /" title="Connected providers">
+      <Section title="Connected providers">
         <div className="flex flex-col gap-3">
           {allowed.map((p) => (
             <ProviderCard key={p.id} provider={p} />
           ))}
           {hub && hiddenCount > 0 ? (
-            <div
-              className="rounded-[var(--radius-sub)] border border-dashed border-border-strong bg-panel px-4 py-3 text-[12px] text-muted-fg"
-              style={{ fontFamily: "var(--font-mono)" }}
-            >
+            <div className="rounded-[var(--radius-lg)] bg-card-alt px-4 py-3 text-[12px] text-muted-fg">
               {hiddenCount} provider{hiddenCount === 1 ? " is" : "s are"} hidden in
-              the <span className="text-fg">{hub.label}</span> — they aren't
-              used by this hub's widgets. Switch to a hub that uses them to
+              the <span className="text-fg font-semibold">{hub.label}</span> — they
+              aren't used by this hub's widgets. Switch to a hub that uses them to
               manage their tokens.
             </div>
           ) : null}
@@ -68,7 +65,7 @@ export function IntegrationsTab() {
         <LocalCallout />
       </Section>
 
-      <Section num="02 /" title="How tokens are stored">
+      <Section title="How tokens are stored">
         <Card className="p-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <PrivacyPoint
@@ -96,7 +93,7 @@ export function IntegrationsTab() {
           DO leave the browser, reach our API, and go on to a third-party model.
           Saying so plainly here is the price of making the token claim
           believable everywhere else. */}
-      <Section num="03 /" title="What the AI sees">
+      <Section title="What the AI sees">
         <Card className="p-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <PrivacyPoint
@@ -118,7 +115,7 @@ export function IntegrationsTab() {
           </div>
         </Card>
       </Section>
-    </>
+    </div>
   );
 }
 
@@ -126,75 +123,43 @@ function IntegrationHealthSummary({ providers }) {
   const { isConnected } = useIntegrations();
   return (
     <Card className="overflow-hidden p-0">
-      <table className="w-full text-left" style={{ borderCollapse: "collapse" }}>
+      <table className="w-full text-left">
         <thead>
-          <tr
-            className="border-b border-border bg-card-alt"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-          >
-            <th className="px-4 py-2.5 font-semibold uppercase tracking-[0.4px] text-muted-fg">
+          <tr className="border-b border-line">
+            <th className="px-4 py-2.5 text-[12px] font-semibold text-muted-fg">
               Provider
             </th>
-            <th className="px-4 py-2.5 font-semibold uppercase tracking-[0.4px] text-muted-fg">
+            <th className="px-4 py-2.5 text-[12px] font-semibold text-muted-fg">
               Status
             </th>
-            <th className="px-4 py-2.5 font-semibold uppercase tracking-[0.4px] text-muted-fg">
+            <th className="px-4 py-2.5 text-[12px] font-semibold text-muted-fg">
               Dashboard tiles
             </th>
           </tr>
         </thead>
         <tbody>
-          {providers.map((p, i) => {
+          {providers.map((p) => {
             const connected = isConnected(p.id);
             const tiles = TILES_BY_PROVIDER[p.id] ?? [];
             return (
-              <tr
-                key={p.id}
-                className={i < providers.length - 1 ? "border-b border-border" : ""}
-              >
-                <td
-                  className="px-4 py-3 font-semibold"
-                  style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}
-                >
+              <tr key={p.id} className="border-t border-line first:border-t-0">
+                <td className="px-4 py-3 text-[13px] font-semibold text-fg">
                   {p.label}
                 </td>
                 <td className="px-4 py-3">
-                  <span
-                    className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-bold uppercase tracking-[0.4px]"
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 10,
-                      background: connected
-                        ? "color-mix(in srgb, var(--good) 13%, transparent)"
-                        : "var(--panel-2)",
-                      color: connected ? "var(--good)" : "var(--muted-fg)",
-                    }}
-                  >
-                    <span
-                      className="inline-block h-1.5 w-1.5 rounded-full"
-                      style={{ background: connected ? "var(--good)" : "var(--dim-fg)" }}
-                    />
+                  <Badge tone={connected ? "mint" : "neutral"} dot>
                     {connected ? "Connected" : "Not connected"}
-                  </span>
+                  </Badge>
                 </td>
                 <td className="px-4 py-3">
                   {tiles.length === 0 ? (
-                    <span
-                      className="text-dim-fg"
-                      style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-                    >
-                      —
-                    </span>
+                    <span className="text-[11.5px] text-dim-fg">—</span>
                   ) : (
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-1.5">
                       {tiles.map((t) => (
-                        <span
-                          key={t}
-                          className="rounded-[3px] border border-border bg-card-alt px-1.5 py-0.5 text-muted-fg"
-                          style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-                        >
+                        <Badge key={t} tone="neutral">
                           {t}
-                        </span>
+                        </Badge>
                       ))}
                     </div>
                   )}
@@ -216,34 +181,17 @@ function ProviderCard({ provider }) {
 
   return (
     <Card className="p-5">
-      <div className="grid grid-cols-[48px_1fr_auto] items-start gap-4">
-        <ProviderGlyph connected={connected} />
+      <div className="grid grid-cols-[44px_1fr_auto] items-start gap-4">
+        <ProviderGlyph glyph={provider.glyph} />
         <div>
           <div className="mb-0.5 flex items-center gap-2.5">
-            <span className="text-[15px] font-semibold">{provider.label}</span>
-            <span
-              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-[5px] font-bold uppercase tracking-[0.5px]"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                background: connected
-                  ? "color-mix(in srgb, var(--good) 13%, transparent)"
-                  : "var(--panel-2)",
-                color: connected ? "var(--good)" : "var(--muted-fg)",
-              }}
-            >
-              <span
-                className="inline-block h-1.5 w-1.5 rounded-full"
-                style={{ background: connected ? "var(--good)" : "var(--dim-fg)" }}
-              />
+            <span className="text-[15px] font-bold text-fg">{provider.label}</span>
+            <Badge tone={connected ? "mint" : "neutral"} dot>
               {connected ? "Connected" : "Not set"}
-            </span>
+            </Badge>
           </div>
           {connected && meta ? (
-            <div
-              className="text-muted-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-            >
+            <div className="text-[12px] text-muted-fg">
               {meta.username ? `@${meta.username}` : ""}
               {meta.connectedAt
                 ? ` · since ${new Date(meta.connectedAt).toLocaleDateString("en-US", {
@@ -259,20 +207,11 @@ function ProviderCard({ provider }) {
           </div>
           {(TILES_BY_PROVIDER[provider.id] ?? []).length > 0 ? (
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span
-                className="text-dim-fg"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-              >
-                Affects:
-              </span>
+              <span className="text-[11px] text-dim-fg">Affects:</span>
               {(TILES_BY_PROVIDER[provider.id] ?? []).map((t) => (
-                <span
-                  key={t}
-                  className="rounded-[3px] border border-border bg-card-alt px-1.5 py-0.5 text-muted-fg"
-                  style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-                >
+                <Badge key={t} tone="neutral">
                   {t}
-                </span>
+                </Badge>
               ))}
             </div>
           ) : null}
@@ -334,43 +273,24 @@ function ProviderCard({ provider }) {
   );
 }
 
-/**
- * 3×3 dot-matrix provider mark (the Nothing UI `.n-glyph`). Dots brighten
- * to --dot when the provider is connected, fade to --dim-fg when not.
- */
-function ProviderGlyph({ connected }) {
-  const on = connected ? "var(--dot)" : "var(--dim-fg)";
-  const off = "var(--dot-dim)";
-  const cells = [on, off, on, off, on, off, on, off, on];
+/** Provider mark — a soft square carrying the provider's short glyph text. */
+function ProviderGlyph({ glyph }) {
   return (
-    <span
-      className="grid h-12 w-12 grid-cols-3 grid-rows-3 rounded-[var(--radius-sub)] border border-border-strong bg-panel"
-      style={{ gap: 3, padding: 9 }}
-    >
-      {cells.map((c, i) => (
-        <i
-          key={i}
-          className="block rounded-full"
-          style={{ background: c }}
-        />
-      ))}
+    <span className="grid h-11 w-11 place-items-center rounded-[var(--radius-lg)] bg-card-alt text-[13px] font-bold text-fg">
+      {glyph}
     </span>
   );
 }
 
-/** "100% local" privacy callout — matches the reference's dashed strip. */
+/** "100% local" privacy callout. */
 function LocalCallout() {
   return (
-    <div className="mt-[18px] flex items-center gap-3 rounded-[var(--radius-tile)] border border-dashed border-border-strong bg-panel px-4 py-3.5">
-      <span
-        className="text-accent"
-        style={{ fontFamily: "var(--font-dot)", fontWeight: 900, fontSize: 22, letterSpacing: "1px" }}
-      >
+    <div className="mt-[18px] flex items-center gap-3 rounded-[var(--radius-lg)] bg-card-alt px-4 py-3.5">
+      <span className="text-[22px] font-extrabold tracking-[-0.02em] text-fg">
         100%
       </span>
       <span className="text-[13px] text-muted-fg">
-        local — tokens never touch our servers. Clear them anytime from this
-        tab.
+        local — tokens never touch our servers. Clear them anytime from this tab.
       </span>
     </div>
   );
@@ -379,16 +299,8 @@ function LocalCallout() {
 function PrivacyPoint({ title, body }) {
   return (
     <div>
-      <div className="mb-1.5 flex items-center gap-2">
-        <span className="block h-[5px] w-[5px] rounded-full bg-accent" />
-        <span
-          className="uppercase tracking-[0.5px] font-bold"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-        >
-          {title}
-        </span>
-      </div>
-      <div className="pl-[13px] text-[12.5px] leading-[1.55] text-muted-fg">{body}</div>
+      <div className="mb-1.5 text-[13px] font-bold text-fg">{title}</div>
+      <div className="text-[12.5px] leading-[1.55] text-muted-fg">{body}</div>
     </div>
   );
 }

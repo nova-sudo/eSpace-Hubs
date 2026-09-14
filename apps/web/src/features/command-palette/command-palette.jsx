@@ -39,12 +39,24 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { ArrowDown, ArrowUp, Command, CornerDownLeft, Search } from "lucide-react";
+import { Badge, Label } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { useAiProvider, AI_PROVIDERS } from "@/features/analyst";
 import { useSnapshotNow } from "@/features/snapshots";
 import { useHubLink } from "@/features/hubs";
 import { buildCommands } from "./commands";
 
 const PALETTE_OPEN_EVENT = "command-palette:open";
+
+// Keyboard-key glyphs → lucide icons, so a shortcut hint never renders a
+// raw arrow/⌘ character as UI iconography.
+const KEY_ICONS = {
+  "↑": ArrowUp,
+  "↓": ArrowDown,
+  "↵": CornerDownLeft,
+  "⌘": Command,
+};
 
 /** Imperative open from anywhere (e.g. a button). */
 export function openCommandPalette() {
@@ -222,32 +234,20 @@ export function CommandPalette() {
       role="dialog"
       aria-modal="true"
       aria-label="Command palette"
-      className="fixed inset-0 z-[100] flex items-start justify-center px-4 pt-[12vh]"
+      className="fixed inset-0 z-[100] flex items-start justify-center bg-fg/40 px-4 pt-[12vh]"
       onClick={(e) => {
         // Click on the backdrop (not the dialog) closes.
         if (e.target === e.currentTarget) close();
       }}
-      style={{
-        background: "rgba(10, 10, 20, 0.45)",
-        backdropFilter: "blur(2px)",
-      }}
     >
       <div
-        className="w-full max-w-[640px] overflow-hidden rounded-[var(--radius-tile)] border border-border bg-card shadow-[0_24px_72px_rgba(0,0,0,0.25)]"
+        className="w-full max-w-[640px] overflow-hidden rounded-[var(--radius-xl)] bg-card"
+        style={{ boxShadow: "var(--shadow-float)" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search input */}
-        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-          <span
-            aria-hidden="true"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 14,
-              color: "var(--muted-fg)",
-            }}
-          >
-            ›
-          </span>
+        <div className="flex items-center gap-2.5 border-b border-line px-4 py-2">
+          <Search size={17} className="shrink-0 text-muted-fg" />
           <input
             ref={inputRef}
             value={query}
@@ -255,43 +255,23 @@ export function CommandPalette() {
             onKeyDown={onInputKeyDown}
             placeholder="Jump to anywhere · search actions, sections, providers"
             aria-label="Search commands"
-            className="flex-1 bg-transparent outline-none"
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 17,
-              letterSpacing: "-0.2px",
-            }}
+            className="h-12 flex-1 bg-transparent text-[15px] text-fg outline-none placeholder:text-dim-fg"
           />
-          <kbd
-            className="rounded border border-border bg-card-alt px-1.5 py-0.5 text-muted-fg"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9.5,
-              letterSpacing: "0.4px",
-            }}
-          >
-            ESC
-          </kbd>
+          <Badge tone="neutral" className="font-mono">
+            Esc
+          </Badge>
         </div>
 
         {/* Results */}
         <div ref={listRef} className="max-h-[60vh] overflow-y-auto p-2">
           {flat.length === 0 ? (
-            <div
-              className="px-3 py-6 text-center text-muted-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-            >
+            <div className="px-3 py-6 text-center text-[13px] text-muted-fg">
               No matches for “{query}”.
             </div>
           ) : (
             grouped.map(([category, items]) => (
               <div key={category} className="mb-2 last:mb-0">
-                <div
-                  className="px-2 py-1 uppercase tracking-[0.6px] text-muted-fg"
-                  style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-                >
-                  {category}
-                </div>
+                <Label className="block px-2 py-1">{category}</Label>
                 <ul className="flex flex-col">
                   {items.map((cmd) => {
                     const flatIdx = flat.indexOf(cmd);
@@ -302,37 +282,22 @@ export function CommandPalette() {
                           type="button"
                           onMouseMove={() => setHighlighted(flatIdx)}
                           onClick={() => activate(cmd)}
-                          className="flex w-full items-center justify-between gap-3 rounded-[var(--radius-sub)] px-3 py-2 text-left"
-                          style={{
-                            background: isHi
-                              ? "var(--accent-dim)"
-                              : "transparent",
-                            color: isHi ? "var(--accent)" : "var(--fg)",
-                          }}
+                          className={cn(
+                            "flex w-full items-center justify-between gap-3 rounded-[var(--radius-lg)] px-3 py-2.5 text-left transition-colors",
+                            isHi ? "bg-card-alt" : "bg-transparent",
+                          )}
                         >
                           <span className="flex items-baseline gap-2 truncate">
-                            <span
-                              className="text-[13.5px]"
-                              style={{ fontFamily: "var(--font-display)" }}
-                            >
+                            <span className="text-[13.5px] font-semibold text-fg">
                               {cmd.label}
                             </span>
                             {cmd.sub ? (
-                              <span
-                                className="truncate"
-                                style={{
-                                  fontFamily: "var(--font-mono)",
-                                  fontSize: 10.5,
-                                  color: "var(--muted-fg)",
-                                }}
-                              >
+                              <span className="truncate text-[12px] text-muted-fg">
                                 — {cmd.sub}
                               </span>
                             ) : null}
                           </span>
-                          {cmd.shortcut ? (
-                            <ShortcutKeys keys={cmd.shortcut} />
-                          ) : null}
+                          {cmd.shortcut ? <ShortcutKeys keys={cmd.shortcut} /> : null}
                         </button>
                       </li>
                     );
@@ -344,13 +309,10 @@ export function CommandPalette() {
         </div>
 
         {/* Footer hint */}
-        <div
-          className="flex items-center justify-between gap-3 border-t border-border bg-card-alt px-4 py-2 text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-        >
+        <div className="flex items-center justify-between gap-3 border-t border-line bg-card-alt px-4 py-2.5 text-[11.5px] text-muted-fg">
           <span className="flex items-center gap-2">
-            <ShortcutKeys keys={["↑", "↓"]} muted /> navigate
-            <ShortcutKeys keys={["↵"]} muted /> select
+            <ShortcutKeys keys={["↑", "↓"]} /> navigate
+            <ShortcutKeys keys={["↵"]} /> select
           </span>
           <span>{flat.length} match{flat.length === 1 ? "" : "es"}</span>
         </div>
@@ -359,23 +321,17 @@ export function CommandPalette() {
   );
 }
 
-function ShortcutKeys({ keys, muted }) {
+function ShortcutKeys({ keys }) {
   return (
     <span className="flex items-center gap-1">
-      {keys.map((k, i) => (
-        <kbd
-          key={i}
-          className="rounded border border-border bg-card-alt px-1.5 py-0.5"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9.5,
-            letterSpacing: "0.4px",
-            color: muted ? "var(--muted-fg)" : "var(--fg)",
-          }}
-        >
-          {k}
-        </kbd>
-      ))}
+      {keys.map((k, i) => {
+        const Icon = KEY_ICONS[k];
+        return (
+          <Badge key={i} tone="neutral" className="px-1.5 py-0.5 font-mono">
+            {Icon ? <Icon size={11} /> : k}
+          </Badge>
+        );
+      })}
     </span>
   );
 }

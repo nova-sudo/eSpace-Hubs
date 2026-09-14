@@ -14,6 +14,8 @@
  * trio) fall back to the generic note rather than rendering a wrong number.
  */
 
+import { Check, X } from "lucide-react";
+import { Badge } from "@/components/ui";
 import { useDataSource } from "@/features/goal-widgets";
 import { SOURCE_METRICS } from "@/features/goal-specs";
 
@@ -49,14 +51,7 @@ export function AutoGoalValue({ spec }) {
   if (!mapper) return <GenericNote />;
 
   if (isLoading) {
-    return (
-      <div
-        className="text-[10px] uppercase tracking-[0.4px] text-muted-fg/60"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
-        reading your activity…
-      </div>
-    );
+    return <div className="text-[12px] text-muted-fg">Reading your activity…</div>;
   }
 
   const { value, unit } = mapper(data);
@@ -67,50 +62,26 @@ export function AutoGoalValue({ spec }) {
 
   return (
     <div className="flex items-center gap-2">
-      <span
-        className="rounded-md border px-2 py-0.5"
-        style={{
-          fontFamily: "var(--font-mono)",
-          borderColor:
-            met === true
-              ? "color-mix(in srgb, var(--good) 40%, transparent)"
-              : met === false
-                ? "color-mix(in srgb, #d97706 40%, transparent)"
-                : "var(--border)",
-        }}
-      >
-        <span className="text-[13px] font-semibold text-fg">{value}</span>
-        <span className="ml-1 text-[10px] text-muted-fg">{unit}</span>
+      <span className="rounded-[var(--radius-md)] bg-card-alt px-2.5 py-1">
+        <span className="text-[15px] font-bold text-fg">{value}</span>
+        <span className="ml-1 text-[12px] text-muted-fg">{unit}</span>
       </span>
       {target ? (
-        <span
-          className="text-[10px] uppercase tracking-[0.4px] text-muted-fg/70"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
+        <span className="flex items-center gap-1.5 text-[12px] text-muted-fg">
           target {target.op} {target.value}
-          {met === true ? " ✓" : met === false ? " ✕" : ""}
+          {met != null ? (
+            <Badge tone={met ? "mint" : "peach"}>{met ? <Check size={11} /> : <X size={11} />}</Badge>
+          ) : null}
         </span>
       ) : (
-        <span
-          className="text-[10px] uppercase tracking-[0.4px] text-muted-fg/60"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          auto-tracked
-        </span>
+        <span className="text-[12px] text-muted-fg">Auto-tracked</span>
       )}
     </div>
   );
 }
 
 function GenericNote() {
-  return (
-    <div
-      className="text-[10px] uppercase tracking-[0.4px] text-muted-fg/70"
-      style={{ fontFamily: "var(--font-mono)" }}
-    >
-      Computed from your activity · no manual entry needed
-    </div>
-  );
+  return <div className="text-[12px] text-muted-fg">Computed from your activity · no manual entry needed</div>;
 }
 
 function round1(n) {

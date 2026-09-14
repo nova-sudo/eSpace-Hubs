@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Card, Button } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { providerListLabel } from "./provider-dependencies";
 
@@ -27,12 +28,13 @@ const COPY = {
   },
 };
 
-const DOT = {
-  disconnected: "var(--accent)",
-  loading: "var(--muted-fg)",
-  error: "var(--bad)",
-  degraded: "var(--warn)",
-  empty: "var(--muted-fg)",
+// Card tone per state: lemon = needs setup / stale, peach = error, sky = info.
+const TONE = {
+  disconnected: "lemon",
+  loading: "sky",
+  error: "peach",
+  degraded: "lemon",
+  empty: "sky",
 };
 
 export function ProviderStateCallout({
@@ -42,7 +44,9 @@ export function ProviderStateCallout({
   message,
   actionHref,
   actionLabel,
-  variant = "default",
+  // `variant` is accepted for back-compat and no longer changes the look —
+  // the tint tone now carries the state.
+  variant: _variant,
   className,
 }) {
   const copy = COPY[kind] ?? COPY.empty;
@@ -54,58 +58,24 @@ export function ProviderStateCallout({
       ? `${sourceLabel} is needed for this metric.`
       : "This metric has no source data yet.");
   const resolvedAction = actionLabel || copy.action;
-  const accent = variant === "accent";
 
   return (
-    <div
-      className={cn(
-        "flex h-full min-h-0 w-full flex-col justify-center rounded-[var(--radius-tile)] border px-3 py-3",
-        accent
-          ? "border-[rgba(255,255,255,0.28)] bg-[rgba(255,255,255,0.10)] text-white"
-          : "border-border bg-card-alt text-fg",
-        className,
-      )}
+    <Card
+      tone={TONE[kind] ?? TONE.empty}
+      radius="lg"
+      className={cn("flex h-full min-h-0 w-full flex-col justify-center", className)}
       role="status"
       aria-live="polite"
     >
-      <div className="flex items-center gap-2">
-        <span
-          aria-hidden="true"
-          className="inline-block h-2 w-2 shrink-0 rounded-full"
-          style={{ background: DOT[kind] ?? DOT.empty }}
-        />
-        <span
-          className={cn(
-            "text-[10.5px] font-semibold uppercase tracking-[0.35px]",
-            accent ? "text-[rgba(255,255,255,0.86)]" : "text-muted-fg",
-          )}
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          {resolvedTitle}
-        </span>
-      </div>
-      <p
-        className={cn(
-          "mt-2 max-w-[34ch] text-[12px] leading-[1.45]",
-          accent ? "text-[rgba(255,255,255,0.78)]" : "text-muted-fg",
-        )}
-      >
-        {resolvedMessage}
-      </p>
+      <div className="text-[13px] font-bold">{resolvedTitle}</div>
+      <p className="mt-1.5 max-w-[34ch] text-[13px] leading-[1.45] opacity-85">{resolvedMessage}</p>
       {actionHref && resolvedAction ? (
-        <Link
-          href={actionHref}
-          className={cn(
-            "mt-3 inline-flex w-fit items-center rounded-[var(--radius-sub)] border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.35px] transition-colors",
-            accent
-              ? "border-[rgba(255,255,255,0.34)] text-white hover:bg-[rgba(255,255,255,0.12)]"
-              : "border-border text-fg hover:border-border-strong",
-          )}
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          {resolvedAction}
+        <Link href={actionHref} className="mt-3 inline-flex w-fit">
+          <Button variant="soft" size="sm">
+            {resolvedAction}
+          </Button>
         </Link>
       ) : null}
-    </div>
+    </Card>
   );
 }

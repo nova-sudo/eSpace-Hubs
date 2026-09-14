@@ -119,7 +119,6 @@ export function GoalWidget({
       <UntrackableCard
         spec={spec}
         goal={goal}
-        variant={variant}
         className={className}
         onRetry={onRetry}
         onClearUntrackable={() => clearUntrackable(spec)}
@@ -136,7 +135,6 @@ export function GoalWidget({
         <PendingApprovalCard
           spec={spec}
           goal={goal}
-          variant={variant}
           className={className}
           onRetry={onRetry}
           onRevise={() => setComposeOpen(true)}
@@ -152,7 +150,6 @@ export function GoalWidget({
       <DelegatedCard
         spec={spec}
         goal={goal}
-        variant={variant}
         className={className}
         onRetry={onRetry}
         onUnsetDelegation={() => toggleDelegated(spec, false)}
@@ -176,7 +173,6 @@ export function GoalWidget({
       <ContextCollector
         spec={spec}
         goal={goal}
-        variant={variant}
         className={className}
         onRetry={() => {
           setForceEditContext(false);
@@ -234,21 +230,13 @@ export function GoalWidget({
     return (
       <WidgetShell
         spec={spec}
-        variant={variant}
         label="Unknown widget"
         title={goal?.title || spec.title}
         onRetry={onRetry}
         className={className}
       >
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 11,
-            lineHeight: 1.5,
-            color: variant === "light" ? "rgba(255,255,255,0.7)" : "var(--muted-fg)",
-          }}
-        >
-          No widget registered for <strong>{spec.widget}</strong>. Re-analyze
+        <div className="text-[13px] leading-[1.5] text-muted-fg">
+          No widget registered for <strong className="text-fg">{spec.widget}</strong>. Re-analyze
           to let the AI pick a different classification.
         </div>
       </WidgetShell>

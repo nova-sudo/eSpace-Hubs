@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Checkbox, ItemEvidence } from "@/components/ui";
+import { X } from "lucide-react";
+import { Button, Checkbox, IconButton, Input, ItemEvidence, Label } from "@/components/ui";
 import { WidgetShell } from "../widget-shell";
 import { useGoalInputs } from "@/features/goal-inputs";
 import { useGoalContext, resolveMilestoneItems } from "@/features/goal-context";
@@ -83,104 +84,39 @@ export function MilestoneWidget({ spec, goal, variant = "light", className, onRe
     >
       <div className="flex h-full flex-col gap-2">
         <div className="flex items-baseline gap-2">
-          <div
-            className="font-semibold leading-none"
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 36,
-              letterSpacing: "-1.2px",
-            }}
-          >
+          <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
             {pct}%
           </div>
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10.5,
-              color: variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)",
-            }}
-          >
-            complete
-          </div>
+          <span className="text-[13px] text-muted-fg">complete</span>
         </div>
-        <div
-          className="h-1.5 w-full overflow-hidden rounded-full"
-          style={{
-            background:
-              variant === "light" ? "rgba(255,255,255,0.18)" : "var(--border)",
-          }}
-        >
-          <div
-            className="h-full"
-            style={{
-              width: `${pct}%`,
-              background: variant === "light" ? "#ffffff" : "var(--accent)",
-            }}
-          />
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-card-alt">
+          <div className="h-full bg-ink" style={{ width: `${pct}%` }} />
         </div>
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            color: variant === "light" ? "rgba(255,255,255,0.68)" : "var(--muted-fg)",
-          }}
-        >
-          {promptCopy}
-        </div>
-        <ul
-          className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-        >
-          {items.length === 0 ? (
-            <li
-              style={{
-                color:
-                  variant === "light" ? "rgba(255,255,255,0.5)" : "var(--dim-fg)",
-              }}
-            >
-              No milestones yet.
-            </li>
-          ) : null}
+        <Label>{promptCopy}</Label>
+        <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto text-[13px]">
+          {items.length === 0 ? <li className="text-dim-fg">No milestones yet.</li> : null}
           {items.map((it) => (
             <li key={it.id} className="group flex flex-col gap-0.5">
               <div className="flex items-center gap-2">
                 <Checkbox checked={!!it.done} onChange={() => toggle(it.id)} label={it.label || it.title || "milestone item"} />
                 <span
-                  className="flex-1 truncate"
-                  style={{
-                    textDecoration: it.done ? "line-through" : "none",
-                    color: it.done
-                      ? variant === "light"
-                        ? "rgba(255,255,255,0.5)"
-                        : "var(--dim-fg)"
-                      : "inherit",
-                  }}
+                  className={it.done ? "flex-1 truncate text-dim-fg line-through" : "flex-1 truncate text-fg"}
                   title={it.label}
                 >
                   {it.label}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => remove(it.id)}
+                <IconButton
+                  label={`Remove ${it.label}`}
+                  size="sm"
+                  onCard
                   className="opacity-0 transition-opacity group-hover:opacity-100"
-                  style={{
-                    fontSize: 10,
-                    color:
-                      variant === "light"
-                        ? "rgba(255,255,255,0.6)"
-                        : "var(--dim-fg)",
-                  }}
-                  aria-label={`Remove ${it.label}`}
+                  onClick={() => remove(it.id)}
                 >
-                  ✕
-                </button>
+                  <X size={12} />
+                </IconButton>
               </div>
-              <div className="min-w-0 pl-[22px]">
-                <ItemEvidence
-                  value={it.evidence}
-                  variant={variant}
-                  onSave={(t) => setEvidence(it.id, t)}
-                />
+              <div className="min-w-0 pl-[26px]">
+                <ItemEvidence value={it.evidence} variant="dark" onSave={(t) => setEvidence(it.id, t)} />
               </div>
             </li>
           ))}
@@ -188,7 +124,7 @@ export function MilestoneWidget({ spec, goal, variant = "light", className, onRe
         {/* Input row — `min-w-0` on parent + child so the text input shrinks
             below its intrinsic width on narrow tiles. Button stays `shrink-0`. */}
         <div className="flex min-w-0 items-center gap-1.5">
-          <input
+          <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -198,46 +134,16 @@ export function MilestoneWidget({ spec, goal, variant = "light", className, onRe
               }
             }}
             placeholder="+ Add milestone"
-            className="min-w-0 flex-1 rounded-[var(--radius-sub)] bg-transparent px-2 py-1.5 outline-none"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              color: variant === "light" ? "#ffffff" : "var(--fg)",
-              border:
-                variant === "light"
-                  ? "1px solid rgba(255,255,255,0.22)"
-                  : "1px solid var(--border)",
-            }}
+            className="min-w-0 flex-1"
           />
-          <button
-            type="button"
-            onClick={add}
-            disabled={!draft.trim()}
-            className="shrink-0 rounded-[var(--radius-sub)] px-3 py-1.5 font-bold uppercase transition-opacity disabled:opacity-40"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10.5,
-              letterSpacing: "0.4px",
-              background:
-                variant === "light" ? "#ffffff" : "var(--accent)",
-              color:
-                variant === "light" ? "var(--accent)" : "var(--accent-on)",
-            }}
-          >
+          <Button size="sm" disabled={!draft.trim()} className="shrink-0" onClick={add}>
             Add
-          </button>
+          </Button>
         </div>
         {/* Footnote count */}
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9.5,
-            color:
-              variant === "light" ? "rgba(255,255,255,0.55)" : "var(--dim-fg)",
-          }}
-        >
+        <Label>
           {entries.length} revision{entries.length === 1 ? "" : "s"}
-        </div>
+        </Label>
       </div>
     </WidgetShell>
   );

@@ -20,13 +20,12 @@
  *   - PR D: The full catalog from the QA-Hub spec
  *
  * Layout: a single-row grid for now. As widgets land we'll lay them
- * out in the same bento style the Dev hub uses (see
- * apps/web/src/features/dashboard/dashboard-page.jsx for the
- * canonical reference).
+ * out in the same bento style the Dev hub uses.
  */
 
 import Link from "next/link";
-import { MonoLabel, PageHeader } from "@/components/ui";
+import { ArrowRight } from "lucide-react";
+import { PageHeader, Section } from "@/components/ui";
 import { useActiveHub, useHubLink } from "@/features/hubs";
 import { BuildPassRateTile } from "./build-pass-rate-tile";
 import { DefectPriorityMixTile } from "./defect-priority-mix-tile";
@@ -38,33 +37,21 @@ export function QaDashboard() {
   const link = useHubLink();
 
   return (
-    <main className="relative z-[2] px-4 sm:px-10 pb-14 pt-9">
+    <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
       <PageHeader
         crumb={`${hub?.label ?? "QA Hub"} · performance`}
         title="Test quality, on the record."
-        italicWord="record"
         subtitle="Automation runs and defect flow — pulled live from Jenkins and Jira."
         right={
-          <Link
-            href={link("/settings")}
-            className="text-accent hover:underline"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              letterSpacing: "0.5px",
-              textTransform: "uppercase",
-              fontWeight: 700,
-            }}
-          >
-            Integrations →
+          <Link href={link("/settings")} className="flex items-center gap-1.5 text-[12.5px] font-bold text-fg">
+            Integrations <ArrowRight size={13} />
           </Link>
         }
       />
 
-      <div className="mt-2">
-        <MonoLabel>01 / Automation health</MonoLabel>
+      <Section title="Automation health">
         <div
-          className="mt-3 grid gap-3"
+          className="grid gap-4"
           style={{
             gridTemplateColumns: "repeat(12, 1fr)",
             gridAutoRows: "minmax(140px, auto)",
@@ -73,12 +60,11 @@ export function QaDashboard() {
           <BuildPassRateTile />
           <FlakeRateTile />
         </div>
-      </div>
+      </Section>
 
-      <div className="mt-8">
-        <MonoLabel>02 / Defect flow</MonoLabel>
+      <Section title="Defect flow">
         <div
-          className="mt-3 grid gap-3"
+          className="grid gap-4"
           style={{
             gridTemplateColumns: "repeat(12, 1fr)",
             gridAutoRows: "minmax(140px, auto)",
@@ -87,7 +73,7 @@ export function QaDashboard() {
           <DefectsTile />
           <DefectPriorityMixTile />
         </div>
-      </div>
+      </Section>
     </main>
   );
 }

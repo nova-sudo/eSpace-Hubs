@@ -35,18 +35,8 @@ function LoginInner() {
 
 export default function LoginPage() {
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "var(--bg)",
-        color: "var(--fg)",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <Suspense fallback={null}>
-        <LoginInner />
-      </Suspense>
-    </main>
+    <Suspense fallback={null}>
+      <LoginInner />
+    </Suspense>
   );
 }

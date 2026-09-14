@@ -31,23 +31,18 @@
  *   companion connection. The existing AuthGuard redirect is therefore
  *   the enforcement mechanism — no API changes needed.
  *
- * Design intent — this page is its OWN visual world, not a hub:
- *   - Full-bleed neutral background (no hub theme) with the Nothing UI
- *     halftone dot-grid texture.
- *   - Large dot-matrix (Doto) display type for the headline.
- *   - The single cobalt accent + light/dark tokens, so it honours the
- *     user's theme like every other surface.
- *   - Minimal chrome: no header, no nav, no footer. The user is
- *     here to complete one task.
+ * Renders on the app canvas (no header/nav) — it's a transitional
+ * surface between authentication and the hub the user lands in.
  */
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { apiPost } from "@/lib/api-client";
-import { Button, Input } from "@/components/ui";
+import { Button, Card, Field, Input, Label, Loading, PageHeader } from "@/components/ui";
 import { useSession } from "@/features/auth";
 import { resetHubsStore } from "@/features/hubs";
+import { cn } from "@/lib/cn";
 import { CompanionGateStep } from "./companion-gate-step.jsx";
 
 // Common departments rendered as quick-pick chips above the free-text
@@ -57,9 +52,36 @@ import { CompanionGateStep } from "./companion-gate-step.jsx";
 // covers the rest.
 const QUICK_PICKS = ["Engineering", "QA", "Platform", "DevOps", "Frontend"];
 
-// No theme override — onboarding inherits the Nothing UI tokens (cobalt accent,
-// light/dark) so it honours the user's theme like every other surface.
-const ONBOARDING_THEME = {};
+function ProgressStrip({ filled }) {
+  return (
+    <div className="mb-5 flex gap-1.5">
+      {Array.from({ length: 6 }, (_, i) => (
+        <span
+          key={i}
+          className={cn(
+            "h-1.5 flex-1 rounded-[var(--radius-pill)]",
+            i < filled ? "bg-ink" : "bg-card-alt",
+          )}
+        />
+      ))}
+    </div>
+  );
+}
+
+function QuickPick({ label, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "rounded-[var(--radius-pill)] px-3.5 py-1.5 text-[12.5px] font-semibold transition-colors",
+        active ? "bg-ink text-ink-on" : "bg-card-alt text-muted-fg hover:text-fg",
+      )}
+    >
+      {label}
+    </button>
+  );
+}
 
 export function OnboardingPage() {
   const router = useRouter();
@@ -70,6 +92,8 @@ export function OnboardingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [step, setStep] = useState("profile"); // "profile" | "companion"
   const requiresCompanion = user?.engagement === "crealogix";
+  const totalSteps = requiresCompanion ? 2 : 1;
+  const stepNum = step === "companion" ? 2 : 1;
 
   // Pre-fill displayName from the existing session user once it
   // resolves. Setting state inside an effect (not directly in the
@@ -126,201 +150,93 @@ export function OnboardingPage() {
 
   if (loading || !user) {
     return (
-      <main
-        style={{
-          minHeight: "100vh",
-          background: "var(--bg)",
-          color: "var(--muted-fg)",
-          display: "grid",
-          placeItems: "center",
-          fontFamily: "var(--font-mono)",
-          fontSize: 12,
-        }}
-        aria-busy="true"
-      >
-        Loading…
+      <main className="flex min-h-screen items-center justify-center bg-bg">
+        <Loading label="Loading…" />
       </main>
     );
   }
 
   return (
-    <main
-      className="relative overflow-hidden"
-      style={{
-        minHeight: "100vh",
-        background: "var(--bg)",
-        color: "var(--fg)",
-        ...ONBOARDING_THEME,
-      }}
-    >
-      {/* Nothing UI signature: faint halftone dot-grid behind everything. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-50"
-        style={{
-          backgroundImage:
-            "radial-gradient(var(--dot-dim) 1px, transparent 1px)",
-          backgroundSize: "13px 13px",
-        }}
-      />
+    <main className="min-h-screen bg-bg">
+      <div className="mx-auto max-w-2xl px-4 pb-16 pt-14 sm:px-10">
+        <PageHeader
+          crumb="One-time setup"
+          title="Welcome to eSpace Dev Hub"
+          subtitle="A few quick fields so we know how to route you. You can change them later from your profile — there's no wrong answer here."
+        />
 
-      <div className="relative mx-auto grid min-h-screen max-w-3xl grid-rows-[1fr_auto] px-6 py-16">
-        {step === "companion" ? (
-          <CompanionGateStep
-            submitting={submitting}
-            onContinue={submitOnboarding}
-            onBack={() => setStep("profile")}
-          />
-        ) : (
-        <div className="flex flex-col justify-center">
-          <div
-            className="mb-5 inline-flex w-fit items-center gap-2 rounded-full border border-border-strong px-3 py-1.5"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-          >
-            <span
-              className="block h-1.5 w-1.5 rounded-full"
-              style={{ background: "var(--accent)" }}
+        <Card padding={28}>
+          {totalSteps > 1 ? (
+            <Label className="mb-2 block">{`Step ${stepNum} of ${totalSteps}`}</Label>
+          ) : null}
+          <ProgressStrip filled={Math.round((stepNum / totalSteps) * 6)} />
+
+          {step === "companion" ? (
+            <CompanionGateStep
+              submitting={submitting}
+              onContinue={submitOnboarding}
+              onBack={() => setStep("profile")}
             />
-            <span className="uppercase tracking-[1.5px] text-muted-fg">
-              {/* #239: "Step 1 of 1" is a progress bar with nothing to
-                  measure — count steps only when there's more than one. */}
-              {requiresCompanion ? "Step 1 of 2 · " : ""}One-time setup
-            </span>
-          </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+              <Field label="Display name" hint="What we'll call you in the chrome.">
+                <Input
+                  type="text"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="Your name"
+                  autoComplete="name"
+                />
+              </Field>
 
-          <h1
-            className="m-0"
-            style={{
-              fontFamily: "var(--font-dot)",
-              fontWeight: 900,
-              fontSize: 50,
-              lineHeight: 0.95,
-              letterSpacing: "1px",
-              textTransform: "uppercase",
-            }}
-          >
-            Welcome to <em className="accent">eSpace</em> Dev Hub.
-          </h1>
+              <Field
+                label="Employee ID"
+                hint="Whatever your HR system calls it. Zoho will overwrite this later if it differs."
+              >
+                <Input
+                  type="text"
+                  value={employeeId}
+                  onChange={(e) => setEmployeeId(e.target.value)}
+                  placeholder="e.g. EMP-1042"
+                />
+              </Field>
 
-          <p
-            className="mb-9 mt-[18px] max-w-xl text-[15px] leading-[1.55]"
-            style={{ color: "var(--muted-fg)" }}
-          >
-            Three quick fields so we know how to route you. You can change
-            them later from your profile — there's no wrong answer here.
-          </p>
-
-          <form onSubmit={handleSubmit} className="flex max-w-xl flex-col gap-6">
-            <OnboardingField
-              label="Display name"
-              hint="What we'll call you in the chrome."
-            >
-              <Input
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Your name"
-                autoComplete="name"
-              />
-            </OnboardingField>
-
-            <OnboardingField
-              label="Employee ID"
-              hint="Whatever your HR system calls it. Zoho will overwrite this later if it differs."
-            >
-              <Input
-                type="text"
-                value={employeeId}
-                onChange={(e) => setEmployeeId(e.target.value)}
-                placeholder="e.g. EMP-1042"
-              />
-            </OnboardingField>
-
-            <OnboardingField
-              label="Department"
-              accentHint="Pick or type. For your org chart — an admin assigns which hub you land in."
-            >
-              <div className="mb-2.5 flex flex-wrap gap-[7px]">
-                {QUICK_PICKS.map((q) => {
-                  const active = department.toLowerCase() === q.toLowerCase();
-                  return (
-                    <button
+              <Field
+                label="Department"
+                hint="Pick or type. For your org chart — an admin assigns which hub you land in."
+              >
+                <div className="mb-2.5 flex flex-wrap gap-1.5">
+                  {QUICK_PICKS.map((q) => (
+                    <QuickPick
                       key={q}
-                      type="button"
+                      label={q}
+                      active={department.toLowerCase() === q.toLowerCase()}
                       onClick={() => setDepartment(q)}
-                      className="rounded-full border px-[13px] py-1.5 uppercase tracking-[0.5px] transition-colors"
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 11,
-                        borderColor: active
-                          ? "var(--accent)"
-                          : "var(--border-strong)",
-                        background: active ? "var(--accent-dim)" : "transparent",
-                        color: active ? "var(--accent)" : "var(--muted-fg)",
-                      }}
-                    >
-                      {q}
-                    </button>
-                  );
-                })}
+                    />
+                  ))}
+                </div>
+                <Input
+                  type="text"
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  placeholder="e.g. QA"
+                />
+              </Field>
+
+              <div className="mt-1 flex items-center gap-3">
+                <Button type="submit" size="lg" disabled={submitting}>
+                  {submitting ? "Saving…" : "Continue"}
+                </Button>
               </div>
-              <Input
-                type="text"
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
-                placeholder="e.g. QA"
-              />
-            </OnboardingField>
+            </form>
+          )}
+        </Card>
 
-            <div className="mt-1.5 flex items-center gap-3.5">
-              <Button type="submit" size="lg" disabled={submitting}>
-                {submitting ? "Saving…" : "Continue →"}
-              </Button>
-            </div>
-          </form>
-        </div>
-        )}
-
-        <div
-          className="mt-[42px] border-t border-border pt-4 text-[10.5px]"
-          style={{ fontFamily: "var(--font-mono)", color: "var(--dim-fg)" }}
-        >
+        <div className="mt-6 text-center text-[13px] text-dim-fg">
           Signed in as {user.email}. This is a one-time setup saved to your
           account — you won&apos;t see it again on any device.
         </div>
       </div>
     </main>
-  );
-}
-
-function OnboardingField({ label, hint, accentHint, children }) {
-  return (
-    <label className="block">
-      <span
-        className="uppercase tracking-[1.5px] text-fg"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          fontWeight: 700,
-        }}
-      >
-        {label}
-      </span>
-      {/* Accent hint sits ABOVE the control (reference Department field). */}
-      {accentHint ? (
-        <span
-          className="mb-[9px] mt-1.5 block text-[12px] text-accent"
-          style={{ color: "var(--accent)" }}
-        >
-          {accentHint}
-        </span>
-      ) : null}
-      <div className="mt-2">{children}</div>
-      {hint ? (
-        <span className="mt-1.5 block text-[12px] leading-[1.5] text-dim-fg">
-          {hint}
-        </span>
-      ) : null}
-    </label>
   );
 }

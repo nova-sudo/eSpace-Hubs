@@ -2,6 +2,8 @@
 
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
+import { X } from "lucide-react";
+import { IconButton, Label } from "@/components/ui";
 import { GoalWidget } from "../goal-widget";
 import {
   buildSubSpec,
@@ -100,30 +102,22 @@ export function ScorecardComponentModal({
       role="dialog"
       aria-modal="true"
       aria-label={`${syntheticSpec.title} — full view`}
-      className="fixed inset-0 z-[120] flex items-center justify-center px-4 py-6"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-fg/40 px-4 py-6"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose?.();
       }}
-      style={{
-        background: "rgba(10, 10, 20, 0.55)",
-        backdropFilter: "blur(2px)",
-      }}
     >
       <div
-        className="flex max-h-[88vh] w-full max-w-[680px] flex-col overflow-hidden rounded-[var(--radius-tile)]"
+        className="flex max-h-[88vh] w-full max-w-[680px] flex-col overflow-hidden rounded-[var(--radius-xl)] bg-card"
         onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--accent)",
-          color: "var(--accent-on)",
-          boxShadow: "0 24px 72px rgba(0,0,0,0.35)",
-        }}
+        style={{ boxShadow: "var(--shadow-float)" }}
       >
         <ModalHeader
           label={syntheticSpec.title}
           parentTitle={parentGoal?.title || parentSpec?.title}
           onClose={onClose}
         />
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
           {/* Route through GoalWidget rather than rendering the widget
               Component directly — GoalWidget handles the
               context-required → ContextCollector routing so a
@@ -134,7 +128,7 @@ export function ScorecardComponentModal({
           <GoalWidget
             spec={syntheticSpec}
             goal={syntheticGoal}
-            variant="light"
+            variant="dark"
             onRetry={null}
             // This widget is SYNTHETIC — its goalId is `${parent}::sc${i}`,
             // not a real goal. Re-analyze / build-your-own / edit-setup /
@@ -159,51 +153,18 @@ export function ScorecardComponentModal({
 
 function ModalHeader({ label, parentTitle, onClose }) {
   return (
-    <div
-      className="flex items-center justify-between border-b px-4 py-3"
-      style={{ borderColor: "rgba(255,255,255,0.18)" }}
-    >
+    <div className="flex items-center justify-between border-b border-line px-6 py-4">
       <div className="flex flex-col gap-0.5 truncate">
         {parentTitle ? (
-          <span
-            className="uppercase tracking-[0.5px]"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9.5,
-              color: "rgba(255,255,255,0.6)",
-            }}
-            title={parentTitle}
-          >
+          <Label className="truncate" title={parentTitle}>
             Scorecard · {truncate(parentTitle, 60)}
-          </span>
+          </Label>
         ) : null}
-        <span
-          className="font-semibold leading-none"
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 18,
-            letterSpacing: "-0.4px",
-          }}
-        >
-          {label}
-        </span>
+        <span className="text-[18px] font-bold leading-none tracking-[-0.01em] text-fg">{label}</span>
       </div>
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Close"
-        className="rounded-[var(--radius-sub)] px-2.5 py-1 transition-opacity hover:opacity-80"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 11,
-          letterSpacing: "0.5px",
-          background: "transparent",
-          border: "1px solid rgba(255,255,255,0.35)",
-          color: "rgba(255,255,255,0.95)",
-        }}
-      >
-        ✕ ESC
-      </button>
+      <IconButton label="Close" onCard onClick={onClose}>
+        <X size={16} />
+      </IconButton>
     </div>
   );
 }

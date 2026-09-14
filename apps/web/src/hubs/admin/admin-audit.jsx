@@ -41,8 +41,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { apiGet } from "@/lib/api-client";
-import { Input, Select } from "@/components/ui";
+import { Badge, Button, Input, Label, PageHeader, Select } from "@/components/ui";
 
 const PAGE_SIZE = 50;
 
@@ -132,51 +133,27 @@ export function AdminAudit() {
   }, [users]);
 
   return (
-    <main className="relative z-[2] mx-auto max-w-5xl px-4 sm:px-10 pb-14 pt-10">
-      <header className="mb-8">
-        <div
-          className="mb-2 uppercase tracking-[0.5px] text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-        >
-          Admin · audit log
-        </div>
-        <h1
-          className="font-semibold"
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 28,
-            letterSpacing: "-0.5px",
-          }}
-        >
-          Privileged-action history.
-        </h1>
-        <p className="mt-2 max-w-2xl text-[13.5px] leading-[1.55] text-muted-fg">
-          Append-only record of every audited action — invites, role
-          changes, hub overrides, password resets, integration
-          connect/disconnect, snapshot mutations. Newest first. Filters
-          apply server-side; pagination is keyset on the entry
-          timestamp.
-        </p>
-      </header>
+    <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
+      <PageHeader
+        crumb="Admin · audit log"
+        title="Privileged-action history."
+        subtitle="Append-only record of every audited action — invites, role changes, hub overrides, password resets, integration connect/disconnect, snapshot mutations. Newest first. Filters apply server-side; pagination is keyset on the entry timestamp."
+      />
 
       <FilterBar filters={filters} setFilters={setFilters} users={users} />
 
       {loading ? (
-        <div
-          className="mt-6 text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}
-        >
-          Loading…
-        </div>
+        <div className="mt-6 text-[12px] text-muted-fg">Loading…</div>
       ) : entries.length === 0 ? (
-        <div
-          className="mt-6 text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}
-        >
-          No audit entries match these filters.
-        </div>
+        <div className="mt-6 text-[12px] text-muted-fg">No audit entries match these filters.</div>
       ) : (
-        <div className="mt-5 flex flex-col gap-1.5">
+        <div className="mt-5 rounded-[var(--radius-xl)] bg-card" style={{ boxShadow: "var(--shadow-card)" }}>
+          <div className="hidden sm:flex items-center gap-4 border-b border-line px-4 py-2.5">
+            <span className="text-[12px] font-semibold text-muted-fg" style={{ minWidth: 130 }}>When</span>
+            <span className="text-[12px] font-semibold text-muted-fg" style={{ minWidth: 180 }}>Action</span>
+            <span className="flex-1 text-[12px] font-semibold text-muted-fg">Actor</span>
+            <span className="text-[12px] font-semibold text-muted-fg">Target</span>
+          </div>
           {entries.map((e) => (
             <EntryRow
               key={e.id}
@@ -192,37 +169,17 @@ export function AdminAudit() {
               }
             />
           ))}
-          {hasMore ? (
-            <div className="mt-4 flex justify-center">
-              <button
-                type="button"
-                onClick={loadMore}
-                disabled={loadingMore}
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: "0.5px",
-                  textTransform: "uppercase",
-                  background: "transparent",
-                  color: "var(--accent)",
-                  border: "1px solid var(--accent)",
-                  borderRadius: "var(--radius-sub, 3px)",
-                  padding: "8px 16px",
-                  cursor: loadingMore ? "wait" : "pointer",
-                }}
-              >
-                {loadingMore ? "Loading…" : "Load older entries"}
-              </button>
-            </div>
-          ) : (
-            <div
-              className="mt-3 text-center text-muted-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-            >
-              End of audit log.
-            </div>
-          )}
+          <div className="p-3">
+            {hasMore ? (
+              <div className="flex justify-center">
+                <Button type="button" variant="soft" size="sm" onClick={loadMore} disabled={loadingMore}>
+                  {loadingMore ? "Loading…" : "Load older entries"}
+                </Button>
+              </div>
+            ) : (
+              <div className="text-center text-[11px] text-dim-fg">End of audit log.</div>
+            )}
+          </div>
         </div>
       )}
     </main>
@@ -231,31 +188,22 @@ export function AdminAudit() {
 
 function FilterBar({ filters, setFilters, users }) {
   return (
-    <div
-      className="flex flex-wrap items-end gap-3 rounded-md border bg-card p-4"
-      style={{ borderColor: "var(--border-strong)" }}
-    >
+    <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius-xl)] bg-card p-4" style={{ boxShadow: "var(--shadow-card)" }}>
       <div className="flex flex-col gap-1.5">
-        <FilterLabel>Action</FilterLabel>
+        <Label>Action</Label>
         <Input
           type="text"
-          mono
           placeholder="e.g. user.update"
           value={filters.action}
-          onChange={(e) =>
-            setFilters((p) => ({ ...p, action: e.target.value }))
-          }
+          onChange={(e) => setFilters((p) => ({ ...p, action: e.target.value }))}
           className="w-[200px]"
         />
       </div>
       <div className="flex flex-col gap-1.5">
-        <FilterLabel>Actor</FilterLabel>
+        <Label>Actor</Label>
         <Select
-          tone="default"
           value={filters.actorUserId}
-          onChange={(e) =>
-            setFilters((p) => ({ ...p, actorUserId: e.target.value }))
-          }
+          onChange={(e) => setFilters((p) => ({ ...p, actorUserId: e.target.value }))}
           style={{ minWidth: 200 }}
         >
           <option value="">(any user)</option>
@@ -267,37 +215,24 @@ function FilterBar({ filters, setFilters, users }) {
         </Select>
       </div>
       <div className="flex flex-col gap-1.5">
-        <FilterLabel>Target type</FilterLabel>
+        <Label>Target type</Label>
         <Input
           type="text"
-          mono
           placeholder="e.g. user / hub / integration"
           value={filters.targetType}
-          onChange={(e) =>
-            setFilters((p) => ({ ...p, targetType: e.target.value }))
-          }
+          onChange={(e) => setFilters((p) => ({ ...p, targetType: e.target.value }))}
           className="w-[200px]"
         />
       </div>
-      {(filters.action || filters.actorUserId || filters.targetType) ? (
-        <button
+      {filters.action || filters.actorUserId || filters.targetType ? (
+        <Button
           type="button"
-          onClick={() =>
-            setFilters({ action: "", actorUserId: "", targetType: "" })
-          }
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            color: "var(--muted-fg)",
-            background: "transparent",
-            border: "1px solid var(--border-strong)",
-            borderRadius: "var(--radius-sub, 3px)",
-            padding: "8px 12px",
-            cursor: "pointer",
-          }}
+          variant="ghost"
+          size="sm"
+          onClick={() => setFilters({ action: "", actorUserId: "", targetType: "" })}
         >
           Clear filters
-        </button>
+        </Button>
       ) : null}
     </div>
   );
@@ -306,69 +241,29 @@ function FilterBar({ filters, setFilters, users }) {
 function EntryRow({ entry, expanded, onExpand, actorDisplay }) {
   const hasDiff = entry.before !== undefined || entry.after !== undefined;
   return (
-    <div
-      className="rounded-sm border bg-card"
-      style={{ borderColor: "var(--border)" }}
-    >
+    <div className="border-t border-line first:border-t-0">
       <button
         type="button"
         onClick={onExpand}
-        className="flex w-full items-center gap-4 px-4 py-2.5 text-left transition-colors hover:bg-accent-dim/10"
+        className="flex w-full items-center gap-4 px-4 py-2.5 text-left transition-colors hover:bg-card-alt"
       >
-        <span
-          className="text-muted-fg"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            minWidth: 130,
-            letterSpacing: "0.2px",
-          }}
-        >
+        <span className="text-[11px] text-dim-fg" style={{ minWidth: 130 }}>
           {formatTs(entry.ts)}
         </span>
-        <span
-          className="text-accent"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 12,
-            fontWeight: 600,
-            minWidth: 180,
-          }}
-        >
-          {entry.action}
-        </span>
-        <span
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 11.5,
-            flex: 1,
-          }}
-        >
-          {actorDisplay}
-        </span>
+        <Badge className="shrink-0" style={{ minWidth: 120 }}>{entry.action}</Badge>
+        <span className="flex-1 truncate text-[12px] font-semibold">{actorDisplay}</span>
         {entry.targetType ? (
-          <span
-            className="text-muted-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-          >
+          <span className="text-[11px] text-muted-fg">
             {entry.targetType}
             {entry.targetId ? `/${truncMiddle(entry.targetId, 14)}` : ""}
           </span>
         ) : null}
-        <span
-          className="text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-        >
-          {expanded ? "▾" : "▸"}
-        </span>
+        {expanded ? <ChevronDown size={14} className="text-dim-fg" /> : <ChevronRight size={14} className="text-dim-fg" />}
       </button>
 
       {expanded ? (
-        <div
-          className="border-t px-4 py-4"
-          style={{ borderColor: "var(--border)" }}
-        >
-          <div className="grid grid-cols-2 gap-4">
+        <div className="border-t border-line px-4 py-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Meta label="Actor user id" value={entry.actorUserId} />
             <Meta label="Actor role" value={entry.actorRole} />
             <Meta label="Target type" value={entry.targetType} />
@@ -377,7 +272,7 @@ function EntryRow({ entry, expanded, onExpand, actorDisplay }) {
             <Meta label="User agent" value={entry.ua} truncate />
           </div>
           {hasDiff ? (
-            <div className="mt-4 grid grid-cols-2 gap-4">
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <DiffPanel label="before" data={entry.before} />
               <DiffPanel label="after" data={entry.after} />
             </div>
@@ -392,24 +287,8 @@ function DiffPanel({ label, data }) {
   const empty = data === null || data === undefined;
   return (
     <div>
-      <div
-        className="mb-1 uppercase tracking-[0.4px] text-muted-fg"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-      >
-        {label}
-      </div>
-      <pre
-        className="overflow-auto rounded-sm border p-2"
-        style={{
-          borderColor: "var(--border)",
-          background: "var(--card-alt, var(--card))",
-          fontFamily: "var(--font-mono)",
-          fontSize: 11,
-          lineHeight: 1.45,
-          maxHeight: 240,
-          margin: 0,
-        }}
-      >
+      <Label>{label}</Label>
+      <pre className="mt-1 overflow-auto rounded-[var(--radius-lg)] bg-card-alt p-2.5 text-[11px] leading-[1.45]" style={{ maxHeight: 240 }}>
         {empty ? "—" : safeStringify(data)}
       </pre>
     </div>
@@ -419,39 +298,11 @@ function DiffPanel({ label, data }) {
 function Meta({ label, value, truncate }) {
   return (
     <div>
-      <div
-        className="uppercase tracking-[0.4px] text-muted-fg"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 11.5,
-          marginTop: 2,
-          wordBreak: truncate ? "break-all" : "normal",
-        }}
-      >
+      <Label>{label}</Label>
+      <div className={`mt-0.5 text-[11.5px] ${truncate ? "break-all" : ""}`}>
         {value || <span className="text-dim-fg">—</span>}
       </div>
     </div>
-  );
-}
-
-function FilterLabel({ children }) {
-  return (
-    <span
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 10,
-        letterSpacing: "0.5px",
-        color: "var(--muted-fg)",
-        textTransform: "uppercase",
-      }}
-    >
-      {children}
-    </span>
   );
 }
 

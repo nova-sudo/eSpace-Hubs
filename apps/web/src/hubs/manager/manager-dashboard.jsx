@@ -15,7 +15,8 @@
  */
 
 import Link from "next/link";
-import { MonoLabel, PageHeader, Pill } from "@/components/ui";
+import { ArrowRight } from "lucide-react";
+import { Badge, Label, PageHeader, Stat } from "@/components/ui";
 import { useActiveHubStrict, useHubLink } from "@/features/hubs";
 import { useManagerReports } from "./use-manager-reports";
 import { useDelegatedQueue } from "./use-delegated-queue";
@@ -45,59 +46,62 @@ export function ManagerDashboard() {
   ).length;
 
   return (
-    <main className="relative z-[2] mx-auto max-w-5xl px-4 sm:px-10 pb-14 pt-9">
+    <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
       <PageHeader
         crumb={`${hub.label} · team`}
         title="Your team, at a glance."
-        italicWord="glance"
         subtitle="Your direct reports and where they stand — goal tracking, delegated goals, and grading, all in one view."
       />
 
-      <div className="mt-2 grid grid-cols-4 gap-4">
-        <StatCard
-          label="Direct reports"
-          value={loading ? "—" : String(reports.length)}
-          sub={
-            loading ? "loading" : reports.length ? "assigned to you" : "none yet"
-          }
-        />
-        <StatCard
-          label="Goals tracked"
-          value={loading || summaryLoading ? "—" : String(totals.goals)}
-          sub={
-            loading || summaryLoading
-              ? "loading"
-              : `${totals.graded} graded across the team`
-          }
-        />
-        <StatCard
-          label="Needs attention"
-          value={loading || summaryLoading ? "—" : String(reportsNeedingAttention)}
-          tone={reportsNeedingAttention ? "warn" : null}
-          sub={
-            loading || summaryLoading
-              ? "loading"
-              : reportsNeedingAttention
-                ? "reports with unset-up or no-data goals"
-                : "everyone's set up"
-          }
-        />
-        <StatCard
-          label="Awaiting your call"
-          value={awaitingLoading ? "—" : String(awaiting)}
-          tone={awaiting ? "accent" : null}
-          sub={
-            awaitingLoading
-              ? "loading"
-              : awaiting
-                ? `${pendingDelegated} delegated · ${approvals.length} approvals`
-                : "nothing pending"
-          }
-        />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="rounded-[var(--radius-xl)] bg-card p-5" style={{ boxShadow: "var(--shadow-card)" }}>
+          <Stat
+            label="Direct reports"
+            value={loading ? "—" : String(reports.length)}
+            sub={loading ? "loading" : reports.length ? "assigned to you" : "none yet"}
+          />
+        </div>
+        <div className="rounded-[var(--radius-xl)] bg-card p-5" style={{ boxShadow: "var(--shadow-card)" }}>
+          <Stat
+            label="Goals tracked"
+            value={loading || summaryLoading ? "—" : String(totals.goals)}
+            sub={
+              loading || summaryLoading
+                ? "loading"
+                : `${totals.graded} graded across the team`
+            }
+          />
+        </div>
+        <div className="rounded-[var(--radius-xl)] bg-card p-5" style={{ boxShadow: "var(--shadow-card)" }}>
+          <Stat
+            label="Needs attention"
+            value={loading || summaryLoading ? "—" : String(reportsNeedingAttention)}
+            sub={
+              loading || summaryLoading
+                ? "loading"
+                : reportsNeedingAttention
+                  ? "reports with unset-up or no-data goals"
+                  : "everyone's set up"
+            }
+          />
+        </div>
+        <div className="rounded-[var(--radius-xl)] bg-card p-5" style={{ boxShadow: "var(--shadow-card)" }}>
+          <Stat
+            label="Awaiting your call"
+            value={awaitingLoading ? "—" : String(awaiting)}
+            sub={
+              awaitingLoading
+                ? "loading"
+                : awaiting
+                  ? `${pendingDelegated} delegated · ${approvals.length} approvals`
+                  : "nothing pending"
+            }
+          />
+        </div>
       </div>
 
-      <div className="mt-10">
-        <MonoLabel>Roster</MonoLabel>
+      <div className="mt-9">
+        <Label>Roster</Label>
         <div className="mt-3">
           {error ? (
             <EmptyCard>
@@ -110,8 +114,8 @@ export function ManagerDashboard() {
             <EmptyCard>
               No direct reports are assigned to you yet. An admin sets each
               engineer's manager under{" "}
-              <span className="text-fg">User management</span> — once that's in
-              place, your team shows up here.
+              <span className="text-fg font-bold">User management</span> — once
+              that's in place, your team shows up here.
             </EmptyCard>
           ) : (
             <ul className="grid gap-2">
@@ -119,41 +123,26 @@ export function ManagerDashboard() {
                 <li key={r.id}>
                   <Link
                     href={link(`/employees/${r.id}`)}
-                    className="flex items-center gap-4 rounded-md border border-border bg-card px-4 py-3 transition-colors hover:bg-accent-dim/40"
+                    className="flex items-center gap-4 rounded-[var(--radius-xl)] bg-card px-4 py-3.5 transition-colors hover:bg-card-alt"
+                    style={{ boxShadow: "var(--shadow-card)" }}
                   >
-                    <span
-                      className="grid h-10 w-10 flex-none place-items-center rounded-full bg-panel-2 text-muted-fg"
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontWeight: 700,
-                        fontSize: 12,
-                      }}
-                    >
+                    <span className="grid h-10 w-10 flex-none place-items-center rounded-full bg-lav text-lav-ink text-[12px] font-bold">
                       {initials(r.displayName)}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="text-[14px] font-semibold">
-                        {r.displayName}
-                      </div>
-                      <div
-                        className="mt-0.5 truncate text-muted-fg"
-                        style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-                      >
-                        {[r.role, r.department, r.level]
-                          .filter(Boolean)
-                          .join(" · ") || r.email}
+                      <div className="text-[14.5px] font-bold">{r.displayName}</div>
+                      <div className="mt-0.5 truncate text-[12px] text-muted-fg">
+                        {[r.role, r.department, r.level].filter(Boolean).join(" · ") ||
+                          r.email}
                       </div>
                     </div>
                     {perReport.get(r.id)?.needsAttention > 0 ? (
-                      <Pill tone="warn">
+                      <Badge tone="lemon">
                         {perReport.get(r.id).needsAttention} need attention
-                      </Pill>
+                      </Badge>
                     ) : null}
-                    <span
-                      className="text-accent"
-                      style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-                    >
-                      View board →
+                    <span className="flex items-center gap-1 text-[12.5px] font-bold text-fg">
+                      View board <ArrowRight size={13} />
                     </span>
                   </Link>
                 </li>
@@ -166,50 +155,12 @@ export function ManagerDashboard() {
   );
 }
 
-const STAT_TONE = {
-  warn: "var(--warn)",
-  accent: "var(--accent)",
-};
-
-function StatCard({ label, value, sub, tone }) {
-  const color = tone ? STAT_TONE[tone] : null;
-  return (
-    <div
-      className="rounded-md border border-border bg-card p-5"
-      style={{ borderColor: color ? color : "var(--border-strong)" }}
-    >
-      <div
-        className="uppercase tracking-[0.4px] text-muted-fg"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-      >
-        {label}
-      </div>
-      <div
-        className="mt-2"
-        style={{
-          fontFamily: "var(--font-dot)",
-          fontWeight: 900,
-          fontSize: 34,
-          letterSpacing: "0.5px",
-          lineHeight: 1.05,
-          color: color || "var(--fg)",
-        }}
-      >
-        {value}
-      </div>
-      <div
-        className="mt-1 text-[12px] text-muted-fg"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
-        {sub}
-      </div>
-    </div>
-  );
-}
-
 function EmptyCard({ children }) {
   return (
-    <div className="rounded-md border border-dashed border-border bg-card p-6 text-[13px] leading-[1.6] text-muted-fg">
+    <div
+      className="rounded-[var(--radius-xl)] bg-card p-6 text-[13px] leading-[1.6] text-muted-fg"
+      style={{ boxShadow: "var(--shadow-card)" }}
+    >
       {children}
     </div>
   );

@@ -1,236 +1,148 @@
 @import "tailwindcss";
 
-/* Nothing UI fonts (Doto / Hanken Grotesk / Space Mono) are loaded via a
-   <link> in app/layout.jsx <head> — a CSS @import here is dropped by the
-   browser because it isn't at the top of the stylesheet after Tailwind
-   expands. */
+/* Fonts (Manrope + JetBrains Mono) are loaded via a <link> in
+   app/layout.jsx <head> — a CSS @import here is dropped by the browser
+   because it isn't at the top of the stylesheet after Tailwind expands. */
 
 /* ─────────────────────────────────────────────────────────────
-   eSpace DevHub — "Nothing UI" tokens.
-   Pure-black / warm-white surfaces, dot-matrix Doto display type,
-   halftone dot-grid texture, dashed hairlines, one cobalt accent.
-   Light + dark. Token names are unchanged, so every component that
-   reads them inherits the new look with no edits.
+   eSpace DevHub — design system v2 ("Zinc").
+   See docs/design-system-v2.md — that file is the contract.
+
+   One sans (Manrope), one brand color (ink), five pastel tints that
+   carry state, borderless cards at 20px on a cool grey canvas.
+   Dark flips the surfaces; tints keep their pastel fill + dark ink.
    ───────────────────────────────────────────────────────────── */
 
 :root {
   /* Surfaces */
-  --bg: #efede7;          /* warm off-white canvas */
-  --fg: #0b0b0e;          /* near-black ink */
-  --card: #ffffff;        /* primary card surface */
-  --card-alt: #f7f5ef;    /* nested / secondary surface */
-  --panel: #faf9f5;       /* inset panels, table headers */
-  --panel-2: #eceae3;     /* chips, track backgrounds */
+  --bg: #f4f4f5;
+  --card: #ffffff;
+  --card-alt: #f7f7f8;
+  --fg: #18181b;
+  --muted-fg: #71717a;
+  --dim-fg: #a1a1aa;
+  --line: rgba(24, 24, 27, 0.07);
 
-  /* Secondary text */
-  --muted-fg: rgba(11, 11, 14, 0.56);
-  --dim-fg: rgba(11, 11, 14, 0.38);
+  /* Brand — ink is the ONLY brand color */
+  --ink: #18181b;
+  --ink-on: #ffffff;
 
-  /* Hairline borders */
-  --border: rgba(15, 15, 18, 0.13);
-  --border-strong: rgba(15, 15, 18, 0.24);
+  /* Elevation */
+  --shadow-card: 0 10px 30px rgba(24, 24, 27, 0.06);
+  --shadow-float: 0 16px 48px rgba(24, 24, 27, 0.16);
 
-  /* Accent — the single cobalt. Status, links, focus, active. */
-  --accent: #1d4ed8;
-  --accent-on: #ffffff;
-  --accent-dim: rgba(29, 78, 216, 0.10);
-  --accent-2: #0f8a5b;
+  /* Tints — surface + ink pairs. Identical in dark. */
+  --mint: #dcf5e6;
+  --mint-ink: #14532d;
+  --sky: #e0eafe;
+  --sky-ink: #1e3a8a;
+  --lav: #e9e4ff;
+  --lav-ink: #3b1d8f;
+  --peach: #ffe4d6;
+  --peach-ink: #9a3412;
+  --lemon: #fbf3c4;
+  --lemon-ink: #713f12;
 
-  /* Semantic */
-  --good: #0f8a5b;
-  --warn: #b4690e;
-  --bad: #cf2b2b;
-
-  /* Dot-matrix / halftone texture */
-  --dot: #111111;                  /* solid dot ink (glyph grids) */
-  --dot-dim: rgba(0, 0, 0, 0.14);  /* faint dot-field texture */
-  --accent-dot: rgba(29, 78, 216, 0.30);
-
-  /* Analyst (GLYPH) workspace surfaces — follow the theme. */
-  --head-bg: #f6f4ee;
-  --field: #faf9f5;
-  --chip-track: rgba(15, 15, 18, 0.05);
-  --bubble-ai: #ffffff;
-  --bubble-user: #0b0b0e;
-
-  /* Radii — deliberately small; Nothing is crisp, not rounded */
-  --radius-tile: 8px;
-  --radius-sub: 6px;
+  /* Radii */
+  --radius-xl: 20px;
+  --radius-lg: 14px;
+  --radius-md: 10px;
   --radius-pill: 999px;
 
-  /* Shell layout — shared by scroll-snap dashboard and any surface that
-     needs to size itself relative to the sticky header. Change here only. */
-  --header-height: 57px;
+  /* Shell layout — sticky header height, read by scroll-snap surfaces. */
+  --header-height: 72px;
 
   color-scheme: light;
 }
 
 /* DARK — set [data-theme="dark"] on <html> (theme toggle + no-flash script). */
 [data-theme="dark"] {
-  --bg: #050505;          /* pure black canvas */
-  --fg: #f5f5f5;
-  --card: #101010;
-  --card-alt: #161616;
-  --panel: #0d0d0d;
-  --panel-2: #1c1c1c;
-  --muted-fg: rgba(245, 245, 245, 0.55);
-  --dim-fg: rgba(245, 245, 245, 0.34);
-  --border: rgba(255, 255, 255, 0.10);
-  --border-strong: rgba(255, 255, 255, 0.20);
-  --accent: #4d7cff;
-  --accent-on: #ffffff;
-  --accent-dim: rgba(77, 124, 255, 0.18);
-  --accent-2: #3fcf8e;
-  --good: #3fcf8e;
-  --warn: #ffb24d;
-  --bad: #ff5a5a;
-  --dot: #ffffff;
-  --dot-dim: rgba(255, 255, 255, 0.16);
-  --accent-dot: rgba(77, 124, 255, 0.35);
-  --head-bg: #0a0a0a;
-  --field: #161616;
-  --chip-track: rgba(255, 255, 255, 0.06);
-  --bubble-ai: rgba(255, 255, 255, 0.07);
-  --bubble-user: #1a1a1a;
+  --bg: #0b0b0d;
+  --card: #17171a;
+  --card-alt: #202024;
+  --fg: #f4f4f5;
+  --muted-fg: #a1a1aa;
+  --dim-fg: #62626b;
+  --line: rgba(255, 255, 255, 0.08);
+  --ink: #f4f4f5;
+  --ink-on: #18181b;
+  --shadow-card: none;
+  --shadow-float: 0 16px 48px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
 }
 
 /* System preference — auto-dark unless the user explicitly picked light. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]):not([data-theme="dark"]) {
-    --bg: #050505;
-    --fg: #f5f5f5;
-    --card: #101010;
-    --card-alt: #161616;
-    --panel: #0d0d0d;
-    --panel-2: #1c1c1c;
-    --muted-fg: rgba(245, 245, 245, 0.55);
-    --dim-fg: rgba(245, 245, 245, 0.34);
-    --border: rgba(255, 255, 255, 0.10);
-    --border-strong: rgba(255, 255, 255, 0.20);
-    --accent: #4d7cff;
-    --accent-on: #ffffff;
-    --accent-dim: rgba(77, 124, 255, 0.18);
-    --accent-2: #3fcf8e;
-    --good: #3fcf8e;
-    --warn: #ffb24d;
-    --bad: #ff5a5a;
-    --dot: #ffffff;
-    --dot-dim: rgba(255, 255, 255, 0.16);
-    --accent-dot: rgba(77, 124, 255, 0.35);
-    --head-bg: #0a0a0a;
-    --field: #161616;
-    --chip-track: rgba(255, 255, 255, 0.06);
-    --bubble-ai: rgba(255, 255, 255, 0.07);
-    --bubble-user: #1a1a1a;
+    --bg: #0b0b0d;
+    --card: #17171a;
+    --card-alt: #202024;
+    --fg: #f4f4f5;
+    --muted-fg: #a1a1aa;
+    --dim-fg: #62626b;
+    --line: rgba(255, 255, 255, 0.08);
+    --ink: #f4f4f5;
+    --ink-on: #18181b;
+    --shadow-card: none;
+    --shadow-float: 0 16px 48px rgba(0, 0, 0, 0.5);
     color-scheme: dark;
   }
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Manager hub skin — warm-white + orange identity.
-   Scoped to the manager hub subtree via [data-hub="manager"]
-   (HubProvider stamps data-hub on its wrapper). Only the accent
-   family + light surfaces are re-coloured; semantic good/warn/bad
-   stay put so state never reads as "brand". Dark keeps the base dark
-   surfaces and just brightens the orange. The no-flash script always
-   sets an explicit data-theme on <html>, so the light/dark scoping
-   below is total.
-   ───────────────────────────────────────────────────────────── */
-[data-hub="manager"] {
-  --accent: #d2540a;
-  --accent-on: #ffffff;
-  --accent-dim: rgba(210, 84, 10, 0.10);
-  --accent-dot: rgba(210, 84, 10, 0.28);
-}
-[data-theme="light"] [data-hub="manager"] {
-  --bg: #fbf7f1;
-  --card: #ffffff;
-  --card-alt: #fdf6ec;
-  --panel: #faf3ea;
-  --panel-2: #f2e7d8;
-  --border: rgba(120, 72, 24, 0.14);
-  --border-strong: rgba(120, 72, 24, 0.26);
-}
-[data-theme="dark"] [data-hub="manager"] {
-  --accent: #ff8a3d;
-  --accent-on: #241403;
-  --accent-dim: rgba(255, 138, 61, 0.16);
-  --accent-dot: rgba(255, 138, 61, 0.34);
-}
-
-/* ─────────────────────────────────────────────────────────────
-   Analyst "GLYPH" instrument — the rail is ALWAYS the dark machine
-   (constants, not theme-mapped); the workspace beside it follows the
-   theme via the tokens above. The emotive face is canvas-drawn in
-   <GlyphAgent>; these tokens + the .glyph-cursor / .glyph-typing helper
-   classes drive the rail accents, the streaming caret, and the chat
-   typing dots. See features/analyst.
+   Compatibility aliases. Old token names keep resolving so untouched
+   call sites render sanely during the migration. New code must use the
+   names above; the guard test + docs/design-system-v2.md list the
+   replacements. Remove this block once the sweep is complete.
    ───────────────────────────────────────────────────────────── */
 :root {
-  --glyph-rail-bg: #070709;
-  --glyph-rail-line: rgba(255, 255, 255, 0.10);
-  --glyph-rail-fg: #ffffff;
-  --glyph-rail-muted: rgba(255, 255, 255, 0.55);
-  --glyph-on: #557cff;
-  --glyph-mid: rgba(255, 255, 255, 0.42);
-  --glyph-off: rgba(255, 255, 255, 0.09);
-  --glyph-idle: rgba(255, 255, 255, 0.60);
-  --glyph-thinking: #557cff;
-  --glyph-review: #ffb24d;
-  --glyph-live: #3fcf8e;
-  --glyph-talk: #557cff;
+  --accent: var(--ink);
+  --accent-on: var(--ink-on);
+  --accent-dim: var(--card-alt);
+  --accent-2: var(--mint-ink);
+  --good: var(--mint-ink);
+  --warn: var(--lemon-ink);
+  --bad: var(--peach-ink);
+  --good-bg: var(--mint);
+  --warn-bg: var(--lemon);
+  --bad-bg: var(--peach);
+  --border: var(--line);
+  --border-strong: var(--line);
+  --panel: var(--card-alt);
+  --panel-2: var(--card-alt);
+  --radius-tile: var(--radius-xl);
+  --radius-sub: var(--radius-lg);
+  --head-bg: var(--card);
+  --field: var(--card-alt);
+  --chip-track: var(--card-alt);
+  --bubble-ai: var(--card);
+  --bubble-user: var(--lav);
 }
 
-@keyframes glyphBreathe {
-  0%, 100% { opacity: 0.82; }
-  50%      { opacity: 1; }
-}
-@keyframes glyphScan {
-  0%   { transform: translateY(-100%); }
-  100% { transform: translateY(1100%); }
-}
-@keyframes glyphCursor {
-  0%, 49%   { opacity: 1; }
-  50%, 100% { opacity: 0; }
-}
-@keyframes glyphDot {
-  0%, 80%, 100% { opacity: 0.35; transform: translateY(0); }
-  40%           { opacity: 1; transform: translateY(-2px); }
-}
-
-/* Streaming caret used in the Analysis log */
-.glyph-cursor {
-  display: inline-block;
-  width: 6px;
-  height: 12px;
-  margin-left: 2px;
-  background: var(--accent);
-  vertical-align: middle;
-  animation: glyphCursor 0.8s steps(2) infinite;
-}
-/* Typing indicator dots used in Chat */
-.glyph-typing i {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--muted-fg);
-  animation: glyphDot 1s ease-in-out infinite;
-}
-.glyph-typing i:nth-child(2) { animation-delay: 0.12s; }
-.glyph-typing i:nth-child(3) { animation-delay: 0.24s; }
-
-/* Map design tokens → Tailwind v4 theme so Tailwind utilities (bg-card, text-accent) work. */
+/* Map design tokens → Tailwind v4 theme so utilities (bg-card, text-mint-ink…) work. */
 @theme inline {
   --color-bg: var(--bg);
-  --color-fg: var(--fg);
   --color-card: var(--card);
   --color-card-alt: var(--card-alt);
+  --color-fg: var(--fg);
   --color-muted-fg: var(--muted-fg);
   --color-dim-fg: var(--dim-fg);
-  --color-border: var(--border);
-  --color-border-strong: var(--border-strong);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-on: var(--ink-on);
+
+  --color-mint: var(--mint);
+  --color-mint-ink: var(--mint-ink);
+  --color-sky: var(--sky);
+  --color-sky-ink: var(--sky-ink);
+  --color-lav: var(--lav);
+  --color-lav-ink: var(--lav-ink);
+  --color-peach: var(--peach);
+  --color-peach-ink: var(--peach-ink);
+  --color-lemon: var(--lemon);
+  --color-lemon-ink: var(--lemon-ink);
+
+  /* Compatibility color utilities (bg-accent, text-good, border-border …). */
   --color-accent: var(--accent);
   --color-accent-on: var(--accent-on);
   --color-accent-dim: var(--accent-dim);
@@ -238,14 +150,15 @@
   --color-good: var(--good);
   --color-warn: var(--warn);
   --color-bad: var(--bad);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-panel: var(--panel);
   --color-panel-2: var(--panel-2);
 
-  /* Map the font tokens into Tailwind's theme so font-* utilities
-     (font-sans / font-mono / font-display / font-dot — used across every
-     component) resolve to the Nothing fonts. Same `var()` pattern as the
-     colors above; the literal families live in the :root block below so
-     inline `style={{ fontFamily: "var(--font-dot)" }}` usage works too. */
+  --radius-xl: var(--radius-xl);
+  --radius-lg: var(--radius-lg);
+  --radius-md: var(--radius-md);
+
   --font-sans: var(--font-sans);
   --font-display: var(--font-display);
   --font-mono: var(--font-mono);
@@ -253,64 +166,47 @@
   --font-serif: var(--font-serif);
 }
 
-/* Font families — Nothing UI three-font system. Literal values for `var()`
-   usage; @theme above wires the same names into Tailwind utilities.
-     --font-dot   Doto           dot-matrix display: page titles + big numerals
-     --font-display/--font-sans  Hanken Grotesk: headings + body
-     --font-mono  Space Mono     overlines, labels, meta */
+/* Font families. One sans for everything; mono ONLY for codes/hashes.
+   --font-dot / --font-serif are legacy slots that now resolve to the sans
+   so nothing renders in a missing face while the sweep removes them. */
 :root {
-  --font-sans: "Hanken Grotesk", system-ui, -apple-system, sans-serif;
-  --font-display: "Hanken Grotesk", system-ui, -apple-system, sans-serif;
-  --font-mono: "Space Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --font-dot: "Doto", "Space Mono", monospace;
-  --font-serif: "Doto", "Space Mono", monospace; /* legacy serif slot → dot */
+  --font-sans: "Manrope", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-sans);
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-dot: var(--font-sans);
+  --font-serif: var(--font-sans);
 }
 
 * {
-  border-color: var(--border);
+  border-color: var(--line);
   box-sizing: border-box;
 }
 
-/* Native form controls + focus rings follow the cobalt accent rather
-   than the browser/OS default blue. Without this, checkboxes, number-
-   input spinners, selects and the focus ring on text fields (most
-   visible in the form-heavy check-in editors) render in a stock blue
-   that clashes with --accent. */
+/* Native controls + focus rings follow ink, not the OS blue. */
 :root {
-  accent-color: var(--accent);
+  accent-color: var(--ink);
 }
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ink);
   outline-offset: 0;
 }
-/* Every OTHER focusable — buttons, links, role="checkbox" spans, tab
-   pills — previously had no designed focus indicator at all, and the UA
-   default ring is invisible on accent-filled CTAs. One accent ring with
-   offset keeps keyboard position visible everywhere without fighting
-   the tighter form-control rule above. */
 button:focus-visible,
 a:focus-visible,
 [role="button"]:focus-visible,
 [role="checkbox"]:focus-visible,
 [role="tab"]:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
 }
 
-/* Baseline for native form controls so anything not yet using the UI
-   primitives still reads in the Nothing language (mono + ink tokens) and
-   never falls back to the browser serif / stock-blue. Low specificity, so
-   the Select/Input primitives' classes + inline styles always win. */
 select {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   color: var(--fg);
 }
-/* Native date/time picker affordance: clickable and visible in both themes
-   (the glyph follows color-scheme, which is set per [data-theme]). */
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="datetime-local"]::-webkit-calendar-picker-indicator,
 input[type="time"]::-webkit-calendar-picker-indicator,
@@ -323,6 +219,9 @@ body {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  font-weight: 500;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   min-height: 100%;
@@ -332,26 +231,29 @@ body {
   margin: 0;
 }
 
-/* Accent word per big headline — was serif-italic; now the dot-matrix
-   signature (Doto, upright) so it reads as the Nothing display face. */
-em.accent {
-  font-style: normal;
-  font-family: var(--font-dot);
-  color: var(--accent);
-  font-weight: inherit; /* match the surrounding title weight (Doto 900 in headers) */
+/* Numbers align in tables and strips. */
+.tabular,
+.num {
+  font-variant-numeric: tabular-nums;
 }
 
-/* Scrollbars — hairline, off-white */
+/* Legacy accent word inside headlines — now plain, same face. */
+em.accent {
+  font-style: normal;
+  color: inherit;
+}
+
+/* Scrollbars — thin, muted */
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: var(--line);
   border-radius: 4px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: var(--border-strong);
+  background: var(--dim-fg);
 }
 
 /* Print — used by evidence export to PDF */

@@ -24,6 +24,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { Loading } from "@/components/ui";
 import { useSession, AuthGuard } from "@/features/auth";
 import { useAvailableHubs } from "./use-available-hubs";
 import { getValidPick } from "./hub-pick-store.js";
@@ -81,19 +82,8 @@ function HubRedirectInner() {
   // import live for future use (audit trails consume it).
   void defaultHubId;
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "var(--bg)",
-        color: "var(--muted-fg)",
-        display: "grid",
-        placeItems: "center",
-        fontFamily: "var(--font-mono)",
-        fontSize: 12,
-      }}
-      aria-busy="true"
-    >
-      Loading…
+    <main className="grid min-h-screen place-items-center bg-bg" aria-busy="true">
+      <Loading label="Loading…" />
     </main>
   );
 }

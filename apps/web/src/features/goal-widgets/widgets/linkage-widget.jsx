@@ -1,5 +1,6 @@
 "use client";
 
+import { Badge } from "@/components/ui";
 import { WidgetShell, TargetChip } from "../widget-shell";
 import { useDataSource } from "../data-sources/use-data-source";
 import { evalTarget } from "./merged-count-widget";
@@ -42,79 +43,31 @@ export function LinkageWidget({ spec, goal, variant = "light", className, onRetr
     >
       <div className="flex h-full flex-col justify-between gap-2">
         <div className="flex items-baseline gap-2">
-          <div
-            className="font-semibold leading-none"
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 52,
-              letterSpacing: "-1.8px",
-            }}
-          >
+          <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
             {isLoading ? "…" : pct == null ? "—" : `${pct}%`}
           </div>
           {error ? (
-            <div
-              className="ml-auto uppercase tracking-[0.5px]"
-              title={error?.message || String(error)}
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                color: "rgba(255,255,255,0.72)",
-              }}
-            >
-              source unavailable
-            </div>
+            <Badge tone="neutral" className="ml-auto" title={error?.message || String(error)}>
+              Source unavailable
+            </Badge>
           ) : meets != null ? (
-            <div
-              className="ml-auto uppercase tracking-[0.5px]"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                color: meets ? "var(--accent-2)" : "rgba(255,255,255,0.7)",
-              }}
-            >
-              {meets ? "on target" : "below target"}
-            </div>
+            <Badge tone={meets ? "mint" : "peach"} className="ml-auto">
+              {meets ? "On target" : "Below target"}
+            </Badge>
           ) : null}
         </div>
-        <div
-          className="flex items-center gap-3"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            color: variant === "light" ? "rgba(255,255,255,0.75)" : "var(--muted-fg)",
-          }}
-        >
+        <div className="flex items-center gap-3 text-[12.5px] text-muted-fg">
           <span>
-            linked: <strong>{linked}</strong>
+            linked: <strong className="text-fg">{linked}</strong>
           </span>
-          <span
-            style={{
-              color:
-                variant === "light" ? "rgba(255,255,255,0.4)" : "var(--dim-fg)",
-            }}
-          >
-            ·
-          </span>
+          <span className="text-dim-fg">·</span>
           <span>
-            orphans: <strong>{loose}</strong>
+            orphans: <strong className="text-fg">{loose}</strong>
           </span>
         </div>
         {/* Simple linked/orphan track */}
-        <div
-          className="flex h-2 w-full overflow-hidden rounded-full"
-          style={{
-            background:
-              variant === "light" ? "rgba(255,255,255,0.18)" : "var(--border)",
-          }}
-        >
-          <div
-            style={{
-              width: `${pct ?? 0}%`,
-              background:
-                variant === "light" ? "#ffffff" : "var(--accent)",
-            }}
-          />
+        <div className="flex h-2 w-full overflow-hidden rounded-full bg-card-alt">
+          <div className="bg-ink" style={{ width: `${pct ?? 0}%` }} />
         </div>
         <ComplianceLine goalId={goal?.id} variant={variant} />
       </div>

@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Checkbox, ItemEvidence } from "@/components/ui";
+import { X } from "lucide-react";
+import { Button, Checkbox, IconButton, Input, ItemEvidence, Label } from "@/components/ui";
 import { WidgetShell } from "../widget-shell";
 import { useGoalInputs } from "@/features/goal-inputs";
 import { useGoalContext, resolveMilestoneItems } from "@/features/goal-context";
@@ -122,56 +123,13 @@ export function RecurringMilestoneWidget({
       className={className}
     >
       <div className="flex h-full flex-col gap-2">
-        <Headline
-          pct={pct}
-          streak={streak}
-          cadence={cadence}
-          periodLabel={periodLabel(nowPeriodKey, cadence)}
-          variant={variant}
-        />
-        <div
-          className="h-1.5 w-full overflow-hidden rounded-full"
-          style={{
-            background:
-              variant === "light" ? "rgba(255,255,255,0.18)" : "var(--border)",
-          }}
-        >
-          <div
-            className="h-full"
-            style={{
-              width: `${pct}%`,
-              background: variant === "light" ? "#ffffff" : "var(--accent)",
-            }}
-          />
+        <Headline pct={pct} streak={streak} cadence={cadence} periodLabel={periodLabel(nowPeriodKey, cadence)} />
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-card-alt">
+          <div className="h-full bg-ink" style={{ width: `${pct}%` }} />
         </div>
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            color:
-              variant === "light"
-                ? "rgba(255,255,255,0.68)"
-                : "var(--muted-fg)",
-          }}
-        >
-          {promptCopy}
-        </div>
-        <ul
-          className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-        >
-          {items.length === 0 ? (
-            <li
-              style={{
-                color:
-                  variant === "light"
-                    ? "rgba(255,255,255,0.5)"
-                    : "var(--dim-fg)",
-              }}
-            >
-              No items yet — add one below.
-            </li>
-          ) : null}
+        <Label>{promptCopy}</Label>
+        <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto text-[13px]">
+          {items.length === 0 ? <li className="text-dim-fg">No items yet — add one below.</li> : null}
           {items.map((it) => (
             <li key={it.id} className="group flex min-w-0 flex-col gap-0.5">
               <div className="flex min-w-0 items-center gap-2">
@@ -179,47 +137,29 @@ export function RecurringMilestoneWidget({
                   <Checkbox checked={!!it.done} onChange={() => toggle(it.id)} label={it.label || "checklist item"} />
                 </span>
                 <span
-                  className="min-w-0 flex-1 truncate"
-                  style={{
-                    textDecoration: it.done ? "line-through" : "none",
-                    color: it.done
-                      ? variant === "light"
-                        ? "rgba(255,255,255,0.5)"
-                        : "var(--dim-fg)"
-                      : "inherit",
-                  }}
+                  className={it.done ? "min-w-0 flex-1 truncate text-dim-fg line-through" : "min-w-0 flex-1 truncate text-fg"}
                   title={it.label}
                 >
                   {it.label}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => remove(it.id)}
+                <IconButton
+                  label={`Remove ${it.label}`}
+                  size="sm"
+                  onCard
                   className="opacity-0 transition-opacity group-hover:opacity-100"
-                  style={{
-                    fontSize: 10,
-                    color:
-                      variant === "light"
-                        ? "rgba(255,255,255,0.6)"
-                        : "var(--dim-fg)",
-                  }}
-                  aria-label={`Remove ${it.label}`}
+                  onClick={() => remove(it.id)}
                 >
-                  ✕
-                </button>
+                  <X size={12} />
+                </IconButton>
               </div>
-              <div className="min-w-0 pl-[22px]">
-                <ItemEvidence
-                  value={it.evidence}
-                  variant={variant}
-                  onSave={(t) => setEvidence(it.id, t)}
-                />
+              <div className="min-w-0 pl-[26px]">
+                <ItemEvidence value={it.evidence} variant="dark" onSave={(t) => setEvidence(it.id, t)} />
               </div>
             </li>
           ))}
         </ul>
         <div className="flex min-w-0 items-center gap-1.5">
-          <input
+          <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -229,33 +169,11 @@ export function RecurringMilestoneWidget({
               }
             }}
             placeholder="+ Add item for this period"
-            className="min-w-0 flex-1 rounded-[var(--radius-sub)] bg-transparent px-2 py-1.5 outline-none"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              color: variant === "light" ? "#ffffff" : "var(--fg)",
-              border:
-                variant === "light"
-                  ? "1px solid rgba(255,255,255,0.22)"
-                  : "1px solid var(--border)",
-            }}
+            className="min-w-0 flex-1"
           />
-          <button
-            type="button"
-            onClick={add}
-            disabled={!draft.trim()}
-            className="shrink-0 rounded-[var(--radius-sub)] px-3 py-1.5 font-bold uppercase transition-opacity disabled:opacity-40"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10.5,
-              letterSpacing: "0.4px",
-              background: variant === "light" ? "#ffffff" : "var(--accent)",
-              color:
-                variant === "light" ? "var(--accent)" : "var(--accent-on)",
-            }}
-          >
+          <Button size="sm" disabled={!draft.trim()} className="shrink-0" onClick={add}>
             Add
-          </button>
+          </Button>
         </div>
       </div>
     </WidgetShell>
@@ -267,33 +185,18 @@ export function RecurringMilestoneWidget({
  * tells the user the streak so they see the "X periods in a row"
  * cadence pressure that's the whole point of this widget.
  */
-function Headline({ pct, streak, cadence, periodLabel, variant }) {
-  const muted =
-    variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)";
-  const monoStyle = {
-    fontFamily: "var(--font-mono)",
-    fontSize: 11,
-    color: muted,
-    lineHeight: 1.4,
-  };
+function Headline({ pct, streak, cadence, periodLabel }) {
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <div
-          className="shrink-0 font-semibold leading-none"
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 36,
-            letterSpacing: "-1.2px",
-          }}
-        >
+        <div className="shrink-0 text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
           {pct}%
         </div>
-        <div className="min-w-0 truncate" style={monoStyle} title={periodLabel}>
+        <span className="min-w-0 truncate text-[13px] text-muted-fg" title={periodLabel}>
           {periodLabel}
-        </div>
+        </span>
       </div>
-      <div className="min-w-0 truncate" style={monoStyle}>
+      <div className="min-w-0 truncate text-[12.5px] text-muted-fg">
         {streak === 0
           ? `0 ${cadence === "quarterly" ? "quarters" : "periods"} complete in a row`
           : `${streak} ${cadenceNoun(cadence, streak)} complete in a row`}

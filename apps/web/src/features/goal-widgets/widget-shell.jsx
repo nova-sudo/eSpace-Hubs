@@ -3,18 +3,18 @@
 /**
  * Shared tile chrome for every goal widget.
  *
- * Two visual variants — picked by prop, not by fork:
- *   - "light"  : white-on-indigo (for the inverse-themed Section 5 and the
- *                analyst page)
- *   - "dark"   : dark-on-white (regular Nothing UI look; kept for reuse on the
- *                main dashboard if we ever want to embed widgets there)
+ * `variant` is accepted for back-compat (callers still pass "light" / "dark"
+ * from the analyst overlay vs. a regular tile) but no longer switches color
+ * schemes — the redesign uses one card recipe everywhere and lets the
+ * `--card` / `--fg` tokens handle light/dark automatically.
  *
  * Provides:
- *   - top label row (mono overline + optional right-side chip)
+ *   - top row (kind/cadence label + optional right-side badge)
  *   - title (spec.title, denormalized)
  *   - reasoning disclosure (collapsed by default, toggleable)
- *   - target strip (auto-rendered when spec.source.target or spec.manual.target)
- *   - slot for the widget body
+ *   - cadence stepper (auto-rendered for a ready MANUAL widget)
+ *   - provenance chip (F5 data-honesty line)
+ *   - footer action row
  *
  * Widgets use this purely for layout — all data-specific rendering lives in
  * the widget component itself.
@@ -22,6 +22,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { Badge, Button, Label } from "@/components/ui";
 import { useWidgetControls } from "./widget-controls-context";
 import { SPEC_KIND_META, SPEC_VARIANTS } from "@/features/goal-specs";
 import { useIsContextComplete } from "@/features/goal-context";
@@ -29,30 +30,9 @@ import { CadenceStepper } from "./cadence-stepper";
 import { isGoalReady } from "./readiness";
 import { ProvenanceChip } from "./provenance-chip";
 
-const VARIANT_STYLES = {
-  light: {
-    bg: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.18)",
-    color: "#ffffff",
-    mutedColor: "rgba(255,255,255,0.68)",
-    dimColor: "rgba(255,255,255,0.48)",
-    surface: "rgba(255,255,255,0.10)",
-    divider: "rgba(255,255,255,0.15)",
-  },
-  dark: {
-    bg: "var(--card)",
-    border: "1px solid var(--border)",
-    color: "var(--fg)",
-    mutedColor: "var(--muted-fg)",
-    dimColor: "var(--dim-fg)",
-    surface: "var(--card-alt)",
-    divider: "var(--border)",
-  },
-};
-
 export function WidgetShell({
   spec,
-  variant = "light",
+  variant: _variant = "light",
   label,
   rightChip,
   title,
@@ -63,7 +43,6 @@ export function WidgetShell({
   style,
   children,
 }) {
-  const theme = VARIANT_STYLES[variant] || VARIANT_STYLES.light;
   const [showReason, setShowReason] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
   // Optional user-controls injected by <GoalWidget>. Null handlers skip
@@ -77,7 +56,7 @@ export function WidgetShell({
   // state. Only show the stepper once the goal is actually trackable.
   const contextComplete = useIsContextComplete(spec);
 
-  // The footer "re-analyze" chip. Prefer the injected onReanalyze
+  // The footer "re-analyze" action. Prefer the injected onReanalyze
   // (GoalWidget): it re-runs the classifier and opens the analyst Review
   // pane seeded with the AI's proposal so the user vets targets/weights/
   // scope before it replaces the committed widget — with a busy state and
@@ -103,40 +82,24 @@ export function WidgetShell({
 
   return (
     <div
-      className={`relative flex min-h-[180px] min-w-0 flex-col overflow-hidden rounded-[var(--radius-tile)] p-4 ${className}`}
-      style={{
-        background: theme.bg,
-        border: theme.border,
-        color: theme.color,
-        ...style,
-      }}
+      className={`relative flex min-h-[180px] min-w-0 flex-col overflow-hidden rounded-[var(--radius-xl)] bg-card p-5 ${className}`}
+      style={{ boxShadow: "var(--shadow-card)", ...style }}
     >
       {(label || rightChip) ? (
         <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
-          <span
-            className="min-w-0 truncate font-mono uppercase tracking-[0.6px] text-[10.5px]"
-            style={{
-              fontFamily: "var(--font-mono)",
-              color: theme.mutedColor,
-            }}
-            title={typeof label === "string" ? label : undefined}
-          >
+          <Label className="min-w-0 truncate" title={typeof label === "string" ? label : undefined}>
             {label}
-          </span>
+          </Label>
           {rightChip ? <span className="shrink-0">{rightChip}</span> : null}
         </div>
       ) : null}
 
       {title ? (
         <div
-          className="mb-1.5 font-semibold leading-tight"
+          className="mb-1.5 text-[15px] font-bold leading-[1.3] text-fg"
           style={{
-            fontSize: 14,
-            letterSpacing: "-0.1px",
             // Long L2 titles (e.g. "Lead a weekly engineering knowledge-
             // share session") should wrap, not push the card wider.
-            // `text-wrap: pretty` plus `overflow-wrap: break-word` keeps
-            // even hyphenated words tidy on narrow tiles.
             overflowWrap: "break-word",
             wordBreak: "normal",
             textWrap: "pretty",
@@ -156,7 +119,7 @@ export function WidgetShell({
       {spec &&
       SPEC_KIND_META[spec.widget]?.variant === SPEC_VARIANTS.MANUAL &&
       isGoalReady(spec, contextComplete) ? (
-        <CadenceStepper spec={spec} variant={variant} />
+        <CadenceStepper spec={spec} />
       ) : null}
 
       {/* F5 data-honesty chip — what the number is made of + refresh.
@@ -164,62 +127,55 @@ export function WidgetShell({
           not as another action chip. */}
       {provenance ? (
         <div className="mt-2 flex min-w-0">
-          <ProvenanceChip provenance={provenance} variant={variant} />
+          <ProvenanceChip provenance={provenance} />
         </div>
       ) : null}
 
       {(spec?.reasoning || onRetry || onReanalyze || footer || onMarkDelegated || onEditContext || onComposeOwn || onEditSetup) ? (
-        <div
-          className="mt-3 flex items-center justify-between gap-2 border-t pt-2"
-          style={{ borderColor: theme.divider }}
-        >
-          <div className="flex min-w-0 items-center gap-2 flex-wrap">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             {spec?.reasoning ? (
-              <FooterChip theme={theme} onClick={() => setShowReason((s) => !s)}>
-                {showReason ? "hide why" : "why?"}
-              </FooterChip>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowReason((s) => !s)}
+              >
+                {showReason ? "Hide why" : "Why?"}
+              </Button>
             ) : null}
             {onEditSetup ? (
-              <FooterChip theme={theme} onClick={onEditSetup}>
-                edit setup
-              </FooterChip>
+              <Button type="button" variant="ghost" size="sm" onClick={onEditSetup}>
+                Edit setup
+              </Button>
             ) : null}
             {onEditContext ? (
-              <FooterChip theme={theme} onClick={onEditContext}>
-                edit truths
-              </FooterChip>
+              <Button type="button" variant="ghost" size="sm" onClick={onEditContext}>
+                Edit truths
+              </Button>
             ) : null}
             {onMarkDelegated ? (
-              <FooterChip theme={theme} onClick={onMarkDelegated}>
-                delegate
-              </FooterChip>
+              <Button type="button" variant="ghost" size="sm" onClick={onMarkDelegated}>
+                Delegate
+              </Button>
             ) : null}
             {onComposeOwn ? (
-              <FooterChip theme={theme} onClick={onComposeOwn}>
-                build my own
-              </FooterChip>
+              <Button type="button" variant="ghost" size="sm" onClick={onComposeOwn}>
+                Build my own
+              </Button>
             ) : null}
             {footer}
           </div>
           {canReanalyze ? (
-            <FooterChip theme={theme} onClick={handleReanalyze}>
-              {reanalyzing ? "re-analyzing…" : "re-analyze"}
-            </FooterChip>
+            <Button type="button" variant="soft" size="sm" onClick={handleReanalyze}>
+              {reanalyzing ? "Re-analyzing…" : "Re-analyze"}
+            </Button>
           ) : null}
         </div>
       ) : null}
 
       {showReason && spec?.reasoning ? (
-        <div
-          className="mt-2 rounded-[var(--radius-sub)] p-2"
-          style={{
-            background: theme.surface,
-            color: theme.mutedColor,
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            lineHeight: 1.45,
-          }}
-        >
+        <div className="mt-2 rounded-[var(--radius-lg)] bg-card-alt p-3 text-[12.5px] leading-[1.45] text-muted-fg">
           {spec.reasoning}
         </div>
       ) : null}
@@ -228,52 +184,17 @@ export function WidgetShell({
 }
 
 /**
- * Footer chip — small uppercase mono link-style button used for the
- * "why?", "re-analyze", "delegate", "edit truths" footer row. Internal
- * helper, not exported: widgets express footer intent through the
- * WidgetControls context, not by rendering chips directly.
- */
-function FooterChip({ theme, onClick, children }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="uppercase transition-colors hover:opacity-90"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 9.5,
-        letterSpacing: "0.5px",
-        color: theme.mutedColor,
-        background: "transparent",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-/**
  * Tiny helper component: the "target X" chip that auto widgets show when
- * a source has a target. Exported so widgets can opt-in inline.
+ * a source has a target. Exported so widgets can opt-in inline. `variant`
+ * is accepted for back-compat and unused — the badge tone carries the
+ * meaning now.
  */
-export function TargetChip({ target, unit, variant = "light" }) {
+export function TargetChip({ target, unit, variant: _variant = "light" }) {
   if (!target) return null;
-  const isLight = variant === "light";
   return (
-    <span
-      className="inline-flex items-center rounded-full px-2 py-[2px] font-semibold uppercase"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 9.5,
-        letterSpacing: "0.4px",
-        background: isLight ? "rgba(255,255,255,0.18)" : "var(--accent-dim)",
-        color: isLight ? "#ffffff" : "var(--accent)",
-      }}
-    >
-      target {target.op} {target.value}
+    <Badge tone="lav">
+      Target {target.op} {target.value}
       {unit ? ` ${unit}` : ""}
-    </span>
+    </Badge>
   );
 }
-
-export const WIDGET_VARIANT_STYLES = VARIANT_STYLES;

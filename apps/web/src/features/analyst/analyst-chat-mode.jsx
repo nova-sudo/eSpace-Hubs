@@ -1,6 +1,8 @@
 "use client";
 
 import { forwardRef, useEffect, useRef, useState } from "react";
+import { Sparkles, ArrowUp } from "lucide-react";
+import { Button, IconButton, Label } from "@/components/ui";
 import {
   appendMessage,
   clearMessages,
@@ -12,7 +14,7 @@ import {
  * Chat sub-view hosted inside the analyst page.
  *
  * Uses the existing `@/features/chat` store + API — all we do here is
- * render the UI in the inverse theme and plug it into the analyst page's
+ * render the UI in the analyst page's own theme and plug it into the
  * mode toggle. Keeps chat as a real, reachable tool without promoting it
  * back to primary.
  */
@@ -60,30 +62,12 @@ export function AnalystChatMode() {
   }
 
   return (
-    <div className="mx-auto flex min-h-0 w-full max-w-[760px] flex-1 flex-col self-center">
-      <div
-        className="mb-2 flex items-center justify-between"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          color: "var(--muted-fg)",
-        }}
-      >
-        <span className="uppercase tracking-[0.5px]">Secondary · chat</span>
-        <button
-          type="button"
-          onClick={() => clearMessages()}
-          className="uppercase transition-colors"
-          style={{
-            fontFamily: "var(--font-mono)",
-            border: "1px solid var(--border)",
-            borderRadius: 5,
-            padding: "6px 11px",
-            color: "var(--muted-fg)",
-          }}
-        >
+    <div className="mx-auto flex min-h-0 w-full max-w-[720px] flex-1 flex-col">
+      <div className="mb-3 flex items-center justify-between">
+        <Label>Chat</Label>
+        <Button variant="ghost" size="sm" onClick={() => clearMessages()}>
           Clear thread
-        </button>
+        </Button>
       </div>
       <div
         ref={listRef}
@@ -108,30 +92,23 @@ export function AnalystChatMode() {
 
 function ChatBubble({ role, content }) {
   const isUser = role === "user";
+  if (isUser) {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[74%] whitespace-pre-wrap rounded-[var(--radius-xl)] bg-lav p-4 text-[14px] leading-[1.55] text-lav-ink">
+          {content}
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+    <div className="flex justify-start">
       <div
-        className="max-w-[74%]"
-        style={{
-          borderRadius: 10,
-          padding: "13px 16px",
-          fontFamily: "var(--font-sans)",
-          fontSize: 14,
-          lineHeight: 1.55,
-          whiteSpace: "pre-wrap",
-          ...(isUser
-            ? {
-                background: "var(--bubble-user)",
-                color: "#fff",
-              }
-            : {
-                background: "var(--bubble-ai)",
-                border: "1px solid var(--border)",
-                color: "var(--fg)",
-              }),
-        }}
+        className="flex max-w-[74%] items-start gap-2 rounded-[var(--radius-xl)] bg-card p-4 text-[14px] leading-[1.55] text-fg"
+        style={{ boxShadow: "var(--shadow-card)" }}
       >
-        {content}
+        <Sparkles size={16} className="mt-0.5 shrink-0 text-lav-ink" />
+        <span className="whitespace-pre-wrap">{content}</span>
       </div>
     </div>
   );
@@ -141,18 +118,17 @@ function TypingBubble() {
   return (
     <div className="flex justify-start">
       <div
-        style={{
-          background: "var(--bubble-ai)",
-          border: "1px solid var(--border)",
-          borderRadius: 10,
-          padding: "13px 16px",
-        }}
+        className="flex items-center gap-1.5 rounded-[var(--radius-xl)] bg-card p-4 text-fg"
+        style={{ boxShadow: "var(--shadow-card)" }}
       >
-        <span className="glyph-typing" style={{ display: "inline-flex", gap: 5 }}>
-          <i />
-          <i />
-          <i />
-        </span>
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            aria-hidden="true"
+            className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current"
+            style={{ animationDelay: `${i * 160}ms` }}
+          />
+        ))}
       </div>
     </div>
   );
@@ -162,50 +138,28 @@ const ChatComposer = forwardRef(function ChatComposer(
   { value, onChange, onKeyDown, onSend, pending },
   ref,
 ) {
+  const canSend = !pending && value.trim().length > 0;
   return (
-    <form
-      className="mt-4 flex-none"
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSend();
-      }}
-    >
-      <div
-        className="flex items-end gap-2"
-        style={{
-          border: "1px solid var(--border-strong)",
-          borderRadius: 10,
-          background: "var(--card)",
-          padding: "11px 13px",
-        }}
+    <div className="mt-4 flex h-12 flex-none items-center gap-2 rounded-[var(--radius-lg)] bg-card-alt px-3.5">
+      <textarea
+        ref={ref}
+        rows={1}
+        placeholder="Ask about your work…"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
+        className="h-full min-h-0 flex-1 resize-none bg-transparent text-[14px] leading-[1.5] text-fg outline-none placeholder:text-dim-fg"
+      />
+      <IconButton
+        label="Send message"
+        size="sm"
+        active={canSend}
+        onClick={() => canSend && onSend()}
+        disabled={!canSend}
+        className={canSend ? undefined : "opacity-50"}
       >
-        <textarea
-          ref={ref}
-          rows={1}
-          placeholder="Ask about your work…"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={onKeyDown}
-          className="min-h-[24px] max-h-[180px] flex-1 resize-none bg-transparent text-[14px] leading-[1.5] outline-none placeholder:text-[var(--dim-fg)]"
-          style={{ color: "var(--fg)", fontFamily: "var(--font-sans)" }}
-        />
-        <button
-          type="submit"
-          disabled={pending || !value.trim()}
-          aria-label="Send message"
-          className="inline-flex items-center gap-1 rounded-[var(--radius-sub)] px-3 py-2 uppercase transition-opacity disabled:opacity-45"
-          style={{
-            background: "var(--accent)",
-            color: "var(--accent-on)",
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            fontWeight: 700,
-            letterSpacing: "0.6px",
-          }}
-        >
-          Send ↵
-        </button>
-      </div>
-    </form>
+        <ArrowUp size={15} />
+      </IconButton>
+    </div>
   );
 });

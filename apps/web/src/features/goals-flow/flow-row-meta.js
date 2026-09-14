@@ -62,10 +62,10 @@ export function windowTier(goalId, periodKey) {
 }
 
 const TIER_COLOR = {
-  not_achieved: "#b91c1c",
-  achieved: "#1D4ED8",
-  over_achieved: "#00c48a",
-  role_model: "#f59e0b",
+  not_achieved: "var(--peach-ink)",
+  achieved: "var(--mint-ink)",
+  over_achieved: "var(--lemon-ink)",
+  role_model: "var(--lav-ink)",
 };
 
 export function tierColor(tier) {
@@ -94,10 +94,10 @@ export function goalHeadline(goalId, spec) {
   if (capped?.tier) {
     if (capped.tier === "not_achieved") {
       status = "below target";
-      statusColor = "var(--warn)";
+      statusColor = "var(--lemon-ink)";
     } else {
       status = "on target";
-      statusColor = "var(--accent-2)";
+      statusColor = "var(--mint-ink)";
     }
   }
   return { value, status, statusColor };

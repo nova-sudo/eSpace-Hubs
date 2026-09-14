@@ -47,6 +47,7 @@
  */
 
 import { useEffect, useMemo } from "react";
+import { Label } from "@/components/ui";
 import { WidgetShell } from "../widget-shell";
 import {
   buildCycleWindows,
@@ -148,9 +149,6 @@ function NestedCadenceLevel({
     [composedBlock, windowIndex],
   );
 
-  const isLight = variant === "light";
-  const muted = isLight ? "rgba(255,255,255,0.68)" : "var(--muted-fg)";
-
   // Nothing sane to render: no cadence, or the cycle can't resolve a key —
   // rather than guess, this level (and anything nested inside it) is skipped.
   if (!cadence || !key || depth > MAX_NEST_DEPTH) return null;
@@ -160,43 +158,24 @@ function NestedCadenceLevel({
   const autoCount = autoFieldCount(fields);
 
   return (
-    <div
-      className="mt-3 flex flex-col gap-2"
-      style={{ borderTop: `1px dashed ${isLight ? "rgba(255,255,255,0.22)" : "var(--border)"}`, paddingTop: 10 }}
-    >
+    <div className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
       {period.authored && period.label ? (
-        <div
-          className="flex flex-wrap items-baseline gap-x-2"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-        >
-          <span style={{ color: isLight ? "#ffffff" : "var(--fg)", fontWeight: 700 }}>
-            {period.label}
-          </span>
-          {period.dueAt ? <span style={{ color: muted }}>due {period.dueAt}</span> : null}
+        <div className="flex flex-wrap items-baseline gap-x-2 text-[13px]">
+          <span className="font-bold text-fg">{period.label}</span>
+          {period.dueAt ? <span className="text-muted-fg">due {period.dueAt}</span> : null}
         </div>
       ) : null}
       {period.prompt ? (
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: muted }}>
+        <Label>
           {period.prompt}
-          {autoCount > 0 ? (
-            <span style={{ opacity: 0.85 }}>
-              {" "}
-              · {autoCount} read {autoCount === 1 ? "itself" : "themselves"} from your repos
-            </span>
-          ) : null}
-        </div>
+          {autoCount > 0 ? <span className="opacity-85"> · {autoCount} read {autoCount === 1 ? "itself" : "themselves"} from your repos</span> : null}
+        </Label>
       ) : null}
       {/* This sub-window's own brief — same treatment as the top level, so a
           nested week reads like a week rather than a bare label. */}
       <PeriodDetail detail={period.detail} notes={period.notes} variant={variant} />
       {fields.length > 0 ? (
-        <ComposedFields
-          goalId={goalId}
-          fields={fields}
-          periodKey={fullKey}
-          variant={variant}
-          showHeadline={false}
-        />
+        <ComposedFields goalId={goalId} fields={fields} periodKey={fullKey} variant={variant} showHeadline={false} />
       ) : null}
       {period.nested ? (
         <NestedCadenceLevel
@@ -296,9 +275,7 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
   const fields = period.fields;
   const promptCopy = period.prompt || "Track this goal's data below.";
   const autoCount = useMemo(() => autoFieldCount(fields), [fields]);
-
-  const isLight = variant === "light";
-  const muted = isLight ? "rgba(255,255,255,0.68)" : "var(--muted-fg)";
+  const overdue = period.dueAt && dueStatus(period.dueAt)?.state === "overdue";
 
   return (
     <WidgetShell
@@ -314,40 +291,20 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
             user sees a generic prompt and has to remember which week of the
             plan they're in — the exact gap per-period content closes. */}
         {period.authored && period.label ? (
-          <div
-            className="flex flex-wrap items-baseline gap-x-2"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-          >
-            <span style={{ color: isLight ? "#ffffff" : "var(--fg)", fontWeight: 700 }}>
-              {period.label}
-            </span>
+          <div className="flex flex-wrap items-baseline gap-x-2 text-[13px]">
+            <span className="font-bold text-fg">{period.label}</span>
             {period.dueAt ? (
-              <span
-                style={{
-                  // F4: an overdue period says so instead of blending in.
-                  color:
-                    dueStatus(period.dueAt)?.state === "overdue"
-                      ? isLight
-                        ? "rgba(255,190,190,0.95)"
-                        : "var(--bad)"
-                      : muted,
-                }}
-              >
-                {dueStatus(period.dueAt)?.state === "overdue" ? "overdue" : "due"}{" "}
-                {period.dueAt}
+              // F4: an overdue period says so instead of blending in.
+              <span className={overdue ? "text-peach-ink" : "text-muted-fg"}>
+                {overdue ? "overdue" : "due"} {period.dueAt}
               </span>
             ) : null}
           </div>
         ) : null}
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: muted }}>
+        <Label>
           {promptCopy}
-          {autoCount > 0 ? (
-            <span style={{ opacity: 0.85 }}>
-              {" "}
-              · {autoCount} read {autoCount === 1 ? "itself" : "themselves"} from your repos
-            </span>
-          ) : null}
-        </div>
+          {autoCount > 0 ? <span className="opacity-85"> · {autoCount} read {autoCount === 1 ? "itself" : "themselves"} from your repos</span> : null}
+        </Label>
         {/* What THIS window is for, per the source document. Collapsed by
             default — the form below is still the widget's job. */}
         <PeriodDetail detail={period.detail} notes={period.notes} variant={variant} />
@@ -355,20 +312,10 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
             the tracker rather than to any one window. */}
         <NotesAffordance notes={spec.composed?.notes} variant={variant} />
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <ComposedFields
-            goalId={goal?.id}
-            fields={fields}
-            periodKey={currentKey}
-            variant={variant}
-          />
+          <ComposedFields goalId={goal?.id} fields={fields} periodKey={currentKey} variant={variant} />
           {/* The artifact itself, pinned to this window — for deliverables
               that have no URL to paste into a link field. */}
-          <EvidenceAttachments
-            goalId={goal?.id}
-            periodKey={currentKey}
-            variant={variant}
-            className="mt-2"
-          />
+          <EvidenceAttachments goalId={goal?.id} periodKey={currentKey} variant={variant} className="mt-2" />
           {period.nested ? (
             <NestedCadenceLevel
               goalId={goal?.id}
@@ -386,25 +333,8 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
               periods run on their own cadence (it's a whole composed block),
               and the roster above them is what their reports have logged. */}
           {spec.composed?.management ? (
-            <div
-              className="mt-3 flex flex-col gap-2"
-              style={{
-                borderTop: `1px solid ${isLight ? "rgba(255,255,255,0.28)" : "var(--border-strong)"}`,
-                paddingTop: 10,
-              }}
-            >
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 9,
-                  letterSpacing: "0.6px",
-                  textTransform: "uppercase",
-                  color: isLight ? "#ffffff" : "var(--fg)",
-                  fontWeight: 700,
-                }}
-              >
-                Management plan
-              </span>
+            <div className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
+              <Label>Management plan</Label>
               <ManagementRoster variant={variant} />
               <NestedCadenceLevel
                 goalId={goal?.id}

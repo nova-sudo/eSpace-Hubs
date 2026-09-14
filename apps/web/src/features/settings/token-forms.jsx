@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { ChevronRight } from "lucide-react";
 import { Button, Field, Input } from "@/components/ui";
 import {
   disconnectProvider,
@@ -84,10 +85,13 @@ export function GitLabTokenForm() {
         label="Personal access token"
         hint={
           <>
-            Create at <span style={{ fontFamily: "var(--font-mono)" }}>User Settings → Access Tokens</span>.
-            Scopes: <span style={{ fontFamily: "var(--font-mono)" }}>read_api</span>,{" "}
-            <span style={{ fontFamily: "var(--font-mono)" }}>read_user</span>,{" "}
-            <span style={{ fontFamily: "var(--font-mono)" }}>read_repository</span>.
+            Create at{" "}
+            <code className="font-mono text-[11px]">User Settings</code>{" "}
+            <ChevronRight size={11} className="inline-block align-[-1px] text-dim-fg" />{" "}
+            <code className="font-mono text-[11px]">Access Tokens</code>. Scopes:{" "}
+            <code className="font-mono text-[11px]">read_api</code>,{" "}
+            <code className="font-mono text-[11px]">read_user</code>,{" "}
+            <code className="font-mono text-[11px]">read_repository</code>.
           </>
         }
       >
@@ -96,7 +100,6 @@ export function GitLabTokenForm() {
           value={token}
           onChange={(e) => setToken(e.target.value)}
           placeholder="glpat-..."
-          mono
         />
       </Field>
       <div>
@@ -229,7 +232,6 @@ export function JiraTokenForm() {
           value={secret}
           onChange={(e) => setSecret(e.target.value)}
           placeholder={secretPlaceholder}
-          mono
         />
       </Field>
       <div>
@@ -327,7 +329,6 @@ export function JenkinsTokenForm() {
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           placeholder="http://localhost:8080"
-          mono
         />
       </Field>
       <Field
@@ -339,7 +340,6 @@ export function JenkinsTokenForm() {
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           placeholder="your-jenkins-username"
-          mono
         />
       </Field>
       <Field
@@ -347,11 +347,13 @@ export function JenkinsTokenForm() {
         hint={
           <>
             Generate at{" "}
-            <span style={{ fontFamily: "var(--font-mono)" }}>
+            <code className="font-mono text-[11px]">
               &lt;your-jenkins&gt;/me/configure
-            </span>{" "}
-            → API Token → Add new Token. Revocable independently of your
-            password.
+            </code>{" "}
+            <ChevronRight size={11} className="inline-block align-[-1px] text-dim-fg" />{" "}
+            API Token{" "}
+            <ChevronRight size={11} className="inline-block align-[-1px] text-dim-fg" />{" "}
+            Add new Token. Revocable independently of your password.
           </>
         }
       >
@@ -360,7 +362,6 @@ export function JenkinsTokenForm() {
           value={apiToken}
           onChange={(e) => setApiToken(e.target.value)}
           placeholder="11ab2c3d4e5f6789..."
-          mono
         />
       </Field>
       <div>

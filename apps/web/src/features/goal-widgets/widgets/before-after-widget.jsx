@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ArrowRight } from "lucide-react";
+import { Badge, Button, Input, Label } from "@/components/ui";
 import { WidgetShell } from "../widget-shell";
 import { useGoalInputs } from "@/features/goal-inputs";
 
@@ -48,167 +50,69 @@ export function BeforeAfterWidget({ spec, goal, variant = "light", className, on
     <WidgetShell
       spec={spec}
       variant={variant}
-      label="Before → After"
+      label="Before / after"
       title={goal?.title || spec.title}
       onRetry={onRetry}
       className={className}
     >
       <div className="flex h-full flex-col justify-between gap-3">
         <div className="flex items-end gap-3">
-          <Tile
-            label="Baseline"
-            value={stored.baseline}
-            unit={spec.manual?.unit}
-            variant={variant}
-          />
-          <Arrow variant={variant} />
-          <Tile
-            label="Current"
-            value={stored.current}
-            unit={spec.manual?.unit}
-            emphasis
-            variant={variant}
-          />
+          <Tile label="Baseline" value={stored.baseline} unit={spec.manual?.unit} />
+          <ArrowRight size={18} className="mb-1 shrink-0 text-dim-fg" aria-hidden="true" />
+          <Tile label="Current" value={stored.current} unit={spec.manual?.unit} emphasis />
           {delta != null ? (
-            <div
-              className="uppercase tracking-[0.5px]"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                color:
-                  delta === 0
-                    ? variant === "light"
-                      ? "rgba(255,255,255,0.6)"
-                      : "var(--muted-fg)"
-                    : goodDirection
-                      ? "var(--accent-2)"
-                      : "rgba(255,255,255,0.7)",
-              }}
-            >
-              Δ {delta > 0 ? "+" : ""}{Math.round(delta * 100) / 100}
-            </div>
+            <Badge tone={delta === 0 ? "neutral" : goodDirection ? "mint" : "peach"}>
+              {delta > 0 ? "+" : ""}
+              {Math.round(delta * 100) / 100}
+            </Badge>
           ) : null}
         </div>
 
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            color: variant === "light" ? "rgba(255,255,255,0.68)" : "var(--muted-fg)",
-          }}
-        >
-          {spec.manual?.prompt || "Compare starting point to now"}
-        </div>
+        <Label>{spec.manual?.prompt || "Compare starting point to now"}</Label>
 
         {/* Two number inputs + Save button. `min-w-0` on the row + each
             input shrinks below the input's intrinsic width on narrow tiles
             (the spinner-arrow chrome is non-zero). */}
         <div className="flex min-w-0 items-center gap-1.5">
-          <NumberField
-            label="baseline"
+          <Input
+            type="number"
+            placeholder="baseline"
             value={baseline}
-            onChange={setBaseline}
-            variant={variant}
+            onChange={(e) => setBaseline(e.target.value)}
+            className="min-w-0 flex-1"
           />
-          <NumberField
-            label="current"
+          <Input
+            type="number"
+            placeholder="current"
             value={current}
-            onChange={setCurrent}
-            variant={variant}
+            onChange={(e) => setCurrent(e.target.value)}
+            className="min-w-0 flex-1"
           />
-          <button
-            type="button"
-            onClick={save}
-            className="shrink-0 rounded-[var(--radius-sub)] px-3 py-1.5 font-bold uppercase"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10.5,
-              letterSpacing: "0.4px",
-              background: variant === "light" ? "#ffffff" : "var(--accent)",
-              color:
-                variant === "light" ? "var(--accent)" : "var(--accent-on)",
-            }}
-          >
+          <Button size="sm" className="shrink-0" onClick={save}>
             Save
-          </button>
+          </Button>
         </div>
       </div>
     </WidgetShell>
   );
 }
 
-function Tile({ label, value, unit, emphasis, variant }) {
+function Tile({ label, value, unit, emphasis }) {
   return (
     <div className="flex flex-col">
+      <Label>{label}</Label>
       <span
-        className="uppercase tracking-[0.5px]"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 9.5,
-          color: variant === "light" ? "rgba(255,255,255,0.6)" : "var(--muted-fg)",
-        }}
-      >
-        {label}
-      </span>
-      <span
-        className="font-semibold leading-none"
-        style={{
-          fontFamily: "var(--font-display)",
-          fontSize: emphasis ? 36 : 28,
-          letterSpacing: "-1px",
-          opacity: value == null || value === "" ? 0.5 : 1,
-        }}
+        className={
+          emphasis
+            ? "text-[36px] font-extrabold leading-none tracking-[-0.03em] tabular-nums text-fg"
+            : "text-[28px] font-extrabold leading-none tracking-[-0.03em] tabular-nums text-fg"
+        }
+        style={{ opacity: value == null || value === "" ? 0.4 : 1 }}
       >
         {value == null || value === "" ? "—" : value}
       </span>
-      {unit ? (
-        <span
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            color: variant === "light" ? "rgba(255,255,255,0.6)" : "var(--muted-fg)",
-          }}
-        >
-          {unit}
-        </span>
-      ) : null}
+      {unit ? <span className="text-[12.5px] text-muted-fg">{unit}</span> : null}
     </div>
-  );
-}
-
-function Arrow({ variant }) {
-  return (
-    <span
-      style={{
-        color: variant === "light" ? "rgba(255,255,255,0.4)" : "var(--dim-fg)",
-        fontFamily: "var(--font-mono)",
-        fontSize: 18,
-        padding: "0 2px",
-      }}
-    >
-      →
-    </span>
-  );
-}
-
-function NumberField({ label, value, onChange, variant }) {
-  return (
-    <input
-      type="number"
-      placeholder={label}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="min-w-0 flex-1 rounded-[var(--radius-sub)] bg-transparent px-2 py-1.5 outline-none"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 11,
-        color: variant === "light" ? "#ffffff" : "var(--fg)",
-        border:
-          variant === "light"
-            ? "1px solid rgba(255,255,255,0.22)"
-            : "1px solid var(--border-strong)",
-      }}
-    />
   );
 }
 

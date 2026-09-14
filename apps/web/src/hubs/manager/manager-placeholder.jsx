@@ -10,7 +10,7 @@
  */
 
 import Link from "next/link";
-import { MonoLabel, PageHeader } from "@/components/ui";
+import { Label, PageHeader } from "@/components/ui";
 import { useActiveHubStrict } from "@/features/hubs";
 
 const SLOT_LABELS = {
@@ -29,36 +29,32 @@ export function ManagerPlaceholder({ slot = "employees" }) {
   const slotLabel = SLOT_LABELS[slot] ?? slot;
 
   return (
-    <main className="relative z-[2] px-4 sm:px-10 pb-14 pt-9">
+    <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
       <PageHeader
         crumb={`${hub.label} · ${slotLabel}`}
         title="Landing in the next drop."
-        italicWord="next"
         subtitle={SLOT_BLURB[slot] ?? hub.description}
       />
 
-      <div className="mx-auto max-w-2xl">
-        <div className="rounded-md border border-border bg-card p-6">
-          <MonoLabel>Coming soon</MonoLabel>
-          <p className="mt-2 text-[13.5px] leading-[1.65] text-fg">
-            The Manager hub is scaffolded — auth, capability gating, hub
-            routing, and the warm-white/orange theme are all wired. The{" "}
-            {slotLabel.toLowerCase()} view is the next piece of UI to land.
-          </p>
+      <div className="mx-auto max-w-2xl rounded-[var(--radius-xl)] bg-card p-6" style={{ boxShadow: "var(--shadow-card)" }}>
+        <Label>Coming soon</Label>
+        <p className="mt-2 text-[13.5px] leading-[1.65] text-fg">
+          The Manager hub is scaffolded — auth, capability gating, hub
+          routing, and page structure are all wired. The{" "}
+          {slotLabel.toLowerCase()} view is the next piece of UI to land.
+        </p>
 
-          <div className="mt-5 border-t border-border pt-4">
-            <MonoLabel>In the meantime</MonoLabel>
-            <p className="mt-2 text-[12.5px] leading-[1.6] text-muted-fg">
-              Your{" "}
-              <Link
-                href={`/${hub.id}`}
-                className="text-accent hover:underline"
-              >
-                team roster
-              </Link>{" "}
-              is on the dashboard.
-            </p>
-          </div>
+        <div className="mt-5 border-t border-line pt-4">
+          <Label>In the meantime</Label>
+          <p className="mt-2 text-[12.5px] leading-[1.6] text-muted-fg">
+            Your team roster is on the dashboard.
+          </p>
+          <Link
+            href={`/${hub.id}`}
+            className="mt-3 inline-flex h-9 items-center rounded-[var(--radius-pill)] bg-card-alt px-4 text-[12.5px] font-semibold text-fg hover:opacity-80"
+          >
+            Go to dashboard
+          </Link>
         </div>
       </div>
     </main>

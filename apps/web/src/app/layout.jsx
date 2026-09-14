@@ -6,8 +6,8 @@ import { MigrateOnce } from "@/features/migrate";
 import { HubsFetcher } from "@/features/hubs";
 import { JobsToast } from "@/components/shell/jobs-toast";
 
-// Nothing UI fonts (Doto / Hanken Grotesk / Space Mono) load via the Google
-// Fonts @import in globals.css, so no next/font wiring is needed here.
+// Fonts (Manrope + JetBrains Mono) load via the <link> in <head> below —
+// see docs/design-system-v2.md.
 
 export const metadata = {
   title: "eSpace Dev Hub",
@@ -22,26 +22,24 @@ export default function RootLayout({ children }) {
     // differs from the SSR markup (which has none). Scoped to this one element.
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Nothing UI fonts. Loaded via <link> (not a CSS @import) because the
-            @import in globals.css lands after Tailwind's expansion and the
-            browser drops any @import that isn't at the top of the stylesheet —
-            which is why Doto/Hanken/Space Mono weren't rendering. */}
+        {/* Design system v2 fonts. Loaded via <link> (not a CSS @import) because
+            an @import in globals.css lands after Tailwind's expansion and the
+            browser drops it. */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Doto:wght@400;500;700;900&family=Space+Mono:wght@400;700&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
           rel="stylesheet"
         />
       </head>
       <body>
         {/* No-flash theme: apply the theme before hydration so the first paint
-            matches. Dark ("Nothing UI" pure-black) is the DEFAULT — an unset or
-            "system" preference resolves to dark; only an explicit "light"
-            opt-out paints light. Keeps the header toggle fully functional. */}
+            matches. Light is the default; a saved "dark" paints dark; a saved
+            "system" (or nothing) follows prefers-color-scheme. */}
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{var t=localStorage.getItem('espace-theme');document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark');}catch(e){document.documentElement.setAttribute('data-theme','dark');}",
+              "try{var t=localStorage.getItem('espace-theme');if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','light');}",
           }}
         />
         {/* SessionProvider kicks off the initial /auth/me lookup so
@@ -84,11 +82,12 @@ export default function RootLayout({ children }) {
           toastOptions={{
             style: {
               background: "var(--card)",
-              border: "1px solid var(--border-strong)",
+              border: "none",
+              boxShadow: "var(--shadow-float)",
               color: "var(--fg)",
-              borderRadius: "4px",
-              fontFamily: "var(--font-mono)",
-              fontSize: 12,
+              borderRadius: "var(--radius-lg)",
+              fontSize: 13,
+              fontWeight: 500,
             },
           }}
         />

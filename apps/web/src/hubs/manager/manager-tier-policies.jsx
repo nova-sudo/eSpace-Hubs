@@ -19,8 +19,9 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { apiDelete, apiGet, apiPut } from "@/lib/api-client";
-import { Button, Field, Input, MonoLabel, PageHeader } from "@/components/ui";
+import { Badge, Button, Field, Input, Label, PageHeader } from "@/components/ui";
 
 const TIER_ORDER = ["notAchieved", "achieved", "overAchieved", "roleModel"];
 const TIER_LABELS = {
@@ -149,11 +150,10 @@ export function ManagerTierPolicies() {
   );
 
   return (
-    <main className="relative z-[2] mx-auto max-w-4xl px-4 sm:px-10 pb-14 pt-9">
+    <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
       <PageHeader
         crumb="Manager · achievement-tier governance"
         title="Set tiers by Goal Code."
-        italicWord="Goal Code"
         subtitle={
           <>
             Author the Final (whole-goal) and Per-Cadence (per-window)
@@ -168,10 +168,7 @@ export function ManagerTierPolicies() {
         }
       />
 
-      <form
-        className="mt-2 flex flex-wrap items-end gap-2"
-        onSubmit={handleAdd}
-      >
+      <form className="flex flex-wrap items-end gap-2" onSubmit={handleAdd}>
         <Field
           label={`Goal Code — governs cycle ${currentCycle}`}
           className="flex-1 min-w-[200px]"
@@ -180,10 +177,10 @@ export function ManagerTierPolicies() {
             value={newCode}
             onChange={(e) => setNewCode(e.target.value)}
             placeholder={codes === null ? "Loading codes…" : "Filter existing codes, or type one"}
-            mono
+            className="font-mono"
           />
         </Field>
-        <Button type="submit" variant="primary" size="sm" disabled={!newCode.trim()}>
+        <Button type="submit" variant="ink" size="sm" disabled={!newCode.trim()}>
           + Govern code
         </Button>
       </form>
@@ -192,29 +189,19 @@ export function ManagerTierPolicies() {
           the honest replacement for a free-text field where a typo
           governed nobody, silently. */}
       {pickerRows.length > 0 ? (
-        <div className="mt-2 flex flex-col overflow-hidden rounded-[var(--radius-sub)] border border-border">
+        <div className="mt-2 flex flex-col overflow-hidden rounded-[var(--radius-lg)] bg-card-alt">
           {pickerRows.map((c) => (
             <button
               key={c.code}
               type="button"
               onClick={() => addCode(c.code)}
-              className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-accent-dim/25"
+              className="flex items-center justify-between gap-3 border-t border-line px-3 py-2 text-left transition-colors first:border-t-0 hover:bg-card"
             >
               <span className="flex min-w-0 items-baseline gap-2">
-                <code
-                  className="shrink-0 text-accent"
-                  style={{ fontFamily: "var(--font-mono)", fontSize: 11.5 }}
-                >
-                  {c.code}
-                </code>
-                <span className="truncate text-muted-fg" style={{ fontSize: 11.5 }}>
-                  {c.title}
-                </span>
+                <code className="shrink-0 font-mono text-[11.5px] font-bold text-fg">{c.code}</code>
+                <span className="truncate text-[11.5px] text-muted-fg">{c.title}</span>
               </span>
-              <span
-                className="shrink-0 text-dim-fg"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-              >
+              <span className="shrink-0 text-[11px] text-dim-fg">
                 {c.level} · {c.goals} goal{c.goals === 1 ? "" : "s"} · {c.people}{" "}
                 {c.people === 1 ? "person" : "people"}
               </span>
@@ -223,32 +210,24 @@ export function ManagerTierPolicies() {
         </div>
       ) : null}
       {codes !== null && filter && pickerRows.length === 0 && !typedMatchesExisting ? (
-        <p
-          className="mt-2 text-[11.5px] leading-[1.5]"
-          style={{ color: "var(--warn)" }}
-        >
+        <div className="mt-2 rounded-[var(--radius-lg)] bg-lemon p-3 text-[11.5px] leading-[1.5] text-lemon-ink">
           No goal in the org carries “{newCode.trim()}”. You can still govern
           it, but it applies to nobody until a goal tree carries that code.
-        </p>
+        </div>
       ) : null}
 
       <div className="mt-6">
         {loading ? (
-          <div
-            className="text-muted-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}
-          >
-            Loading…
-          </div>
+          <div className="text-[12px] text-muted-fg">Loading…</div>
         ) : policies.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border bg-card p-6 text-[13px] leading-[1.6] text-muted-fg">
+          <div className="rounded-[var(--radius-xl)] bg-card p-6 text-[13px] leading-[1.6] text-muted-fg" style={{ boxShadow: "var(--shadow-card)" }}>
             No tier policies yet. Add a Goal Code above to start governing it.
           </div>
         ) : (
           <>
-            <MonoLabel>
+            <Label>
               {policies.length} code{policies.length === 1 ? "" : "s"} governed
-            </MonoLabel>
+            </Label>
             <div className="mt-3 flex flex-col gap-2">
               {policies.map((p) => (
                 <PolicyRow
@@ -273,77 +252,30 @@ export function ManagerTierPolicies() {
 
 function PolicyRow({ policy, scope, expanded, onExpand, onUpdate, onDelete }) {
   return (
-    <div
-      className="rounded-[var(--radius-tile)] border bg-card"
-      style={{ borderColor: "var(--border-strong)" }}
-    >
+    <div className="rounded-[var(--radius-xl)] bg-card" style={{ boxShadow: "var(--shadow-card)" }}>
       <button
         type="button"
         onClick={onExpand}
-        className="flex w-full items-center justify-between gap-4 px-5 py-3 text-left transition-colors hover:bg-accent-dim/20"
+        className="flex w-full items-center justify-between gap-4 px-5 py-3.5 text-left transition-colors hover:bg-card-alt"
       >
-        <div className="flex flex-1 items-baseline gap-3">
-          <code
-            className="font-semibold text-accent"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 13, letterSpacing: "0.3px" }}
-          >
-            {policy.code}
-          </code>
-          <span
-            className="shrink-0 rounded-full px-1.5 py-[1px] uppercase"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9,
-              letterSpacing: "0.4px",
-              background: policy.cycleKey ? "var(--accent-dim)" : "var(--panel-2)",
-              color: policy.cycleKey ? "var(--accent)" : "var(--muted-fg)",
-            }}
-            title={
-              policy.cycleKey
-                ? `Governs the ${policy.cycleKey} cycle only.`
-                : "Authored before cycle scoping — applies to ANY cycle until re-saved (a cycle-scoped policy on the same code outranks it)."
-            }
-          >
-            {policy.cycleKey || "any cycle"}
-          </span>
+        <div className="flex flex-1 flex-wrap items-baseline gap-3">
+          <code className="font-mono text-[13px] font-bold text-fg">{policy.code}</code>
+          <Badge>{policy.cycleKey || "any cycle"}</Badge>
           {/* The blast radius — who this row actually governs. Zero is a
               warning, not silence: a policy matching nothing is either a
               typo or a stale code. */}
-          <span
-            className="shrink-0"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10,
-              color: scope && scope.goals > 0 ? "var(--dim-fg)" : "var(--warn)",
-            }}
-          >
-            {scope && scope.goals > 0
-              ? `affects ${scope.goals} goal${scope.goals === 1 ? "" : "s"} · ${scope.people} ${scope.people === 1 ? "person" : "people"}`
-              : "matches no goals"}
-          </span>
-          {policy.finalTiers ? (
-            <span
-              className="text-muted-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-            >
-              final set
+          {scope && scope.goals > 0 ? (
+            <span className="text-[11px] text-dim-fg">
+              affects {scope.goals} goal{scope.goals === 1 ? "" : "s"} · {scope.people}{" "}
+              {scope.people === 1 ? "person" : "people"}
             </span>
-          ) : null}
-          {policy.cadenceTiers ? (
-            <span
-              className="text-muted-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-            >
-              cadence set
-            </span>
-          ) : null}
+          ) : (
+            <Badge tone="lemon">matches no goals</Badge>
+          )}
+          {policy.finalTiers ? <span className="text-[11px] text-muted-fg">final set</span> : null}
+          {policy.cadenceTiers ? <span className="text-[11px] text-muted-fg">cadence set</span> : null}
         </div>
-        <span
-          className="text-dim-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-        >
-          {expanded ? "▾" : "▸"}
-        </span>
+        {expanded ? <ChevronDown size={15} className="text-dim-fg" /> : <ChevronRight size={15} className="text-dim-fg" />}
       </button>
 
       {expanded ? (
@@ -414,8 +346,8 @@ function PolicyEditor({ policy, onUpdate, onDelete }) {
   }
 
   return (
-    <div className="border-t px-5 py-5" style={{ borderColor: "var(--border)" }}>
-      <div className="grid grid-cols-2 gap-6">
+    <div className="border-t border-line px-5 py-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <Ladder
           title="Final tiers"
           hint="The whole-goal ladder — pooled across every submitted period."
@@ -436,7 +368,7 @@ function PolicyEditor({ policy, onUpdate, onDelete }) {
         <Button type="button" variant="danger" size="sm" onClick={handleDelete} disabled={saving}>
           Remove policy
         </Button>
-        <Button type="button" variant="primary" size="sm" onClick={handleSave} disabled={saving}>
+        <Button type="button" variant="ink" size="sm" onClick={handleSave} disabled={saving}>
           {saving ? "Saving…" : "Save"}
         </Button>
       </div>
@@ -447,15 +379,8 @@ function PolicyEditor({ policy, onUpdate, onDelete }) {
 function Ladder({ title, hint, ladder, onChange, disabled }) {
   return (
     <div>
-      <div
-        className="uppercase tracking-[0.5px]"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted-fg)" }}
-      >
-        {title}
-      </div>
-      <p className="mt-1 text-muted-fg" style={{ fontSize: 11.5, lineHeight: 1.5 }}>
-        {hint}
-      </p>
+      <Label>{title}</Label>
+      <p className="mt-1 text-[11.5px] leading-[1.5] text-muted-fg">{hint}</p>
       <div className="mt-2 flex flex-col gap-2.5">
         {TIER_ORDER.map((k) => (
           <Field key={k} label={TIER_LABELS[k]}>
@@ -464,8 +389,8 @@ function Ladder({ title, hint, ladder, onChange, disabled }) {
               value={ladder[k]}
               onChange={(e) => onChange({ ...ladder, [k]: e.target.value })}
               disabled={disabled}
-              className="w-full rounded-[var(--radius-sub)] border border-border bg-card px-3 py-2 text-[12.5px] text-fg outline-none placeholder:text-dim-fg focus:border-accent"
-              style={{ fontFamily: "var(--font-sans)", resize: "vertical" }}
+              className="w-full rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-2.5 text-[12.5px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
+              style={{ resize: "vertical" }}
             />
           </Field>
         ))}

@@ -12,16 +12,8 @@ import { AuthGuard, WaitingApproval } from "@/features/auth";
 
 export default function WaitingApprovalPage() {
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "var(--bg)",
-        color: "var(--fg)",
-      }}
-    >
-      <AuthGuard>
-        <WaitingApproval />
-      </AuthGuard>
-    </main>
+    <AuthGuard>
+      <WaitingApproval />
+    </AuthGuard>
   );
 }

@@ -17,24 +17,32 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { BentoTile } from "@/components/ui";
+import { ArrowRight } from "lucide-react";
+import { Badge, BentoTile, Label } from "@/components/ui";
 import { useHubLink, useQaHubConfig } from "@/features/hubs";
 import { useIntegrations } from "@/features/integrations";
 import { useJiraDefectsForProject } from "@/features/integrations/hooks";
 
 const WINDOW_DAYS = 14;
 
-// Stable display order + per-priority colour. Colours track the
-// emotional weight — red for Highest, yellow for Medium, grey for
-// "no priority configured".
+// Stable display order, highest → lowest, each mapped to a design
+// tint. `tone` drives both the bar segment and the legend Badge.
 const PRIORITY_ORDER = [
-  { name: "Highest", color: "var(--bad, #b91c1c)" },
-  { name: "High", color: "#dc7e2a" },
-  { name: "Medium", color: "var(--warn, #c47b00)" },
-  { name: "Low", color: "var(--good, #16a34a)" },
-  { name: "Lowest", color: "var(--accent)" },
-  { name: "Unset", color: "var(--dim-fg, #9a9a9a)" },
+  { name: "Highest", tone: "lav" },
+  { name: "High", tone: "sky" },
+  { name: "Medium", tone: "lemon" },
+  { name: "Low", tone: "peach" },
+  { name: "Lowest", tone: "neutral" },
+  { name: "Unset", tone: "neutral" },
 ];
+
+const BAR_CLASS = {
+  lav: "bg-lav",
+  sky: "bg-sky",
+  lemon: "bg-lemon",
+  peach: "bg-peach",
+  neutral: "bg-card-alt",
+};
 
 export function DefectPriorityMixTile() {
   const { isConnected } = useIntegrations();
@@ -47,7 +55,7 @@ export function DefectPriorityMixTile() {
       col="span 4"
       row="span 2"
       label="Defect priority mix"
-      right={connected ? <span style={meta}>last 14d</span> : null}
+      right={connected ? <Label>last 14d</Label> : null}
     >
       {connected ? <Body projectKey={projectKey} /> : <NotConnectedBody />}
     </BentoTile>
@@ -60,12 +68,12 @@ function NotConnectedBody() {
     <div className="flex h-full flex-col justify-between">
       <Headline value="—" muted />
       <div>
-        <p className="text-muted-fg" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+        <p className="text-[12.5px] leading-[1.5] text-muted-fg">
           Connect Jira to see how this sprint&apos;s defects break down by
           priority.
         </p>
-        <Link href={link("/settings")} style={ctaLink}>
-          Connect Jira →
+        <Link href={link("/settings")} className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-bold text-fg">
+          Connect Jira <ArrowRight size={13} />
         </Link>
       </div>
     </div>
@@ -95,39 +103,31 @@ function Body({ projectKey }) {
     <div className="flex h-full flex-col justify-between">
       <div>
         <Headline value={total} />
-        <div style={{ marginTop: 8, ...meta }}>defects by priority</div>
+        <div className="mt-2">
+          <Label>defects by priority</Label>
+        </div>
       </div>
 
       {/* Stacked bar — width proportional to count. Each segment has
           a hover label via title attribute so users can read counts
           off the small slivers. */}
       <div>
-        <div
-          aria-label="Priority mix bar"
-          style={{
-            display: "flex",
-            width: "100%",
-            height: 10,
-            borderRadius: 3,
-            overflow: "hidden",
-            border: "1px solid var(--border-strong)",
-          }}
-        >
+        <div aria-label="Priority mix bar" className="flex h-2.5 w-full overflow-hidden rounded-[var(--radius-pill)]">
           {nonZero.map((b) => (
             <div
               key={b.name}
               title={`${b.name}: ${b.count}`}
-              style={{
-                flex: `${b.count} 0 0`,
-                background: b.color,
-              }}
+              className={BAR_CLASS[b.tone]}
+              style={{ flex: `${b.count} 0 0` }}
             />
           ))}
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
+        <div className="mt-3 flex flex-wrap gap-1.5">
           {nonZero.map((b) => (
-            <Legend key={b.name} {...b} />
+            <Badge key={b.name} tone={b.tone}>
+              {b.name} · {b.count}
+            </Badge>
           ))}
         </div>
       </div>
@@ -135,39 +135,9 @@ function Body({ projectKey }) {
   );
 }
 
-function Legend({ name, color, count }) {
-  return (
-    <div
-      className="flex items-center gap-1.5"
-      style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-    >
-      <span
-        aria-hidden="true"
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: 2,
-          background: color,
-          display: "inline-block",
-        }}
-      />
-      <span style={{ color: "var(--fg)" }}>{name}</span>
-      <span style={{ color: "var(--muted-fg)" }}>{count}</span>
-    </div>
-  );
-}
-
 function Headline({ value, muted }) {
   return (
-    <div
-      style={{
-        fontFamily: "var(--font-display)",
-        fontSize: 64,
-        letterSpacing: "-2px",
-        lineHeight: 1,
-        color: muted ? "var(--muted-fg)" : "var(--fg)",
-      }}
-    >
+    <div className={`text-[56px] font-extrabold leading-none tracking-[-0.04em] tabular-nums ${muted ? "text-dim-fg" : "text-fg"}`}>
       {value}
     </div>
   );
@@ -177,9 +147,7 @@ function Body0({ head, sub, muted }) {
   return (
     <div className="flex h-full flex-col justify-between">
       <Headline value={head} muted={muted} />
-      <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--muted-fg)" }}>
-        {sub}
-      </div>
+      <div className="text-[12.5px] leading-[1.5] text-muted-fg">{sub}</div>
     </div>
   );
 }
@@ -191,28 +159,9 @@ function bucketByPriority(issues) {
     if (counts.has(name)) counts.set(name, counts.get(name) + 1);
     else counts.set("Unset", (counts.get("Unset") ?? 0) + 1);
   }
-  return PRIORITY_ORDER.map(({ name, color }) => ({
+  return PRIORITY_ORDER.map(({ name, tone }) => ({
     name,
-    color,
+    tone,
     count: counts.get(name) ?? 0,
   }));
 }
-
-const meta = {
-  fontFamily: "var(--font-mono)",
-  fontSize: 10,
-  color: "var(--muted-fg)",
-  letterSpacing: "0.4px",
-  textTransform: "uppercase",
-};
-const ctaLink = {
-  display: "inline-block",
-  marginTop: 8,
-  fontFamily: "var(--font-mono)",
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.5px",
-  textTransform: "uppercase",
-  color: "var(--accent)",
-  textDecoration: "none",
-};

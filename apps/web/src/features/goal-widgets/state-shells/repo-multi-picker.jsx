@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Checkbox, Pill } from "@/components/ui";
+import { X } from "lucide-react";
+import { Badge, Button, Checkbox } from "@/components/ui";
 import { useRepoOptions } from "@/features/integrations";
 
 /**
@@ -52,28 +53,12 @@ function toSelection(value) {
   return [];
 }
 
-export function RepoMultiPicker({ value, onChange, onBlur, variant = "light" }) {
+export function RepoMultiPicker({ value, onChange, onBlur }) {
   const { options, recentSet, isLoading, connected } = useRepoOptions();
   const [query, setQuery] = useState("");
 
   const selected = useMemo(() => toSelection(value), [value]);
   const selectedSet = useMemo(() => new Set(selected), [selected]);
-
-  const light = variant === "light";
-  const mutedColor = light ? "rgba(255,255,255,0.72)" : "var(--muted-fg)";
-  const inputStyle = {
-    fontFamily: "var(--font-mono)",
-    fontSize: 11,
-    color: light ? "#ffffff" : "var(--fg)",
-    background: light ? "rgba(255,255,255,0.08)" : "var(--card-alt)",
-    border: light
-      ? "1px solid rgba(255,255,255,0.22)"
-      : "1px solid var(--border)",
-    borderRadius: "var(--radius-sub)",
-    padding: "6px 8px",
-    width: "100%",
-    outline: "none",
-  };
 
   // Selects/checkboxes commit immediately when the collector saves on
   // blur — same convention as the `select` kind in QuestionField.
@@ -113,20 +98,15 @@ export function RepoMultiPicker({ value, onChange, onBlur, variant = "light" }) 
   }, [options, trimmedQuery]);
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-2">
       {selected.length > 0 ? (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-1.5">
           {selected.map((slug) => (
-            <button
-              key={slug}
-              type="button"
-              onClick={() => toggle(slug)}
-              title={`Remove ${slug}`}
-              className="inline-flex"
-            >
-              <Pill tone="accent" mono>
-                {slug} ✕
-              </Pill>
+            <button key={slug} type="button" onClick={() => toggle(slug)} title={`Remove ${slug}`} className="inline-flex">
+              <Badge tone="lav">
+                {slug}
+                <X size={11} />
+              </Badge>
             </button>
           ))}
         </div>
@@ -136,9 +116,7 @@ export function RepoMultiPicker({ value, onChange, onBlur, variant = "light" }) 
         <input
           type="text"
           value={query}
-          placeholder={
-            options.length > 0 ? "Filter or type owner/name…" : "owner/name"
-          }
+          placeholder={options.length > 0 ? "Filter or type owner/name…" : "owner/name"}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && canAddQuery) {
@@ -146,59 +124,27 @@ export function RepoMultiPicker({ value, onChange, onBlur, variant = "light" }) 
               addFromQuery();
             }
           }}
-          style={inputStyle}
+          className="w-full rounded-[var(--radius-lg)] bg-card-alt px-3 py-2 text-[13.5px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
           aria-label="Filter repositories or type owner/name to add"
         />
-        <button
-          type="button"
-          onClick={addFromQuery}
-          disabled={!canAddQuery}
-          className="shrink-0 rounded-[var(--radius-sub)] px-2 py-1.5 font-bold uppercase disabled:cursor-not-allowed disabled:opacity-40"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            letterSpacing: "0.4px",
-            background: light ? "rgba(255,255,255,0.14)" : "var(--card-alt)",
-            color: light ? "#ffffff" : "var(--fg)",
-            border: light
-              ? "1px solid rgba(255,255,255,0.22)"
-              : "1px solid var(--border)",
-          }}
-        >
+        <Button type="button" variant="soft" size="sm" onClick={addFromQuery} disabled={!canAddQuery}>
           Add
-        </button>
+        </Button>
       </div>
 
       {filtered.length > 0 ? (
-        <ul
-          className="flex max-h-36 flex-col gap-0.5 overflow-y-auto pr-1"
-          aria-label="Repositories"
-        >
+        <ul className="flex max-h-36 flex-col gap-1 overflow-y-auto pr-1" aria-label="Repositories">
           {filtered.map((slug) => {
             const checked = selectedSet.has(slug);
             const capped = !checked && selected.length >= MAX_REPOS;
             return (
               <li key={slug}>
                 <label
-                  className="flex cursor-pointer items-center gap-2 rounded-[4px] px-1 py-0.5"
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 11,
-                    color: capped
-                      ? mutedColor
-                      : light
-                        ? "#ffffff"
-                        : "var(--fg)",
-                    opacity: capped ? 0.5 : 1,
-                  }}
+                  className={`flex cursor-pointer items-center gap-2 rounded-[var(--radius-lg)] bg-card-alt px-2.5 py-1.5 text-[13px] text-fg ${capped ? "opacity-50" : ""}`}
                 >
-                  <Checkbox
-                    checked={checked}
-                    onChange={() => (capped ? null : toggle(slug))}
-                    label={slug}
-                  />
+                  <Checkbox checked={checked} onChange={() => (capped ? null : toggle(slug))} label={slug} />
                   <span className="min-w-0 flex-1 truncate">{slug}</span>
-                  {recentSet.has(slug) ? <Pill tone="muted" mono>recent</Pill> : null}
+                  {recentSet.has(slug) ? <Badge>Recent</Badge> : null}
                 </label>
               </li>
             );
@@ -206,14 +152,7 @@ export function RepoMultiPicker({ value, onChange, onBlur, variant = "light" }) 
         </ul>
       ) : null}
 
-      <div
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 9.5,
-          color: mutedColor,
-          lineHeight: 1.4,
-        }}
-      >
+      <div className="text-[12px] leading-[1.4] text-muted-fg">
         {isLoading
           ? "Loading your repositories…"
           : !connected && options.length === 0

@@ -24,17 +24,7 @@ export const dynamic = "force-dynamic";
 export default function Page() {
   return (
     <AuthGuard>
-      <main
-        style={{
-          minHeight: "100vh",
-          background: "var(--bg)",
-          color: "var(--fg)",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <TotpSetupForm />
-      </main>
+      <TotpSetupForm />
     </AuthGuard>
   );
 }

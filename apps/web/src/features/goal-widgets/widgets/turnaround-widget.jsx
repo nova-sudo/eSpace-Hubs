@@ -1,5 +1,6 @@
 "use client";
 
+import { Badge, Bars } from "@/components/ui";
 import { fmtDays } from "@/lib/fmt";
 import { WidgetShell, TargetChip } from "../widget-shell";
 import { useDataSource } from "../data-sources/use-data-source";
@@ -13,7 +14,6 @@ export function TurnaroundWidget({ spec, goal, variant = "light", className, onR
   const histogram = data?.histogram || [];
   const target = spec.source?.target;
   const meets = target && median != null ? evalTarget(median, target) : null;
-  const maxBin = Math.max(...histogram.map((b) => b.n), 1);
 
   // Publish the live reading so the tier grader scores off this value.
   usePublishGoalReading(
@@ -43,70 +43,23 @@ export function TurnaroundWidget({ spec, goal, variant = "light", className, onR
     >
       <div className="flex h-full flex-col justify-between gap-2">
         <div className="flex items-baseline gap-2">
-          <div
-            className="font-semibold leading-none"
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 48,
-              letterSpacing: "-1.6px",
-            }}
-          >
+          <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
             {error ? "!" : isLoading ? "…" : fmtDays(median)}
           </div>
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              color: variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)",
-            }}
-          >
-            median
-          </div>
+          <span className="text-[13px] text-muted-fg">median</span>
           {meets != null ? (
-            <div
-              className="ml-auto uppercase tracking-[0.5px]"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                color: meets ? "var(--accent-2)" : "rgba(255,255,255,0.7)",
-              }}
-            >
-              {meets ? "on target" : "over target"}
-            </div>
+            <Badge tone={meets ? "mint" : "peach"} className="ml-auto">
+              {meets ? "On target" : "Over target"}
+            </Badge>
           ) : null}
         </div>
-        <div className="flex items-end gap-[3px]" style={{ height: 42 }}>
-          {histogram.map((b) => {
-            const h = Math.max(2, (b.n / maxBin) * 40);
-            return (
-              <div
-                key={b.label}
-                className="flex flex-1 flex-col items-center gap-1"
-                title={`${b.label}: ${b.n}`}
-              >
-                <div
-                  className="w-full rounded-t-[2px]"
-                  style={{
-                    height: h,
-                    background:
-                      variant === "light"
-                        ? "rgba(255,255,255,0.6)"
-                        : "var(--accent-dim)",
-                  }}
-                />
-                <span
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 8.5,
-                    color:
-                      variant === "light" ? "rgba(255,255,255,0.6)" : "var(--dim-fg)",
-                  }}
-                >
-                  {b.label}
-                </span>
-              </div>
-            );
-          })}
+        <Bars data={histogram.map((b) => ({ n: b.n, label: b.label }))} height={56} />
+        <div className="flex gap-[3px]">
+          {histogram.map((b) => (
+            <span key={b.label} className="flex-1 text-center text-[11px] text-dim-fg">
+              {b.label}
+            </span>
+          ))}
         </div>
         <ComplianceLine goalId={goal?.id} variant={variant} />
       </div>

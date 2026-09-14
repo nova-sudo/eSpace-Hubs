@@ -29,17 +29,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api-client";
 import { useSession } from "@/features/auth";
 import {
+  Badge,
   Button,
   Field as UiField,
   Input,
-  MonoLabel,
+  Label,
   PageHeader,
-  Pill as UiPill,
   Select,
 } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { CAPABILITIES } from "@espace-devhub/shared/capabilities";
 import { HUB_ORDER } from "@espace-devhub/shared/hubs";
 
@@ -100,11 +102,10 @@ export function AdminUsers() {
 
   if (!canManage) {
     return (
-      <main className="relative z-[2] mx-auto max-w-3xl px-4 sm:px-10 pb-14 pt-10">
+      <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
         <PageHeader
           crumb="Admin · user management"
           title="Not authorised."
-          italicWord="authorised"
           subtitle={`This view requires the ${CAPABILITIES.ADMIN_USERS_MANAGE} capability. Ask your org admin to extend your roles.`}
         />
       </main>
@@ -112,11 +113,10 @@ export function AdminUsers() {
   }
 
   return (
-    <main className="relative z-[2] mx-auto max-w-5xl px-4 sm:px-10 pb-14 pt-10">
+    <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
       <PageHeader
         crumb="Admin · user management"
         title="Members of your org."
-        italicWord="org"
         subtitle={
           <>
             Click a row to edit roles, status, hub access, and who they report
@@ -126,12 +126,7 @@ export function AdminUsers() {
           </>
         }
         right={
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            onClick={() => setInviteOpen(true)}
-          >
+          <Button type="button" variant="ink" size="sm" onClick={() => setInviteOpen(true)}>
             + Invite user
           </Button>
         }
@@ -150,19 +145,9 @@ export function AdminUsers() {
       <SignupCodesPanel />
 
       {loading ? (
-        <div
-          className="text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}
-        >
-          Loading…
-        </div>
+        <div className="text-[12px] text-muted-fg">Loading…</div>
       ) : users.length === 0 ? (
-        <div
-          className="text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}
-        >
-          No users found for this org.
-        </div>
+        <div className="text-[12px] text-muted-fg">No users found for this org.</div>
       ) : (
         <>
           {/* Pending-approval queue surfaced at the top so self-sign-ups
@@ -176,16 +161,7 @@ export function AdminUsers() {
             sessionUserId={sessionUser?.id}
           />
           <div className="flex flex-col gap-2">
-            <h2
-              className="mt-6 mb-2 font-bold uppercase text-fg"
-              style={{
-                fontFamily: "var(--font-dot)",
-                fontSize: 18,
-                letterSpacing: "0.5px",
-              }}
-            >
-              Members
-            </h2>
+            <h2 className="mt-6 mb-2 text-[18px] font-bold tracking-[-0.01em]">Members</h2>
             {users.map((u) => (
               <UserRow
                 key={u.id}
@@ -213,18 +189,9 @@ function PendingApprovalsSection({ users, openUserId, onExpand, onUpdate, sessio
   if (pending.length === 0) return null;
   return (
     <section className="mt-2">
-      <div className="mb-2 flex items-baseline justify-between">
-        <h2
-          className="uppercase tracking-[1.5px]"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 11,
-            color: "var(--warn)",
-          }}
-        >
-          Pending approvals · {pending.length}
-        </h2>
-        <MonoLabel>self-sign-ups awaiting role + hub</MonoLabel>
+      <div className="mb-2 flex items-baseline gap-2">
+        <Badge tone="lemon">Pending approvals · {pending.length}</Badge>
+        <Label>self-sign-ups awaiting role + hub</Label>
       </div>
       <div className="flex flex-col gap-2">
         {pending.map((u) => (
@@ -307,38 +274,25 @@ function SignupCodesPanel() {
   }
 
   return (
-    <section
-      className="mb-6 rounded-[var(--radius-tile)] border bg-card"
-      style={{ borderColor: "var(--border-strong)" }}
-    >
+    <section className="mb-6 rounded-[var(--radius-xl)] bg-card" style={{ boxShadow: "var(--shadow-card)" }}>
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center justify-between gap-4 px-5 py-3 text-left transition-colors hover:bg-accent-dim/20"
+        className="flex w-full items-center justify-between gap-4 px-5 py-3.5 text-left transition-colors hover:bg-card-alt"
       >
         <div className="flex items-baseline gap-3">
-          <span className="text-[14px] font-semibold" style={{ letterSpacing: "-0.2px" }}>
-            Signup codes
-          </span>
-          <span
-            className="text-muted-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-          >
+          <span className="text-[14.5px] font-bold">Signup codes</span>
+          <span className="text-[11px] text-muted-fg">
             {loading ? "loading…" : `${codes.filter((c) => !c.disabledAt).length} active · ${codes.length} total`}
           </span>
         </div>
-        <span
-          className="text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-        >
-          {expanded ? "▾" : "▸"}
-        </span>
+        {expanded ? <ChevronDown size={15} className="text-dim-fg" /> : <ChevronRight size={15} className="text-dim-fg" />}
       </button>
       {expanded ? (
-        <div className="border-t px-5 py-4" style={{ borderColor: "var(--border)" }}>
+        <div className="border-t border-line px-5 py-4">
           <p className="mb-3 text-[12.5px] leading-[1.55] text-muted-fg">
             Distribute these codes out-of-band to people who should be
-            able to create accounts via <code>/signup</code>. Each
+            able to create accounts via <code className="font-mono">/signup</code>. Each
             signup attempt validates the code; disabled / expired codes
             are rejected.
           </p>
@@ -350,11 +304,7 @@ function SignupCodesPanel() {
                 onChange={(e) => setNewCode(e.target.value)}
                 placeholder="ESPACE-2026"
                 disabled={submitting}
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  textTransform: "uppercase",
-                  letterSpacing: "1px",
-                }}
+                className="font-mono tracking-[0.05em]"
               />
             </UiField>
             <UiField label="Expires (optional)" className="flex-1 min-w-[180px]">
@@ -365,21 +315,13 @@ function SignupCodesPanel() {
                 disabled={submitting}
               />
             </UiField>
-            <Button
-              type="submit"
-              variant="primary"
-              size="sm"
-              disabled={!newCode.trim() || submitting}
-            >
+            <Button type="submit" variant="ink" size="sm" disabled={!newCode.trim() || submitting}>
               {submitting ? "Minting…" : "+ Mint code"}
             </Button>
           </form>
 
           {codes.length === 0 ? (
-            <div
-              className="text-muted-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-            >
+            <div className="text-[11px] text-muted-fg">
               No codes yet. Mint one above to enable self-serve signup.
             </div>
           ) : (
@@ -401,35 +343,20 @@ function SignupCodeRow({ code, onToggle }) {
   const dim = isDisabled || isExpired;
   return (
     <li
-      className="flex flex-wrap items-baseline justify-between gap-2 rounded-[var(--radius-sub)] px-3 py-2"
-      style={{
-        background: "var(--card-alt)",
-        opacity: dim ? 0.55 : 1,
-      }}
+      className={cn(
+        "flex flex-wrap items-baseline justify-between gap-2 rounded-[var(--radius-lg)] bg-card-alt px-3 py-2.5",
+        dim && "opacity-55",
+      )}
     >
       <div className="flex items-baseline gap-3">
-        <code
-          className="font-semibold text-accent"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 13,
-            letterSpacing: "0.4px",
-            textTransform: "uppercase",
-          }}
-        >
+        <code className="font-mono text-[13px] font-bold tracking-[0.04em] text-fg">
           {code.code}
         </code>
-        <MonoLabel>used {code.usedCount}×</MonoLabel>
-        {isExpired ? (
-          <UiPill tone="bad">EXPIRED</UiPill>
-        ) : null}
-        {isDisabled ? (
-          <UiPill tone="muted">DISABLED</UiPill>
-        ) : null}
+        <Label>used {code.usedCount}×</Label>
+        {isExpired ? <Badge tone="peach">Expired</Badge> : null}
+        {isDisabled ? <Badge>Disabled</Badge> : null}
         {code.expiresAt && !isExpired ? (
-          <MonoLabel>
-            expires {new Date(code.expiresAt).toLocaleDateString()}
-          </MonoLabel>
+          <Label>expires {new Date(code.expiresAt).toLocaleDateString()}</Label>
         ) : null}
       </div>
       <Button type="button" variant="ghost" size="sm" onClick={onToggle}>
@@ -441,44 +368,20 @@ function SignupCodeRow({ code, onToggle }) {
 
 function UserRow({ user, isSelf, expanded, onExpand, onUpdate, allUsers }) {
   return (
-    <div
-      className="rounded-[var(--radius-tile)] border bg-card"
-      style={{ borderColor: "var(--border-strong)" }}
-    >
+    <div className="rounded-[var(--radius-xl)] bg-card" style={{ boxShadow: "var(--shadow-card)" }}>
       <button
         type="button"
         onClick={onExpand}
-        className="flex w-full items-center justify-between gap-4 px-5 py-3 text-left transition-colors hover:bg-accent-dim/20"
+        className="flex w-full items-center justify-between gap-4 px-5 py-3.5 text-left transition-colors hover:bg-card-alt"
       >
-        <div className="flex flex-1 items-baseline gap-3">
-          <span className="text-[14px] font-bold text-fg">
-            {user.displayName}
-          </span>
-          <span
-            className="truncate text-muted-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-          >
-            {user.email}
-          </span>
-          {isSelf ? (
-            <UiPill tone="accent" className="border border-accent bg-transparent">
-              You
-            </UiPill>
-          ) : null}
+        <div className="flex flex-1 flex-wrap items-baseline gap-3">
+          <span className="text-[14.5px] font-bold text-fg">{user.displayName}</span>
+          <span className="truncate text-[11px] text-muted-fg">{user.email}</span>
+          {isSelf ? <Badge tone="lav">You</Badge> : null}
         </div>
-        <StatusPill status={user.status} />
-        <span
-          className="text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-        >
-          {user.roles.join(" · ")}
-        </span>
-        <span
-          className="ml-3 text-dim-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-        >
-          {expanded ? "▾" : "▸"}
-        </span>
+        <StatusBadge status={user.status} />
+        <span className="text-[11px] text-muted-fg">{user.roles.join(" · ")}</span>
+        {expanded ? <ChevronDown size={15} className="ml-3 text-dim-fg" /> : <ChevronRight size={15} className="ml-3 text-dim-fg" />}
       </button>
 
       {expanded ? (
@@ -666,23 +569,18 @@ function UserEditor({ user, isSelf, onUpdate, allUsers }) {
   }
 
   return (
-    <div
-      className="border-t px-5 py-5"
-      style={{ borderColor: "var(--border)" }}
-    >
-      <div className="grid grid-cols-2 gap-5">
-        <Field label="Display name">
+    <div className="border-t border-line px-5 py-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <UiField label="Display name">
           <Input
             type="text"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             disabled={saving}
-            mono
           />
-        </Field>
-        <Field label="Status">
+        </UiField>
+        <UiField label="Status">
           <Select
-            tone="default"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
             disabled={saving}
@@ -695,15 +593,12 @@ function UserEditor({ user, isSelf, onUpdate, allUsers }) {
               </option>
             ))}
           </Select>
-        </Field>
+        </UiField>
       </div>
 
       <div className="mt-5">
-        <FieldLabel>Roles</FieldLabel>
-        <p
-          className="mt-1 text-muted-fg"
-          style={{ fontSize: 11.5, lineHeight: 1.5 }}
-        >
+        <Label>Roles</Label>
+        <p className="mt-1 text-[11.5px] leading-[1.5] text-muted-fg">
           A user can hold multiple roles. Their effective capabilities
           are the union across all of them. {isSelf ? "You can't remove your own admin role." : null}
         </p>
@@ -715,47 +610,33 @@ function UserEditor({ user, isSelf, onUpdate, allUsers }) {
               (isSelf && r === "admin" && checked) || // self can't drop admin
               (roles.length === 1 && checked); // can't drop the last
             return (
-              <Pill
-                key={r}
-                checked={checked}
-                disabled={disabled}
-                onClick={() => toggleRole(r)}
-              >
+              <TogglePill key={r} checked={checked} disabled={disabled} onClick={() => toggleRole(r)}>
                 {r}
-              </Pill>
+              </TogglePill>
             );
           })}
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-5">
+      <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div>
-          <FieldLabel>Allowed hubs</FieldLabel>
-          <p
-            className="mt-1 text-muted-fg"
-            style={{ fontSize: 11.5, lineHeight: 1.5 }}
-          >
+          <Label>Allowed hubs</Label>
+          <p className="mt-1 text-[11.5px] leading-[1.5] text-muted-fg">
             Hubs this user can switch into. Hub access is also gated
             by capabilities — granting an unsupported hub here just
             hides it server-side at /hubs/me time.
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {HUB_ORDER.map((h) => (
-              <Pill
-                key={h}
-                checked={allowedHubs.includes(h)}
-                disabled={saving}
-                onClick={() => toggleHub(h)}
-              >
+              <TogglePill key={h} checked={allowedHubs.includes(h)} disabled={saving} onClick={() => toggleHub(h)}>
                 {h}
-              </Pill>
+              </TogglePill>
             ))}
           </div>
         </div>
 
-        <Field label="Primary hub">
+        <UiField label="Primary hub">
           <Select
-            tone="default"
             value={primaryHub ?? ""}
             onChange={(e) => setPrimaryHub(e.target.value || null)}
             disabled={saving}
@@ -768,16 +649,15 @@ function UserEditor({ user, isSelf, onUpdate, allUsers }) {
               </option>
             ))}
           </Select>
-        </Field>
+        </UiField>
 
         {/* Engagement — which client/project this user belongs to.
             Drives which env-prefixed integration config the API
             resolves for their data fetches (eSpace's Jira vs.
             Crealogix's Jira, etc.). Add a new value here in lockstep
             with the API's ALL_ENGAGEMENTS enum. */}
-        <Field label="Engagement">
+        <UiField label="Engagement">
           <Select
-            tone="default"
             value={engagement}
             onChange={(e) => setEngagement(e.target.value)}
             disabled={saving}
@@ -786,15 +666,14 @@ function UserEditor({ user, isSelf, onUpdate, allUsers }) {
             <option value="espace">eSpace</option>
             <option value="crealogix">Crealogix</option>
           </Select>
-        </Field>
+        </UiField>
 
         {/* Manager assignment (P5). Sets users.managerId — the report edge
             the Manager hub reads. Until Zoho populates it, this is how a
             manager gets a team. Candidates are everyone else in the org;
             those already holding the manager role are tagged. */}
-        <Field label="Manager">
+        <UiField label="Manager">
           <Select
-            tone="default"
             value={managerId ?? ""}
             onChange={(e) => setManagerId(e.target.value || null)}
             disabled={saving}
@@ -810,10 +689,10 @@ function UserEditor({ user, isSelf, onUpdate, allUsers }) {
                 </option>
               ))}
           </Select>
-        </Field>
+        </UiField>
       </div>
 
-      <div className="mt-6 flex items-center justify-between gap-4">
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
         <UserMeta user={user} />
         <div className="flex items-center gap-2">
           {/* Reset-TOTP — only shown when the user actually has TOTP
@@ -846,7 +725,7 @@ function UserEditor({ user, isSelf, onUpdate, allUsers }) {
           </Button>
           <Button
             type="button"
-            variant="primary"
+            variant="ink"
             size="sm"
             onClick={handleSave}
             disabled={!dirty || saving}
@@ -868,101 +747,41 @@ function UserMeta({ user }) {
     user.hasPassword ? "password set" : "no password",
     user.onboardingCompletedAt ? "onboarded" : "onboarding pending",
   ];
-  return (
-    <div
-      className="text-muted-fg"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 10.5,
-        letterSpacing: "0.2px",
-      }}
-    >
-      {items.join(" · ")}
-    </div>
-  );
+  return <div className="text-[11px] text-muted-fg">{items.join(" · ")}</div>;
 }
 
-function Field({ label, children }) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <FieldLabel>{label}</FieldLabel>
-      {children}
-    </label>
-  );
-}
-
-function FieldLabel({ children }) {
-  return (
-    <span
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 10,
-        letterSpacing: "0.5px",
-        color: "var(--muted-fg)",
-        textTransform: "uppercase",
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
-function Pill({ checked, disabled, onClick, children }) {
+function TogglePill({ checked, disabled, onClick, children }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 11,
-        fontWeight: 600,
-        letterSpacing: "0.3px",
-        padding: "4px 10px",
-        borderRadius: "var(--radius-sub)",
-        cursor: disabled ? "not-allowed" : "pointer",
-        background: checked ? "var(--accent)" : "transparent",
-        color: checked ? "var(--accent-on, #fff)" : "var(--muted-fg)",
-        border: checked ? "1px solid var(--accent)" : "1px solid var(--border-strong)",
-        opacity: disabled ? 0.55 : 1,
-      }}
+      className={cn(
+        "rounded-[var(--radius-pill)] px-2.5 py-1 text-[11px] font-semibold transition-colors",
+        checked ? "bg-ink text-ink-on" : "bg-card-alt text-muted-fg",
+        disabled && "cursor-not-allowed opacity-55",
+      )}
     >
       {children}
     </button>
   );
 }
 
-function StatusPill({ status }) {
+function StatusBadge({ status }) {
   // pending_admin is the self-sign-up "awaiting approval" state —
-  // use the amber/warning tone so admins can spot the queue at a
-  // glance in the user list.
-  const color =
+  // lemon so admins can spot the queue at a glance in the user list.
+  const tone =
     status === "active"
-      ? "var(--good)"
+      ? "mint"
       : status === "invited"
-        ? "var(--accent)"
+        ? "sky"
         : status === "pending_admin"
-          ? "var(--warn)"
-          : "var(--bad)";
+          ? "lemon"
+          : "peach";
   return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 9.5,
-        letterSpacing: "0.5px",
-        textTransform: "uppercase",
-        color,
-        border: `1px solid ${color}`,
-      }}
-    >
-      <span
-        aria-hidden="true"
-        className="inline-block h-1.5 w-1.5 rounded-full"
-        style={{ background: color }}
-      />
+    <Badge tone={tone} dot>
       {status === "pending_admin" ? "pending" : status}
-    </span>
+    </Badge>
   );
 }
 
@@ -1031,17 +850,7 @@ function InviteDialog({ onClose, onSuccess }) {
     <div
       role="dialog"
       aria-modal="true"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "color-mix(in srgb, var(--bg) 55%, transparent)",
-        backdropFilter: "blur(6px)",
-        WebkitBackdropFilter: "blur(6px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 50,
-      }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-fg/40"
       onClick={(e) => {
         // Click outside the inner card → close. Don't close when the
         // form itself bubbles a click up to the backdrop.
@@ -1050,35 +859,16 @@ function InviteDialog({ onClose, onSuccess }) {
     >
       <form
         onSubmit={handleSubmit}
-        className="rounded-[var(--radius-tile)] border bg-card p-6"
-        style={{
-          borderColor: "var(--border-strong)",
-          width: 460,
-          maxWidth: "92vw",
-        }}
+        className="w-[460px] max-w-[92vw] rounded-[var(--radius-xl)] bg-card p-6"
+        style={{ boxShadow: "var(--shadow-float)" }}
       >
-        <div className="mb-3 flex items-center gap-2">
-          <span
-            aria-hidden="true"
-            className="inline-block h-1.5 w-1.5 rounded-full"
-            style={{ background: "var(--accent)" }}
-          />
-          <MonoLabel>Invite new user</MonoLabel>
-        </div>
-        <h2
-          className="mb-4 font-bold uppercase text-fg"
-          style={{
-            fontFamily: "var(--font-dot)",
-            fontSize: 22,
-            letterSpacing: "0.5px",
-            lineHeight: 1.05,
-          }}
-        >
+        <Label>Invite new user</Label>
+        <h2 className="mb-4 mt-2 text-[18px] font-bold tracking-[-0.01em]">
           One-time setup link.
         </h2>
 
         <div className="flex flex-col gap-4">
-          <Field label="Email">
+          <UiField label="Email">
             <Input
               type="email"
               value={email}
@@ -1088,8 +878,8 @@ function InviteDialog({ onClose, onSuccess }) {
               required
               placeholder="name@example.com"
             />
-          </Field>
-          <Field label="Display name">
+          </UiField>
+          <UiField label="Display name">
             <Input
               type="text"
               value={displayName}
@@ -1098,30 +888,21 @@ function InviteDialog({ onClose, onSuccess }) {
               required
               placeholder="Full name as they should appear"
             />
-          </Field>
+          </UiField>
           <div>
-            <FieldLabel>Roles</FieldLabel>
-            <p
-              className="mt-1 text-muted-fg"
-              style={{ fontSize: 11.5, lineHeight: 1.5 }}
-            >
+            <Label>Roles</Label>
+            <p className="mt-1 text-[11.5px] leading-[1.5] text-muted-fg">
               They can hold multiple. Capabilities are the union across
               roles. Adjust later from the row editor.
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {ALL_ROLES.map((r) => {
                 const checked = roles.includes(r);
-                const disabled =
-                  submitting || (roles.length === 1 && checked);
+                const disabled = submitting || (roles.length === 1 && checked);
                 return (
-                  <Pill
-                    key={r}
-                    checked={checked}
-                    disabled={disabled}
-                    onClick={() => toggleRole(r)}
-                  >
+                  <TogglePill key={r} checked={checked} disabled={disabled} onClick={() => toggleRole(r)}>
                     {r}
-                  </Pill>
+                  </TogglePill>
                 );
               })}
             </div>
@@ -1129,29 +910,16 @@ function InviteDialog({ onClose, onSuccess }) {
         </div>
 
         {error ? (
-          <div
-            className="mt-4"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11.5,
-              color: "var(--bad)",
-            }}
-          >
+          <div className="mt-4 rounded-[var(--radius-lg)] bg-peach px-3.5 py-2.5 text-[11.5px] text-peach-ink">
             {error}
           </div>
         ) : null}
 
         <div className="mt-6 flex justify-end gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={onClose}
-            disabled={submitting}
-          >
+          <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button type="submit" variant="primary" size="sm" disabled={submitting}>
+          <Button type="submit" variant="ink" size="sm" disabled={submitting}>
             {submitting ? "Sending…" : "Send invite"}
           </Button>
         </div>

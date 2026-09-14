@@ -10,10 +10,14 @@
  * achievement-tier verdict — lives per-card via GoalTierBadge, where it's
  * honest about which goals have actually been graded.
  *
+ * Not currently mounted by IntelligencePage (the Focus layout replaced it),
+ * kept as the Sprint-2 "summarise with AI" integration seam.
+ *
  * `ruleBasedNarrative()` stays exported as the fallback for any future
  * on-demand "summarise with AI" affordance.
  */
 
+import { Card, Label } from "@/components/ui";
 import { HEALTH } from "./status";
 
 const WORST_REASON = {
@@ -104,72 +108,26 @@ export function StatusNarrative({ summary, queue }) {
   const { headline, detail } = ruleBasedNarrative(summary, queue);
   const attentionMode = summary.attention > 0;
 
-  // Big dot-matrix stat: how many need you, over total. Calm → all-on-pace.
-  const statNum = attentionMode
-    ? summary.attention
-    : summary.onPace + summary.auto;
-  const statStr = String(statNum).padStart(2, "0");
+  const statNum = attentionMode ? summary.attention : summary.onPace + summary.auto;
   const statLabel = attentionMode ? "Need your attention" : "All on pace";
-  const statLabelColor = attentionMode ? "var(--bad)" : "var(--good)";
 
   return (
-    <div
-      className="relative overflow-hidden rounded-[var(--radius-tile)] border border-border"
-      style={{
-        backgroundColor: "var(--card)",
-        // Nothing's signature halftone dot-grid, faded toward the right.
-        backgroundImage: "radial-gradient(var(--dot-dim) 1px, transparent 1px)",
-        backgroundSize: "9px 9px",
-      }}
-    >
-      <div className="flex flex-col gap-5 px-6 py-5 sm:flex-row sm:items-center sm:gap-7">
-        {/* Left — the dot-matrix stat block */}
-        <div className="flex shrink-0 flex-col gap-2">
-          <span
-            className="uppercase tracking-[1.5px] text-muted-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-          >
-            Where you stand
+    <Card padding={24} className="flex flex-col gap-5 sm:flex-row sm:items-center sm:gap-7">
+      <div className="flex shrink-0 flex-col gap-1.5">
+        <Label>Where you stand</Label>
+        <div className="flex items-end gap-1.5">
+          <span className="text-[44px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg">
+            {statNum}
           </span>
-          <div className="flex items-end gap-1" style={{ fontFamily: "var(--font-dot)", fontWeight: 900, lineHeight: 0.8 }}>
-            <span style={{ fontSize: 52, color: "var(--accent)" }}>{statStr}</span>
-            <span style={{ fontSize: 24, color: "var(--dim-fg)", paddingBottom: 2 }}>
-              /{summary.total}
-            </span>
-          </div>
-          <span
-            className="uppercase tracking-[1.5px]"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: statLabelColor }}
-          >
-            {statLabel}
-          </span>
+          <span className="pb-0.5 text-[18px] font-semibold text-dim-fg">/{summary.total}</span>
         </div>
-
-        {/* Dashed hairline divider — vertical on wide, horizontal on narrow */}
-        <div
-          aria-hidden="true"
-          className="hidden self-stretch sm:block"
-          style={{ borderLeft: "1px dashed var(--border-strong)" }}
-        />
-        <div
-          aria-hidden="true"
-          className="block h-0 w-full sm:hidden"
-          style={{ borderTop: "1px dashed var(--border-strong)" }}
-        />
-
-        {/* Right — the narrative */}
-        <div className="min-w-0 flex-1">
-          <div
-            className="font-semibold text-fg"
-            style={{ fontFamily: "var(--font-display)", fontSize: 20, lineHeight: 1.25, letterSpacing: "-0.3px" }}
-          >
-            {headline}
-          </div>
-          {detail ? (
-            <div className="mt-1.5 text-[13px] leading-[1.5] text-muted-fg">{detail}</div>
-          ) : null}
-        </div>
+        <Label>{statLabel}</Label>
       </div>
-    </div>
+
+      <div className="min-w-0 flex-1 border-t border-line pt-4 sm:border-l sm:border-t-0 sm:pl-7 sm:pt-0">
+        <div className="text-[18px] font-bold leading-[1.3] tracking-[-0.01em] text-fg">{headline}</div>
+        {detail ? <div className="mt-1.5 text-[13px] leading-[1.5] text-muted-fg">{detail}</div> : null}
+      </div>
+    </Card>
   );
 }

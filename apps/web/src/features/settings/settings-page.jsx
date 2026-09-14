@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Button, PageHeader } from "@/components/ui";
+import { ArrowLeft } from "lucide-react";
+import { Button, PageHeader, SegmentedControl } from "@/components/ui";
 import { useSession } from "@/features/auth";
 import { useActiveHub, useHubLink } from "@/features/hubs";
-import { cn } from "@/lib/cn";
 import {
   AccountTab,
   CompanionTab,
@@ -98,14 +98,12 @@ export function SettingsPage() {
     ? {
         crumb: "Settings · your tokens, your data",
         title: "Your keys. Your terms.",
-        italicWord: "terms",
         subtitle:
           "Provider tokens are encrypted at rest and only ever used to fetch your own data. Goals, check-ins, and grades are stored in your account so they follow you across devices.",
       }
     : {
         crumb: "Settings · your account",
         title: "Your account.",
-        italicWord: "account",
         subtitle:
           "Manage your sign-in, security, and account. Org configuration lives under Hubs.",
       };
@@ -115,58 +113,29 @@ export function SettingsPage() {
       <PageHeader
         crumb={header.crumb}
         title={header.title}
-        italicWord={header.italicWord}
         subtitle={header.subtitle}
         right={
           <Link href={link("")}>
-            <Button variant="ghost">← Home</Button>
+            <Button variant="ghost">
+              <ArrowLeft size={15} />
+              Home
+            </Button>
           </Link>
         }
       />
 
-      {/* #239: real tab semantics (tablist/tab/tabpanel + aria-selected)
-          so the selected state isn't conveyed by styling alone; the
-          sidebar stacks on phones (a 220px fixed rail at 380px left a
-          sliver for content — F10's finding). */}
-      <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-[220px_minmax(0,1fr)] md:gap-8">
-        <nav
-          role="tablist"
-          aria-orientation="vertical"
-          aria-label="Settings sections"
-          className="flex flex-row flex-wrap gap-0.5 md:sticky md:top-20 md:flex-col"
-        >
-          {tabs.map(({ id, label }) => {
-            const active = activeTab.id === id;
-            return (
-              <button
-                key={id}
-                role="tab"
-                aria-selected={active}
-                aria-controls={`settings-panel-${activeTab.id}`}
-                onClick={() => setTab(id)}
-                className={cn(
-                  "cursor-pointer px-3.5 py-2.5 text-left uppercase tracking-[0.5px] transition-colors",
-                  active
-                    ? "bg-accent-dim text-accent"
-                    : "bg-transparent text-fg hover:bg-accent-dim/50",
-                )}
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  borderLeft: active
-                    ? "2px solid var(--accent)"
-                    : "2px solid transparent",
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </nav>
-        <div role="tabpanel" id={`settings-panel-${activeTab.id}`}>
-          <ActivePanel />
-        </div>
+      {/* #239: real tab semantics via SegmentedControl (role="tablist" /
+          role="tab" + aria-selected), so the selected state isn't
+          conveyed by styling alone. */}
+      <div className="mb-6">
+        <SegmentedControl
+          options={tabs.map(({ id, label }) => ({ value: id, label }))}
+          value={activeTab.id}
+          onChange={setTab}
+        />
+      </div>
+      <div role="tabpanel" id={`settings-panel-${activeTab.id}`}>
+        <ActivePanel />
       </div>
     </main>
   );

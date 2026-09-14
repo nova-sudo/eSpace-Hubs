@@ -1,25 +1,32 @@
 /**
- * The four tier colors + their badge foregrounds — one map, imported by
- * goal-tier-ui and tier-move (a shared leaf so the two UI files don't
- * import each other).
+ * The tier → token map — one place that says which tint carries each
+ * achievement tier, imported by goal-tier-ui and tier-move (a shared leaf
+ * so the two UI files don't import each other).
  *
- * Foreground note (F9 G2.4): white text on `over_achieved` (#00c48a)
- * and `role_model` (#f59e0b) measures 2.27:1 / 2.15:1 — an outright
- * WCAG AA failure on exactly the rungs the product celebrates reaching.
- * A dark foreground on those two measures ~8.7:1 / ~9.2:1; the two
- * darker fills keep white (6.5:1 / 6.7:1).
+ * Every tier resolves to a token PAIR (surface + ink), matching a `Badge`
+ * tone: not_achieved → peach, achieved → mint, over_achieved → sky,
+ * role_model → lav. An unknown/ungraded tier falls back to the neutral
+ * (card-alt / muted-fg) pair.
  */
 
-export const TIER_COLOR = {
-  not_achieved: "#b91c1c", // bad
-  achieved: "#1D4ED8", // accent
-  over_achieved: "#00c48a", // accent-2
-  role_model: "#f59e0b", // amber — exemplary
+const TIER_TOKENS = {
+  not_achieved: { tone: "peach", surface: "var(--peach)", ink: "var(--peach-ink)" },
+  achieved: { tone: "mint", surface: "var(--mint)", ink: "var(--mint-ink)" },
+  over_achieved: { tone: "sky", surface: "var(--sky)", ink: "var(--sky-ink)" },
+  role_model: { tone: "lav", surface: "var(--lav)", ink: "var(--lav-ink)" },
 };
 
-/** Foreground to pair with TIER_COLOR[tier] as a solid fill. */
+const NEUTRAL_TOKENS = { tone: "neutral", surface: "var(--card-alt)", ink: "var(--muted-fg)" };
+
+/** Tier id -> { tone, surface, ink } token pair. Unknown tiers read neutral. */
+export const TIER_COLOR = TIER_TOKENS;
+
+/** The ink token to pair with TIER_COLOR[tier] as text on its surface. */
 export function tierBadgeFg(tier) {
-  return tier === "over_achieved" || tier === "role_model"
-    ? "#0a0a0a"
-    : "#ffffff";
+  return (TIER_TOKENS[tier] || NEUTRAL_TOKENS).ink;
+}
+
+/** The `<Badge tone={...}>` name for a tier id. Unknown tiers -> "neutral". */
+export function tierTone(tier) {
+  return (TIER_TOKENS[tier] || NEUTRAL_TOKENS).tone;
 }

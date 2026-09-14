@@ -27,8 +27,8 @@
  * Phase 1 feeds the existing, unmodified COMPOSED schema, so a rich document
  * genuinely cannot survive intact (one cadence, one flat field list). That
  * lossiness is acceptable only because it's *surfaced*: `unrepresented` renders
- * in the same amber banner family as the long-standing `seeded` warning — one
- * visual vocabulary for "the AI wasn't sure / couldn't carry this", never two.
+ * in the same "we weren't sure" banner family as the long-standing `seeded`
+ * warning — one visual vocabulary, never two.
  *
  * Automatic fields. A composed spec may now contain fields the server fills
  * from the user's GitHub/GitLab, and those queries need things only the user
@@ -52,7 +52,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
-import { FileText, Paperclip, X } from "lucide-react";
+import { FileText, Paperclip, Sparkles, X } from "lucide-react";
 import {
   ATTACHMENT_ACCEPT,
   ATTACHMENT_MAX_BYTES,
@@ -63,8 +63,7 @@ import { saveSpec } from "@/features/goal-specs";
 import { clearGoalEntries, deriveCycleEndIso, toIsoDay } from "@/features/goal-inputs";
 import { clearGoalLocks } from "@/features/goal-locks";
 import { apiPost } from "@/lib/api-client";
-import { cn } from "@/lib/cn";
-import { DitherDisc } from "@/components/ui";
+import { Badge, Button, IconButton, Label } from "@/components/ui";
 import { useIsContextComplete } from "@/features/goal-context";
 import { ContextCollector } from "./state-shells/context-collector";
 import { WidgetErrorBoundary } from "./widget-error-boundary";
@@ -262,7 +261,8 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
       // composes from the typed description instead of retrying extraction
       // forever. Without this the error copy ("…or describe it below") is a
       // lie for the scanned-PDF case: the button would just re-extract, fail,
-      // and re-extract, and the only way out is spotting the chip's ✕.
+      // and re-extract, and the only way out is spotting the chip's remove
+      // control.
       setExtractFailed(true);
       setError(err?.message || String(err));
       setPhase(PHASE.INPUT);
@@ -436,66 +436,27 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) requestClose();
       }}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 60,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 20,
-        background: "rgba(0,0,0,0.55)",
-        backdropFilter: "blur(2px)",
-      }}
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-fg/40 p-5"
     >
       <div
-        className="flex max-h-[86vh] w-full max-w-[560px] flex-col overflow-hidden rounded-[var(--radius-tile)]"
-        style={{
-          background: "var(--card)",
-          border: "1px solid var(--border-strong)",
-          boxShadow: "rgba(0,0,0,0.35) 0px 24px 72px",
-        }}
+        className="flex max-h-[86vh] w-full max-w-[560px] flex-col overflow-hidden rounded-[var(--radius-xl)] bg-card"
+        style={{ boxShadow: "var(--shadow-float)" }}
       >
         {/* Header */}
-        <div
-          className="flex items-center justify-between gap-3 border-b px-4 py-3"
-          style={{ borderColor: "var(--border)" }}
-        >
+        <div className="flex items-center justify-between gap-3 border-b border-line px-6 py-4">
           <div className="min-w-0">
-            <div
-              className="uppercase tracking-[0.5px]"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)" }}
-            >
-              Build your own tracker
-            </div>
-            <div
-              className="truncate font-semibold"
-              style={{ fontFamily: "var(--font-display)", fontSize: 16, letterSpacing: "-0.3px" }}
-              title={goalTitle}
-            >
+            <Label>Build your own tracker</Label>
+            <div className="truncate text-[18px] font-bold tracking-[-0.01em] text-fg" title={goalTitle}>
               {goalTitle}
             </div>
           </div>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={requestClose}
-            className="rounded-[var(--radius-sub)] px-2.5 py-1 transition-opacity hover:opacity-80"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              letterSpacing: "0.5px",
-              border: "1px solid var(--border-strong)",
-              color: "var(--muted-fg)",
-              background: "transparent",
-            }}
-          >
-            ✕ ESC
-          </button>
+          <IconButton label="Close" onCard onClick={requestClose}>
+            <X size={16} />
+          </IconButton>
         </div>
 
         {/* Body */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
           {/* Phase transitions are otherwise silent for screen readers. */}
           <div role="status" aria-live="polite" className="sr-only">
             {PHASE_ANNOUNCEMENT[phase]}
@@ -530,12 +491,7 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
             />
           ) : (
             <>
-              <label
-                className="mb-1.5 block uppercase tracking-[0.5px]"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted-fg)" }}
-              >
-                How do you want to track this goal?
-              </label>
+              <Label className="mb-1.5 block">How do you want to track this goal?</Label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -547,16 +503,7 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
                     ? "Add anything the document doesn't cover (optional)."
                     : 'e.g. "Each quarter I want to log how many chapters I read — target 5 — plus a short note on what I read."'
                 }
-                className="w-full rounded-[var(--radius-sub)] p-2.5 outline-none focus:border-accent"
-                style={{
-                  fontFamily: "var(--font-sans)",
-                  fontSize: 13.5,
-                  lineHeight: 1.55,
-                  color: "var(--fg)",
-                  background: "var(--card-alt)",
-                  border: "1px solid var(--border)",
-                  resize: "vertical",
-                }}
+                className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt p-3 text-[14px] leading-[1.5] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
               />
 
               {file ? (
@@ -587,10 +534,7 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
                 className="hidden"
               />
 
-              <div
-                className="mt-1.5"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--dim-fg)", lineHeight: 1.5 }}
-              >
+              <div className="mt-2 text-[12.5px] leading-[1.5] text-muted-fg">
                 Say what you'd record and how often. The AI turns it into a fillable
                 tracker — with per-period windows (weekly / monthly / quarterly) if
                 you mention a cadence.
@@ -599,60 +543,50 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
           )}
 
           {error ? (
-            <div
-              className="mt-2.5"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--bad)", lineHeight: 1.45 }}
-            >
-              {error}
-            </div>
+            <div className="mt-3 text-[13px] leading-[1.45] text-peach-ink">{error}</div>
           ) : null}
         </div>
 
         {/* Footer actions */}
-        <div
-          className="flex items-center justify-between gap-2 border-t px-4 py-3"
-          style={{ borderColor: "var(--border)" }}
-        >
+        <div className="flex items-center justify-between gap-2 border-t border-line px-6 py-4">
           {phase === PHASE.CONTEXT ? (
             <>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   setError(null);
                   setPhase(PHASE.PREVIEW);
                 }}
-                className="uppercase tracking-[0.5px] transition-opacity hover:opacity-80"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--muted-fg)", background: "transparent" }}
               >
-                ← Back to tracker
-              </button>
+                Back to tracker
+              </Button>
               {/* No primary action here on purpose: the collector owns its own
                   submit, and a second "done" button beside it would be two
                   controls for one intent — one of which wouldn't commit the
                   answers. */}
-              <span
-                className="uppercase tracking-[0.4px]"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--dim-fg)" }}
-              >
+              <span className="text-[12px] font-semibold text-dim-fg">
                 Answers save with the form above
               </span>
             </>
           ) : phase === PHASE.PREVIEW ? (
             <>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   setPhase(PHASE.INPUT);
                   setPreview(null);
                   setError(null);
                 }}
-                className="uppercase tracking-[0.5px] transition-opacity hover:opacity-80"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--muted-fg)", background: "transparent" }}
               >
-                ← Re-describe
-              </button>
-              <button
+                Re-describe
+              </Button>
+              <Button
                 type="button"
+                variant="ink"
                 onClick={
                   needsContext
                     ? () => {
@@ -662,112 +596,63 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
                     : handleUse
                 }
                 disabled={saving}
-                className="rounded-[var(--radius-sub)] px-4 py-2 font-bold uppercase transition-[filter] hover:brightness-110"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
-                  letterSpacing: "0.5px",
-                  color: "var(--accent-on)",
-                  background: "var(--accent)",
-                  border: "1px solid var(--accent)",
-                  opacity: saving ? 0.6 : 1,
-                  cursor: saving ? "wait" : "pointer",
-                }}
               >
                 {saving
                   ? "Submitting…"
                   : needsContext
-                    ? "Set up auto-fill →"
-                    : "Submit for approval →"}
-              </button>
+                    ? "Set up auto-fill"
+                    : "Submit for approval"}
+              </Button>
             </>
           ) : phase === PHASE.EXTRACTING ? (
             <>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => extractAbortRef.current?.abort()}
-                className="uppercase tracking-[0.5px] transition-opacity hover:opacity-80"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--muted-fg)", background: "transparent" }}
               >
                 Cancel upload
-              </button>
-              <button
-                type="button"
-                disabled
-                className="rounded-[var(--radius-sub)] px-4 py-2 font-bold uppercase"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
-                  letterSpacing: "0.5px",
-                  color: "var(--accent-on)",
-                  background: "var(--accent)",
-                  border: "1px solid var(--accent)",
-                  opacity: 0.55,
-                  cursor: "wait",
-                }}
-              >
+              </Button>
+              <Button type="button" variant="ink" disabled>
                 Reading…
-              </button>
+              </Button>
             </>
           ) : phase === PHASE.EXTRACT_REVIEW ? (
             <>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   setPhase(PHASE.INPUT);
                   setError(null);
                 }}
-                className="uppercase tracking-[0.5px] transition-opacity hover:opacity-80"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--muted-fg)", background: "transparent" }}
               >
-                ← Back
-              </button>
-              <button
+                Back
+              </Button>
+              <Button
                 type="button"
+                variant="ink"
                 onClick={handleGenerate}
                 disabled={extractText.trim().length === 0}
-                className="rounded-[var(--radius-sub)] px-4 py-2 font-bold uppercase transition-[filter] hover:brightness-110"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
-                  letterSpacing: "0.5px",
-                  color: "var(--accent-on)",
-                  background: "var(--accent)",
-                  border: "1px solid var(--accent)",
-                  opacity: extractText.trim().length === 0 ? 0.55 : 1,
-                }}
               >
-                Looks good →
-              </button>
+                Looks good
+              </Button>
             </>
           ) : (
             <>
-              <button
-                type="button"
-                onClick={requestClose}
-                className="uppercase tracking-[0.5px] transition-opacity hover:opacity-80"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--muted-fg)", background: "transparent" }}
-              >
+              <Button type="button" variant="ghost" size="sm" onClick={requestClose}>
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="ink"
                 onClick={handleGenerate}
                 disabled={busy || !canGenerate}
-                className="rounded-[var(--radius-sub)] px-4 py-2 font-bold uppercase transition-[filter] hover:brightness-110"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
-                  letterSpacing: "0.5px",
-                  color: "var(--accent-on)",
-                  background: "var(--accent)",
-                  border: "1px solid var(--accent)",
-                  opacity: busy || !canGenerate ? 0.55 : 1,
-                  cursor: busy ? "wait" : "pointer",
-                }}
               >
-                {busy ? "Designing…" : "Generate tracker →"}
-              </button>
+                {busy ? "Designing…" : "Generate tracker"}
+              </Button>
             </>
           )}
         </div>
@@ -778,23 +663,14 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
 }
 
 /**
- * Amber "we weren't sure" banner. Every uncertainty signal in this modal —
- * the AI fell back to a generic tracker, part of a document didn't fit, the
- * extractor flattened something — renders through this one component so users
- * learn a single visual vocabulary instead of three.
+ * "We weren't sure" banner. Every uncertainty signal in this modal — the AI
+ * fell back to a generic tracker, part of a document didn't fit, the
+ * extractor flattened something — renders through this one component so
+ * users learn a single visual vocabulary instead of three.
  */
 function WarnBanner({ children }) {
   return (
-    <div
-      className="rounded-[var(--radius-sub)] px-2.5 py-2"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 10,
-        lineHeight: 1.5,
-        color: "var(--warn)",
-        background: "color-mix(in srgb, var(--warn) 12%, transparent)",
-      }}
-    >
+    <div className="rounded-[var(--radius-lg)] bg-lemon px-3 py-2.5 text-[12.5px] leading-[1.5] text-lemon-ink">
       {children}
     </div>
   );
@@ -806,8 +682,7 @@ function WarnBanner({ children }) {
  * Deliberately a thin wrapper: the collector is mounted as-is, with no
  * `onReclassify` (re-running the classifier here would throw away the tracker
  * the user just approved of) and no `onCompose` (they are already inside the
- * composer). `variant="dark"` matches the modal's card surface — the inverse
- * theme belongs to the indigo analyst section, not here.
+ * composer).
  */
 function ContextPanel({ spec, goal, onSaved }) {
   const count = spec.context?.questions?.length || 0;
@@ -815,15 +690,12 @@ function ContextPanel({ spec, goal, onSaved }) {
   // state is local, so a fresh mount is the only way back to a usable form.
   const [retryKey, setRetryKey] = useState(0);
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="flex flex-col gap-3">
       <div>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 15, letterSpacing: "-0.2px" }}>
+        <h2 className="text-[18px] font-bold tracking-[-0.01em] text-fg">
           {count === 1 ? "One thing we need from you" : `${count} things we need from you`}
         </h2>
-        <div
-          className="mt-1"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--dim-fg)", lineHeight: 1.5 }}
-        >
+        <div className="mt-1 text-[12.5px] leading-[1.5] text-muted-fg">
           Some fields fill themselves from your repository. We can&apos;t guess
           which repo you mean, so answer these once and every automatic field
           reuses them.
@@ -833,13 +705,7 @@ function ContextPanel({ spec, goal, onSaved }) {
           a single question's save path took down the whole modal instead of
           just this panel. */}
       <WidgetErrorBoundary onRetry={() => setRetryKey((k) => k + 1)}>
-        <ContextCollector
-          key={retryKey}
-          spec={spec}
-          goal={goal}
-          variant="dark"
-          onSaved={onSaved}
-        />
+        <ContextCollector key={retryKey} spec={spec} goal={goal} onSaved={onSaved} />
       </WidgetErrorBoundary>
     </div>
   );
@@ -870,18 +736,12 @@ function AttachDropZone({ onPick, onDropFile, disabled }) {
         onDropFile(e.dataTransfer.files?.[0]);
       }}
       disabled={disabled}
-      className={cn(
-        "mt-2 flex w-full items-center justify-center gap-2 rounded-[var(--radius-sub)] border border-dashed px-3 py-2.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-        over ? "border-accent bg-accent-dim" : "border-border-strong bg-card-alt hover:border-accent",
-      )}
+      className={`mt-2.5 flex w-full items-center justify-center gap-2 rounded-[var(--radius-lg)] px-3 py-3 text-[12.5px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+        over ? "bg-lav text-lav-ink" : "bg-card-alt text-muted-fg hover:text-fg"
+      }`}
     >
-      <Paperclip className="h-3.5 w-3.5 text-accent" />
-      <span
-        className="uppercase tracking-[0.4px]"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted-fg)" }}
-      >
-        Attach a plan — PDF · DOCX · XLSX · XLS · CSV, up to 10 MB
-      </span>
+      <Paperclip size={14} />
+      Attach a plan — PDF, DOCX, XLSX, XLS or CSV, up to 10 MB
     </button>
   );
 }
@@ -889,26 +749,15 @@ function AttachDropZone({ onPick, onDropFile, disabled }) {
 /** The attached file, as an explicit chip with a real, labelled remove control. */
 function FileChip({ file, read, onRemove, disabled }) {
   return (
-    <div
-      className="mt-2 flex items-center gap-2 rounded-[var(--radius-sub)] px-2.5 py-2"
-      style={{ background: "var(--card-alt)", border: "1px solid var(--border)" }}
-    >
-      <FileText className="h-3.5 w-3.5 shrink-0 text-accent" />
-      <span className="min-w-0 flex-1 truncate" style={{ fontFamily: "var(--font-sans)", fontSize: 12.5 }} title={file.name}>
+    <div className="mt-2.5 flex items-center gap-2 rounded-[var(--radius-lg)] bg-card-alt px-3 py-2.5">
+      <FileText size={15} className="shrink-0 text-muted-fg" />
+      <span className="min-w-0 flex-1 truncate text-[13px] text-fg" title={file.name}>
         {file.name}
       </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--dim-fg)" }}>
-        {read ? `read · ${formatBytes(file.size)}` : formatBytes(file.size)}
-      </span>
-      <button
-        type="button"
-        onClick={onRemove}
-        disabled={disabled}
-        aria-label={`Remove ${file.name}`}
-        className="shrink-0 rounded-full p-1 text-dim-fg transition-colors hover:text-fg disabled:opacity-50"
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
+      <Badge>{read ? `Read · ${formatBytes(file.size)}` : formatBytes(file.size)}</Badge>
+      <IconButton label={`Remove ${file.name}`} size="sm" onCard onClick={onRemove} disabled={disabled}>
+        <X size={13} />
+      </IconButton>
     </div>
   );
 }
@@ -921,19 +770,14 @@ function FileChip({ file, read, onRemove, disabled }) {
 function ExtractingPanel({ filename }) {
   return (
     <div className="flex flex-col items-center gap-2 py-10 text-center">
-      <FileText className="h-5 w-5 animate-pulse text-accent" />
-      <div style={{ fontFamily: "var(--font-display)", fontSize: 15, letterSpacing: "-0.2px" }}>
-        Reading your document…
-      </div>
+      <FileText size={22} className="animate-pulse text-muted-fg" />
+      <div className="text-[18px] font-bold tracking-[-0.01em] text-fg">Reading your document…</div>
       {filename ? (
-        <div className="max-w-full truncate" style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted-fg)" }} title={filename}>
+        <div className="max-w-full truncate text-[12.5px] text-muted-fg" title={filename}>
           {filename}
         </div>
       ) : null}
-      <div
-        className="max-w-[380px]"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--dim-fg)", lineHeight: 1.55 }}
-      >
+      <div className="max-w-[380px] text-[12.5px] leading-[1.55] text-muted-fg">
         We pull the text out on the server and throw the file away — it's never
         stored. You'll get to read and edit the text before anything is sent to
         the AI.
@@ -968,22 +812,11 @@ function DesigningPanel() {
   }, []);
   return (
     <div className="flex flex-col items-center gap-3 py-10 text-center">
-      <div className="h-14 w-14 animate-pulse text-accent">
-        <DitherDisc size={56} cell={4} density={0.9} />
-      </div>
-      <div style={{ fontFamily: "var(--font-display)", fontSize: 15, letterSpacing: "-0.2px" }}>
-        Designing your tracker…
-      </div>
-      <div
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          color: "var(--muted-fg)",
-          minHeight: 14,
-        }}
-      >
-        {DESIGNING_STEPS[step]}
-      </div>
+      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-lav">
+        <Sparkles size={18} className="text-lav-ink" />
+      </span>
+      <div className="text-[18px] font-bold tracking-[-0.01em] text-fg">Designing your tracker…</div>
+      <div className="min-h-[16px] text-[12.5px] text-muted-fg">{DESIGNING_STEPS[step]}</div>
     </div>
   );
 }
@@ -997,27 +830,23 @@ function DesigningPanel() {
  */
 function ExtractReview({ headingRef, extracted, text, onChange }) {
   const warnings = extracted?.warnings || [];
-  // Neutral "what I read" counts. Kept out of the amber banner deliberately:
+  // Neutral "what I read" counts. Kept out of the WarnBanner deliberately:
   // the extractors emit one of these on every successful run, so routing them
   // through WarnBanner would make the warning state fire 100% of the time and
   // stop carrying any signal by the time a real one (a dropped table, a
   // skipped sheet) appears.
   const info = extracted?.info || [];
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="flex flex-col gap-3">
       <div>
         <h2
           ref={headingRef}
           tabIndex={-1}
-          className="outline-none"
-          style={{ fontFamily: "var(--font-display)", fontSize: 15, letterSpacing: "-0.2px" }}
+          className="text-[18px] font-bold tracking-[-0.01em] text-fg outline-none"
         >
           Here's what we read
         </h2>
-        <div
-          className="mt-1"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--dim-fg)", lineHeight: 1.5 }}
-        >
+        <div className="mt-1 text-[12.5px] leading-[1.5] text-muted-fg">
           {extracted?.sourceFilename ? `${extracted.sourceFilename} · ` : ""}
           {text.length.toLocaleString()} characters. Fix anything that came out
           wrong, or delete what you don't want sent.
@@ -1034,20 +863,13 @@ function ExtractReview({ headingRef, extracted, text, onChange }) {
       {warnings.length > 0 ? (
         <WarnBanner>
           {warnings.map((w, i) => (
-            <div key={i}>⚠ {w}</div>
+            <div key={i}>{w}</div>
           ))}
         </WarnBanner>
       ) : null}
 
       {info.length > 0 ? (
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9.5,
-            color: "var(--dim-fg)",
-            lineHeight: 1.6,
-          }}
-        >
+        <div className="text-[12.5px] leading-[1.6] text-muted-fg">
           {info.map((line, i) => (
             <div key={i}>{line}</div>
           ))}
@@ -1062,16 +884,7 @@ function ExtractReview({ headingRef, extracted, text, onChange }) {
         value={text}
         onChange={(e) => onChange(e.target.value)}
         rows={14}
-        className="w-full rounded-[var(--radius-sub)] p-2.5 outline-none focus:border-accent"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 11.5,
-          lineHeight: 1.55,
-          color: "var(--fg)",
-          background: "var(--card-alt)",
-          border: "1px solid var(--border)",
-          resize: "vertical",
-        }}
+        className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt p-3 text-[12.5px] leading-[1.55] text-fg outline-none focus:ring-2 focus:ring-ink"
       />
     </div>
   );
@@ -1108,7 +921,7 @@ function SpecPreview({ preview, needsContext }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Same amber family as every other "this isn't finished" signal — the
+      {/* Same "we weren't sure" family as every other unfinished signal — the
           setup questions are a gate, and a gate the user only discovers by
           pressing the primary button is a gate they experience as a bug. */}
       {needsContext ? (
@@ -1130,7 +943,7 @@ function SpecPreview({ preview, needsContext }) {
           can't fit. Listing what fell out is what keeps that honest. */}
       {unrepresented.length > 0 ? (
         <WarnBanner>
-          <div className="mb-1 font-bold uppercase tracking-[0.4px]">
+          <div className="mb-1 font-bold">
             {unrepresented.length} part{unrepresented.length === 1 ? "" : "s"} of your
             document didn&apos;t fit this tracker
           </div>
@@ -1146,40 +959,22 @@ function SpecPreview({ preview, needsContext }) {
       ) : null}
 
       <div className="flex items-center gap-2">
-        <span
-          className="inline-flex items-center rounded-full px-2 py-[2px] font-semibold uppercase"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9.5,
-            letterSpacing: "0.4px",
-            background: "var(--accent-dim)",
-            color: "var(--accent)",
-          }}
-        >
-          {cadence ? `${cadence} record` : "single record"}
-        </span>
+        <Badge tone="lav">{cadence ? `${cadence} record` : "Single record"}</Badge>
         {prompt ? (
-          <span
-            className="min-w-0 truncate"
-            style={{ fontFamily: "var(--font-sans)", fontSize: 12.5, color: "var(--muted-fg)" }}
-            title={prompt}
-          >
+          <span className="min-w-0 truncate text-[12.5px] text-muted-fg" title={prompt}>
             {prompt}
           </span>
         ) : null}
       </div>
 
       <div>
-        <div
-          className="mb-1.5 uppercase tracking-[0.5px]"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)" }}
-        >
+        <Label className="mb-1.5 block">
           {autoCount > 0 && autoCount < fields.length
             ? `You'll log ${fields.length - autoCount} field${fields.length - autoCount === 1 ? "" : "s"} each ${cadence || "time"} — ${autoCount} fill${autoCount === 1 ? "s" : ""} automatically`
             : autoCount > 0 && autoCount === fields.length
               ? `All ${fields.length} field${fields.length === 1 ? "" : "s"} fill automatically`
               : `You'll log ${fields.length} field${fields.length === 1 ? "" : "s"} each ${cadence || "time"}`}
-        </div>
+        </Label>
         <div className="flex flex-col gap-1.5">
           {fields.map((f) => {
             const auto = isAutoField(f);
@@ -1189,40 +984,24 @@ function SpecPreview({ preview, needsContext }) {
             // can only accept.
             const sentence = auto ? describeSource(f.source) : null;
             return (
-              <div
-                key={f.id}
-                className="flex flex-col gap-0.5 rounded-[var(--radius-sub)] px-2.5 py-1.5"
-                style={{ background: "var(--card-alt)", border: "1px solid var(--border)" }}
-              >
+              <div key={f.id} className="flex flex-col gap-0.5 rounded-[var(--radius-lg)] bg-card-alt px-3 py-2">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate" style={{ fontFamily: "var(--font-sans)", fontSize: 13 }} title={f.label}>
+                  <span className="min-w-0 truncate text-[13px] text-fg" title={f.label}>
                     {f.label}
-                    {f.unit ? (
-                      <span style={{ color: "var(--dim-fg)" }}> ({f.unit})</span>
-                    ) : null}
+                    {f.unit ? <span className="text-dim-fg"> ({f.unit})</span> : null}
                   </span>
-                  <span
-                    className="shrink-0 uppercase"
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 9,
-                      color: auto ? "var(--accent)" : "var(--dim-fg)",
-                      letterSpacing: "0.4px",
-                    }}
-                  >
-                    {auto
-                      ? "auto · read-only"
-                      : f.target
+                  {auto ? (
+                    <Badge tone="lav">Auto · read-only</Badge>
+                  ) : (
+                    <span className="shrink-0 text-[11.5px] font-semibold text-dim-fg">
+                      {f.target
                         ? `${KIND_HINT[f.kind] || f.kind} · ${f.target.op}${f.target.value}`
                         : KIND_HINT[f.kind] || f.kind}
-                  </span>
+                    </span>
+                  )}
                 </div>
                 {sentence ? (
-                  <span
-                    style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--dim-fg)", lineHeight: 1.45 }}
-                  >
-                    {sentence}
-                  </span>
+                  <span className="text-[12px] leading-[1.45] text-muted-fg">{sentence}</span>
                 ) : null}
               </div>
             );
@@ -1232,13 +1011,8 @@ function SpecPreview({ preview, needsContext }) {
 
       {tiers ? (
         <div>
-          <div
-            className="mb-1.5 uppercase tracking-[0.5px]"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)" }}
-          >
-            Achievement tiers
-          </div>
-          <div className="flex flex-col gap-1" style={{ fontFamily: "var(--font-sans)", fontSize: 12, lineHeight: 1.45 }}>
+          <Label className="mb-1.5 block">Achievement tiers</Label>
+          <div className="flex flex-col gap-1 text-[13px] leading-[1.45]">
             {[
               ["Achieved", tiers.achieved],
               ["Over-achieved", tiers.overAchieved],
@@ -1247,10 +1021,8 @@ function SpecPreview({ preview, needsContext }) {
               .filter(([, v]) => v)
               .map(([label, v]) => (
                 <div key={label}>
-                  <span style={{ color: "var(--muted-fg)", fontFamily: "var(--font-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.4px", marginRight: 6 }}>
-                    {label}
-                  </span>
-                  <span style={{ color: "var(--fg)" }}>{v}</span>
+                  <span className="mr-1.5 text-[12px] font-semibold text-muted-fg">{label}</span>
+                  <span className="text-fg">{v}</span>
                 </div>
               ))}
           </div>

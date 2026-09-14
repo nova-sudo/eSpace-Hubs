@@ -4,23 +4,23 @@
  * Top-left drill-down badges — a vertical stack of always-visible
  * ticket-shaped links for the active top-level tab.
  *
- * The top-level tabs in the header (Performance · Goals · Evidence ·
- * Settings) each can have utility / drill-down routes that don't deserve
- * top-level chrome. We surface those here as a "slab" of badges pinned
- * to the left edge, just under the header:
+ * The top-level tabs in the header (Intelligence / Team / Overview) each
+ * can have utility / drill-down routes that don't deserve top-level
+ * chrome. We surface those here as a "slab" of badges pinned to the left
+ * edge, just under the header:
  *
- *   Performance → Reviews log, Snapshots
- *   Goals        → (none → hidden)
- *   Evidence     → (none → hidden)
- *   Settings     → (none → hidden)
+ *   Dashboard → Reviews log, Snapshots
+ *   Goals     → (none → hidden)
+ *   Evidence  → (none → hidden)
+ *   Settings  → (none → hidden)
  *
- * Visual: each badge is a tall narrow accent-blue pill, rounded only on
- * the right (left edge is flush with the viewport). The label is set
- * vertically — `writing-mode: vertical-rl` so it reads top-to-bottom
- * down the strip. Stacked with a hairline gap so the slab reads as
- * "row of tabs" rather than one solid block. The badge matching the
- * current route is filled accent; the others are slightly translucent
- * so the stack also serves as a breadcrumb when on a drill-down.
+ * Visual: each badge is a tall narrow pill, rounded only on the right
+ * (left edge is flush with the viewport). The label is set vertically —
+ * `writing-mode: vertical-rl` so it reads top-to-bottom down the strip.
+ * Stacked with a gap so the slab reads as "row of tabs" rather than one
+ * solid block. The badge matching the current route is filled ink; the
+ * others sit on `card-alt` so the stack also serves as a breadcrumb when
+ * on a drill-down.
  *
  * No expand/collapse — every internal tab is one click away at all
  * times. Hidden entirely on tabs that have no drill-downs.
@@ -68,11 +68,11 @@ export function SubTabsTag() {
 
   return (
     <div
-      // Pinned just under the header (which is `sticky top-0` and ~57px tall).
+      // Pinned just under the header (which is `sticky top-0` and 72px tall).
       // z-15 lifts above the dashboard content but stays below the analyst
       // overlay (z-20+) and the command palette (z-100).
-      className="fixed left-0 z-[15] flex flex-col items-start gap-[3px]"
-      style={{ top: 76 }}
+      className="fixed left-0 z-[15] flex flex-col items-start gap-1.5"
+      style={{ top: 80 }}
     >
       {items.map((it) => {
         const active =
@@ -92,9 +92,7 @@ export function SubTabsTag() {
  * viewport edge). Label set in `writing-mode: vertical-rl` so it reads
  * top-to-bottom down the strip — natural for a left-pinned tab.
  *
- * Hover nudges the badge ~3px right so it feels alive. `box-shadow` is
- * fine here (no clip-path), but we still use `filter: drop-shadow` so
- * the elevation matches the rest of the dashboard chrome.
+ * Hover nudges the badge a few px right so it feels alive.
  */
 function Badge({ href, label, active }) {
   return (
@@ -102,51 +100,21 @@ function Badge({ href, label, active }) {
       href={href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "group flex flex-col items-center gap-2 transition-all hover:translate-x-[3px]",
-        // Rounded only on the right side — the left edge is flush against
-        // the viewport, so left corners stay square.
-        "rounded-r-md",
+        "group flex flex-col items-center gap-2 rounded-r-[var(--radius-lg)] py-3.5 transition-all hover:translate-x-[3px]",
         // Narrow vertical strip with comfortable padding around the
         // rotated label. Fixed dimensions keep every badge identical so
         // the slab reads as a coherent group.
-        "py-3.5",
-        active ? "text-accent-on" : "text-accent-on/85 hover:text-accent-on",
+        active ? "bg-ink text-ink-on" : "bg-card-alt text-muted-fg hover:text-fg",
       )}
-      style={{
-        // Accent-derived, not hard-coded Electric indigo — the badges
-        // must follow the per-hub accent (dev green, qa orange, …).
-        background: active
-          ? "var(--accent)"
-          : "color-mix(in srgb, var(--accent) 82%, transparent)",
-        width: 30,
-        minHeight: 132,
-        filter: active
-          ? "drop-shadow(0 4px 10px color-mix(in srgb, var(--accent) 32%, transparent))"
-          : "drop-shadow(0 1px 3px color-mix(in srgb, var(--accent) 18%, transparent))",
-        transition:
-          "filter 200ms cubic-bezier(0.22, 0.61, 0.36, 1), transform 200ms cubic-bezier(0.22, 0.61, 0.36, 1), background 200ms cubic-bezier(0.22, 0.61, 0.36, 1)",
-      }}
+      style={{ width: 30, minHeight: 132 }}
     >
       <span
         aria-hidden="true"
-        className="block h-1.5 w-1.5 shrink-0 rounded-full"
-        style={{
-          background: active ? "#fff" : "rgba(255,255,255,0.7)",
-        }}
+        className={cn("block h-1.5 w-1.5 shrink-0 rounded-full", active ? "bg-ink-on" : "bg-current")}
       />
       <span
-        className="font-bold uppercase"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          letterSpacing: "1px",
-          // Vertical text running top-to-bottom down the strip. `vertical-rl`
-          // is the standard way to lay out vertical Latin text — letters
-          // stay upright but the text "line" runs vertically. Reading
-          // direction is top → bottom so the user's eye scans the slab
-          // naturally from the top of the viewport.
-          writingMode: "vertical-rl",
-        }}
+        className="text-[11px] font-semibold"
+        style={{ writingMode: "vertical-rl" }}
       >
         {label}
       </span>

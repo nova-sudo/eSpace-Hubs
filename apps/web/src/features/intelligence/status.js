@@ -294,20 +294,20 @@ export function computeTrend(snapshots, goalId, spec) {
 }
 
 /**
- * Display metadata per status — label + tone token for chips. `tone` maps
- * to the Pill component's vocabulary (default/accent/solid/warn/ok/muted).
- * `dot` is a hex for the leading status dot, letting the three "attention"
- * states read distinctly even though they share the warn pill tone.
+ * Display metadata per status — label + tint name for the Badge primitive
+ * (mint/sky/lav/peach/lemon/neutral). `dot` is a token reference for the
+ * leading status dot, letting the "attention" states read distinctly even
+ * though they may share a tint.
  */
 export const STATUS_META = Object.freeze({
-  [HEALTH.UNCLASSIFIED]: { label: "Not classified", tone: "muted", dot: "#9ca3af" },
-  [HEALTH.NEEDS_SETUP]: { label: "Needs setup", tone: "muted", dot: "#a855f7" },
-  [HEALTH.AUTO]: { label: "Auto-tracked", tone: "accent", dot: "var(--accent)" },
-  [HEALTH.NO_DATA]: { label: "No data", tone: "warn", dot: "#dc2626" },
-  [HEALTH.STALE]: { label: "Needs update", tone: "warn", dot: "#ea580c" },
-  [HEALTH.BEHIND]: { label: "Behind target", tone: "warn", dot: "#d97706" },
-  [HEALTH.ON_PACE]: { label: "On pace", tone: "ok", dot: "var(--good)" },
-  [HEALTH.LOCKED]: { label: "Finalized", tone: "muted", dot: "#9ca3af" },
+  [HEALTH.UNCLASSIFIED]: { label: "Not classified", tone: "neutral", dot: "var(--dim-fg)" },
+  [HEALTH.NEEDS_SETUP]: { label: "Needs setup", tone: "lemon", dot: "var(--lemon-ink)" },
+  [HEALTH.AUTO]: { label: "Auto-tracked", tone: "lav", dot: "var(--lav-ink)" },
+  [HEALTH.NO_DATA]: { label: "No data", tone: "lemon", dot: "var(--lemon-ink)" },
+  [HEALTH.STALE]: { label: "Needs update", tone: "lemon", dot: "var(--lemon-ink)" },
+  [HEALTH.BEHIND]: { label: "Behind target", tone: "peach", dot: "var(--peach-ink)" },
+  [HEALTH.ON_PACE]: { label: "On pace", tone: "mint", dot: "var(--mint-ink)" },
+  [HEALTH.LOCKED]: { label: "Finalized", tone: "neutral", dot: "var(--dim-fg)" },
 });
 
 /**
@@ -317,7 +317,7 @@ export const STATUS_META = Object.freeze({
  */
 export function statusDisplay(health) {
   if (health?.overdue) {
-    return { label: "Overdue", tone: "warn", dot: "var(--bad)" };
+    return { label: "Overdue", tone: "peach", dot: "var(--peach-ink)" };
   }
   return STATUS_META[health?.status] ?? STATUS_META[HEALTH.NO_DATA];
 }

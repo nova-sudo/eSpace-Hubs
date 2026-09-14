@@ -15,23 +15,13 @@ import { SignupForm } from "@/features/auth";
 export default function SignupPage() {
   const router = useRouter();
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "var(--bg)",
-        color: "var(--fg)",
-        display: "flex",
-        flexDirection: "column",
+    <SignupForm
+      onSuccess={() => {
+        // AuthGuard on the destination will route them through
+        // /totp-setup → /onboarding → /waiting-approval. Land on
+        // the dashboard root so that chain has a starting point.
+        router.replace("/");
       }}
-    >
-      <SignupForm
-        onSuccess={() => {
-          // AuthGuard on the destination will route them through
-          // /totp-setup → /onboarding → /waiting-approval. Land on
-          // the dashboard root so that chain has a starting point.
-          router.replace("/");
-        }}
-      />
-    </main>
+    />
   );
 }

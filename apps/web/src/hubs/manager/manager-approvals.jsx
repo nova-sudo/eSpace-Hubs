@@ -19,7 +19,8 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { MonoLabel, PageHeader } from "@/components/ui";
+import { Check } from "lucide-react";
+import { Badge, Button, Label, PageHeader } from "@/components/ui";
 import { apiPost } from "@/lib/api-client";
 import { useApprovalsQueue } from "./use-approvals-queue";
 
@@ -71,283 +72,207 @@ export function ManagerApprovals() {
   }
 
   return (
-    <main className="relative z-[2] mx-auto max-w-4xl px-4 sm:px-10 pb-16 pt-9">
+    <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
       <PageHeader
         crumb="Build-Your-Own goals · pending your approval"
         title="Custom trackers, on hold."
-        italicWord="hold"
         subtitle="When a report composes their own tracker, it stays inactive until you approve the fields and tiers. Nothing goes live behind your back."
       />
 
-      <div className="mt-2">
-        <MonoLabel>{loading ? "Loading…" : `${items.length} pending`}</MonoLabel>
+      <Label>{loading ? "Loading…" : `${items.length} pending`}</Label>
 
-        <div className="mt-3 grid gap-3">
-          {error ? (
-            <EmptyCard>
-              Couldn't load pending approvals right now. Refresh, or check back
-              in a moment.
-            </EmptyCard>
-          ) : loading ? (
-            <EmptyCard>Loading…</EmptyCard>
-          ) : items.length === 0 ? (
-            <EmptyCard>
-              Nothing's waiting on you. When a report builds their own tracker,
-              it shows up here for approval before it goes live.
-            </EmptyCard>
-          ) : (
-            items.map((item) => {
-              const key = `${item.user.id}:${item.goal.id}`;
-              const showChanges = changesFor === key;
-              const isBusy = busy === key;
-              return (
-                <div
-                  key={key}
-                  className="rounded-md border border-border bg-card p-5"
-                >
-                  <div
-                    className="flex items-center gap-2 text-muted-fg"
-                    style={{ fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: "0.03em" }}
-                  >
-                    <span
-                      className="grid h-5 w-5 flex-none place-items-center rounded-full bg-panel-2"
-                      style={{ fontSize: 9, fontWeight: 700 }}
-                    >
-                      {initials(item.user.displayName)}
-                    </span>
-                    {[item.user.displayName, item.user.role, item.user.department]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </div>
-                  <h3 className="mt-2 text-[16px] font-semibold">
-                    {item.goal.title}
-                  </h3>
+      <div className="mt-3 grid gap-3">
+        {error ? (
+          <EmptyCard>
+            Couldn't load pending approvals right now. Refresh, or check back
+            in a moment.
+          </EmptyCard>
+        ) : loading ? (
+          <EmptyCard>Loading…</EmptyCard>
+        ) : items.length === 0 ? (
+          <EmptyCard>
+            Nothing's waiting on you. When a report builds their own tracker,
+            it shows up here for approval before it goes live.
+          </EmptyCard>
+        ) : (
+          items.map((item) => {
+            const key = `${item.user.id}:${item.goal.id}`;
+            const showChanges = changesFor === key;
+            const isBusy = busy === key;
+            return (
+              <div
+                key={key}
+                className="rounded-[var(--radius-xl)] bg-card p-5"
+                style={{ boxShadow: "var(--shadow-card)" }}
+              >
+                <div className="flex items-center gap-2 text-[11.5px] text-muted-fg">
+                  <span className="grid h-5 w-5 flex-none place-items-center rounded-full bg-card-alt text-[11px] font-bold">
+                    {initials(item.user.displayName)}
+                  </span>
+                  {[item.user.displayName, item.user.role, item.user.department]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </div>
+                <h3 className="mt-2 text-[16px] font-bold">{item.goal.title}</h3>
 
-                  {/* composed spec preview */}
-                  <div className="mt-3 overflow-hidden rounded-md border border-dashed border-border-strong">
-                    <div className="flex items-center gap-2 border-b border-dashed border-border bg-card-alt px-3 py-2">
-                      <span
-                        className="uppercase text-accent"
-                        style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: "0.08em", fontWeight: 700 }}
-                      >
-                        Build-Your-Own tracker
+                {/* composed spec preview */}
+                <div className="mt-3 overflow-hidden rounded-[var(--radius-lg)] bg-card-alt">
+                  <div className="flex items-center gap-2 px-3 py-2.5">
+                    <Badge tone="lav">Build-Your-Own tracker</Badge>
+                    {item.cadence ? (
+                      <span className="ml-auto text-[11px] text-muted-fg">
+                        cadence · {item.cadence}
                       </span>
-                      {item.cadence ? (
+                    ) : null}
+                  </div>
+                  {item.fields.length ? (
+                    <div className="flex flex-wrap gap-2 px-3 pb-3">
+                      {item.fields.map((f, i) => (
                         <span
-                          className="ml-auto text-muted-fg"
-                          style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
+                          key={i}
+                          className="inline-flex items-center gap-2 rounded-[var(--radius-md)] bg-card px-2.5 py-1.5 text-[12.5px]"
                         >
-                          cadence · {item.cadence}
+                          {f.kind ? <Badge tone="lav">{f.kind}</Badge> : null}
+                          {f.label || "—"}
                         </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {/* Fields that read themselves. An AI picked these queries
+                      from an allowlist, partly out of a document someone
+                      uploaded — so the one place a human can catch a query
+                      that shouldn't run is right here, in a sentence. */}
+                  {item.autoFields?.length ? (
+                    <div className="border-t border-line px-3 py-2.5">
+                      <div className="mb-1.5 text-[11px] text-dim-fg">
+                        {item.autoFields.length} field
+                        {item.autoFields.length === 1 ? "" : "s"} read automatically
+                      </div>
+                      <ul className="grid gap-1.5">
+                        {item.autoFields.map((a, i) => (
+                          <li key={i} className="flex items-baseline gap-2 text-[12px] leading-snug">
+                            <Badge tone="lav" className="mt-0.5 flex-none">
+                              auto
+                            </Badge>
+                            <span className="min-w-0 flex-1">
+                              {a.label ? <span className="font-bold">{a.label}</span> : null}
+                              {a.label ? " — " : null}
+                              <span className="text-muted-fg">{a.description}</span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {/* A plan with per-period content is the thing most worth
+                      reviewing — approving "13 weeks of distinct
+                      deliverables" without seeing them is rubber-stamping. */}
+                  {item.periods?.length ? (
+                    <div className="border-t border-line px-3 py-2.5">
+                      <div className="mb-1.5 text-[11px] text-dim-fg">
+                        {item.periods.length} periods, each with its own ask
+                      </div>
+                      <ol className="grid gap-1">
+                        {item.periods.slice(0, 8).map((p, i) => (
+                          <li key={i} className="flex items-baseline gap-2 text-[12px] leading-snug">
+                            <span className="flex-none text-[11px] text-dim-fg">
+                              {String(i + 1).padStart(2, "0")}
+                            </span>
+                            <span className="min-w-0 flex-1 text-muted-fg">{p.label}</span>
+                            {p.dueAt ? (
+                              <span className="flex-none text-[11px] text-dim-fg">{p.dueAt}</span>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ol>
+                      {item.periods.length > 8 ? (
+                        <div className="mt-1.5 text-[11px] text-dim-fg">
+                          + {item.periods.length - 8} more
+                        </div>
                       ) : null}
                     </div>
-                    {item.fields.length ? (
-                      <div className="flex flex-wrap gap-2 p-3">
-                        {item.fields.map((f, i) => (
-                          <span
-                            key={i}
-                            className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-[12.5px]"
-                          >
-                            {f.kind ? (
-                              <span
-                                className="rounded px-1.5 py-0.5 text-accent"
-                                style={{
-                                  fontFamily: "var(--font-mono)",
-                                  fontSize: 9,
-                                  letterSpacing: "0.06em",
-                                  textTransform: "uppercase",
-                                  fontWeight: 700,
-                                  background: "var(--accent-dim)",
-                                }}
-                              >
-                                {f.kind}
-                              </span>
-                            ) : null}
-                            {f.label || "—"}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                    {/* Fields that read themselves. An AI picked these queries
-                        from an allowlist, partly out of a document someone
-                        uploaded — so the one place a human can catch a query
-                        that shouldn't run is right here, in a sentence. */}
-                    {item.autoFields?.length ? (
-                      <div className="border-t border-dashed border-border px-3 py-2.5">
-                        <div
-                          className="mb-1.5 uppercase text-dim-fg"
-                          style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.06em" }}
-                        >
-                          {item.autoFields.length} field
-                          {item.autoFields.length === 1 ? "" : "s"} read automatically
-                        </div>
-                        <ul className="grid gap-1.5">
-                          {item.autoFields.map((a, i) => (
-                            <li key={i} className="flex items-baseline gap-2 text-[12px] leading-snug">
-                              <span
-                                className="mt-0.5 flex-none rounded px-1.5 py-0.5 text-accent"
-                                style={{
-                                  fontFamily: "var(--font-mono)",
-                                  fontSize: 9,
-                                  letterSpacing: "0.06em",
-                                  textTransform: "uppercase",
-                                  fontWeight: 700,
-                                  background: "var(--accent-dim)",
-                                }}
-                              >
-                                auto
-                              </span>
-                              <span className="min-w-0 flex-1">
-                                {a.label ? (
-                                  <span className="font-semibold">{a.label}</span>
-                                ) : null}
-                                {a.label ? " — " : null}
-                                <span className="text-muted-fg">{a.description}</span>
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
+                  ) : null}
 
-                    {/* A plan with per-period content is the thing most worth
-                        reviewing — approving "13 weeks of distinct
-                        deliverables" without seeing them is rubber-stamping. */}
-                    {item.periods?.length ? (
-                      <div className="border-t border-dashed border-border px-3 py-2.5">
-                        <div
-                          className="mb-1.5 uppercase text-dim-fg"
-                          style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.06em" }}
-                        >
-                          {item.periods.length} periods, each with its own ask
-                        </div>
-                        <ol className="grid gap-1">
-                          {item.periods.slice(0, 8).map((p, i) => (
-                            <li
-                              key={i}
-                              className="flex items-baseline gap-2 text-[12px] leading-snug"
-                            >
-                              <span
-                                className="flex-none text-dim-fg"
-                                style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-                              >
-                                {String(i + 1).padStart(2, "0")}
-                              </span>
-                              <span className="min-w-0 flex-1 text-muted-fg">
-                                {p.label}
-                              </span>
-                              {p.dueAt ? (
-                                <span
-                                  className="flex-none text-dim-fg"
-                                  style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-                                >
-                                  {p.dueAt}
-                                </span>
-                              ) : null}
-                            </li>
-                          ))}
-                        </ol>
-                        {item.periods.length > 8 ? (
-                          <div
-                            className="mt-1.5 text-dim-fg"
-                            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-                          >
-                            + {item.periods.length - 8} more
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-
-                    {item.tiers ? (
-                      <div
-                        className="grid gap-px border-t border-dashed border-border"
-                        style={{ gridTemplateColumns: "repeat(2, 1fr)", background: "var(--border)" }}
-                      >
-                        {TIER_ROWS.map(([field, label]) =>
-                          item.tiers[field] ? (
-                            <div key={field} className="bg-card px-3 py-2">
-                              <div
-                                className="uppercase text-dim-fg"
-                                style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.06em" }}
-                              >
-                                {label}
-                              </div>
-                              <div className="mt-1 text-[12px] leading-snug text-muted-fg">
-                                {item.tiers[field]}
-                              </div>
+                  {item.tiers ? (
+                    <div className="grid grid-cols-2 gap-px border-t border-line bg-line">
+                      {TIER_ROWS.map(([field, label]) =>
+                        item.tiers[field] ? (
+                          <div key={field} className="bg-card-alt px-3 py-2">
+                            <div className="text-[11px] text-dim-fg">{label}</div>
+                            <div className="mt-1 text-[12px] leading-snug text-muted-fg">
+                              {item.tiers[field]}
                             </div>
-                          ) : null,
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  {showChanges ? (
-                    <div className="mt-4">
-                      <textarea
-                        value={note}
-                        onChange={(e) => setNote(e.target.value)}
-                        placeholder="What should they change before this goes live?"
-                        autoFocus
-                        className="w-full rounded-md border border-border bg-card-alt px-3 py-2.5 text-[13px] leading-relaxed"
-                        style={{ minHeight: 72, resize: "vertical", fontFamily: "var(--font-sans)" }}
-                      />
-                      <div className="mt-2 flex gap-2">
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => decide(item, "request_changes", note)}
-                          className="rounded-md px-3.5 py-2 text-[13px] font-semibold text-accent-on disabled:opacity-60"
-                          style={{ background: "var(--accent)" }}
-                        >
-                          {isBusy ? "Sending…" : "Send back"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setChangesFor(null);
-                            setNote("");
-                          }}
-                          className="rounded-md border px-3.5 py-2 text-[13px] font-semibold"
-                          style={{ borderColor: "var(--border-strong)" }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
+                          </div>
+                        ) : null,
+                      )}
                     </div>
-                  ) : (
-                    <div className="mt-4 flex gap-2.5">
-                      <button
+                  ) : null}
+                </div>
+
+                {showChanges ? (
+                  <div className="mt-4">
+                    <textarea
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      placeholder="What should they change before this goes live?"
+                      autoFocus
+                      className="w-full rounded-[var(--radius-lg)] bg-card-alt p-3.5 text-[13px] leading-relaxed outline-none focus:ring-2 focus:ring-ink"
+                      style={{ minHeight: 72, resize: "vertical" }}
+                    />
+                    <div className="mt-2 flex gap-2">
+                      <Button
                         type="button"
+                        variant="ink"
+                        size="sm"
                         disabled={isBusy}
-                        onClick={() => decide(item, "approve")}
-                        className="inline-flex items-center gap-2 rounded-md px-3.5 py-2 text-[13px] font-semibold text-accent-on disabled:opacity-60"
-                        style={{ background: "var(--accent)" }}
+                        onClick={() => decide(item, "request_changes", note)}
                       >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M20 6 9 17l-5-5" />
-                        </svg>
-                        {isBusy ? "Approving…" : "Approve & activate"}
-                      </button>
-                      <button
+                        {isBusy ? "Sending…" : "Send back"}
+                      </Button>
+                      <Button
                         type="button"
-                        disabled={isBusy}
+                        variant="soft"
+                        size="sm"
                         onClick={() => {
-                          setChangesFor(key);
+                          setChangesFor(null);
                           setNote("");
                         }}
-                        className="rounded-md border px-3.5 py-2 text-[13px] font-semibold"
-                        style={{ borderColor: "var(--border-strong)" }}
                       >
-                        Request changes
-                      </button>
+                        Cancel
+                      </Button>
                     </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 flex gap-2.5">
+                    <Button
+                      type="button"
+                      variant="ink"
+                      size="sm"
+                      disabled={isBusy}
+                      onClick={() => decide(item, "approve")}
+                    >
+                      <Check size={14} />
+                      {isBusy ? "Approving…" : "Approve & activate"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      disabled={isBusy}
+                      onClick={() => {
+                        setChangesFor(key);
+                        setNote("");
+                      }}
+                    >
+                      Request changes
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
       </div>
     </main>
   );
@@ -355,7 +280,10 @@ export function ManagerApprovals() {
 
 function EmptyCard({ children }) {
   return (
-    <div className="rounded-md border border-dashed border-border bg-card p-6 text-[13px] leading-[1.6] text-muted-fg">
+    <div
+      className="rounded-[var(--radius-xl)] bg-card p-6 text-[13px] leading-[1.6] text-muted-fg"
+      style={{ boxShadow: "var(--shadow-card)" }}
+    >
       {children}
     </div>
   );

@@ -9,7 +9,8 @@
  */
 
 import { useEffect, useState } from "react";
-import { MonoLabel, Pill } from "@/components/ui";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { Badge, Card, Label } from "@/components/ui";
 import { apiGet } from "@/lib/api-client";
 
 function fmtWhen(iso) {
@@ -35,29 +36,19 @@ function TierChip({ row }) {
   if (!row?.tier) return null;
   const good = row.tier === "over_achieved" || row.tier === "role_model";
   const bad = row.tier === "not_achieved";
+  const tone = bad ? "peach" : good ? "mint" : "neutral";
   return (
-    <span
-      className="ml-1.5 inline-flex shrink-0 items-center rounded-full px-1.5 py-[1px] align-middle uppercase"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 9,
-        letterSpacing: "0.4px",
-        fontWeight: 700,
-        background: bad
-          ? "color-mix(in srgb, var(--bad) 13%, transparent)"
-          : good
-            ? "var(--accent-dim)"
-            : "var(--panel-2)",
-        color: bad ? "var(--bad)" : good ? "var(--accent)" : "var(--muted-fg)",
-      }}
+    <Badge
+      tone={tone}
+      className="ml-1.5"
       title={
         `${TIER_LABELS[row.tier] || row.tier} — ${row.source === "manager" ? "manager verdict" : "AI grade"} at archive time` +
         (row.note ? `: ${row.note}` : "")
       }
     >
       {TIER_LABELS[row.tier] || row.tier}
-      {row.source === "manager" ? " ·M" : ""}
-    </span>
+      {row.source === "manager" ? " · M" : ""}
+    </Badge>
   );
 }
 
@@ -100,7 +91,7 @@ export function PastCycles() {
 
   return (
     <section className="mt-8">
-      <MonoLabel>Past cycles</MonoLabel>
+      <Label>Past cycles</Label>
       <p className="mt-1 text-[12.5px] leading-[1.5] text-muted-fg">
         Trees archived by replace imports — read-only, so last cycle&apos;s
         goals stay inspectable after a new import.
@@ -111,42 +102,35 @@ export function PastCycles() {
           const tree = trees[c.id];
           const report = reports[c.id] || {};
           return (
-            <li
-              key={c.id}
-              className="rounded-[var(--radius-sub)] border border-border bg-card-alt"
-            >
+            <li key={c.id}>
+            <Card radius="lg" padding={0} className="overflow-hidden">
               <button
                 type="button"
                 onClick={() => void toggleOpen(c.id)}
                 aria-expanded={open}
-                className="flex w-full items-center gap-3 px-3 py-2.5 text-left"
+                className="flex w-full items-center gap-3 px-3.5 py-3 text-left"
               >
-                <span
-                  aria-hidden="true"
-                  className="text-dim-fg"
-                  style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-                >
-                  {open ? "▾" : "▸"}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">
+                {open ? (
+                  <ChevronDown size={14} className="shrink-0 text-muted-fg" />
+                ) : (
+                  <ChevronRight size={14} className="shrink-0 text-muted-fg" />
+                )}
+                <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-fg">
                   {c.label}
                 </span>
-                <Pill tone="muted" mono>
+                <Badge tone="neutral">
                   {c.l1Count} L1 · {c.l2Count} L2
-                </Pill>
-                <span
-                  className="shrink-0 text-dim-fg"
-                  style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-                >
+                </Badge>
+                <span className="shrink-0 text-[11.5px] text-dim-fg">
                   {fmtWhen(c.archivedAt)}
                 </span>
               </button>
               {open ? (
-                <div className="border-t border-dashed border-border px-4 py-3">
+                <div className="border-t border-line px-4 py-3">
                   {tree === "loading" || !tree ? (
                     <div className="text-[12px] text-muted-fg">Loading…</div>
                   ) : tree === "error" ? (
-                    <div className="text-[12px] text-bad">
+                    <div className="rounded-[var(--radius-lg)] bg-peach px-3 py-2 text-[12px] text-peach-ink">
                       Couldn&apos;t load this archive — try again.
                     </div>
                   ) : (
@@ -155,19 +139,14 @@ export function PastCycles() {
                         <li key={l1.id}>
                           <div className="flex items-baseline gap-2 text-[12.5px] font-medium text-fg">
                             {l1.code ? (
-                              <span
-                                className="text-accent"
-                                style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 700 }}
-                              >
+                              <span className="font-mono text-[11px] font-bold text-muted-fg">
                                 {l1.code}
                               </span>
                             ) : null}
                             {l1.title || "(untitled L1)"}
                             <TierChip row={report[l1.id]} />
                             {l1.weightage > 0 ? (
-                              <span className="text-dim-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>
-                                {l1.weightage}%
-                              </span>
+                              <span className="text-[11px] text-dim-fg">{l1.weightage}%</span>
                             ) : null}
                           </div>
                           {(l1.l2s || []).length > 0 ? (
@@ -175,12 +154,7 @@ export function PastCycles() {
                               {l1.l2s.map((l2) => (
                                 <li key={l2.id} className="text-[12px] text-muted-fg">
                                   {l2.code ? (
-                                    <span
-                                      className="mr-1.5"
-                                      style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-                                    >
-                                      {l2.code}
-                                    </span>
+                                    <span className="mr-1.5 font-mono text-[11px]">{l2.code}</span>
                                   ) : null}
                                   {l2.title || "(untitled L2)"}
                                   <TierChip row={report[l2.id]} />
@@ -194,6 +168,7 @@ export function PastCycles() {
                   )}
                 </div>
               ) : null}
+            </Card>
             </li>
           );
         })}

@@ -4,7 +4,7 @@
  * Review pane — shown after classification completes, before any spec
  * is committed to the goal-specs store.
  *
- * Each pending spec is rendered as a card with:
+ * Each pending spec is rendered as a white card with:
  *   - goal title + parent L1 breadcrumb
  *   - the classifier's reasoning (one-liner)
  *   - widget + kind dropdowns for inline override
@@ -25,7 +25,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { Select } from "@/components/ui";
+import { Button, Badge, Card, Field, Label, Select } from "@/components/ui";
 import {
   SPEC_VARIANTS,
   ALL_SPEC_KINDS,
@@ -168,7 +168,7 @@ export function ReviewPane({
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <BulkStrip
         pendingCount={pendingEntries.length}
         failedCount={failed.length}
@@ -180,7 +180,7 @@ export function ReviewPane({
         }}
       />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pr-1">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
         {pendingEntries.length === 0 && failed.length === 0 ? (
           <EmptyPlaceholder onSwitchToGrid={onSwitchToGrid} />
         ) : null}
@@ -300,90 +300,29 @@ function BulkStrip({
   onDiscardAll,
 }) {
   return (
-    <div
-      className="flex flex-wrap items-center justify-between gap-3"
-      style={{
-        background: "var(--card)",
-        border: "1px solid var(--border)",
-        borderRadius: 10,
-        padding: "16px 20px",
-      }}
-    >
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
       <div className="flex items-baseline gap-3">
-        <span
-          className="font-black"
-          style={{
-            fontFamily: "var(--font-dot)",
-            fontWeight: 900,
-            fontSize: 38,
-            lineHeight: 0.8,
-            letterSpacing: "0.5px",
-            color: "var(--fg)",
-          }}
-        >
+        <span className="text-[38px] font-extrabold leading-none tracking-[-0.03em] tabular-nums text-fg">
           {pendingCount}
         </span>
-        <span
-          className="uppercase tracking-[0.6px]"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            color: "var(--muted-fg)",
-          }}
-        >
-          to review
-          {failedCount > 0 ? ` · ${failedCount} failed` : ""}
-        </span>
+        <Badge tone={failedCount > 0 ? "peach" : "neutral"}>
+          To review{failedCount > 0 ? ` · ${failedCount} failed` : ""}
+        </Badge>
       </div>
 
       {bulkError ? (
-        <div
-          className="max-w-[420px] truncate"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 11,
-            color: "var(--bad)",
-          }}
-          title={bulkError}
-        >
+        <div className="max-w-[420px] truncate text-[13px] text-peach-ink" title={bulkError}>
           {bulkError}
         </div>
       ) : null}
 
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onDiscardAll}
-          disabled={pendingCount === 0}
-          className="rounded-[var(--radius-sub)] px-3 py-1.5 uppercase transition-colors hover:opacity-90"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            letterSpacing: "0.5px",
-            color: "var(--fg)",
-            background: "transparent",
-            border: "1px solid var(--border-strong)",
-            opacity: pendingCount === 0 ? 0.4 : 1,
-          }}
-        >
+        <Button variant="danger" size="sm" onClick={onDiscardAll} disabled={pendingCount === 0}>
           Discard all
-        </button>
-        <button
-          type="button"
-          onClick={onSaveAll}
-          disabled={pendingCount === 0}
-          className="rounded-[var(--radius-sub)] px-3 py-1.5 font-bold uppercase"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            letterSpacing: "0.5px",
-            background: "var(--accent)",
-            color: "var(--accent-on)",
-            opacity: pendingCount === 0 ? 0.4 : 1,
-          }}
-        >
+        </Button>
+        <Button variant="ink" size="sm" onClick={onSaveAll} disabled={pendingCount === 0}>
           Save all
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -428,69 +367,38 @@ function PendingCard({
     !isUntrackable && !isScorecard && sourceProvider === "jenkins";
   const currentRepo = spec.source?.filter?.repo || "";
   const currentJob = spec.source?.filter?.job || "";
+  const kindMismatch =
+    !isUntrackable &&
+    widgetMeta?.variant !== spec.kind &&
+    !(widgetMeta?.variant === SPEC_VARIANTS.AUTO && spec.kind === SPEC_VARIANTS.HYBRID);
 
   return (
-    <div
-      className="flex flex-col gap-2"
-      style={{
-        background: isUntrackable
-          ? "color-mix(in srgb, var(--warn) 10%, transparent)"
-          : "var(--card)",
-        border: isUntrackable
-          ? "1px solid color-mix(in srgb, var(--warn) 32%, transparent)"
-          : "1px solid var(--border)",
-        borderRadius: 9,
-        padding: "14px 16px",
-      }}
-    >
-      {/* Header: goal title + parent breadcrumb */}
-      <div className="flex flex-col gap-0.5">
-        {meta?.parentL1 ? (
-          <span
-            className="uppercase tracking-[0.5px]"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9.5,
-              color: "var(--dim-fg)",
-            }}
-            title={`Parent L1: ${meta.parentL1}`}
-          >
-            {truncate(meta.parentL1, 70)} /
+    <Card padding={16} className="flex flex-col gap-3">
+      {/* Header: widget kind label, goal title + parent breadcrumb, status */}
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <Label>{widgetMeta?.label || spec.widget}</Label>
+          {meta?.parentL1 ? (
+            <span className="truncate text-[12px] text-dim-fg" title={`Parent L1: ${meta.parentL1}`}>
+              {truncate(meta.parentL1, 70)}
+            </span>
+          ) : null}
+          <span className="text-[15px] font-bold leading-[1.3] text-fg" title={meta?.title || spec.title}>
+            {meta?.title || spec.title}
           </span>
-        ) : null}
-        <span
-          className="font-semibold"
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontWeight: 600,
-            fontSize: 14,
-            lineHeight: 1.3,
-            color: "var(--fg)",
-          }}
-          title={meta?.title || spec.title}
-        >
-          {meta?.title || spec.title}
-        </span>
+        </div>
+        <Badge tone="lemon">Pending review</Badge>
       </div>
 
       {/* Reasoning */}
       {spec.reasoning ? (
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            lineHeight: 1.55,
-            color: "var(--muted-fg)",
-          }}
-        >
-          {spec.reasoning}
-        </div>
+        <div className="text-[13px] leading-[1.55] text-muted-fg">{spec.reasoning}</div>
       ) : null}
 
       {/* Inline edit dropdowns */}
       <div className="flex flex-wrap items-center gap-2">
         <FieldDropdown
-          label="widget"
+          label="Widget"
           value={spec.widget}
           onChange={onChangeWidget}
           options={ALL_SPEC_KINDS.map((k) => ({
@@ -499,7 +407,7 @@ function PendingCard({
           }))}
         />
         <FieldDropdown
-          label="kind"
+          label="Kind"
           value={spec.kind}
           onChange={onChangeKind}
           options={ALL_SPEC_VARIANTS.map((v) => ({
@@ -508,23 +416,14 @@ function PendingCard({
             disabled: !kindsOk.includes(v),
           }))}
         />
-        {spec.source?.metric ? (
-          <Chip>{spec.source.metric}</Chip>
-        ) : null}
-        {spec.source?.window ? <Chip>{spec.source.window}</Chip> : null}
-        {spec.manual?.cadence ? (
-          <Chip>{spec.manual.cadence}</Chip>
-        ) : null}
-        {spec.delegated ? <Chip tone="warn">delegated</Chip> : null}
-        {isUntrackable ? <Chip tone="warn">untrackable</Chip> : null}
-        {currentRepo ? <Chip tone="repo">repo · {currentRepo}</Chip> : null}
-        {currentJob ? <Chip>job · {currentJob}</Chip> : null}
-        {!isUntrackable &&
-        widgetMeta?.variant !== spec.kind &&
-        !(widgetMeta?.variant === SPEC_VARIANTS.AUTO &&
-          spec.kind === SPEC_VARIANTS.HYBRID) ? (
-          <Chip tone="danger">kind/variant mismatch</Chip>
-        ) : null}
+        {spec.source?.metric ? <Badge>{spec.source.metric}</Badge> : null}
+        {spec.source?.window ? <Badge>{spec.source.window}</Badge> : null}
+        {spec.manual?.cadence ? <Badge>{spec.manual.cadence}</Badge> : null}
+        {spec.delegated ? <Badge tone="lemon">Delegated</Badge> : null}
+        {isUntrackable ? <Badge tone="lemon">Untrackable</Badge> : null}
+        {currentRepo ? <Badge tone="lav">Repo · {currentRepo}</Badge> : null}
+        {currentJob ? <Badge>Job · {currentJob}</Badge> : null}
+        {kindMismatch ? <Badge tone="peach">Kind/variant mismatch</Badge> : null}
       </div>
 
       {/* Repo scope picker — only for GitHub / GitLab / combined / GH
@@ -533,11 +432,7 @@ function PendingCard({
           it still works when the user hasn't merged anything yet but
           knows their repo name. "All repos" clears the filter. */}
       {showRepoPicker ? (
-        <RepoPicker
-          value={currentRepo}
-          options={repoOptions}
-          onChange={onChangeRepo}
-        />
+        <RepoPicker value={currentRepo} options={repoOptions} onChange={onChangeRepo} />
       ) : null}
 
       {/* Jenkins job picker — required for the three CI/CD widgets
@@ -546,11 +441,7 @@ function PendingCard({
           when no jobs returned (Jenkins not connected, restricted
           permissions, or just empty controller). */}
       {showJobPicker ? (
-        <JobPicker
-          value={currentJob}
-          options={jobOptions}
-          onChange={onChangeJob}
-        />
+        <JobPicker value={currentJob} options={jobOptions} onChange={onChangeJob} />
       ) : null}
 
       {/* SCORECARD sub-editor — surfaces each component with its own
@@ -569,34 +460,9 @@ function PendingCard({
           already flagged untrackable (read-only view + clear button)
           OR when the user clicked "Mark untrackable" (editor view). */}
       {isUntrackable ? (
-        <div
-          className="flex flex-col gap-1.5 rounded-[var(--radius-sub)] px-2.5 py-2"
-          style={{
-            background: "color-mix(in srgb, var(--warn) 10%, transparent)",
-            border: "1px solid color-mix(in srgb, var(--warn) 32%, transparent)",
-          }}
-        >
-          <div
-            className="uppercase tracking-[0.5px]"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9.5,
-              color: "var(--warn)",
-            }}
-          >
-            Marked untrackable
-          </div>
-          <div
-            className="italic"
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize: 10.5,
-              lineHeight: 1.5,
-              color: "var(--muted-fg)",
-            }}
-          >
-            “{spec.untrackable.reason}”
-          </div>
+        <div className="flex flex-col gap-1.5 rounded-[var(--radius-lg)] bg-lemon px-3.5 py-3 text-lemon-ink">
+          <div className="text-[12px] font-semibold">Marked untrackable</div>
+          <div className="text-[13px] italic">“{spec.untrackable.reason}”</div>
           <button
             type="button"
             onClick={() => {
@@ -604,89 +470,46 @@ function PendingCard({
               setShowUntrackableEditor(false);
               onSetUntrackable("");
             }}
-            className="self-start uppercase transition-colors hover:opacity-90"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9,
-              letterSpacing: "0.5px",
-              color: "var(--dim-fg)",
-            }}
+            className="self-start text-[12px] font-bold"
           >
-            unflag · make trackable
+            Unflag — make trackable
           </button>
         </div>
       ) : showUntrackableEditor ? (
-        <div
-          className="flex flex-col gap-1.5 rounded-[var(--radius-sub)] px-2.5 py-2"
-          style={{
-            background: "color-mix(in srgb, var(--warn) 8%, transparent)",
-            border: "1px dashed color-mix(in srgb, var(--warn) 32%, transparent)",
-          }}
-        >
-          <label
-            className="uppercase tracking-[0.5px]"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9,
-              color: "var(--dim-fg)",
-            }}
-          >
-            Reason
-          </label>
-          <textarea
-            value={untrackableDraft}
-            onChange={(e) => setUntrackableDraft(e.target.value)}
-            placeholder="e.g. needs a quarterly survey we haven't set up yet"
-            rows={2}
-            className="w-full p-1.5 outline-none"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              color: "var(--fg)",
-              background: "var(--field)",
-              border: "1px solid var(--border-strong)",
-              borderRadius: "var(--radius-sub)",
-              resize: "vertical",
-            }}
-          />
+        <div className="flex flex-col gap-2 rounded-[var(--radius-lg)] bg-card-alt p-3.5">
+          <Field label="Reason">
+            <textarea
+              value={untrackableDraft}
+              onChange={(e) => setUntrackableDraft(e.target.value)}
+              placeholder="e.g. needs a quarterly survey we haven't set up yet"
+              rows={2}
+              className="w-full resize-y rounded-[var(--radius-md)] bg-card px-2.5 py-2 text-[13px] text-fg outline-none focus:ring-2 focus:ring-ink"
+            />
+          </Field>
           <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 setUntrackableDraft("");
                 setShowUntrackableEditor(false);
               }}
-              className="uppercase transition-colors hover:opacity-90"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 9,
-                letterSpacing: "0.5px",
-                color: "var(--dim-fg)",
-              }}
             >
-              cancel
-            </button>
-            <button
-              type="button"
+              Cancel
+            </Button>
+            <Button
+              variant="ink"
+              size="sm"
+              disabled={!untrackableDraft.trim()}
               onClick={() => {
                 const trimmed = untrackableDraft.trim();
                 if (!trimmed) return;
                 onSetUntrackable(trimmed);
                 setShowUntrackableEditor(false);
               }}
-              disabled={!untrackableDraft.trim()}
-              className="rounded-[var(--radius-sub)] px-2 py-1 font-bold uppercase"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 9.5,
-                letterSpacing: "0.4px",
-                background: "var(--accent)",
-                color: "var(--accent-on)",
-                opacity: untrackableDraft.trim() ? 1 : 0.4,
-              }}
             >
               Mark untrackable
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
@@ -694,82 +517,32 @@ function PendingCard({
       {/* Action row */}
       <div className="mt-1 flex items-center justify-end gap-2">
         {!isUntrackable && !showUntrackableEditor ? (
-          <button
-            type="button"
+          <Button
+            variant="soft"
+            size="sm"
+            className="mr-auto"
             onClick={() => setShowUntrackableEditor(true)}
-            className="mr-auto uppercase transition-colors hover:opacity-90"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9,
-              letterSpacing: "0.5px",
-              color: "var(--dim-fg)",
-            }}
             title="Mark this goal as not currently trackable, with a reason"
           >
-            can't track this →
-          </button>
+            Can't track this
+          </Button>
         ) : null}
-        <button
-          type="button"
-          onClick={onSkip}
-          className="rounded-[var(--radius-sub)] px-2.5 py-1 uppercase transition-colors hover:opacity-90"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9.5,
-            letterSpacing: "0.4px",
-            color: "var(--muted-fg)",
-            background: "transparent",
-            border: "1px solid var(--border-strong)",
-          }}
-        >
+        <Button variant="danger" size="sm" onClick={onSkip}>
           Skip
-        </button>
-        <button
-          type="button"
-          onClick={onSave}
-          className="rounded-[var(--radius-sub)] px-2.5 py-1 font-bold uppercase"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9.5,
-            letterSpacing: "0.4px",
-            background: "var(--accent)",
-            color: "var(--accent-on)",
-          }}
-        >
+        </Button>
+        <Button variant="ink" size="sm" onClick={onSave}>
           Save
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 }
 
 function FieldDropdown({ label, value, onChange, options }) {
   return (
-    <label
-      className="inline-flex items-center gap-1.5 px-2.5 py-1"
-      style={{
-        background: "var(--field)",
-        border: "1px solid var(--border-strong)",
-        borderRadius: 5,
-      }}
-    >
-      <span
-        className="uppercase tracking-[0.5px]"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 9,
-          color: "var(--dim-fg)",
-        }}
-      >
-        {label}
-      </span>
-      <Select
-        tone="default"
-        size="sm"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ paddingLeft: 0 }}
-      >
+    <label className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] bg-card-alt px-2.5 py-1.5">
+      <Label>{label}</Label>
+      <Select tone="bare" size="sm" value={value} onChange={(e) => onChange(e.target.value)}>
         {options.map((opt) => (
           <option key={opt.value} value={opt.value} disabled={opt.disabled}>
             {opt.label}
@@ -781,99 +554,23 @@ function FieldDropdown({ label, value, onChange, options }) {
   );
 }
 
-function Chip({ children, tone }) {
-  const style =
-    tone === "warn"
-      ? {
-          background: "color-mix(in srgb, var(--warn) 18%, transparent)",
-          color: "var(--warn)",
-        }
-      : tone === "danger"
-        ? {
-            background: "color-mix(in srgb, var(--bad) 18%, transparent)",
-            color: "var(--bad)",
-          }
-        : tone === "repo"
-          ? { background: "var(--accent-dim)", color: "var(--accent)" }
-          : { background: "var(--panel-2)", color: "var(--muted-fg)" };
-  return (
-    <span
-      className="inline-flex items-center gap-1 rounded-full px-2 py-[2px] font-semibold uppercase"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 9,
-        letterSpacing: "0.4px",
-        ...style,
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
 function FailedStrip({ failed, goalsById, onRetry }) {
   return (
-    <div
-      className="mt-2 flex flex-col gap-2 rounded-[var(--radius-tile)] px-3.5 py-3"
-      style={{
-        background: "color-mix(in srgb, var(--bad) 8%, transparent)",
-        border: "1px dashed color-mix(in srgb, var(--bad) 32%, transparent)",
-      }}
-    >
-      <div
-        className="uppercase tracking-[0.5px]"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          color: "var(--bad)",
-        }}
-      >
-        Failed to classify ({failed.length})
-      </div>
+    <div className="flex flex-col gap-3 rounded-[var(--radius-lg)] bg-peach px-3.5 py-3 text-peach-ink">
+      <span className="text-[12px] font-semibold">Failed to classify ({failed.length})</span>
       {failed.map((f) => (
-        <div
-          key={f.goalId}
-          className="flex items-center justify-between gap-2"
-        >
+        <div key={f.goalId} className="flex items-center justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <div
-              className="truncate font-semibold"
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontWeight: 600,
-                fontSize: 13,
-                color: "var(--fg)",
-              }}
-            >
+            <div className="truncate text-[13px] font-bold">
               {goalsById.get(f.goalId)?.title || f.goalId}
             </div>
-            <div
-              className="truncate"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                color: "var(--muted-fg)",
-              }}
-              title={f.error}
-            >
+            <div className="truncate text-[12px] opacity-80" title={f.error}>
               {f.error}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => onRetry?.(f.goalId)}
-            className="rounded-[var(--radius-sub)] px-2.5 py-1 uppercase transition-colors hover:opacity-90"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9.5,
-              letterSpacing: "0.4px",
-              color: "var(--fg)",
-              background: "transparent",
-              border: "1px solid var(--border-strong)",
-            }}
-          >
-            Retry ↻
-          </button>
+          <Button variant="soft" size="sm" onClick={() => onRetry?.(f.goalId)}>
+            Retry
+          </Button>
         </div>
       ))}
     </div>
@@ -882,30 +579,11 @@ function FailedStrip({ failed, goalsById, onRetry }) {
 
 function EmptyPlaceholder({ onSwitchToGrid }) {
   return (
-    <div
-      className="flex flex-col items-center justify-center gap-3 rounded-[var(--radius-tile)] p-8 text-center"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 11,
-        color: "var(--muted-fg)",
-        border: "1px dashed var(--border)",
-      }}
-    >
+    <div className="flex flex-col items-center justify-center gap-3 rounded-[var(--radius-lg)] bg-card-alt p-8 text-center text-[13px] text-muted-fg">
       Nothing pending review.
-      <button
-        type="button"
-        onClick={onSwitchToGrid}
-        className="rounded-[var(--radius-sub)] px-3 py-1.5 font-bold uppercase"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          letterSpacing: "0.5px",
-          background: "var(--accent)",
-          color: "var(--accent-on)",
-        }}
-      >
-        Go to widgets →
-      </button>
+      <Button variant="ink" size="sm" onClick={onSwitchToGrid}>
+        Go to widgets
+      </Button>
     </div>
   );
 }

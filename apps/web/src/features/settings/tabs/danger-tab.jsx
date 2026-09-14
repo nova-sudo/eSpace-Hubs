@@ -10,7 +10,7 @@ const ACTIONS = [
     title: "Export snapshots as JSON",
     body: "Download all snapshots from your account as a portable archive.",
     cta: "Export JSON",
-    variant: "ghost",
+    danger: false,
     onClick: () => {
       const data = JSON.stringify(readSnapshots(), null, 2);
       const blob = new Blob([data], { type: "application/json" });
@@ -31,7 +31,7 @@ const ACTIONS = [
     // it. It is NOT a browser-local cleanup.
     body: "Permanently deletes all weekly snapshots from your account — every device. Trend history and compliance readings go with them.",
     cta: "Clear snapshots",
-    variant: "danger",
+    danger: true,
     onClick: () => {
       if (
         confirm(
@@ -47,7 +47,7 @@ const ACTIONS = [
     title: "Disconnect all providers",
     body: "Revokes tokens from localStorage and logs out of GitHub OAuth.",
     cta: "Disconnect all",
-    variant: "danger",
+    danger: true,
     onClick: () => {
       if (confirm("Disconnect all integrations?")) {
         disconnectAll();
@@ -64,7 +64,7 @@ const ACTIONS = [
     // flag and does NOT re-show.
     body: "Wipes app data stored on this device — preferences, drafts, cached readings. Your goals, snapshots, and grades live in your account and are not deleted.",
     cta: "Reset device",
-    variant: "danger",
+    danger: true,
     onClick: () => {
       if (
         confirm(
@@ -80,28 +80,32 @@ const ACTIONS = [
 
 export function DangerTab() {
   return (
-    <Section num="01 /" title="Danger zone">
-      <Card className="p-6">
-        {ACTIONS.map(({ title, body, cta, variant, onClick }) => (
-          <div
-            key={title}
-            className="grid grid-cols-[1fr_auto] items-center gap-5 border-b border-border border-dashed py-3.5 last:border-b-0"
-          >
-            <div>
-              <div
-                className="mb-0.5 font-semibold"
-                style={{ fontFamily: "var(--font-display)", fontSize: 14 }}
-              >
-                {title}
+    <Section title="Danger zone">
+      <div className="flex flex-col gap-3">
+        {ACTIONS.map(({ title, body, cta, danger, onClick }) =>
+          danger ? (
+            <Card key={title} tone="peach" className="flex items-center justify-between gap-5 p-5">
+              <div>
+                <div className="text-[14.5px] font-bold">{title}</div>
+                <div className="mt-0.5 text-[12.5px] leading-[1.45]">{body}</div>
               </div>
-              <div className="text-[12.5px] leading-[1.45] text-muted-fg">{body}</div>
-            </div>
-            <Button variant={variant} size="sm" onClick={onClick}>
-              {cta}
-            </Button>
-          </div>
-        ))}
-      </Card>
+              <Button variant="danger" size="sm" onClick={onClick}>
+                {cta}
+              </Button>
+            </Card>
+          ) : (
+            <Card key={title} className="flex items-center justify-between gap-5 p-5">
+              <div>
+                <div className="text-[14.5px] font-bold text-fg">{title}</div>
+                <div className="mt-0.5 text-[12.5px] leading-[1.45] text-muted-fg">{body}</div>
+              </div>
+              <Button variant="soft" size="sm" onClick={onClick}>
+                {cta}
+              </Button>
+            </Card>
+          ),
+        )}
+      </div>
     </Section>
   );
 }

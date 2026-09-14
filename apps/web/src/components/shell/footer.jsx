@@ -11,16 +11,9 @@ import { useIntegrations } from "@/features/integrations";
 export function Footer() {
   const { me } = useIntegrations();
   return (
-    <footer
-      className="mt-8 flex justify-between border-t border-border py-4 text-[10.5px] text-muted-fg"
-      style={{ fontFamily: "var(--font-mono)" }}
-    >
-      <div>
-        eSpace/DevHub{me?.team ? ` · ${me.team}` : ""}
-      </div>
-      <div className="text-dim-fg">
-        {new Date().getFullYear()} · eSpace
-      </div>
+    <footer className="mt-8 flex justify-between py-4 text-[12.5px] text-muted-fg">
+      <div>eSpace DevHub{me?.team ? ` · ${me.team}` : ""}</div>
+      <div className="text-dim-fg">{new Date().getFullYear()} · eSpace</div>
     </footer>
   );
 }

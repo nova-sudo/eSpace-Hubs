@@ -9,9 +9,8 @@
  * this picker vs. redirect directly. The picker itself is just a
  * grid of cards plus the navigation handler.
  *
- * Visual design: Nothing UI canvas (design tokens, not a hub theme).
- * Each card carries its own hub's accent so the user can scan by
- * colour before reading the label.
+ * Visual design: design-system-v2 tokens — no per-hub accent colors.
+ * Every card is the same white card recipe; hubs differ by content.
  *
  * On click:
  *   1. Store the pick in localStorage (24h TTL).
@@ -19,7 +18,8 @@
  */
 
 import { useRouter } from "next/navigation";
-import { PageHeader } from "@/components/ui";
+import { ArrowRight } from "lucide-react";
+import { PageHeader, Card, Label, Badge } from "@/components/ui";
 import { setActivePick } from "./hub-pick-store.js";
 
 export function HubPicker({ hubs, primaryHubId }) {
@@ -37,7 +37,6 @@ export function HubPicker({ hubs, primaryHubId }) {
           <PageHeader
             crumb="Choose where to land"
             title={`You have access to ${hubs.length} hubs.`}
-            italicWord={`${hubs.length} hubs`}
             subtitle="Pick one to start. You can switch any time from the header — and we'll remember this choice for the next 24 hours."
           />
 
@@ -58,10 +57,7 @@ export function HubPicker({ hubs, primaryHubId }) {
           </div>
         </div>
 
-        <div
-          className="mt-12 border-t border-border pt-4 text-[11px] text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
+        <div className="mt-12 text-[12.5px] text-muted-fg">
           Pick is stored in your browser. Switching hubs from the header
           updates it.
         </div>
@@ -71,85 +67,35 @@ export function HubPicker({ hubs, primaryHubId }) {
 }
 
 function HubCard({ hub, isPrimary, onClick }) {
+  const slots = Object.keys(hub.pages);
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group relative flex flex-col items-start gap-3 overflow-hidden rounded-lg border-2 bg-card p-5 text-left transition-all hover:-translate-y-0.5"
-      style={{
-        borderColor: hub.theme.accent,
-        boxShadow: `0 1px 0 0 ${hub.theme.accentSurface}, 0 0 0 0 ${hub.theme.accentSurface}`,
-      }}
-    >
-      <div className="flex w-full items-center justify-between">
-        <div
-          className="grid h-9 w-9 place-items-center rounded-md font-bold"
-          style={{
-            background: hub.theme.accentSurface,
-            color: hub.theme.accent,
-            fontFamily: "var(--font-mono)",
-            fontSize: 12,
-          }}
-        >
-          {hub.id[0].toUpperCase()}
+    <button type="button" onClick={onClick} className="group text-left">
+      <Card className="flex h-full flex-col items-start gap-3 transition-transform group-hover:-translate-y-0.5">
+        <div className="flex w-full items-center justify-between">
+          <div className="grid h-9 w-9 place-items-center rounded-[var(--radius-md)] bg-card-alt text-[13px] font-bold text-fg">
+            {hub.id[0].toUpperCase()}
+          </div>
+          {isPrimary ? <Badge tone="mint">Default</Badge> : null}
         </div>
-        {isPrimary ? (
-          <span
-            className="rounded-full px-2 py-0.5 uppercase tracking-[0.4px]"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9.5,
-              fontWeight: 700,
-              background: hub.theme.accentSurface,
-              color: hub.theme.accent,
-            }}
-          >
-            Default
-          </span>
-        ) : null}
-      </div>
 
-      <div>
-        <div
-          className="text-[18px] font-semibold"
-          style={{ letterSpacing: "-0.3px" }}
-        >
-          {hub.label}
+        <div>
+          <div className="text-[15px] font-bold leading-[1.3]">{hub.label}</div>
+          <p className="mt-1 text-[13px] leading-[1.5] text-muted-fg">{hub.description}</p>
         </div>
-        <p className="mt-1 text-[12.5px] leading-[1.5] text-muted-fg">
-          {hub.description}
-        </p>
-      </div>
 
-      <div
-        className="mt-1 flex flex-wrap gap-1.5"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-      >
-        {Object.keys(hub.pages).slice(0, 4).map((slot) => (
-          <span
-            key={slot}
-            className="rounded-sm border border-dashed border-border text-muted-fg px-1.5 py-0.5"
-          >
-            {slot}
-          </span>
-        ))}
-        {Object.keys(hub.pages).length > 4 ? (
-          <span className="text-muted-fg">
-            +{Object.keys(hub.pages).length - 4}
-          </span>
-        ) : null}
-      </div>
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          {slots.slice(0, 4).map((slot) => (
+            <Label key={slot} as="span" className="rounded-[var(--radius-md)] bg-card-alt px-1.5 py-0.5">
+              {slot}
+            </Label>
+          ))}
+          {slots.length > 4 ? <Label as="span">+{slots.length - 4}</Label> : null}
+        </div>
 
-      <span
-        className="absolute right-4 bottom-4 transition-transform group-hover:translate-x-1"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 14,
-          color: hub.theme.accent,
-        }}
-      >
-        →
-      </span>
+        <span className="mt-auto flex items-center gap-1 self-end text-[13px] font-bold text-fg">
+          <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
+        </span>
+      </Card>
     </button>
   );
 }

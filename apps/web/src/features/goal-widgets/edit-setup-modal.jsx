@@ -28,8 +28,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
+import { X } from "lucide-react";
 import { SpecSetupEditor } from "@/features/analyst";
 import { saveSpec } from "@/features/goal-specs";
+import { Button, IconButton, Label } from "@/components/ui";
 
 export function EditSetupModal({ open, onClose, spec, goal, onSaved }) {
   // Local working copy — edits don't touch the store until Save.
@@ -97,78 +99,31 @@ export function EditSetupModal({ open, onClose, spec, goal, onSaved }) {
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose?.();
       }}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 60,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 20,
-        background: "rgba(0,0,0,0.55)",
-        backdropFilter: "blur(2px)",
-      }}
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-fg/40 p-5"
     >
       <div
-        className="flex max-h-[86vh] w-full max-w-[560px] flex-col overflow-hidden rounded-[var(--radius-tile)]"
-        style={{
-          background: "var(--card)",
-          border: "1px solid var(--border-strong)",
-          boxShadow: "rgba(0,0,0,0.35) 0px 24px 72px",
-        }}
+        className="flex max-h-[86vh] w-full max-w-[560px] flex-col overflow-hidden rounded-[var(--radius-xl)] bg-card"
+        style={{ boxShadow: "var(--shadow-float)" }}
       >
         {/* Header */}
-        <div
-          className="flex items-center justify-between gap-3 border-b px-4 py-3"
-          style={{ borderColor: "var(--border)" }}
-        >
+        <div className="flex items-center justify-between gap-3 border-b border-line px-6 py-4">
           <div className="min-w-0">
-            <div
-              className="uppercase tracking-[0.5px]"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)" }}
-            >
-              Edit setup · targets & weights
-            </div>
-            <div
-              className="truncate font-semibold"
-              style={{ fontFamily: "var(--font-display)", fontSize: 16, letterSpacing: "-0.3px" }}
-              title={goalTitle}
-            >
+            <Label>Edit setup · targets &amp; weights</Label>
+            <div className="truncate text-[18px] font-bold tracking-[-0.01em] text-fg" title={goalTitle}>
               {goalTitle}
             </div>
           </div>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={() => onClose?.()}
-            className="rounded-[var(--radius-sub)] px-2.5 py-1 transition-opacity hover:opacity-80"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              letterSpacing: "0.5px",
-              border: "1px solid var(--border-strong)",
-              color: "var(--muted-fg)",
-              background: "transparent",
-            }}
-          >
-            ✕ ESC
-          </button>
+          <IconButton label="Close" onCard onClick={() => onClose?.()}>
+            <X size={16} />
+          </IconButton>
         </div>
 
         {/* Body — the shared spec-setup editor on a local draft. */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <div
-            className="mb-3"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9.5,
-              lineHeight: 1.5,
-              color: "var(--dim-fg)",
-            }}
-          >
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          <div className="mb-3 text-[12.5px] leading-[1.5] text-muted-fg">
             Adjust this widget's target{draft.widget === "SCORECARD" ? " and component weights" : ""}.
             To change HOW it's tracked (a different widget), use{" "}
-            <strong>re-analyze</strong> instead.
+            <strong className="text-fg">re-analyze</strong> instead.
           </div>
           <SpecSetupEditor spec={draft} onChange={setDraft} />
 
@@ -176,16 +131,7 @@ export function EditSetupModal({ open, onClose, spec, goal, onSaved }) {
               `tierScale`, not the target line — so be honest that editing
               the target moves the on-target reading but not the tier badge. */}
           {draft.tierScale ? (
-            <div
-              className="mt-3 rounded-[var(--radius-sub)] px-2.5 py-2"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 9.5,
-                lineHeight: 1.5,
-                color: "var(--warn)",
-                background: "color-mix(in srgb, var(--warn) 12%, transparent)",
-              }}
-            >
+            <div className="mt-3 rounded-[var(--radius-lg)] bg-lemon px-3 py-2.5 text-[12.5px] leading-[1.5] text-lemon-ink">
               This goal's achievement tiers use a fixed numeric ladder.
               Editing the target updates the on-target reading, but not the
               tier thresholds — <strong>re-analyze</strong> to regenerate them.
@@ -193,46 +139,18 @@ export function EditSetupModal({ open, onClose, spec, goal, onSaved }) {
           ) : null}
 
           {error ? (
-            <div
-              className="mt-2.5"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--bad)", lineHeight: 1.45 }}
-            >
-              {error}
-            </div>
+            <div className="mt-3 text-[13px] leading-[1.45] text-peach-ink">{error}</div>
           ) : null}
         </div>
 
         {/* Footer actions */}
-        <div
-          className="flex items-center justify-between gap-2 border-t px-4 py-3"
-          style={{ borderColor: "var(--border)" }}
-        >
-          <button
-            type="button"
-            onClick={() => onClose?.()}
-            className="uppercase tracking-[0.5px] transition-opacity hover:opacity-80"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--muted-fg)", background: "transparent" }}
-          >
+        <div className="flex items-center justify-between gap-2 border-t border-line px-6 py-4">
+          <Button type="button" variant="ghost" size="sm" onClick={() => onClose?.()}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="rounded-[var(--radius-sub)] px-4 py-2 font-bold uppercase transition-[filter] hover:brightness-110"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              letterSpacing: "0.5px",
-              color: "var(--accent-on)",
-              background: "var(--accent)",
-              border: "1px solid var(--accent)",
-              opacity: saving ? 0.6 : 1,
-              cursor: saving ? "wait" : "pointer",
-            }}
-          >
+          </Button>
+          <Button type="button" variant="ink" onClick={handleSave} disabled={saving}>
             {saving ? "Saving…" : "Save setup"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>,

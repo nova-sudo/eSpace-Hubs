@@ -51,7 +51,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGoalInputs } from "@/features/goal-inputs";
-import { Select, Checkbox, ItemEvidence } from "@/components/ui";
+import { Button, Input, Select, Checkbox, ItemEvidence, Label } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { apiPost } from "@/lib/api-client";
 // Namespace import, deliberately: the plain-English description is authored by
 // the shared query-template registry, but the server sends its own copy along
@@ -127,7 +128,7 @@ function sourceSentence(field, resolved) {
   }
 }
 
-export function ComposedFields({ goalId, fields, periodKey = null, writeTs = null, variant = "light", showHeadline = true }) {
+export function ComposedFields({ goalId, fields, periodKey = null, writeTs = null, variant: _variant = "light", showHeadline = true }) {
   const { entries, append } = useGoalInputs(goalId);
   const list = Array.isArray(fields) ? fields : [];
 
@@ -167,13 +168,6 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
   // readings fetched moments earlier.
   const liveAutoRef = useRef(liveAuto);
   liveAutoRef.current = liveAuto;
-
-  const isLight = variant === "light";
-  const tone = isLight ? "inverse" : "default";
-  const muted = isLight ? "rgba(255,255,255,0.68)" : "var(--muted-fg)";
-  const fg = isLight ? "#ffffff" : "var(--fg)";
-  const fieldBg = isLight ? "rgba(255,255,255,0.10)" : "var(--bg)";
-  const fieldBorder = isLight ? "1px solid rgba(255,255,255,0.22)" : "1px solid var(--border-strong)";
 
   function write(nextValues, nextEvidence, nextAuto) {
     const carried =
@@ -255,40 +249,35 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
   ).length;
   const total = list.length;
 
-  const inputStyle = {
-    fontFamily: "var(--font-mono)",
-    fontSize: 11,
-    color: fg,
-    background: fieldBg,
-    border: fieldBorder,
-    borderRadius: "var(--radius-sub)",
-    padding: "4px 7px",
-    outline: "none",
-    width: "100%",
-    minWidth: 0,
-  };
-
   function control(f) {
     const v = values[f.id];
     switch (f.kind) {
       case "checkbox":
-        return (
-          <Checkbox
-            checked={v === true}
-            onChange={() => setValue(f.id, v !== true)}
-            label={f.label || f.id}
-          />
-        );
+        return <Checkbox checked={v === true} onChange={() => setValue(f.id, v !== true)} label={f.label || f.id} />;
       case "counter": {
         const n = Number.isFinite(Number(v)) ? Number(v) : 0;
         return (
           <div className="flex items-center gap-1.5">
-            <button type="button" onClick={() => setValue(f.id, Math.max(0, n - 1))} style={{ ...inputStyle, width: 26, textAlign: "center", cursor: "pointer" }} aria-label={`decrease ${f.label}`}>−</button>
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, color: fg, minWidth: 28, textAlign: "center" }}>
+            <button
+              type="button"
+              onClick={() => setValue(f.id, Math.max(0, n - 1))}
+              className="h-7 w-7 shrink-0 rounded-[var(--radius-md)] bg-card-alt text-[13px] font-bold text-fg"
+              aria-label={`decrease ${f.label}`}
+            >
+              −
+            </button>
+            <span className="min-w-[28px] text-center text-[14px] text-fg">
               {n}
-              {f.unit ? <span style={{ fontSize: 9.5, color: muted }}> {f.unit}</span> : null}
+              {f.unit ? <span className="text-[11px] text-muted-fg"> {f.unit}</span> : null}
             </span>
-            <button type="button" onClick={() => setValue(f.id, n + 1)} style={{ ...inputStyle, width: 26, textAlign: "center", cursor: "pointer" }} aria-label={`increase ${f.label}`}>+</button>
+            <button
+              type="button"
+              onClick={() => setValue(f.id, n + 1)}
+              className="h-7 w-7 shrink-0 rounded-[var(--radius-md)] bg-card-alt text-[13px] font-bold text-fg"
+              aria-label={`increase ${f.label}`}
+            >
+              +
+            </button>
           </div>
         );
       }
@@ -300,14 +289,10 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
                 key={n}
                 type="button"
                 onClick={() => setValue(f.id, n)}
-                style={{
-                  ...inputStyle,
-                  width: 26,
-                  textAlign: "center",
-                  cursor: "pointer",
-                  background: Number(v) === n ? (isLight ? "#ffffff" : "var(--accent)") : fieldBg,
-                  color: Number(v) === n ? (isLight ? "var(--accent)" : "var(--accent-on)") : fg,
-                }}
+                className={cn(
+                  "h-7 w-7 rounded-[var(--radius-md)] text-[13px] font-bold transition-colors",
+                  Number(v) === n ? "bg-ink text-ink-on" : "bg-card-alt text-fg",
+                )}
               >
                 {n}
               </button>
@@ -316,35 +301,52 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
         );
       case "number":
         return (
-          <input type="number" value={v ?? ""} onChange={(e) => setValue(f.id, e.target.value === "" ? "" : Number(e.target.value))} placeholder={f.unit ? f.unit : "value"} style={{ ...inputStyle, width: 110 }} />
+          <Input
+            type="number"
+            value={v ?? ""}
+            onChange={(e) => setValue(f.id, e.target.value === "" ? "" : Number(e.target.value))}
+            placeholder={f.unit ? f.unit : "value"}
+            className="w-[110px]"
+          />
         );
       case "date":
         return (
-          <input type="date" value={typeof v === "string" ? v : ""} onChange={(e) => setValue(f.id, e.target.value)} style={{ ...inputStyle, width: 150, colorScheme: isLight ? "dark" : "light" }} />
+          <Input
+            type="date"
+            value={typeof v === "string" ? v : ""}
+            onChange={(e) => setValue(f.id, e.target.value)}
+            className="w-[150px]"
+          />
         );
       case "select":
         return (
-          <Select
-            tone={tone}
-            size="sm"
-            value={typeof v === "string" ? v : ""}
-            onChange={(e) => setValue(f.id, e.target.value)}
-            style={{ minWidth: 120 }}
-          >
+          <Select size="sm" value={typeof v === "string" ? v : ""} onChange={(e) => setValue(f.id, e.target.value)} style={{ minWidth: 120 }}>
             <option value="">—</option>
             {(f.options || []).map((opt) => (
-              <option key={opt} value={opt}>{opt}</option>
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
             ))}
           </Select>
         );
       case "link":
         return (
-          <input type="url" value={typeof v === "string" ? v : ""} onChange={(e) => setValue(f.id, e.target.value)} placeholder="https://…" style={inputStyle} />
+          <Input
+            type="url"
+            value={typeof v === "string" ? v : ""}
+            onChange={(e) => setValue(f.id, e.target.value)}
+            placeholder="https://…"
+          />
         );
       case "text":
       default:
         return (
-          <input type="text" value={typeof v === "string" ? v : ""} onChange={(e) => setValue(f.id, e.target.value)} placeholder={f.help || "…"} style={inputStyle} />
+          <Input
+            type="text"
+            value={typeof v === "string" ? v : ""}
+            onChange={(e) => setValue(f.id, e.target.value)}
+            placeholder={f.help || "…"}
+          />
         );
     }
   }
@@ -352,40 +354,27 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       {showHeadline ? (
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: muted }}>
+        <Label>
           {filled}/{total} captured
-        </div>
+        </Label>
       ) : null}
-      {list.length === 0 ? (
-        <div style={{ fontSize: 11, color: muted }}>No fields defined for this widget yet.</div>
-      ) : null}
+      {list.length === 0 ? <div className="text-[13px] text-muted-fg">No fields defined for this widget yet.</div> : null}
       {list.map((f) =>
         isAutoField(f) ? (
-          <AutoField
-            key={f.id}
-            goalId={goalId}
-            field={f}
-            periodKey={periodKey}
-            stored={auto[f.id]}
-            muted={muted}
-            fg={fg}
-            fieldBg={fieldBg}
-            fieldBorder={fieldBorder}
-            onResolved={recordAuto}
-          />
+          <AutoField key={f.id} goalId={goalId} field={f} periodKey={periodKey} stored={auto[f.id]} onResolved={recordAuto} />
         ) : (
           <div key={f.id} className="flex min-w-0 flex-col gap-1">
             <div className="flex min-w-0 items-center justify-between gap-2">
-              <span className="min-w-0 flex-1 truncate" style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: muted }} title={f.label}>
+              <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted-fg" title={f.label}>
                 {f.label}
-                {f.optional ? <span style={{ opacity: 0.6 }}> (optional)</span> : null}
+                {f.optional ? <span className="opacity-60"> (optional)</span> : null}
               </span>
               {f.kind === "checkbox" ? control(f) : null}
             </div>
             {f.kind === "checkbox" ? null : <div className="min-w-0">{control(f)}</div>}
             {f.kind === "link" ? null : (
               <div className="min-w-0">
-                <ItemEvidence value={evidence[f.id]} variant={variant} onSave={(t) => setEvidence(f.id, t)} />
+                <ItemEvidence value={evidence[f.id]} variant="dark" onSave={(t) => setEvidence(f.id, t)} />
               </div>
             )}
           </div>
@@ -406,7 +395,7 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
  * what they entered, and nothing on this field was entered. The repo is the
  * evidence, and the description below the value says which repo.
  */
-function AutoField({ goalId, field, periodKey, stored, muted, fg, fieldBg, fieldBorder, onResolved }) {
+function AutoField({ goalId, field, periodKey, stored, onResolved }) {
   const [state, setState] = useState(() =>
     stored ? { status: "resolved", reading: stored } : { status: "loading" },
   );
@@ -485,80 +474,43 @@ function AutoField({ goalId, field, periodKey, stored, muted, fg, fieldBg, field
   const sentence = sourceSentence(field, reading);
   const providerLabel = reading?.provider || (field.source?.provider !== "ask" ? field.source?.provider : null);
 
-  const boxStyle = {
-    fontFamily: "var(--font-mono)",
-    fontSize: 12,
-    color: fg,
-    background: fieldBg,
-    border: fieldBorder,
-    borderRadius: "var(--radius-sub)",
-    padding: "5px 8px",
-    minWidth: 0,
-  };
-
   return (
     <div className="flex min-w-0 flex-col gap-1">
       <div className="flex min-w-0 items-center justify-between gap-2">
-        <span
-          className="min-w-0 flex-1 truncate"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: muted }}
-          title={field.label}
-        >
+        <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted-fg" title={field.label}>
           {field.label}
         </span>
         <span
-          className="flex-none uppercase"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 8.5,
-            letterSpacing: "0.08em",
-            fontWeight: 700,
-            color: muted,
-            border: fieldBorder,
-            borderRadius: "var(--radius-sub)",
-            padding: "1px 4px",
-          }}
+          className="shrink-0 rounded-[var(--radius-md)] bg-card-alt px-1.5 py-0.5 text-[11px] font-bold text-muted-fg"
           title="Read automatically — nothing to fill in"
         >
-          auto{providerLabel ? ` · ${providerLabel}` : ""}
+          Auto{providerLabel ? ` · ${providerLabel}` : ""}
         </span>
       </div>
 
       {state.status === "loading" ? (
-        <div style={{ ...boxStyle, color: muted }}>Reading…</div>
+        <div className="rounded-[var(--radius-md)] bg-card-alt px-2.5 py-1.5 text-[13px] text-muted-fg">Reading…</div>
       ) : state.status === "resolved" ? (
-        <div style={boxStyle}>
+        <div className="rounded-[var(--radius-md)] bg-card-alt px-2.5 py-1.5 text-[13px] text-fg">
           {formatAuto(reading?.value, reading?.extract)}
-          {state.busy ? <span style={{ fontSize: 9.5, color: muted }}> · refreshing</span> : null}
+          {state.busy ? <span className="text-[11px] text-muted-fg"> · refreshing</span> : null}
         </div>
       ) : (
         <div className="flex min-w-0 items-center gap-2">
-          <div style={{ ...boxStyle, color: muted, flex: 1 }}>
-            {state.reason === "disconnected"
-              ? "Not connected — link the provider in Settings"
-              : "Couldn't read this yet"}
+          <div className="flex-1 rounded-[var(--radius-md)] bg-card-alt px-2.5 py-1.5 text-[13px] text-muted-fg">
+            {state.reason === "disconnected" ? "Not connected — link the provider in Settings" : "Couldn't read this yet"}
           </div>
-          <button
-            type="button"
-            onClick={() => setNonce((n) => n + 1)}
-            style={{ ...boxStyle, fontSize: 10, cursor: "pointer", color: muted }}
-          >
+          <Button size="sm" variant="soft" onClick={() => setNonce((n) => n + 1)}>
             Retry
-          </button>
+          </Button>
         </div>
       )}
 
-      {sentence ? (
-        <div style={{ fontSize: 10, lineHeight: 1.4, color: muted }}>{sentence}</div>
-      ) : null}
+      {sentence ? <div className="text-[11px] leading-[1.4] text-muted-fg">{sentence}</div> : null}
       {state.status === "resolved" && reading?.fetchedAt ? (
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: muted, opacity: 0.85 }}>
-          {fetchedLabel(reading.fetchedAt)}
-        </div>
+        <div className="text-[11px] text-dim-fg">{fetchedLabel(reading.fetchedAt)}</div>
       ) : state.status === "unavailable" && state.message ? (
-        <div style={{ fontSize: 9.5, lineHeight: 1.4, color: muted, opacity: 0.85 }}>
-          {state.message}
-        </div>
+        <div className="text-[11px] leading-[1.4] text-dim-fg">{state.message}</div>
       ) : null}
     </div>
   );

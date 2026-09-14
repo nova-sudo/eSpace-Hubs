@@ -1,8 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { X } from "lucide-react";
+import { Badge, Button, IconButton, Input, Label, Select } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { WidgetShell } from "../widget-shell";
-import { Select } from "@/components/ui";
 import { useGoalInputs } from "@/features/goal-inputs";
 import { fullDate } from "@/lib/date";
 import {
@@ -131,14 +133,7 @@ export function IncidentLogWidget({
     >
       <div className="flex h-full flex-col gap-2">
         {rate != null ? (
-          <RateHeadline
-            rate={rate}
-            defectCount={totals.count}
-            deliverables={deliverables}
-            totals={totals}
-            period={period}
-            variant={variant}
-          />
+          <RateHeadline rate={rate} defectCount={totals.count} deliverables={deliverables} totals={totals} period={period} />
         ) : (
           <Headline
             totals={totals}
@@ -146,7 +141,6 @@ export function IncidentLogWidget({
             budget={target?.value}
             unit={unit}
             period={period}
-            variant={variant}
             mode={isCountMode ? "count" : "duration"}
           />
         )}
@@ -159,130 +153,75 @@ export function IncidentLogWidget({
             key={`deliverables-${goal?.id}-${deliverables ?? ""}`}
             deliverables={deliverables}
             period={period}
-            variant={variant}
             onCommit={(n) => append({ deliverables: n })}
           />
         ) : null}
 
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            color:
-              variant === "light"
-                ? "rgba(255,255,255,0.68)"
-                : "var(--muted-fg)",
-          }}
-        >
+        <Label>
           {spec.manual?.prompt ||
             (isCountMode
               ? `Log this ${singularUnit(unit)}: severity, root cause, corrective + preventive action.`
               : "Log this incident: severity, downtime, link.")}
-        </div>
+        </Label>
 
-        {totals.bySeverity.length > 0 ? (
-          <SeverityRow distribution={totals.bySeverity} variant={variant} />
-        ) : null}
+        {totals.bySeverity.length > 0 ? <SeverityRow distribution={totals.bySeverity} /> : null}
 
         {/* Input row. severity is a tight <select>; count mode adds the
             documentation fields the tier criteria grade against. Same min-w-0
             wrapping chain as the date-log widget so it never overflows. */}
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <Select
-            tone={variant === "light" ? "inverse" : "default"}
-            size="sm"
-            value={severity}
-            onChange={(e) => setSeverity(e.target.value)}
-            aria-label="Severity"
-          >
+          <Select size="sm" value={severity} onChange={(e) => setSeverity(e.target.value)} aria-label="Severity">
             {SEVERITY_LEVELS.map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
             ))}
           </Select>
-          <input
+          <Input
             type="number"
             min={0}
             value={downtime}
             onChange={(e) => setDowntime(e.target.value)}
             placeholder={isCountMode ? "min (opt)" : "min"}
-            className="w-16 min-w-0 rounded-[var(--radius-sub)] bg-transparent px-2 py-1.5 outline-none"
-            style={inputStyle(variant)}
-            aria-label={
-              isCountMode ? "Duration (optional, minutes)" : "Downtime (minutes)"
-            }
+            className="w-20 min-w-0"
+            aria-label={isCountMode ? "Duration (optional, minutes)" : "Downtime (minutes)"}
           />
-          <input
+          <Input
             value={rca}
             onChange={(e) => setRca(e.target.value)}
             placeholder={isCountMode ? "root cause" : "post-mortem (optional)"}
-            className="min-w-0 flex-1 rounded-[var(--radius-sub)] bg-transparent px-2 py-1.5 outline-none"
-            style={inputStyle(variant)}
+            className="min-w-0 flex-1"
             aria-label={isCountMode ? "Root-cause analysis" : "Post-mortem link"}
           />
           {isCountMode ? (
             <>
-              <input
+              <Input
                 value={action}
                 onChange={(e) => setAction(e.target.value)}
                 placeholder="corrective / preventive action"
-                className="min-w-0 flex-1 rounded-[var(--radius-sub)] bg-transparent px-2 py-1.5 outline-none"
-                style={inputStyle(variant)}
+                className="min-w-0 flex-1"
                 aria-label="Corrective and preventive action"
               />
               <button
                 type="button"
                 onClick={() => setPreventiveClosed((v) => !v)}
-                className="shrink-0 rounded-full px-2 py-1 uppercase tracking-[0.4px] transition-colors"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 9.5,
-                  border:
-                    variant === "light"
-                      ? "1px solid rgba(255,255,255,0.35)"
-                      : "1px solid var(--border-strong)",
-                  background: preventiveClosed
-                    ? variant === "light"
-                      ? "rgba(255,255,255,0.9)"
-                      : "var(--accent-2)"
-                    : "transparent",
-                  color: preventiveClosed
-                    ? variant === "light"
-                      ? "var(--accent)"
-                      : "#04140d"
-                    : variant === "light"
-                      ? "rgba(255,255,255,0.8)"
-                      : "var(--muted-fg)",
-                }}
                 aria-pressed={preventiveClosed}
                 title="Mark the preventive action as closed (done) vs open"
+                className={cn(
+                  "shrink-0 rounded-[var(--radius-pill)] px-2.5 py-1 text-[11.5px] font-bold transition-colors",
+                  preventiveClosed ? "bg-mint text-mint-ink" : "bg-card-alt text-muted-fg",
+                )}
               >
-                {preventiveClosed ? "prev ✓" : "prev …"}
+                {preventiveClosed ? "Prev done" : "Prev open"}
               </button>
             </>
           ) : null}
-          <button
-            type="button"
-            onClick={logIncident}
-            disabled={!minutesValid}
-            className="shrink-0 rounded-[var(--radius-sub)] px-3 py-1.5 font-bold uppercase transition-opacity disabled:opacity-40"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10.5,
-              letterSpacing: "0.4px",
-              background: variant === "light" ? "#ffffff" : "var(--accent)",
-              color: variant === "light" ? "var(--accent)" : "var(--accent-on)",
-            }}
-          >
+          <Button size="sm" disabled={!minutesValid} className="shrink-0" onClick={logIncident}>
             Log
-          </button>
+          </Button>
         </div>
 
-        <ul
-          className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-        >
+        <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1 text-[13px]">
           {allDefects
             .slice()
             .reverse()
@@ -291,82 +230,41 @@ export function IncidentLogWidget({
               const rcaText = v.rca || v.link || "";
               const rcaIsLink = /^https?:\/\//i.test(rcaText);
               return (
-                <li
-                  key={e.ts}
-                  className="group flex items-center gap-2 rounded-[var(--radius-sub)] px-1.5 py-1"
-                  style={{
-                    background:
-                      variant === "light"
-                        ? "rgba(255,255,255,0.06)"
-                        : "var(--card-alt)",
-                  }}
-                >
-                  <span className="shrink-0 font-semibold">{fullDate(e.ts)}</span>
-                  <span
-                    className="shrink-0 rounded-full px-1.5 py-0.5"
-                    style={{
-                      fontSize: 9,
-                      letterSpacing: "0.4px",
-                      background: severityTone(v.severity, variant).background,
-                      color: severityTone(v.severity, variant).color,
-                    }}
-                  >
+                <li key={e.ts} className="group flex items-center gap-2 rounded-[var(--radius-md)] bg-card-alt px-2 py-1.5">
+                  <span className="shrink-0 font-bold text-fg">{fullDate(e.ts)}</span>
+                  <Badge tone={severityTone(v.severity)} className="shrink-0">
                     {v.severity || "—"}
-                  </span>
-                  {Number.isFinite(v.downtime) ? (
-                    <span
-                      style={{
-                        color:
-                          variant === "light"
-                            ? "rgba(255,255,255,0.85)"
-                            : "var(--fg)",
-                      }}
-                    >
-                      {v.downtime}m
-                    </span>
-                  ) : null}
-                  {isCountMode ? (
-                    <DocMarkers v={v} variant={variant} />
-                  ) : null}
+                  </Badge>
+                  {Number.isFinite(v.downtime) ? <span className="text-fg">{v.downtime}m</span> : null}
+                  {isCountMode ? <DocMarkers v={v} /> : null}
                   {rcaText ? (
                     rcaIsLink ? (
                       <a
                         href={rcaText}
                         target="_blank"
                         rel="noreferrer"
-                        className="min-w-0 flex-1 truncate underline-offset-2 hover:underline"
-                        style={{ color: mutedText(variant) }}
+                        className="min-w-0 flex-1 truncate font-bold text-fg underline-offset-2 hover:underline"
                         title={rcaText}
                       >
-                        {isCountMode ? "root cause ↗" : "post-mortem ↗"}
+                        {isCountMode ? "root cause" : "post-mortem"}
                       </a>
                     ) : (
-                      <span
-                        className="min-w-0 flex-1 truncate"
-                        style={{ color: mutedText(variant) }}
-                        title={rcaText}
-                      >
+                      <span className="min-w-0 flex-1 truncate text-muted-fg" title={rcaText}>
                         {rcaText}
                       </span>
                     )
                   ) : (
                     <span className="flex-1" />
                   )}
-                  <button
-                    type="button"
-                    onClick={() => remove(e.ts)}
+                  <IconButton
+                    label="Remove"
+                    size="sm"
+                    onCard
                     className="opacity-0 transition-opacity group-hover:opacity-100"
-                    style={{
-                      fontSize: 10,
-                      color:
-                        variant === "light"
-                          ? "rgba(255,255,255,0.5)"
-                          : "var(--dim-fg)",
-                    }}
-                    aria-label="Remove"
+                    onClick={() => remove(e.ts)}
                   >
-                    ✕
-                  </button>
+                    <X size={12} />
+                  </IconButton>
                 </li>
               );
             })}
@@ -378,28 +276,12 @@ export function IncidentLogWidget({
 
 /* ────────────────────────── inputs / styling ────────────────────────── */
 
-function inputStyle(variant) {
-  return {
-    fontFamily: "var(--font-mono)",
-    fontSize: 11,
-    color: variant === "light" ? "#ffffff" : "var(--fg)",
-    border:
-      variant === "light"
-        ? "1px solid rgba(255,255,255,0.22)"
-        : "1px solid var(--border-strong)",
-  };
-}
-
-function mutedText(variant) {
-  return variant === "light" ? "rgba(255,255,255,0.7)" : "var(--muted-fg)";
-}
-
 /**
  * The rate denominator. A number the user maintains per period; committing on
  * blur / Enter appends a `{ deliverables }` entry (last write wins in-window).
  * Seeded from the stored value so it reflects what's persisted.
  */
-function DeliverablesField({ deliverables, period, variant, onCommit }) {
+function DeliverablesField({ deliverables, period, onCommit }) {
   const [draft, setDraft] = useState(
     deliverables != null ? String(deliverables) : "",
   );
@@ -414,18 +296,9 @@ function DeliverablesField({ deliverables, period, variant, onCommit }) {
   }
 
   return (
-    <label
-      className="flex items-center gap-1.5"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 10,
-        color: variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)",
-      }}
-    >
-      <span className="uppercase tracking-[0.4px]">
-        Deliverables{period ? ` this ${period}` : ""}
-      </span>
-      <input
+    <label className="flex items-center gap-1.5 text-[12.5px] text-muted-fg">
+      <span>Deliverables{period ? ` this ${period}` : ""}</span>
+      <Input
         type="number"
         min={0}
         value={draft}
@@ -441,8 +314,7 @@ function DeliverablesField({ deliverables, period, variant, onCommit }) {
           }
         }}
         placeholder="—"
-        className="w-16 min-w-0 rounded-[var(--radius-sub)] bg-transparent px-2 py-1 outline-none"
-        style={inputStyle(variant)}
+        className="w-20"
         aria-label="Deliverables shipped this period"
       />
     </label>
@@ -450,27 +322,22 @@ function DeliverablesField({ deliverables, period, variant, onCommit }) {
 }
 
 /** Compact per-defect documentation markers in the log row. */
-function DocMarkers({ v, variant }) {
-  const on = variant === "light" ? "rgba(255,255,255,0.85)" : "var(--fg)";
-  const off = variant === "light" ? "rgba(255,255,255,0.3)" : "var(--dim-fg)";
+function DocMarkers({ v }) {
   const hasRca = !!(v.rca || v.link);
   const hasAction = !!v.action;
   const prevClosed = v.preventive === "closed";
   return (
     <span
-      className="shrink-0"
-      style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.3px" }}
+      className="shrink-0 text-[11px]"
       title={`root cause: ${hasRca ? "yes" : "no"} · corrective action: ${
         hasAction ? "yes" : "no"
       } · preventive: ${v.preventive || "—"}`}
     >
-      <span style={{ color: hasRca ? on : off }}>RCA</span>
-      <span style={{ color: off }}> · </span>
-      <span style={{ color: hasAction ? on : off }}>ACT</span>
-      <span style={{ color: off }}> · </span>
-      <span style={{ color: prevClosed ? on : off }}>
-        {prevClosed ? "PREV✓" : "PREV"}
-      </span>
+      <span className={hasRca ? "text-fg" : "text-dim-fg"}>RCA</span>
+      <span className="text-dim-fg"> · </span>
+      <span className={hasAction ? "text-fg" : "text-dim-fg"}>ACT</span>
+      <span className="text-dim-fg"> · </span>
+      <span className={prevClosed ? "text-fg" : "text-dim-fg"}>{prevClosed ? "Prev done" : "Prev"}</span>
     </span>
   );
 }
@@ -482,14 +349,7 @@ function DocMarkers({ v, variant }) {
  * number; the sub-lines carry the denominator + documentation coverage so the
  * tile reads the same story the grader sees.
  */
-function RateHeadline({ rate, defectCount, deliverables, totals, period, variant }) {
-  const muted = variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)";
-  const monoStyle = {
-    fontFamily: "var(--font-mono)",
-    fontSize: 11,
-    color: muted,
-    lineHeight: 1.4,
-  };
+function RateHeadline({ rate, defectCount, deliverables, totals, period }) {
   const docBits = [];
   if (defectCount > 0) {
     docBits.push(
@@ -503,22 +363,15 @@ function RateHeadline({ rate, defectCount, deliverables, totals, period, variant
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline gap-2">
-        <div
-          className="font-semibold leading-none"
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 40,
-            letterSpacing: "-1.4px",
-          }}
-        >
+        <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
           {rate}%
         </div>
-        <div style={monoStyle}>
+        <span className="text-[13px] text-muted-fg">
           defect rate · {defectCount} / {deliverables} deliverables
           {period ? ` · ${period}` : ""}
-        </div>
+        </span>
       </div>
-      {docBits.length > 0 ? <div style={monoStyle}>{docBits.join(" · ")}</div> : null}
+      {docBits.length > 0 ? <div className="text-[12.5px] text-muted-fg">{docBits.join(" · ")}</div> : null}
     </div>
   );
 }
@@ -527,15 +380,7 @@ function RateHeadline({ rate, defectCount, deliverables, totals, period, variant
  * Headline for duration mode and count-mode-without-deliverables — branches on
  * whether a budget is configured. (Unchanged from the pre-rate widget.)
  */
-function Headline({ totals, headlineValue, budget, unit, period, variant, mode }) {
-  const muted =
-    variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)";
-  const monoStyle = {
-    fontFamily: "var(--font-mono)",
-    fontSize: 11,
-    color: muted,
-    lineHeight: 1.4,
-  };
+function Headline({ totals, headlineValue, budget, unit, period, mode }) {
   const isCountMode = mode === "count";
   const hasDowntime = totals.totalDowntime > 0;
   const secondary = isCountMode
@@ -555,48 +400,23 @@ function Headline({ totals, headlineValue, budget, unit, period, variant, mode }
       <div className="flex flex-col gap-1.5">
         <div className="flex items-baseline gap-2">
           <div
-            className="font-semibold leading-none"
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 40,
-              letterSpacing: "-1.4px",
-              color: over
-                ? variant === "light"
-                  ? "#ffd5d5"
-                  : "var(--danger)"
-                : "inherit",
-            }}
+            className={cn(
+              "text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums sm:text-[36px]",
+              over ? "text-peach-ink" : "text-fg",
+            )}
           >
             {headlineValue}
           </div>
-          <div style={monoStyle}>
+          <span className="text-[13px] text-muted-fg">
             / {budget} {unit}
             {period ? ` · ${period}` : ""}
-          </div>
+          </span>
         </div>
-        <div
-          className="h-1.5 w-full overflow-hidden rounded-full"
-          style={{
-            background:
-              variant === "light" ? "rgba(255,255,255,0.18)" : "var(--border)",
-          }}
-        >
-          <div
-            className="h-full"
-            style={{
-              width: `${pct}%`,
-              background: over
-                ? variant === "light"
-                  ? "#ffd5d5"
-                  : "var(--danger)"
-                : variant === "light"
-                  ? "#ffffff"
-                  : "var(--accent)",
-            }}
-          />
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-card-alt">
+          <div className={cn("h-full", over ? "bg-peach-ink" : "bg-ink")} style={{ width: `${pct}%` }} />
         </div>
         {secondary || over ? (
-          <div style={monoStyle}>
+          <div className="text-[12.5px] text-muted-fg">
             {secondary}
             {over ? `${secondary ? " · " : ""}over budget` : ""}
           </div>
@@ -608,77 +428,42 @@ function Headline({ totals, headlineValue, budget, unit, period, variant, mode }
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline gap-2">
-        <div
-          className="font-semibold leading-none"
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 40,
-            letterSpacing: "-1.4px",
-          }}
-        >
+        <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
           {isCountMode ? headlineValue : `Σ ${headlineValue}`}
         </div>
-        <div style={monoStyle}>{unit}</div>
+        <span className="text-[13px] text-muted-fg">{unit}</span>
       </div>
-      {secondary ? <div style={monoStyle}>{secondary}</div> : null}
+      {secondary ? <div className="text-[12.5px] text-muted-fg">{secondary}</div> : null}
     </div>
   );
 }
 
-function SeverityRow({ distribution, variant }) {
+function SeverityRow({ distribution }) {
   return (
-    <div
-      className="flex items-center gap-1.5"
-      style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-    >
-      {distribution.map(([sev, count]) => {
-        const tone = severityTone(sev, variant);
-        return (
-          <span
-            key={sev}
-            className="rounded-full px-1.5 py-0.5"
-            style={{
-              background: tone.background,
-              color: tone.color,
-              letterSpacing: "0.4px",
-            }}
-          >
-            {sev} · {count}
-          </span>
-        );
-      })}
+    <div className="flex items-center gap-1.5">
+      {distribution.map(([sev, count]) => (
+        <Badge key={sev} tone={severityTone(sev)}>
+          {sev} · {count}
+        </Badge>
+      ))}
     </div>
   );
 }
 
 /**
- * Tone helper — P1 reads warm/red, P4 cool/muted. Shared between the inline log
- * row and the distribution strip; light + dark variants each get a palette so
- * contrast stays readable.
+ * Tone helper — P1 reads as danger, P4 reads neutral. Maps severities onto
+ * the tint system rather than a bespoke palette.
  */
-function severityTone(sev, variant) {
-  const light = variant === "light";
+function severityTone(sev) {
   switch (sev) {
     case "P1":
-      return {
-        background: light ? "rgba(255,180,180,0.35)" : "rgba(220,80,80,0.18)",
-        color: light ? "#ffe1e1" : "#e08585",
-      };
+      return "peach";
     case "P2":
-      return {
-        background: light ? "rgba(255,210,150,0.32)" : "rgba(220,150,80,0.18)",
-        color: light ? "#ffead0" : "#e0b075",
-      };
+      return "lemon";
     case "P3":
-      return {
-        background: light ? "rgba(220,220,220,0.28)" : "rgba(160,160,160,0.18)",
-        color: light ? "rgba(255,255,255,0.85)" : "var(--muted-fg)",
-      };
+      return "neutral";
     default:
-      return {
-        background: light ? "rgba(255,255,255,0.14)" : "rgba(200,200,200,0.1)",
-        color: light ? "rgba(255,255,255,0.7)" : "var(--dim-fg)",
-      };
+      return "neutral";
   }
 }
 

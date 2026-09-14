@@ -10,7 +10,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import { Button, Field, Input, MonoLabel, Select } from "@/components/ui";
+import { Badge, Button, Card, Field, IconButton, Input, Label, Section, Select } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { dueStatus } from "@/lib/date";
 import {
@@ -65,52 +65,46 @@ export function GoalsEditor() {
     loadTestGoals();
   }
 
+  const weightTone = weights.total === 100 ? "mint" : weights.total > 100 ? "peach" : "neutral";
+
   return (
-    <div className="flex flex-col gap-4">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <MonoLabel>Your goals</MonoLabel>
-          <p className="mt-1 max-w-xl text-[13px] leading-[1.5] text-muted-fg">
-            Fill in every field the AI will see. Rubric + description are
-            the biggest signals for widget choice — the more specific, the
-            better the tracking.
-          </p>
-        </div>
-        <div className="shrink-0 text-right">
-          <MonoLabel>
-            {total.l1s} L1 · {total.l2s} L2
-          </MonoLabel>
-          <div
-            className={cn(
-              "mt-1",
-              weights.total === 100
-                ? "text-good"
-                : weights.total > 100
-                  ? "text-bad"
-                  : "text-muted-fg",
-            )}
-            style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600 }}
-          >
-            Σ weightage: {weights.total}%
-            {weights.remaining > 0 ? ` (${weights.remaining}% unassigned)` : null}
+    <div className="flex flex-col gap-6">
+      <Section
+        title="Your goals"
+        right={
+          <div className="flex items-center gap-2">
+            <Label>
+              {total.l1s} L1 · {total.l2s} L2
+            </Label>
+            <Badge tone={weightTone}>
+              {weights.total}% weighted
+              {weights.remaining > 0 ? ` · ${weights.remaining}% left` : ""}
+            </Badge>
           </div>
-        </div>
-      </header>
+        }
+      >
+        <p className="max-w-xl text-[13px] leading-[1.5] text-muted-fg">
+          Fill in every field the AI will see. Rubric + description are
+          the biggest signals for widget choice — the more specific, the
+          better the tracking.
+        </p>
+      </Section>
 
       <div className="flex items-center gap-2">
-        <Button variant="ghost" onClick={addL1}>
-          <Plus className="h-4 w-4" /> Add L1
+        <Button variant="soft" size="sm" onClick={addL1}>
+          <Plus size={14} /> Add L1
         </Button>
         <Button
-          variant={importing ? "solid" : "ghost"}
+          variant={importing ? "ink" : "soft"}
+          size="sm"
           onClick={() => setImporting((v) => !v)}
         >
-          <Download className="h-4 w-4" />
+          <Download size={14} />
           {importing ? "Hide import" : "Import from Zoho"}
         </Button>
         <div className="ml-auto">
-          <Button variant="ghost" onClick={handleLoadTest}>
-            <FlaskConical className="h-4 w-4" /> Load test goals
+          <Button variant="soft" size="sm" onClick={handleLoadTest}>
+            <FlaskConical size={14} /> Load test goals
           </Button>
         </div>
       </div>
@@ -133,11 +127,17 @@ export function GoalsEditor() {
 
 function EmptyHint() {
   return (
-    <div className="rounded-[var(--radius-tile)] border border-dashed border-border-strong bg-card-alt px-6 py-8 text-center">
-      <div className="text-[13px] text-muted-fg">
-        No goals yet. Click <strong>Add L1</strong> to start mapping them.
+    <Card className="text-center">
+      <div className="text-[15px] font-bold text-fg">No goals yet</div>
+      <p className="mt-1 text-[13px] text-muted-fg">
+        Add an L1 objective to start mapping your goal tree.
+      </p>
+      <div className="mt-4 flex justify-center">
+        <Button size="sm" onClick={addL1}>
+          <Plus size={14} /> Add L1
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -146,21 +146,11 @@ function EmptyHint() {
 function L1Card({ l1, index }) {
   const l2Weight = l1.l2s.reduce((s, l2) => s + (Number(l2.weightage) || 0), 0);
   return (
-    <div className="rounded-[var(--radius-tile)] border border-border bg-card p-5">
+    <Card>
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="flex items-center gap-2">
-          <GripVertical className="h-4 w-4 text-dim-fg" />
-          <span
-            className="uppercase text-accent"
-            style={{
-              fontFamily: "var(--font-dot)",
-              fontWeight: 700,
-              fontSize: 15,
-              letterSpacing: "1px",
-            }}
-          >
-            L1 · {String(index + 1).padStart(2, "0")}
-          </span>
+          <GripVertical size={16} className="text-dim-fg" />
+          <Label>L1 · {String(index + 1).padStart(2, "0")}</Label>
         </div>
         <Button
           variant="danger"
@@ -171,7 +161,7 @@ function L1Card({ l1, index }) {
             }
           }}
         >
-          <Trash2 className="h-3.5 w-3.5" /> Delete
+          <Trash2 size={14} /> Delete
         </Button>
       </div>
 
@@ -181,7 +171,6 @@ function L1Card({ l1, index }) {
             value={l1.code}
             onChange={(e) => updateL1(l1.id, { code: e.target.value })}
             placeholder="R-L0-3-PSCS-L1-06"
-            mono
           />
         </Field>
         <Field label="Category">
@@ -233,19 +222,18 @@ function L1Card({ l1, index }) {
           value={l1.rubric}
           onChange={(e) => updateL1(l1.id, { rubric: e.target.value })}
           placeholder="- Achieved: 100% adherence to all client SLAs AND developer environments restored in ≤ 2 hours…"
-          className="w-full rounded-[var(--radius-sub)] border border-border bg-card px-3 py-2.5 text-[13px] text-fg outline-none placeholder:text-dim-fg focus:border-accent"
-          style={{ fontFamily: "var(--font-sans)", resize: "vertical" }}
+          className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt p-3.5 text-[13.5px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
         />
       </Field>
 
-      <div className="mt-4 rounded-[var(--radius-sub)] border border-dashed border-border bg-card-alt p-4">
+      <div className="mt-4 rounded-[var(--radius-lg)] bg-card-alt p-4">
         <div className="mb-3 flex items-center justify-between">
-          <MonoLabel>
+          <Label>
             {l1.l2s.length} L2 mapped · Σ {l2Weight}%
-          </MonoLabel>
-          <Button variant="ghost" size="sm" onClick={() => addL2(l1.id)}>
-            <Plus className="h-3 w-3" /> Add L2
-          </Button>
+          </Label>
+          <IconButton label="Add L2" size="sm" onCard onClick={() => addL2(l1.id)}>
+            <Plus size={14} />
+          </IconButton>
         </div>
         <div className="flex flex-col gap-2">
           {l1.l2s.map((l2, j) => (
@@ -258,7 +246,7 @@ function L1Card({ l1, index }) {
           ) : null}
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -275,7 +263,7 @@ function L2Card({ l1Id, l2, index }) {
   const [expanded, setExpanded] = useState(isEmpty);
 
   return (
-    <div className="rounded-[var(--radius-sub)] border border-border bg-card">
+    <Card radius="lg" padding={0}>
       <L2Summary
         l2={l2}
         index={index}
@@ -288,7 +276,7 @@ function L2Card({ l1Id, l2, index }) {
         }}
       />
       {expanded ? <L2Form l1Id={l1Id} l2={l2} /> : null}
-    </div>
+    </Card>
   );
 }
 
@@ -300,21 +288,15 @@ function L2Summary({ l2, index, expanded, onToggle, onRemove }) {
       className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-card-alt"
     >
       {expanded ? (
-        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-fg" />
+        <ChevronDown size={14} className="shrink-0 text-muted-fg" />
       ) : (
-        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-fg" />
+        <ChevronRight size={14} className="shrink-0 text-muted-fg" />
       )}
-      <span
-        className="shrink-0 text-dim-fg"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 700 }}
-      >
+      <span className="shrink-0 text-[11px] font-semibold text-dim-fg">
         L2/{String(index + 1).padStart(2, "0")}
       </span>
       {l2.code ? (
-        <span
-          className="shrink-0 text-accent"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 700 }}
-        >
+        <span className="shrink-0 font-mono text-[11px] font-bold text-muted-fg">
           {l2.code}
         </span>
       ) : null}
@@ -322,17 +304,17 @@ function L2Summary({ l2, index, expanded, onToggle, onRemove }) {
         {l2.title || <span className="text-dim-fg">Untitled L2</span>}
       </span>
       <SummaryChips l2={l2} />
-      <button
-        type="button"
+      <IconButton
+        label="Remove L2"
+        size="sm"
+        onCard
         onClick={(e) => {
           e.stopPropagation();
           onRemove();
         }}
-        className="shrink-0 rounded-full p-1 text-dim-fg hover:bg-[color-mix(in_srgb,var(--bad)_12%,transparent)] hover:text-bad"
-        aria-label="Remove L2"
       >
-        <Trash2 className="h-3 w-3" />
-      </button>
+        <Trash2 size={13} />
+      </IconButton>
     </button>
   );
 }
@@ -340,7 +322,7 @@ function L2Summary({ l2, index, expanded, onToggle, onRemove }) {
 function SummaryChips({ l2 }) {
   const chips = [];
   if (Number(l2.weightage) > 0) {
-    chips.push({ key: "w", label: `${l2.weightage}%`, tone: "muted" });
+    chips.push({ key: "w", label: `${l2.weightage}%`, tone: "lav" });
   }
   if (l2.priority) {
     chips.push({
@@ -348,80 +330,52 @@ function SummaryChips({ l2 }) {
       label: l2.priority,
       tone:
         l2.priority === "high"
-          ? "bad"
+          ? "peach"
           : l2.priority === "medium"
-            ? "accent"
-            : "muted",
+            ? "lemon"
+            : "neutral",
     });
   }
   if (l2.dueDate) {
-    // F4 — the date finally knows what day it is: overdue reads red,
-    // inside a week reads accent, far-off stays muted.
+    // F4 — the date finally knows what day it is: overdue reads peach,
+    // inside a week reads lemon, far-off stays neutral.
     const due = dueStatus(l2.dueDate);
     chips.push({
       key: "d",
       label:
         due?.state === "overdue"
-          ? `overdue ${fmtDate(l2.dueDate)}`
-          : `due ${fmtDate(l2.dueDate)}`,
+          ? `Overdue ${fmtDate(l2.dueDate)}`
+          : `Due ${fmtDate(l2.dueDate)}`,
       tone:
         due?.state === "overdue"
-          ? "bad"
+          ? "peach"
           : due?.state === "due_soon"
-            ? "accent"
-            : "muted",
+            ? "lemon"
+            : "neutral",
     });
   }
   if (chips.length === 0) return null;
   return (
     <div className="hidden shrink-0 items-center gap-1.5 md:flex">
       {chips.map((c) => (
-        <ChipInline key={c.key} tone={c.tone}>
+        <Badge key={c.key} tone={c.tone}>
           {c.label}
-        </ChipInline>
+        </Badge>
       ))}
     </div>
-  );
-}
-
-function ChipInline({ children, tone }) {
-  const toneStyles = {
-    muted: { bg: "var(--panel-2)", color: "var(--muted-fg)" },
-    accent: { bg: "var(--accent-dim)", color: "var(--accent)" },
-    bad: {
-      bg: "color-mix(in srgb, var(--bad) 13%, transparent)",
-      color: "var(--bad)",
-    },
-  };
-  const style = toneStyles[tone] || toneStyles.muted;
-  return (
-    <span
-      className="rounded-full px-2 py-[1px] uppercase"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 9.5,
-        letterSpacing: "0.4px",
-        fontWeight: 700,
-        background: style.bg,
-        color: style.color,
-      }}
-    >
-      {children}
-    </span>
   );
 }
 
 function L2Form({ l1Id, l2 }) {
   const patch = (p) => updateL2(l1Id, l2.id, p);
   return (
-    <div className="border-t border-border p-3">
+    <div className="border-t border-line p-3">
       <div className="grid grid-cols-[1fr_1fr_120px] gap-3">
         <Field label="Code (optional)">
           <Input
             value={l2.code}
             onChange={(e) => patch({ code: e.target.value })}
             placeholder="R-L0-3-PSCS-L2-06-01"
-            mono
           />
         </Field>
         <Field label="Category">
@@ -463,8 +417,7 @@ function L2Form({ l1Id, l2 }) {
           value={l2.description}
           onChange={(e) => patch({ description: e.target.value })}
           placeholder="Defects are tracked on the quality dashboard. Scope is the payments squad only."
-          className="w-full rounded-[var(--radius-sub)] border border-border bg-card px-3 py-2.5 text-[13px] text-fg outline-none placeholder:text-dim-fg focus:border-accent"
-          style={{ fontFamily: "var(--font-sans)", resize: "vertical" }}
+          className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt p-3.5 text-[13.5px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
         />
       </Field>
 
@@ -478,8 +431,7 @@ function L2Form({ l1Id, l2 }) {
           value={l2.rubric}
           onChange={(e) => patch({ rubric: e.target.value })}
           placeholder={"- Achieved: ≤10% defects per quarter\n- Over achieved: ≤5%\n- Role model: zero defects + documented RCA cadence"}
-          className="w-full rounded-[var(--radius-sub)] border border-border bg-card px-3 py-2.5 text-[13px] text-fg outline-none placeholder:text-dim-fg focus:border-accent"
-          style={{ fontFamily: "var(--font-sans)", resize: "vertical" }}
+          className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt p-3.5 text-[13.5px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
         />
       </Field>
 

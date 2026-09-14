@@ -34,6 +34,7 @@
 
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { Loading } from "@/components/ui";
 import { useSession } from "./use-session.js";
 
 // Fail CLOSED: auth is required unless the flag is EXPLICITLY "false".
@@ -148,20 +149,8 @@ export function AuthGuard({ children, fallback = null }) {
 
 function AuthLoading() {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        minHeight: "100vh",
-        fontFamily: "var(--font-mono)",
-        fontSize: 11,
-        letterSpacing: "0.5px",
-        textTransform: "uppercase",
-        color: "var(--muted-fg)",
-      }}
-    >
-      Authenticating…
+    <div className="flex min-h-screen items-center justify-center bg-bg">
+      <Loading label="Authenticating…" />
     </div>
   );
 }

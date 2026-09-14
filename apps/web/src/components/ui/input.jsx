@@ -1,18 +1,17 @@
 import { cn } from "@/lib/cn";
+import { Label } from "./label";
 
 export function Input({ className, ...rest }) {
-  // Nothing UI inputs are mono on a card surface with a strong hairline
-  // (see .n-input in the migration kit). `mono` is accepted for back-compat
-  // but is now the default, so the prop is a no-op.
+  // `mono` is accepted for back-compat and is now a no-op — inputs are
+  // sans, filled, borderless per the redesign.
   const { mono: _mono, ...inputProps } = rest;
   return (
     <input
       {...inputProps}
       className={cn(
-        "w-full rounded-[var(--radius-sub)] border border-border-strong bg-card px-3.5 py-2.5 text-[13px] text-fg outline-none placeholder:text-dim-fg focus:border-accent",
+        "h-11 w-full rounded-[var(--radius-lg)] bg-card-alt px-3.5 text-[14px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink",
         className,
       )}
-      style={{ fontFamily: "var(--font-mono)" }}
     />
   );
 }
@@ -20,18 +19,9 @@ export function Input({ className, ...rest }) {
 export function Field({ label, hint, children, className }) {
   return (
     <label className={cn("block", className)}>
-      {label ? (
-        <div
-          className="mb-1.5 uppercase tracking-[1.5px] text-[10px] text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          {label}
-        </div>
-      ) : null}
+      {label ? <Label className="mb-1.5 block">{label}</Label> : null}
       {children}
-      {hint ? (
-        <div className="mt-1 text-[11.5px] leading-[1.4] text-dim-fg">{hint}</div>
-      ) : null}
+      {hint ? <div className="mt-1 text-[12px] leading-[1.4] text-dim-fg">{hint}</div> : null}
     </label>
   );
 }

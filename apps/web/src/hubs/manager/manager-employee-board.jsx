@@ -15,7 +15,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { MonoLabel } from "@/components/ui";
+import { ArrowLeft, Check } from "lucide-react";
+import { Badge, Button, Label, Stat } from "@/components/ui";
 import { useActiveHubStrict, useHubLink } from "@/features/hubs";
 import { TIER_LABELS } from "@/features/goal-tiers";
 import { readinessLabel } from "@/features/goal-widgets";
@@ -42,50 +43,21 @@ function ago(iso) {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
-const TONE = {
-  accent: "var(--accent)",
-  good: "var(--good)",
-  bad: "var(--bad)",
-  warn: "var(--warn)",
-  muted: "var(--muted-fg)",
-};
-
-function Chip({ children, tone = "muted", solid = false }) {
-  const c = TONE[tone] ?? TONE.muted;
-  return (
-    <span
-      className="inline-flex items-center rounded-full px-2.5 py-1"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 10,
-        fontWeight: 700,
-        letterSpacing: "0.05em",
-        textTransform: "uppercase",
-        whiteSpace: "nowrap",
-        color: solid ? "var(--accent-on)" : c,
-        background: solid ? "var(--accent)" : `color-mix(in srgb, ${c} 13%, transparent)`,
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
 const STATUS_META = {
-  auto: { label: "Auto-tracked", tone: "accent" },
-  tracking: { label: "Tracking", tone: "good" },
-  no_data: { label: "No data", tone: "warn" },
-  needs_setup: { label: "Needs setup", tone: "muted" },
-  delegated: { label: "Delegated", tone: "accent" },
-  untrackable: { label: "Untrackable", tone: "muted" },
-  unclassified: { label: "Not classified", tone: "muted" },
+  auto: { label: "Auto-tracked", tone: "lav" },
+  tracking: { label: "Tracking", tone: "mint" },
+  no_data: { label: "No data", tone: "lemon" },
+  needs_setup: { label: "Needs setup", tone: "neutral" },
+  delegated: { label: "Delegated", tone: "lav" },
+  untrackable: { label: "Untrackable", tone: "neutral" },
+  unclassified: { label: "Not classified", tone: "neutral" },
 };
 
 const TIER_TONE = {
-  not_achieved: "bad",
-  achieved: "muted",
-  over_achieved: "good",
-  role_model: "accent",
+  not_achieved: "peach",
+  achieved: "neutral",
+  over_achieved: "mint",
+  role_model: "lav",
 };
 
 function StatusChip({ goal }) {
@@ -94,42 +66,13 @@ function StatusChip({ goal }) {
     goal.status === "delegated" && goal.delegatedJudge === "manager"
       ? "Delegated to you"
       : meta.label;
-  return <Chip tone={meta.tone}>{label}</Chip>;
+  return <Badge tone={meta.tone}>{label}</Badge>;
 }
 
 function TierChip({ tier }) {
-  if (!tier) return <Chip tone="muted">Ungraded</Chip>;
-  const tone = TIER_TONE[tier.tier] ?? "muted";
-  return (
-    <Chip tone={tone} solid={tier.tier === "role_model"}>
-      {TIER_LABELS[tier.tier] ?? tier.tier}
-    </Chip>
-  );
-}
-
-function SummaryStat({ label, value, tone }) {
-  return (
-    <div className="rounded-md border border-border bg-card px-4 py-3">
-      <div
-        style={{
-          fontFamily: "var(--font-dot)",
-          fontWeight: 900,
-          fontSize: 26,
-          letterSpacing: "0.5px",
-          lineHeight: 1,
-          color: tone ? TONE[tone] : "var(--fg)",
-        }}
-      >
-        {value}
-      </div>
-      <div
-        className="mt-1.5 uppercase text-muted-fg"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.06em" }}
-      >
-        {label}
-      </div>
-    </div>
-  );
+  if (!tier) return <Badge>Ungraded</Badge>;
+  const tone = TIER_TONE[tier.tier] ?? "neutral";
+  return <Badge tone={tone}>{TIER_LABELS[tier.tier] ?? tier.tier}</Badge>;
 }
 
 export function ManagerEmployeeBoard({ userId }) {
@@ -141,24 +84,17 @@ export function ManagerEmployeeBoard({ userId }) {
   const back = (
     <Link
       href={link("/employees")}
-      className="mb-5 inline-flex items-center gap-1.5 text-muted-fg hover:text-accent"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 11,
-        letterSpacing: "0.06em",
-        textTransform: "uppercase",
-        fontWeight: 600,
-      }}
+      className="mb-5 inline-flex items-center gap-1.5 text-[12.5px] font-bold text-fg"
     >
-      ← Back to team
+      <ArrowLeft size={14} /> Back to team
     </Link>
   );
 
   if (loading) {
     return (
-      <main className="relative z-[2] mx-auto max-w-4xl px-4 sm:px-10 pb-14 pt-9">
+      <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
         {back}
-        <div className="rounded-md border border-dashed border-border bg-card p-6 text-[13px] text-muted-fg">
+        <div className="rounded-[var(--radius-xl)] bg-card p-6 text-[13px] text-muted-fg" style={{ boxShadow: "var(--shadow-card)" }}>
           Loading the board…
         </div>
       </main>
@@ -167,9 +103,9 @@ export function ManagerEmployeeBoard({ userId }) {
 
   if (error || !data) {
     return (
-      <main className="relative z-[2] mx-auto max-w-4xl px-4 sm:px-10 pb-14 pt-9">
+      <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
         {back}
-        <div className="rounded-md border border-dashed border-border bg-card p-6 text-[13px] text-muted-fg">
+        <div className="rounded-[var(--radius-xl)] bg-card p-6 text-[13px] text-muted-fg" style={{ boxShadow: "var(--shadow-card)" }}>
           {error === "not_found"
             ? "That teammate isn't on your team."
             : "Couldn't load this board right now. Refresh, or check back in a moment."}
@@ -182,45 +118,37 @@ export function ManagerEmployeeBoard({ userId }) {
   const hasGoals = summary.total > 0;
 
   return (
-    <main className="relative z-[2] mx-auto max-w-4xl px-4 sm:px-10 pb-16 pt-9">
+    <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
       {back}
 
       <div className="flex items-center gap-4">
-        <span
-          className="grid flex-none place-items-center rounded-full text-accent-on"
-          style={{
-            width: 52,
-            height: 52,
-            background: "linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, #000))",
-            fontFamily: "var(--font-mono)",
-            fontWeight: 700,
-            fontSize: 18,
-          }}
-        >
+        <span className="grid flex-none place-items-center rounded-full bg-lav text-lav-ink text-[18px] font-bold h-[52px] w-[52px]">
           {initials(user.displayName)}
         </span>
         <div>
-          <h1
-            className="font-semibold"
-            style={{ fontFamily: "var(--font-display)", fontSize: 26, letterSpacing: "-0.5px" }}
-          >
+          <h1 className="text-[26px] font-extrabold tracking-[-0.02em] leading-[1.1]">
             {user.displayName}
           </h1>
-          <div
-            className="mt-1 text-muted-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, letterSpacing: "0.03em" }}
-          >
+          <div className="mt-1 text-[12.5px] text-muted-fg">
             {[user.role, user.department, user.level].filter(Boolean).join(" · ")} · reports to you
           </div>
         </div>
       </div>
 
       {hasGoals ? (
-        <div className="mt-6 grid grid-cols-4 gap-3">
-          <SummaryStat label="Goals" value={summary.total} />
-          <SummaryStat label="Graded" value={summary.graded} tone="good" />
-          <SummaryStat label="Need setup" value={summary.needsSetup} tone={summary.needsSetup ? "warn" : null} />
-          <SummaryStat label="Delegated to you" value={summary.delegatedToYou} tone={summary.delegatedToYou ? "accent" : null} />
+        <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="rounded-[var(--radius-xl)] bg-card p-5" style={{ boxShadow: "var(--shadow-card)" }}>
+            <Stat label="Goals" value={summary.total} />
+          </div>
+          <div className="rounded-[var(--radius-xl)] bg-card p-5" style={{ boxShadow: "var(--shadow-card)" }}>
+            <Stat label="Graded" value={summary.graded} />
+          </div>
+          <div className="rounded-[var(--radius-xl)] bg-card p-5" style={{ boxShadow: "var(--shadow-card)" }}>
+            <Stat label="Need setup" value={summary.needsSetup} />
+          </div>
+          <div className="rounded-[var(--radius-xl)] bg-card p-5" style={{ boxShadow: "var(--shadow-card)" }}>
+            <Stat label="Delegated to you" value={summary.delegatedToYou} />
+          </div>
         </div>
       ) : null}
 
@@ -230,7 +158,7 @@ export function ManagerEmployeeBoard({ userId }) {
 
       <div className="mt-9">
         {!hasGoals ? (
-          <div className="rounded-md border border-dashed border-border bg-card p-6 text-[13px] leading-[1.6] text-muted-fg">
+          <div className="rounded-[var(--radius-xl)] bg-card p-6 text-[13px] leading-[1.6] text-muted-fg" style={{ boxShadow: "var(--shadow-card)" }}>
             {user.displayName.split(" ")[0]} hasn't set up any goals yet. Once
             they add goals in their hub, their board shows up here.
           </div>
@@ -238,10 +166,10 @@ export function ManagerEmployeeBoard({ userId }) {
           <div className="grid gap-8">
             {groups.map((group) => (
               <section key={group.l1.id}>
-                <MonoLabel>
+                <Label>
                   {group.l1.title}
                   {group.l1.category ? ` · ${group.l1.category}` : ""}
-                </MonoLabel>
+                </Label>
                 <div className="mt-3 grid gap-2">
                   {group.goals.map((goal) => {
                     const notReady =
@@ -253,16 +181,12 @@ export function ManagerEmployeeBoard({ userId }) {
                     return (
                       <div
                         key={goal.id}
-                        className="flex items-center gap-4 rounded-md border border-border bg-card px-4 py-3"
+                        className="flex items-center gap-4 rounded-[var(--radius-xl)] bg-card px-4 py-3.5"
+                        style={{ boxShadow: "var(--shadow-card)" }}
                       >
                         <div className="min-w-0 flex-1">
-                          <div className="text-[14px] font-semibold">
-                            {goal.title}
-                          </div>
-                          <div
-                            className="mt-1 truncate text-muted-fg"
-                            style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-                          >
+                          <div className="text-[14.5px] font-bold">{goal.title}</div>
+                          <div className="mt-1 truncate text-[12px] text-muted-fg">
                             {sub}
                             {activity ? ` · updated ${activity}` : ""}
                           </div>
@@ -272,8 +196,7 @@ export function ManagerEmployeeBoard({ userId }) {
                               live. */}
                           {goal.reading ? (
                             <div
-                              className="mt-1 text-fg"
-                              style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
+                              className="mt-1 text-[12px] text-fg"
                               title={`From the review packet submitted ${ago(goal.readingAsOf) || "recently"}`}
                             >
                               {goal.reading}
@@ -283,37 +206,22 @@ export function ManagerEmployeeBoard({ userId }) {
                             </div>
                           ) : null}
                           {goal.tier?.source === "manager" ? (
-                            <div
-                              className="mt-1 text-accent"
-                              style={{
-                                fontFamily: "var(--font-mono)",
-                                fontSize: 10,
-                                letterSpacing: "0.04em",
-                              }}
-                            >
-                              ✓ graded by {goal.tier.gradedByName || "you"}
+                            <div className="mt-1 flex items-center gap-1 text-[11px] font-bold text-mint-ink">
+                              <Check size={12} /> graded by {goal.tier.gradedByName || "you"}
                             </div>
                           ) : null}
                         </div>
                         <div className="flex flex-none items-center gap-2">
                           <StatusChip goal={goal} />
                           <TierChip tier={goal.tier} />
-                          <button
+                          <Button
                             type="button"
+                            variant="soft"
+                            size="sm"
                             onClick={() => setGrading(goal)}
-                            className="rounded-md border border-dashed px-2.5 py-1 text-accent transition-colors hover:bg-accent-dim/50"
-                            style={{
-                              borderColor:
-                                "color-mix(in srgb, var(--accent) 45%, var(--border-strong))",
-                              fontFamily: "var(--font-mono)",
-                              fontSize: 10.5,
-                              fontWeight: 700,
-                              letterSpacing: "0.04em",
-                              textTransform: "uppercase",
-                            }}
                           >
                             {goal.tier?.source === "manager" ? "Regrade" : "Grade"}
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     );
@@ -328,7 +236,7 @@ export function ManagerEmployeeBoard({ userId }) {
       <p className="mt-9 text-[12.5px] leading-[1.6] text-muted-fg">
         Your grade overrides the AI tier and notifies the engineer. Judging
         delegated goals and approving Build-Your-Own trackers arrive next — see{" "}
-        <span className="text-fg">docs/manager-hub-plan.md</span>.
+        <span className="text-fg font-bold">docs/manager-hub-plan.md</span>.
       </p>
 
       <ManagerGradeDrawer

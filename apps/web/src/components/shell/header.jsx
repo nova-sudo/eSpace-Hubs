@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Search } from "lucide-react";
 import { LogoMark } from "./logo-mark";
 import { ThemeToggle } from "./theme-toggle";
+import { IconButton } from "@/components/ui";
 import { AnalystActivator } from "@/features/analyst";
 import { UserChip } from "@/features/auth";
 import { NotificationBell } from "@/features/notifications";
@@ -49,8 +50,8 @@ const NAV_ITEMS = [
 /**
  * Default labels per slot. Hub-specific overrides live in
  * HUB_SLOT_LABEL_OVERRIDES below — Dev's dashboard reads as
- * "Performance" (its longstanding name); admin's reads as "Overview";
- * everyone else falls back to "Dashboard".
+ * "Intelligence"; admin's reads as "Overview"; everyone else falls
+ * back to "Dashboard".
  */
 const DEFAULT_LABELS = {
   dashboard: "Dashboard",
@@ -95,7 +96,20 @@ function labelFor(slot, hubId) {
   );
 }
 
-const VERSION = "v0.3.1";
+function NavPill({ href, label, active, className }) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "whitespace-nowrap rounded-[var(--radius-pill)] px-4.5 py-2.5 text-[13.5px] font-semibold transition-colors",
+        active ? "bg-ink text-ink-on" : "text-fg hover:bg-card",
+        className,
+      )}
+    >
+      {label}
+    </Link>
+  );
+}
 
 export function Header() {
   const pathname = usePathname();
@@ -131,38 +145,22 @@ export function Header() {
   });
 
   return (
-    <header
-      className="sticky top-0 z-20 border-b border-border backdrop-blur-xl"
-      style={{ background: "color-mix(in srgb, var(--bg) 82%, transparent)" }}
-    >
-      <div className="flex items-center justify-between px-4 sm:px-10 py-3.5">
+    <header className="sticky top-0 z-20 h-[72px] bg-bg">
+      <div className="flex h-full items-center justify-between px-4 sm:px-10">
         <div className="flex min-w-0 items-center gap-3 md:gap-8">
           {/* Hamburger — mobile only. Sits left of the wordmark, thumb reach. */}
-          <button
-            type="button"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-fg transition-colors hover:bg-accent-dim/60 md:hidden"
-            aria-label={menuOpen ? "Close navigation" : "Open navigation"}
+          <IconButton
+            label={menuOpen ? "Close navigation" : "Open navigation"}
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((o) => !o)}
+            className="md:hidden"
           >
-            {menuOpen ? <X className="h-4.5 w-4.5" /> : <Menu className="h-4.5 w-4.5" />}
-          </button>
+            {menuOpen ? <X size={18} /> : <Menu size={18} />}
+          </IconButton>
           <Link href={hubPrefix || "/"} className="flex min-w-0 items-center gap-2.5">
             <LogoMark />
-            <div
-              className="truncate font-semibold"
-              style={{ fontFamily: "var(--font-display)", fontSize: 15, letterSpacing: "-0.2px" }}
-            >
-              eSpace<span style={{ color: "var(--accent)" }}>/</span>
-              <span style={{ fontFamily: "var(--font-dot)", fontWeight: 700, letterSpacing: "1px" }}>
-                {hub?.label?.replace(/ Hub$/, "") ?? "DevHub"}
-              </span>
-            </div>
-            <span
-              className="hidden rounded-[4px] border border-border px-1.5 py-0.5 text-[10px] text-dim-fg sm:inline"
-              style={{ fontFamily: "var(--font-mono)" }}
-            >
-              {VERSION}
+            <span className="truncate text-[17px] font-extrabold tracking-[-0.02em]">
+              DevHub
             </span>
           </Link>
           {/* Multi-hub users see a switcher chip here. Single-hub users
@@ -170,45 +168,23 @@ export function Header() {
           <div className="hidden md:block">
             <HubSwitcher />
           </div>
-          <nav className="hidden gap-0.5 md:flex" style={{ fontFamily: "var(--font-mono)" }}>
+          <nav className="hidden gap-1 md:flex">
             {navItems.map((item) => (
-              <Link
-                key={item.slot}
-                href={item.href}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-[12px] uppercase tracking-[0.4px] transition-colors",
-                  item.active
-                    ? "bg-accent-dim font-semibold text-fg"
-                    : "text-muted-fg hover:bg-accent-dim/60",
-                )}
-              >
-                {item.label}
-              </Link>
+              <NavPill key={item.slot} href={item.href} label={item.label} active={item.active} />
             ))}
           </nav>
         </div>
-        <div className="flex shrink-0 items-center gap-2 sm:gap-3.5">
-          {/* #239: the command palette had NO visible trigger — a
-              keyboard-only feature is invisible to anyone who doesn't
-              already know it exists. Desktop-only chip; phones keep the
-              header space (F10). */}
-          <button
-            type="button"
-            onClick={() => openCommandPalette()}
-            aria-label="Open command palette"
-            className="hidden items-center gap-1 rounded-md border border-border px-2 py-1 text-dim-fg transition-colors hover:border-border-strong hover:text-muted-fg md:inline-flex"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-          >
-            <span aria-hidden="true">⌘K</span>
-          </button>
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <IconButton label="Open command palette" onClick={() => openCommandPalette()}>
+            <Search size={16} />
+          </IconButton>
           {/* Light/dark switch — persists to localStorage('espace-theme'),
               which the no-flash script in layout.jsx reads on first paint. */}
           <ThemeToggle />
-          {/* Inverse-themed activator — opens the accent-ground analyst page.
-              Analysis is the dev goal-classification feature, so gate it on the
-              hub actually exposing the analyst surface (dev only). Without this
-              it leaked "Resume analysis" into manager/qa/admin. Hidden on
-              phones — analysis is a desk journey; the header space isn't. */}
+          {/* Opens the analyst overlay. Analysis is the dev goal-classification
+              feature, so gate it on the hub actually exposing the analyst
+              surface (dev only). Hidden on phones — analysis is a desk
+              journey; the header space isn't. */}
           {hub?.pages?.analyst ? (
             <div className="hidden sm:block">
               <AnalystActivator />
@@ -228,26 +204,18 @@ export function Header() {
           (not absolutely positioned) so it can never overlap content it
           doesn't push down; route changes close it via the effect above. */}
       {menuOpen ? (
-        <nav
-          className="flex flex-col gap-0.5 border-t border-border px-4 pb-3 pt-2 md:hidden"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
+        <nav className="flex flex-col gap-1 bg-bg px-4 pb-3 pt-1 md:hidden">
           <div className="pb-1">
             <HubSwitcher />
           </div>
           {navItems.map((item) => (
-            <Link
+            <NavPill
               key={item.slot}
               href={item.href}
-              className={cn(
-                "rounded-md px-3 py-2.5 text-[13px] uppercase tracking-[0.4px] transition-colors",
-                item.active
-                  ? "bg-accent-dim font-semibold text-fg"
-                  : "text-muted-fg hover:bg-accent-dim/60",
-              )}
-            >
-              {item.label}
-            </Link>
+              label={item.label}
+              active={item.active}
+              className="w-full text-left"
+            />
           ))}
         </nav>
       ) : null}

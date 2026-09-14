@@ -16,13 +16,13 @@ import { CompanionSetupGuide, DevicesList } from "@/features/companion";
 
 export function CompanionTab() {
   return (
-    <>
-      <Section num="01 /" title="Setup">
+    <div className="flex flex-col gap-8">
+      <Section title="Setup">
         <CompanionSetupGuide />
       </Section>
-      <Section num="02 /" title="Paired devices">
+      <Section title="Paired devices">
         <DevicesList />
       </Section>
-    </>
+    </div>
   );
 }

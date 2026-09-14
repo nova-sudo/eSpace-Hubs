@@ -17,6 +17,9 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
+import { Badge, Card, IconButton, TileState } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { apiDelete, apiGet } from "@/lib/api-client";
 
 export function DevicesList() {
@@ -56,158 +59,71 @@ export function DevicesList() {
   }
 
   if (devices === null) {
-    return (
-      <p
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 11.5,
-          color: "var(--muted-fg)",
-        }}
-      >
-        Loading devices…
-      </p>
-    );
+    return <TileState kind="loading" message="Loading devices…" />;
   }
 
   if (error) {
-    return (
-      <p
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 11.5,
-          color: "var(--bad)",
-        }}
-      >
-        {error}
-      </p>
-    );
+    return <TileState kind="error" message={error} />;
   }
 
   if (devices.length === 0) {
     return (
-      <p
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 11.5,
-          color: "var(--muted-fg)",
-          lineHeight: 1.6,
-        }}
-      >
-        No paired devices. Install the companion app on a laptop, click
-        “Pair this device,” then approve the prompt that opens in this
-        browser.
-      </p>
+      <TileState
+        kind="empty"
+        message="No paired devices."
+        sub={'Install the companion app on a laptop, click "Pair this device," then approve the prompt that opens in this browser.'}
+      />
     );
   }
 
   return (
-    <ul
-      style={{
-        listStyle: "none",
-        margin: 0,
-        padding: 0,
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-      }}
-    >
-      {devices.map((d) => (
-        <li
+    <Card className="p-0">
+      {devices.map((d, i) => (
+        <div
           key={d.id}
-          style={{
-            border: "1px solid var(--border-strong)",
-            borderRadius: "var(--radius-sub, 3px)",
-            background: "var(--card)",
-            padding: 14,
-            display: "grid",
-            gridTemplateColumns: "1fr auto",
-            gap: 12,
-          }}
+          className={cn(
+            "flex items-center justify-between gap-4 px-5 py-4",
+            i > 0 && "border-t border-line",
+          )}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontWeight: 600, fontSize: 13.5 }}>{d.name}</span>
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <div className="flex items-center gap-2">
+              <span className="text-[14.5px] font-bold text-fg">{d.name}</span>
+              {d.createdByUa ? (
+                <Badge tone="neutral" className="max-w-[220px] truncate">
+                  {d.createdByUa}
+                </Badge>
+              ) : null}
+            </div>
             <DevicesMeta device={d} />
           </div>
-          <button
-            type="button"
+          <IconButton
+            label={revokingId === d.id ? "Revoking…" : `Revoke ${d.name}`}
+            onCard
             onClick={() => handleRevoke(d)}
             disabled={revokingId === d.id}
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10.5,
-              fontWeight: 700,
-              letterSpacing: "0.5px",
-              textTransform: "uppercase",
-              background: "transparent",
-              color: "var(--bad)",
-              border: "1px solid var(--bad)",
-              borderRadius: "var(--radius-sub, 3px)",
-              padding: "6px 12px",
-              cursor: revokingId === d.id ? "wait" : "pointer",
-              opacity: revokingId === d.id ? 0.5 : 1,
-              alignSelf: "start",
-            }}
           >
-            {revokingId === d.id ? "Revoking…" : "Revoke"}
-          </button>
-        </li>
+            <Trash2 size={15} />
+          </IconButton>
+        </div>
       ))}
-    </ul>
+    </Card>
   );
 }
 
 function DevicesMeta({ device }) {
+  const rows = [
+    ["Paired", device.createdAt ? new Date(device.createdAt).toLocaleString() : "—"],
+    ["Last used", device.lastUsedAt ? new Date(device.lastUsedAt).toLocaleString() : "—"],
+  ];
+  if (device.createdByIp) rows.push(["From IP", device.createdByIp]);
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "max-content 1fr",
-        rowGap: 2,
-        columnGap: 10,
-        fontFamily: "var(--font-mono)",
-        fontSize: 10.5,
-        color: "var(--muted-fg)",
-      }}
-    >
-      <Row
-        label="Paired"
-        value={
-          device.createdAt
-            ? new Date(device.createdAt).toLocaleString()
-            : "—"
-        }
-      />
-      <Row
-        label="Last used"
-        value={
-          device.lastUsedAt
-            ? new Date(device.lastUsedAt).toLocaleString()
-            : "—"
-        }
-      />
-      {device.createdByIp ? (
-        <Row label="From IP" value={device.createdByIp} />
-      ) : null}
-      {device.createdByUa ? (
-        <Row label="User agent" value={device.createdByUa} />
-      ) : null}
+    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[12px] text-muted-fg">
+      {rows.map(([label, value]) => (
+        <span key={label}>
+          {label}: {value}
+        </span>
+      ))}
     </div>
-  );
-}
-
-function Row({ label, value }) {
-  return (
-    <>
-      <span
-        style={{
-          textTransform: "uppercase",
-          letterSpacing: "0.4px",
-          fontSize: 9.5,
-        }}
-      >
-        {label}
-      </span>
-      <span style={{ overflowWrap: "anywhere" }}>{value}</span>
-    </>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { Badge, Bars, Label } from "@/components/ui";
 import { WidgetShell, TargetChip } from "../widget-shell";
 import { useDataSource } from "../data-sources/use-data-source";
 import { evalTarget } from "./merged-count-widget";
@@ -41,7 +42,6 @@ export function LeadTimeWidget({
   const target = spec.source?.target;
   const hit =
     target && medianMin != null ? evalTarget(medianMin, target) : null;
-  const maxN = Math.max(1, ...histogram.map((b) => b.n));
 
   usePublishGoalReading(
     goal?.id,
@@ -67,104 +67,35 @@ export function LeadTimeWidget({
       className={className}
     >
       {needsScope ? (
-        <NeedsScopeBanner provider={spec.source?.provider} variant={variant} />
+        <NeedsScopeBanner provider={spec.source?.provider} />
       ) : (
         <div className="flex h-full flex-col justify-between gap-2">
           <div className="flex items-baseline gap-2">
-            <div
-              className="font-semibold leading-none"
-              style={{
-                fontFamily: "var(--font-display)",
-                fontSize: 50,
-                letterSpacing: "-1.6px",
-              }}
-            >
-              {error
-                ? "!"
-                : isLoading
-                  ? "…"
-                  : medianMin == null
-                    ? "—"
-                    : formatMin(medianMin)}
+            <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
+              {error ? "!" : isLoading ? "…" : medianMin == null ? "—" : formatMin(medianMin)}
             </div>
-            <div
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 11,
-                color:
-                  variant === "light"
-                    ? "rgba(255,255,255,0.72)"
-                    : "var(--muted-fg)",
-              }}
-            >
-              median
-            </div>
+            <span className="text-[13px] text-muted-fg">median</span>
             {hit != null ? (
-              <div
-                className="ml-auto uppercase tracking-[0.5px]"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 10,
-                  color: hit ? "var(--accent-2)" : "rgba(255,255,255,0.7)",
-                }}
-              >
-                {hit ? "on target" : "above target"}
-              </div>
+              <Badge tone={hit ? "mint" : "peach"} className="ml-auto">
+                {hit ? "On target" : "Above target"}
+              </Badge>
             ) : null}
           </div>
           {histogram.length > 0 && n > 0 ? (
-            <div
-              className="flex items-end gap-1"
-              style={{ height: 36 }}
-              aria-label="Duration distribution"
-            >
-              {histogram.map((b) => {
-                const h = Math.max(2, (b.n / maxN) * 32);
-                return (
-                  <div
-                    key={b.bin}
-                    className="flex flex-1 flex-col items-center gap-0.5"
-                  >
-                    <span
-                      className="w-full rounded-t-[2px]"
-                      style={{
-                        height: h,
-                        background:
-                          variant === "light"
-                            ? "rgba(255,255,255,0.65)"
-                            : "var(--accent)",
-                      }}
-                      title={`${b.n} build${b.n === 1 ? "" : "s"} in ${b.bin}`}
-                    />
-                    <span
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 8.5,
-                        color:
-                          variant === "light"
-                            ? "rgba(255,255,255,0.55)"
-                            : "var(--dim-fg)",
-                      }}
-                    >
-                      {b.bin}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+            <>
+              <Bars data={histogram.map((b) => ({ n: b.n, label: b.bin }))} height={48} />
+              <div className="flex gap-1">
+                {histogram.map((b) => (
+                  <span key={b.bin} className="flex-1 text-center text-[11px] text-dim-fg">
+                    {b.bin}
+                  </span>
+                ))}
+              </div>
+            </>
           ) : null}
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10,
-              color:
-                variant === "light"
-                  ? "rgba(255,255,255,0.6)"
-                  : "var(--dim-fg)",
-            }}
-          >
+          <Label>
             n = {n} successful build{n === 1 ? "" : "s"} in window
-          </div>
+          </Label>
         </div>
       )}
     </WidgetShell>

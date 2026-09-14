@@ -8,36 +8,34 @@
  */
 
 import { useState } from "react";
+import { Check } from "lucide-react";
+import { Badge, InsightRow, Label, Button } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { updateSpecTiers } from "@/features/goal-specs";
 import { useGoalTier, TIER_ORDER, TIER_LABELS, TIER_FIELD } from "./use-goal-tier";
-import { TIER_COLOR, tierBadgeFg } from "./tier-colors";
+import { tierTone } from "./tier-colors";
 import { TierDeltaBadge } from "./tier-move";
-const TIER_SHORT = {
-  not_achieved: "Not met",
-  achieved: "Achieved",
-  over_achieved: "Over",
-  role_model: "Role model",
+
+/** Ladder cell background/ink for the currently-reached tier. */
+const CELL_TONE_CLASS = {
+  peach: "bg-peach text-peach-ink",
+  mint: "bg-mint text-mint-ink",
+  sky: "bg-sky text-sky-ink",
+  lav: "bg-lav text-lav-ink",
+  neutral: "bg-card-alt text-muted-fg",
 };
 
 /**
- * One-line tier chip for the goal tree's L2 rows. Solid colored pill +
- * a tooltip carrying the AI's reasoning. Shows a muted "tier…" while the
- * first grade is in flight, and nothing at all when the goal has no
- * tiers yet.
+ * One-line tier chip for the goal tree's L2 rows. A tone-matched Badge +
+ * a tooltip carrying the AI's reasoning. Shows a lemon "Grading…" Badge
+ * while the first grade is in flight, and nothing at all when the goal
+ * has no tiers yet.
  */
 export function GoalTierBadge({ goalId, spec }) {
   const { hasTiers, verdict, loading } = useGoalTier(goalId, spec);
   if (!hasTiers) return null;
   if (!verdict) {
-    return loading ? (
-      <span
-        className="shrink-0 uppercase tracking-[0.3px] text-dim-fg"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}
-        title="Grading achievement tier…"
-      >
-        tier…
-      </span>
-    ) : null;
+    return loading ? <Badge tone="lemon">Grading…</Badge> : null;
   }
   // Goal still needs setup — the surfaces that render this badge already
   // carry their own "Needs setup" affordance, so a second chip is noise.
@@ -45,21 +43,11 @@ export function GoalTierBadge({ goalId, spec }) {
   // W1: no usable reading yet — defer, don't show a misleading tier.
   if (verdict.awaiting) {
     return (
-      <span
-        className="inline-flex shrink-0 items-center rounded-[var(--radius-pill)] px-1.5 py-px uppercase tracking-[0.3px]"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 9,
-          color: "var(--muted-fg)",
-          border: "1px solid var(--border)",
-        }}
-        title={verdict.reasoning || "Awaiting data to grade this goal."}
-      >
-        awaiting data
-      </span>
+      <Badge tone="lemon" title={verdict.reasoning || "Awaiting data to grade this goal."}>
+        Awaiting data
+      </Badge>
     );
   }
-  const color = TIER_COLOR[verdict.tier] || "var(--muted-fg)";
   const title =
     `${TIER_LABELS[verdict.tier]}` +
     (verdict.reasoning ? ` — ${verdict.reasoning}` : "") +
@@ -69,34 +57,24 @@ export function GoalTierBadge({ goalId, spec }) {
         ? " (low confidence)"
         : "");
   return (
-    <>
-      <span
-        className="inline-flex shrink-0 items-center rounded-[var(--radius-pill)] px-1.5 py-px font-bold uppercase tracking-[0.3px]"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 9,
-          // Dark fg on the two light fills — white on over_achieved /
-          // role_model failed WCAG AA outright (see tier-colors.js).
-          color: tierBadgeFg(verdict.tier),
-          background: color,
-        }}
-        title={title}
-      >
-        {TIER_SHORT[verdict.tier]}
-      </span>
+    <span className="inline-flex shrink-0 items-center gap-1.5">
+      <Badge tone={tierTone(verdict.tier)} title={title}>
+        {TIER_LABELS[verdict.tier]}
+      </Badge>
       {/* F9: fresh rung-move delta, rendered inline for ~6s. */}
-      <TierDeltaBadge goalId={goalId} variant="dark" />
-    </>
+      <TierDeltaBadge goalId={goalId} />
+    </span>
   );
 }
 
 /**
  * Full four-rung ladder for a widget tile. Highlights the rung the dev
- * is currently at ("← you"), dims rungs above it, and shows the AI's
- * one-line reasoning. Theme-aware via `variant` ("light" inverse tiles /
- * "dark" white tiles).
+ * is currently at (a check mark on the name), dims the rest, and shows
+ * the AI's one-line reasoning as an insight row. `variant` is accepted
+ * for back-compat with callers that used to pick a light/dark tile skin;
+ * the ladder now renders the same token-based surface either way.
  */
-export function GoalTierLadder({ spec, variant = "light" }) {
+export function GoalTierLadder({ spec, variant: _variant = "light" }) {
   const { hasTiers, tiers, tierGoverned, verdict, loading, regrade } = useGoalTier(
     spec?.goalId,
     spec,
@@ -120,59 +98,35 @@ export function GoalTierLadder({ spec, variant = "light" }) {
 
   const tierMap = tiers || {};
   const current = verdict?.tier || null;
-  const reachedIdx = current ? TIER_ORDER.indexOf(current) : -1;
-  const isLight = variant === "light";
-  const muted = isLight ? "rgba(255,255,255,0.62)" : "var(--muted-fg)";
-  const dim = isLight ? "rgba(255,255,255,0.40)" : "var(--dim-fg)";
-  const fg = isLight ? "#ffffff" : "var(--fg)";
-  const surface = isLight ? "rgba(255,255,255,0.08)" : "var(--card-alt)";
 
   if (editing) {
-    return (
-      <TierEditor
-        spec={spec}
-        tiers={tierMap}
-        variant={variant}
-        onClose={() => setEditing(false)}
-      />
-    );
+    return <TierEditor spec={spec} tiers={tierMap} onClose={() => setEditing(false)} />;
   }
 
+  const isManager = verdict?.source === "manager";
+
   return (
-    <div
-      className="mt-3 rounded-[var(--radius-sub)] p-2"
-      style={{ background: surface }}
-    >
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span
-          className="inline-flex items-center gap-1.5 uppercase tracking-[0.5px]"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: muted }}
-        >
-          Achievement tier
-          {verdict?.source === "manager" ? " · manager-graded" : ""}
-          {tierGoverned ? " · manager-governed 🔒" : spec?.tiersLocked ? " · 🔒" : ""}
-          {(loading && !verdict) || regrading ? " · grading…" : ""}
-          {/* F9: fresh rung-move delta beside the header for ~6s. */}
-          <TierDeltaBadge goalId={spec?.goalId} variant={variant} />
-        </span>
-        <div className="flex shrink-0 items-center gap-2">
+    <div className="mt-3 flex flex-col gap-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Label>Achievement tier</Label>
+          {tierGoverned ? <Badge tone="sky">Manager-governed</Badge> : null}
+          {isManager ? <Badge tone="sky">Manager verdict</Badge> : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
           {/* Manual re-grade — grading is throttled to once a day, so this is
               how the user forces a fresh grade after new activity lands. */}
-          <button
-            type="button"
-            onClick={onRegrade}
-            disabled={regrading}
-            className="uppercase tracking-[0.5px] hover:opacity-100 disabled:opacity-40"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9,
-              color: muted,
-              opacity: 0.8,
-            }}
-            title="Re-grade this goal now against the latest data"
-          >
-            {regrading ? "grading…" : "re-grade"}
-          </button>
+          {!isManager ? (
+            <button
+              type="button"
+              onClick={onRegrade}
+              disabled={regrading}
+              className="text-[12px] font-semibold text-muted-fg hover:text-fg disabled:opacity-50"
+              title="Re-grade this goal now against the latest data"
+            >
+              {regrading || (loading && !verdict) ? "Grading…" : "Re-grade"}
+            </button>
+          ) : null}
           {/* The criteria belong to the goal owner — let them correct what the
               AI extracted. Editing re-grades against the new criteria; saving
               locks them so re-analysis won't overwrite. Hidden when a manager
@@ -182,99 +136,64 @@ export function GoalTierLadder({ spec, variant = "light" }) {
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="uppercase tracking-[0.5px] hover:opacity-100"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 9,
-                color: muted,
-                opacity: 0.8,
-              }}
+              className="text-[12px] font-semibold text-muted-fg hover:text-fg"
               title={
                 spec?.tiersLocked
                   ? "Criteria locked — re-analysis won't overwrite. Click to edit or unlock."
                   : "Edit the achievement-tier criteria for this goal"
               }
             >
-              edit
+              Edit
             </button>
           ) : null}
         </div>
       </div>
-      <div className="flex flex-col gap-1">
-        {TIER_ORDER.map((t, i) => {
+
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+        {TIER_ORDER.map((t) => {
           const criterion = tierMap[TIER_FIELD[t]];
           const isCurrent = t === current;
-          const reached = reachedIdx >= 0 && i <= reachedIdx;
-          const color = TIER_COLOR[t];
+          const toneClass = isCurrent ? CELL_TONE_CLASS[tierTone(t)] : "bg-card-alt";
           return (
-            <div
-              key={t}
-              className="flex items-start gap-1.5"
-              style={{ opacity: reached || isCurrent ? 1 : 0.5 }}
-            >
-              <span
-                className="mt-[3px] h-1.5 w-1.5 shrink-0 rounded-full"
-                style={{
-                  background: reached ? color : "transparent",
-                  border: `1px solid ${color}`,
-                }}
-              />
-              <span
-                className="shrink-0 font-bold uppercase"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 9,
-                  letterSpacing: "0.3px",
-                  color: isCurrent ? color : muted,
-                  width: 64,
-                }}
+            <div key={t} className={cn("rounded-[var(--radius-md)] p-3", toneClass)}>
+              <div
+                className={cn(
+                  "flex items-center gap-1 text-[11.5px] font-bold",
+                  isCurrent ? "" : "text-muted-fg",
+                )}
               >
                 {TIER_LABELS[t]}
-              </span>
-              <span
-                className="min-w-0 flex-1"
-                style={{ fontSize: 10.5, lineHeight: 1.35, color: isCurrent ? fg : muted }}
+                {isCurrent ? <Check size={11} aria-hidden="true" /> : null}
+              </div>
+              <div
+                className={cn(
+                  "mt-0.5 text-[11.5px]",
+                  isCurrent ? "opacity-80" : "text-dim-fg",
+                )}
               >
-                {criterion || <span style={{ color: dim }}>—</span>}
-              </span>
-              {isCurrent ? (
-                <span
-                  className="shrink-0 uppercase"
-                  style={{ fontFamily: "var(--font-mono)", fontSize: 8.5, color }}
-                >
-                  ← you
-                </span>
-              ) : null}
+                {criterion || "—"}
+              </div>
             </div>
           );
         })}
       </div>
-      {verdict?.source === "manager" ? (
-        <div
-          className="mt-1.5"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9.5,
-            color: muted,
-            lineHeight: 1.4,
-          }}
-        >
+
+      {/* F9: fresh rung-move delta beside the ladder for ~6s. */}
+      <TierDeltaBadge goalId={spec?.goalId} />
+
+      {isManager ? (
+        <div className="rounded-[var(--radius-lg)] bg-sky p-3.5 text-[13px] text-sky-ink">
           Graded by {verdict.gradedByName || "your manager"}
           {verdict.reasoning ? ` — ${verdict.reasoning}` : ""}
         </div>
       ) : verdict?.reasoning ? (
-        <div
-          className="mt-1.5"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9.5,
-            color: muted,
-            lineHeight: 1.4,
-          }}
+        <InsightRow
+          tone="lav"
+          action={{ label: regrading ? "Grading…" : "Re-grade", onClick: onRegrade }}
         >
           {verdict.reasoning}
-          {verdict.confidence === "low" ? " · low confidence" : ""}
-        </div>
+          {verdict.confidence === "low" ? " · Low confidence." : ""}
+        </InsightRow>
       ) : null}
     </div>
   );
@@ -286,16 +205,7 @@ export function GoalTierLadder({ spec, variant = "light" }) {
  * correct mis-extractions. Saving writes the criteria back onto the spec
  * (`saveSpec`), which re-grades the goal against the new criteria.
  */
-function TierEditor({ spec, tiers, variant, onClose }) {
-  const isLight = variant === "light";
-  const muted = isLight ? "rgba(255,255,255,0.62)" : "var(--muted-fg)";
-  const fg = isLight ? "#ffffff" : "var(--fg)";
-  const surface = isLight ? "rgba(255,255,255,0.08)" : "var(--card-alt)";
-  const fieldBg = isLight ? "rgba(255,255,255,0.10)" : "var(--bg)";
-  const fieldBorder = isLight
-    ? "1px solid rgba(255,255,255,0.22)"
-    : "1px solid var(--border)";
-
+function TierEditor({ spec, tiers, onClose }) {
   const [draft, setDraft] = useState(() => ({
     notAchieved: tiers.notAchieved || "",
     achieved: tiers.achieved || "",
@@ -333,101 +243,41 @@ function TierEditor({ spec, tiers, variant, onClose }) {
   }
 
   return (
-    <div
-      className="mt-3 rounded-[var(--radius-sub)] p-2"
-      style={{ background: surface }}
-    >
-      <div
-        className="mb-1.5 uppercase tracking-[0.5px]"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: muted }}
-      >
-        Edit achievement-tier criteria{locked ? " · 🔒 locked" : ""}
+    <div className="mt-3 flex flex-col gap-3 rounded-[var(--radius-lg)] bg-card-alt p-3.5">
+      <div className="flex items-center gap-2">
+        <Label>Edit achievement-tier criteria</Label>
+        {locked ? <Badge tone="neutral">Locked</Badge> : null}
       </div>
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-2.5">
         {TIER_ORDER.map((t) => {
           const field = TIER_FIELD[t];
           return (
-            <label key={t} className="flex flex-col gap-0.5">
-              <span
-                className="uppercase"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 8.5,
-                  letterSpacing: "0.3px",
-                  color: TIER_COLOR[t],
-                }}
-              >
+            <label key={t} className="flex flex-col gap-1">
+              <Badge tone={tierTone(t)} className="w-fit">
                 {TIER_LABELS[t]}
-              </span>
+              </Badge>
               <textarea
                 rows={2}
                 value={draft[field]}
-                onChange={(e) =>
-                  setDraft((d) => ({ ...d, [field]: e.target.value }))
-                }
-                style={{
-                  fontFamily: "var(--font-sans)",
-                  fontSize: 10.5,
-                  lineHeight: 1.35,
-                  color: fg,
-                  background: fieldBg,
-                  border: fieldBorder,
-                  borderRadius: "var(--radius-sub)",
-                  padding: "4px 6px",
-                  resize: "vertical",
-                  width: "100%",
-                  outline: "none",
-                }}
+                onChange={(e) => setDraft((d) => ({ ...d, [field]: e.target.value }))}
+                className="w-full resize-y rounded-[var(--radius-lg)] bg-card p-3 text-[13px] leading-[1.4] text-fg outline-none focus:ring-2 focus:ring-ink"
               />
             </label>
           );
         })}
       </div>
-      <div className="mt-2 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={save}
-          disabled={saving}
-          className="rounded-[var(--radius-sub)] px-2.5 py-1 font-bold uppercase"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9.5,
-            letterSpacing: "0.5px",
-            background: isLight ? "#ffffff" : "var(--accent)",
-            color: isLight ? "var(--accent)" : "var(--accent-on)",
-            opacity: saving ? 0.6 : 1,
-          }}
-        >
+      <div className="flex items-center gap-2">
+        <Button size="sm" onClick={save} disabled={saving}>
           {saving ? "Saving…" : "Save & lock"}
-        </button>
+        </Button>
         {locked ? (
-          <button
-            type="button"
-            onClick={unlock}
-            disabled={saving}
-            className="uppercase tracking-[0.5px]"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9,
-              color: muted,
-            }}
-            title="Allow re-analysis to regenerate these criteria"
-          >
+          <Button size="sm" variant="soft" onClick={unlock} disabled={saving}>
             Unlock
-          </button>
+          </Button>
         ) : null}
-        <button
-          type="button"
-          onClick={onClose}
-          className="uppercase tracking-[0.5px]"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9,
-            color: muted,
-          }}
-        >
+        <Button size="sm" variant="ghost" onClick={onClose}>
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   );

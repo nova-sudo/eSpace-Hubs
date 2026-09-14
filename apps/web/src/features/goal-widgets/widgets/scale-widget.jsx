@@ -1,6 +1,7 @@
 "use client";
 
-import { LineSpark } from "@/components/ui";
+import { LineSpark, Label } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { useGoalInputs } from "@/features/goal-inputs";
 import { WidgetShell } from "../widget-shell";
 
@@ -28,54 +29,18 @@ export function ScaleWidget({ spec, goal, variant = "light", className, onRetry 
     >
       <div className="flex h-full flex-col justify-between gap-3">
         <div className="flex items-baseline gap-2">
-          <div
-            className="font-semibold leading-none"
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 48,
-              letterSpacing: "-1.6px",
-            }}
-          >
+          <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
             {currentValue ?? "—"}
           </div>
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              color: variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)",
-            }}
-          >
-            /5
-          </div>
+          <span className="text-[13px] text-muted-fg">/5</span>
         </div>
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            color: variant === "light" ? "rgba(255,255,255,0.68)" : "var(--muted-fg)",
-          }}
-        >
-          {promptCopy}
-        </div>
+        <Label>{promptCopy}</Label>
         {trend.length >= 2 ? (
-          <LineSpark
-            data={trend}
-            color={variant === "light" ? "#ffffff" : "var(--accent)"}
-            height={36}
-            strokeWidth={2}
-            fillOpacity={0.22}
-            showDots
-          />
+          <LineSpark data={trend} color="var(--ink)" height={36} strokeWidth={2} fillOpacity={0.16} showDots />
         ) : null}
         <div className="flex items-center gap-1.5">
           {[1, 2, 3, 4, 5].map((n) => (
-            <ScaleButton
-              key={n}
-              n={n}
-              active={currentValue === n}
-              variant={variant}
-              onClick={() => append(n)}
-            />
+            <ScaleButton key={n} n={n} active={currentValue === n} onClick={() => append(n)} />
           ))}
         </div>
       </div>
@@ -83,35 +48,15 @@ export function ScaleWidget({ spec, goal, variant = "light", className, onRetry 
   );
 }
 
-function ScaleButton({ n, active, onClick, variant }) {
+function ScaleButton({ n, active, onClick }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="h-8 flex-1 rounded-[var(--radius-sub)] font-bold transition-colors"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 12,
-        border: active
-          ? "1px solid #ffffff"
-          : variant === "light"
-            ? "1px solid rgba(255,255,255,0.22)"
-            : "1px solid var(--border)",
-        background: active
-          ? variant === "light"
-            ? "rgba(255,255,255,0.22)"
-            : "var(--accent-dim)"
-          : variant === "light"
-            ? "rgba(255,255,255,0.08)"
-            : "var(--card-alt)",
-        color: active
-          ? variant === "light"
-            ? "#ffffff"
-            : "var(--accent)"
-          : variant === "light"
-            ? "rgba(255,255,255,0.85)"
-            : "var(--fg)",
-      }}
+      className={cn(
+        "h-9 flex-1 rounded-[var(--radius-md)] text-[13px] font-bold transition-colors",
+        active ? "bg-ink text-ink-on" : "bg-card-alt text-fg hover:opacity-80",
+      )}
     >
       {n}
     </button>

@@ -3,12 +3,12 @@
 /**
  * F5 — the data-honesty chip (#230).
  *
- * One line of mono microcopy under an AUTO widget saying what the number
- * is actually made of: sample size, the window genuinely covered, and how
- * long ago it was fetched — plus an explicit "partial" flag when a known
- * fetch/hydration cap was hit (Jira's 50-row sample, CI's last-100
- * builds, GitHub's 30-PR review-comment hydration). Numbers a user can
- * cite in a review without being wrong.
+ * One small badge under an AUTO widget saying what the number is actually
+ * made of: sample size, the window genuinely covered, and how long ago it
+ * was fetched — plus an explicit "partial" flag when a known fetch/
+ * hydration cap was hit (Jira's 50-row sample, CI's last-100 builds,
+ * GitHub's 30-PR review-comment hydration). Numbers a user can cite in a
+ * review without being wrong.
  *
  * The chip is also the app's refresh affordance: SWR keys are constant
  * all year (YTD anchors), so before this there was NO way to refetch
@@ -19,17 +19,16 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { RefreshCw } from "lucide-react";
+import { Badge } from "@/components/ui";
 import { refreshIntegrationData } from "@/features/integrations";
 import { fmtRelative } from "@/lib/fmt";
 
-export function ProvenanceChip({ provenance, variant = "light" }) {
+export function ProvenanceChip({ provenance }) {
   const [busy, setBusy] = useState(false);
   if (!provenance) return null;
 
   const { sample, unit, window, fetchedAt, truncated, note, error } = provenance;
-  const isLight = variant === "light";
-  const dim = isLight ? "rgba(255,255,255,0.55)" : "var(--dim-fg)";
-  const warn = isLight ? "rgba(255,214,140,0.95)" : "var(--warn)";
 
   async function handleRefresh() {
     if (busy) return;
@@ -65,17 +64,12 @@ export function ProvenanceChip({ provenance, variant = "light" }) {
       onClick={handleRefresh}
       title={tooltip}
       aria-label={`Data provenance: ${parts.join(", ")}. Refresh data.`}
-      className="inline-flex max-w-full items-center gap-1 truncate uppercase transition-opacity hover:opacity-80"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 9.5,
-        letterSpacing: "0.4px",
-        color: error || truncated ? warn : dim,
-        background: "transparent",
-      }}
+      className="inline-flex max-w-full"
     >
-      <span className="truncate">{parts.join(" · ")}</span>
-      <span aria-hidden="true">{busy ? "…" : "⟳"}</span>
+      <Badge tone={error || truncated ? "lemon" : "sky"} className="max-w-full">
+        <span className="truncate">{parts.join(" · ")}</span>
+        <RefreshCw size={11} className={busy ? "animate-spin" : undefined} />
+      </Badge>
     </button>
   );
 }

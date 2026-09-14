@@ -23,9 +23,11 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { apiDelete, apiGet, apiPut } from "@/lib/api-client";
 import { useSession } from "@/features/auth";
-import { MonoLabel, PageHeader, Pill } from "@/components/ui";
+import { Badge, Label, PageHeader } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { CAPABILITIES } from "@espace-devhub/shared/capabilities";
 import { ALL_PROVIDERS } from "@espace-devhub/shared/hubs";
 
@@ -107,11 +109,10 @@ export function AdminHubConfig() {
 
   if (!canConfigure) {
     return (
-      <main className="relative z-[2] mx-auto max-w-3xl px-4 sm:px-10 pb-14 pt-10">
+      <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
         <PageHeader
           crumb="Admin · hub configuration"
           title="Not authorised."
-          italicWord="authorised"
           subtitle={`This view requires the ${CAPABILITIES.ADMIN_HUBS_CONFIGURE} capability. Ask your org admin to extend your roles.`}
         />
       </main>
@@ -119,11 +120,10 @@ export function AdminHubConfig() {
   }
 
   return (
-    <main className="relative z-[2] mx-auto max-w-4xl px-4 sm:px-10 pb-14 pt-10">
+    <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
       <PageHeader
         crumb="Admin · hub configuration"
         title="Per-hub overrides."
-        italicWord="overrides"
         subtitle={
           <>
             Toggle integrations and pages per hub for this org. Overrides merge
@@ -135,12 +135,7 @@ export function AdminHubConfig() {
       />
 
       {loading ? (
-        <div
-          className="text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}
-        >
-          Loading…
-        </div>
+        <div className="text-[12px] text-muted-fg">Loading…</div>
       ) : (
         <div className="flex flex-col gap-3">
           {registryHubs.map((hub) => (
@@ -169,64 +164,30 @@ function HubRow({ hub, override, expanded, onExpand, onSave, onRevert, saving })
   const hasOverride = !!override;
 
   return (
-    <div
-      className="rounded-[var(--radius-tile)] border border-border bg-card"
-      style={{ borderColor: "var(--border-strong)" }}
-    >
+    <div className="rounded-[var(--radius-xl)] bg-card" style={{ boxShadow: "var(--shadow-card)" }}>
       <button
         type="button"
         onClick={onExpand}
-        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-accent-dim/30"
+        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-card-alt"
       >
         <div className="flex items-center gap-3">
-          <span
-            className="block h-2 w-2 rounded-full"
-            style={{
-              background: enabled ? hub.theme.accent : "var(--dim-fg)",
-            }}
-          />
+          <span className={cn("block h-2 w-2 rounded-full", enabled ? "bg-mint-ink" : "bg-dim-fg")} />
           <div>
-            <div
-              className="font-bold uppercase text-fg"
-              style={{
-                fontFamily: "var(--font-dot)",
-                fontSize: 17,
-                letterSpacing: "0.5px",
-                lineHeight: 1.05,
-              }}
-            >
-              {hub.label}
-            </div>
-            <MonoLabel className="mt-1 block">
+            <div className="text-[15px] font-bold">{hub.label}</div>
+            <Label className="mt-1 block">
               {hub.id} · {Object.keys(hub.pages).length} pages ·{" "}
               {hub.allowedIntegrations.length} integrations
-            </MonoLabel>
+            </Label>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {hasOverride ? (
-            <Pill
-              tone="accent"
-              mono
-              className="border border-dashed border-accent bg-transparent"
-            >
-              custom
-            </Pill>
-          ) : null}
-          <span
-            className="text-dim-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 14 }}
-          >
-            {expanded ? "−" : "+"}
-          </span>
+          {hasOverride ? <Badge tone="lav">Custom</Badge> : null}
+          {expanded ? <ChevronDown size={16} className="text-dim-fg" /> : <ChevronRight size={16} className="text-dim-fg" />}
         </div>
       </button>
 
       {expanded ? (
-        <div
-          className="border-t px-5 py-4"
-          style={{ borderColor: "var(--border-strong)" }}
-        >
+        <div className="border-t border-line px-5 py-4">
           <ToggleRow
             label="Visible to this org"
             value={enabled}
@@ -249,17 +210,11 @@ function HubRow({ hub, override, expanded, onExpand, onSave, onRevert, saving })
                         : [...hub.allowedIntegrations, p];
                       onSave({ allowedIntegrations: next });
                     }}
-                    className="rounded-full border px-2.5 py-1 transition-colors"
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 11,
-                      borderColor: on
-                        ? "var(--accent)"
-                        : "var(--border-strong)",
-                      background: on ? "var(--accent-dim)" : "transparent",
-                      color: on ? "var(--accent)" : "var(--muted-fg)",
-                      opacity: saving ? 0.5 : 1,
-                    }}
+                    className={cn(
+                      "rounded-[var(--radius-pill)] px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                      on ? "bg-ink text-ink-on" : "bg-card-alt text-muted-fg",
+                      saving && "opacity-50",
+                    )}
                   >
                     {p}
                   </button>
@@ -279,15 +234,13 @@ function HubRow({ hub, override, expanded, onExpand, onSave, onRevert, saving })
                     // Null out the slot in the override to remove it.
                     onSave({ pages: { ...(override?.pages ?? {}), [slot]: null } });
                   }}
-                  className="rounded-full border border-border px-2.5 py-1 text-muted-fg transition-colors hover:border-[var(--bad)] hover:text-[var(--bad)]"
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 11,
-                    opacity: saving ? 0.5 : 1,
-                  }}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] bg-card-alt px-2.5 py-1 text-[11px] text-muted-fg transition-colors hover:bg-peach hover:text-peach-ink",
+                    saving && "opacity-50",
+                  )}
                   title={`Click to hide /${hub.id}/${slot} for this org`}
                 >
-                  {slot} ✕
+                  {slot} <X size={11} />
                 </button>
               ))}
             </div>
@@ -299,8 +252,7 @@ function HubRow({ hub, override, expanded, onExpand, onSave, onRevert, saving })
                 type="button"
                 onClick={onRevert}
                 disabled={saving}
-                className="text-[11px] font-bold uppercase tracking-[0.4px] text-bad hover:underline disabled:opacity-50"
-                style={{ fontFamily: "var(--font-mono)" }}
+                className="text-[11px] font-bold text-fg hover:underline disabled:opacity-50"
               >
                 Revert to defaults
               </button>
@@ -314,24 +266,19 @@ function HubRow({ hub, override, expanded, onExpand, onSave, onRevert, saving })
 
 function ToggleRow({ label, value, disabled, onChange }) {
   return (
-    <div className="flex items-center justify-between border-b border-dashed border-border py-2.5 last:border-b-0">
+    <div className="flex items-center justify-between border-b border-line py-2.5 last:border-b-0">
       <div className="text-[13px]">{label}</div>
       <button
         type="button"
         disabled={disabled}
         onClick={() => onChange(!value)}
-        className="rounded-md border px-3 py-1 transition-colors"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 11,
-          fontWeight: 700,
-          borderColor: value ? "var(--accent)" : "var(--border-strong)",
-          background: value ? "var(--accent-dim)" : "transparent",
-          color: value ? "var(--accent)" : "var(--muted-fg)",
-          opacity: disabled ? 0.5 : 1,
-        }}
+        className={cn(
+          "rounded-[var(--radius-pill)] px-3 py-1 text-[11px] font-bold transition-colors",
+          value ? "bg-mint text-mint-ink" : "bg-card-alt text-muted-fg",
+          disabled && "opacity-50",
+        )}
       >
-        {value ? "ON" : "OFF"}
+        {value ? "On" : "Off"}
       </button>
     </div>
   );
@@ -339,13 +286,8 @@ function ToggleRow({ label, value, disabled, onChange }) {
 
 function FieldRow({ label, children }) {
   return (
-    <div className="border-b border-dashed border-border py-3 last:border-b-0">
-      <div
-        className="mb-2 uppercase tracking-[0.4px] text-muted-fg"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-      >
-        {label}
-      </div>
+    <div className="border-b border-line py-3 last:border-b-0">
+      <Label className="mb-2 block">{label}</Label>
       {children}
     </div>
   );

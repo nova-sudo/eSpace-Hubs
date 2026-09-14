@@ -14,14 +14,8 @@
  * useGoalDetail). Rendered inside ManagerGradeDrawer.
  */
 
+import { Badge, Label } from "@/components/ui";
 import { TIER_LABELS } from "@/features/goal-tiers";
-
-const TIER_TONE = {
-  not_achieved: "var(--bad)",
-  achieved: "var(--muted-fg)",
-  over_achieved: "var(--good)",
-  role_model: "var(--accent)",
-};
 
 const CONFIDENCE_LABEL = { high: "High", medium: "Medium", low: "Low" };
 
@@ -39,31 +33,8 @@ function ago(iso) {
 function SectionLabel({ children, count }) {
   return (
     <div className="mb-2 flex items-center gap-2">
-      <span
-        className="uppercase text-muted-fg"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          letterSpacing: "0.09em",
-          fontWeight: 700,
-        }}
-      >
-        {children}
-      </span>
-      {typeof count === "number" ? (
-        <span
-          className="rounded-full px-1.5 text-muted-fg"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9.5,
-            fontWeight: 700,
-            background: "var(--panel-2)",
-          }}
-        >
-          {count}
-        </span>
-      ) : null}
-      <span className="h-px flex-1" style={{ background: "var(--border)" }} />
+      <Label>{children}</Label>
+      {typeof count === "number" ? <Badge>{count}</Badge> : null}
     </div>
   );
 }
@@ -73,63 +44,32 @@ function SectionLabel({ children, count }) {
 function AiGradeCard({ ai }) {
   if (!ai) {
     return (
-      <div
-        className="rounded-md border border-dashed px-3.5 py-3 text-[12px] leading-snug text-muted-fg"
-        style={{ borderColor: "var(--border-strong)" }}
-      >
+      <div className="rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-3 text-[12px] leading-snug text-muted-fg">
         The AI hasn't graded this goal yet — not enough logged data to
         suggest a tier. Grade it from the evidence and criteria below.
       </div>
     );
   }
-  const tone = TIER_TONE[ai.tier] ?? "var(--muted-fg)";
   return (
-    <div
-      className="rounded-md border px-3.5 py-3"
-      style={{
-        borderColor: "color-mix(in srgb, var(--accent) 30%, var(--border-strong))",
-        background: "var(--accent-dim)",
-      }}
-    >
+    <div className="rounded-[var(--radius-lg)] bg-lav p-3.5">
       <div className="flex items-center gap-2">
-        <span
-          className="flex-none rounded border px-1.5 py-0.5"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9,
-            fontWeight: 700,
-            letterSpacing: "0.08em",
-            borderColor: "color-mix(in srgb, var(--accent) 40%, var(--border-strong))",
-            color: "var(--accent)",
-          }}
-        >
-          AI GRADE
-        </span>
-        <span
-          className="font-semibold"
-          style={{ fontFamily: "var(--font-display)", fontSize: 15, color: tone }}
-        >
+        <Badge tone="ink">AI grade</Badge>
+        <span className="font-bold text-[15px] text-lav-ink">
           {TIER_LABELS[ai.tier] ?? ai.tier}
         </span>
         {ai.confidence ? (
-          <span
-            className="ml-auto text-muted-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-          >
+          <span className="ml-auto text-[11px] text-lav-ink/70">
             {CONFIDENCE_LABEL[ai.confidence] ?? ai.confidence} confidence
           </span>
         ) : null}
       </div>
       {ai.reasoning ? (
-        <p className="mt-2 text-[12.5px] leading-relaxed text-fg">
+        <p className="mt-2 text-[12.5px] leading-relaxed text-lav-ink">
           {ai.reasoning}
         </p>
       ) : null}
       {ai.gradedAt ? (
-        <div
-          className="mt-1.5 text-dim-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-        >
+        <div className="mt-1.5 text-[11px] text-lav-ink/60">
           graded {ago(ai.gradedAt)}
         </div>
       ) : null}
@@ -142,54 +82,15 @@ function AiGradeCard({ ai }) {
 function EvidencePoint({ point }) {
   const rel = ago(point.ts);
   return (
-    <li
-      className="rounded-md border px-3 py-2"
-      style={{ borderColor: "var(--border)", background: "var(--card-alt)" }}
-    >
+    <li className="rounded-[var(--radius-lg)] bg-card-alt px-3 py-2.5">
       <div className="mb-1 flex items-center gap-2">
-        {point.from ? (
-          <span
-            className="truncate uppercase text-muted-fg"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9.5,
-              letterSpacing: "0.05em",
-              fontWeight: 700,
-            }}
-            title={point.from}
-          >
-            {point.from}
-          </span>
-        ) : (
-          <span
-            className="uppercase text-muted-fg"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9.5,
-              letterSpacing: "0.05em",
-              fontWeight: 700,
-            }}
-          >
-            Note
-          </span>
-        )}
-        {rel ? (
-          <span
-            className="ml-auto flex-none text-dim-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-          >
-            {rel}
-          </span>
-        ) : null}
+        <span className="truncate text-[11px] font-semibold text-muted-fg" title={point.from}>
+          {point.from || "Note"}
+        </span>
+        {rel ? <span className="ml-auto flex-none text-[11px] text-dim-fg">{rel}</span> : null}
       </div>
       {point.kind === "link" ? (
-        <a
-          href={point.text}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="break-all text-[12px] leading-snug underline decoration-dotted"
-          style={{ color: "var(--accent)" }}
-        >
+        <a href={point.text} target="_blank" rel="noreferrer noopener" className="break-all text-[12px] font-bold leading-snug text-fg">
           {point.text}
         </a>
       ) : (
@@ -202,10 +103,7 @@ function EvidencePoint({ point }) {
 function EvidenceSection({ evidence }) {
   if (!evidence || evidence.length === 0) {
     return (
-      <div
-        className="rounded-md border border-dashed px-3.5 py-3 text-[12px] leading-snug text-muted-fg"
-        style={{ borderColor: "var(--border)" }}
-      >
+      <div className="rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-3 text-[12px] leading-snug text-muted-fg">
         No evidence logged yet — the engineer hasn't attached notes or links
         to their entries. Grade from the AI read and the criteria.
       </div>
@@ -228,44 +126,19 @@ function TierCriteria({ tiers, aiTier }) {
     <div className="grid gap-1.5">
       {tiers.map((t) => {
         const isAi = t.key === aiTier;
-        const tone = TIER_TONE[t.key] ?? "var(--muted-fg)";
         return (
           <div
             key={t.key}
-            className="rounded-md border px-3 py-2"
-            style={{
-              borderColor: isAi
-                ? "color-mix(in srgb, var(--accent) 40%, var(--border-strong))"
-                : "var(--border)",
-              background: isAi ? "var(--accent-dim)" : "var(--card)",
-            }}
+            className={`rounded-[var(--radius-lg)] px-3 py-2.5 ${isAi ? "bg-lav" : "bg-card-alt"}`}
           >
             <div className="flex items-center gap-2">
-              <span
-                className="h-2 w-2 flex-none rounded-full"
-                style={{ background: tone }}
-              />
-              <span className="text-[12.5px] font-semibold">
+              <span className={`text-[12.5px] font-bold ${isAi ? "text-lav-ink" : "text-fg"}`}>
                 {TIER_LABELS[t.key] ?? t.key}
               </span>
-              {isAi ? (
-                <span
-                  className="ml-auto rounded-full px-2 py-0.5"
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 8.5,
-                    fontWeight: 700,
-                    letterSpacing: "0.06em",
-                    background: "var(--accent)",
-                    color: "var(--accent-on)",
-                  }}
-                >
-                  AI
-                </span>
-              ) : null}
+              {isAi ? <Badge tone="ink" className="ml-auto">AI</Badge> : null}
             </div>
             {t.criterion ? (
-              <p className="mt-1 pl-4 text-[12px] leading-snug text-muted-fg">
+              <p className={`mt-1 text-[12px] leading-snug ${isAi ? "text-lav-ink/80" : "text-muted-fg"}`}>
                 {t.criterion}
               </p>
             ) : null}
@@ -281,20 +154,8 @@ function TierCriteria({ tiers, aiTier }) {
 function DefRow({ label, children }) {
   return (
     <div className="flex gap-3 py-1">
-      <span
-        className="w-24 flex-none uppercase text-muted-fg"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          letterSpacing: "0.04em",
-          paddingTop: 1,
-        }}
-      >
-        {label}
-      </span>
-      <span className="min-w-0 flex-1 text-[12.5px] leading-snug">
-        {children}
-      </span>
+      <span className="w-24 flex-none pt-px text-[11px] font-semibold text-muted-fg">{label}</span>
+      <span className="min-w-0 flex-1 text-[12.5px] leading-snug">{children}</span>
     </div>
   );
 }
@@ -313,9 +174,7 @@ function GoalDefinition({ spec }) {
   return (
     <div>
       {spec.prompt ? (
-        <p className="mb-2 text-[12.5px] leading-relaxed text-fg">
-          {spec.prompt}
-        </p>
+        <p className="mb-2 text-[12.5px] leading-relaxed text-fg">{spec.prompt}</p>
       ) : null}
       {spec.kindLabel ? <DefRow label="Kind">{spec.kindLabel}</DefRow> : null}
       {spec.cadence ? <DefRow label="Cadence">{spec.cadence}</DefRow> : null}
@@ -333,23 +192,12 @@ function GoalDefinition({ spec }) {
           {spec.delegated.note ? ` — ${spec.delegated.note}` : ""}
         </DefRow>
       ) : null}
-      {spec.untrackable ? (
-        <DefRow label="Parked">{spec.untrackable.reason}</DefRow>
-      ) : null}
+      {spec.untrackable ? <DefRow label="Parked">{spec.untrackable.reason}</DefRow> : null}
       {spec.fields && spec.fields.length > 0 ? (
         <DefRow label="Fields">
           <span className="flex flex-wrap gap-1.5">
             {spec.fields.map((f) => (
-              <span
-                key={f.id}
-                className="rounded border px-1.5 py-0.5"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 10,
-                  borderColor: "var(--border)",
-                  color: "var(--muted-fg)",
-                }}
-              >
+              <span key={f.id} className="rounded-[var(--radius-md)] bg-card-alt px-1.5 py-0.5 text-[11px] text-muted-fg">
                 {f.label}
                 {f.optional ? " ·opt" : ""}
               </span>
@@ -358,9 +206,7 @@ function GoalDefinition({ spec }) {
         </DefRow>
       ) : null}
       {spec.reasoning ? (
-        <p className="mt-2 text-[11.5px] leading-snug text-dim-fg">
-          {spec.reasoning}
-        </p>
+        <p className="mt-2 text-[11.5px] leading-snug text-dim-fg">{spec.reasoning}</p>
       ) : null}
     </div>
   );
@@ -371,58 +217,27 @@ function GoalDefinition({ spec }) {
 function EntryCard({ entry }) {
   const rel = ago(entry.ts);
   return (
-    <div
-      className="rounded-md border px-3 py-2"
-      style={{ borderColor: "var(--border)", background: "var(--card)" }}
-    >
+    <div className="rounded-[var(--radius-lg)] bg-card-alt px-3 py-2.5">
       <div className="mb-1 flex items-center gap-2">
-        <span
-          className="uppercase text-dim-fg"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9.5,
-            letterSpacing: "0.05em",
-          }}
-        >
-          {entry.periodKey ? entry.periodKey : entry.source}
-        </span>
-        {rel ? (
-          <span
-            className="ml-auto text-dim-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-          >
-            {rel}
-          </span>
-        ) : null}
+        <span className="text-[11px] text-dim-fg">{entry.periodKey ? entry.periodKey : entry.source}</span>
+        {rel ? <span className="ml-auto text-[11px] text-dim-fg">{rel}</span> : null}
       </div>
       {entry.cells.length > 0 ? (
         <div className="grid gap-0.5">
           {entry.cells.map((c, i) => (
             <div key={i} className="flex items-baseline gap-2">
-              <span
-                className="min-w-0 flex-1 truncate text-muted-fg"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-                title={c.label}
-              >
+              <span className="min-w-0 flex-1 truncate text-[11px] text-muted-fg" title={c.label}>
                 {c.label}
               </span>
               {c.value != null ? (
                 c.isLink ? (
-                  <a
-                    href={c.value}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="max-w-[60%] truncate text-[12px] underline decoration-dotted"
-                    style={{ color: "var(--accent)" }}
-                  >
+                  <a href={c.value} target="_blank" rel="noreferrer noopener" className="max-w-[60%] truncate text-[12px] font-bold text-fg">
                     {c.value}
                   </a>
                 ) : (
-                  <span className="text-[12px] font-semibold">
+                  <span className="text-[12px] font-bold">
                     {c.value}
-                    {c.unit ? (
-                      <span className="text-dim-fg"> {c.unit}</span>
-                    ) : null}
+                    {c.unit ? <span className="text-dim-fg"> {c.unit}</span> : null}
                   </span>
                 )
               ) : (
@@ -432,11 +247,7 @@ function EntryCard({ entry }) {
           ))}
         </div>
       ) : null}
-      {entry.note ? (
-        <p className="mt-1.5 text-[11.5px] leading-snug text-muted-fg">
-          {entry.note}
-        </p>
-      ) : null}
+      {entry.note ? <p className="mt-1.5 text-[11.5px] leading-snug text-muted-fg">{entry.note}</p> : null}
     </div>
   );
 }
@@ -446,20 +257,14 @@ function EntryCard({ entry }) {
 export function ManagerGoalReview({ loading, error, data }) {
   if (loading) {
     return (
-      <div
-        className="rounded-md border border-dashed px-3.5 py-4 text-[12px] text-muted-fg"
-        style={{ borderColor: "var(--border)" }}
-      >
+      <div className="rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-4 text-[12px] text-muted-fg">
         Loading the goal…
       </div>
     );
   }
   if (error || !data) {
     return (
-      <div
-        className="rounded-md border border-dashed px-3.5 py-4 text-[12px] text-muted-fg"
-        style={{ borderColor: "var(--border)" }}
-      >
+      <div className="rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-4 text-[12px] text-muted-fg">
         Couldn't load the goal detail. You can still set a tier below.
       </div>
     );

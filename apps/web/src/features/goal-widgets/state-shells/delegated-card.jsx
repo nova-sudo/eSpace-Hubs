@@ -8,6 +8,7 @@
  * untoggle delegation via the footer action and get the tracker back.
  */
 
+import { Badge, Button } from "@/components/ui";
 import { WidgetShell } from "../widget-shell";
 
 const JUDGE_LABEL = {
@@ -16,7 +17,7 @@ const JUDGE_LABEL = {
   peer: "A peer reviewer",
 };
 
-export function DelegatedCard({ spec, goal, variant = "light", className, onRetry, onUnsetDelegation }) {
+export function DelegatedCard({ spec, goal, className, onRetry, onUnsetDelegation }) {
   const judge = spec?.delegated?.judge;
   const note = spec?.delegated?.note;
   const who = JUDGE_LABEL[judge] || "Someone on your team";
@@ -24,55 +25,24 @@ export function DelegatedCard({ spec, goal, variant = "light", className, onRetr
   return (
     <WidgetShell
       spec={spec}
-      variant={variant}
-      label="Delegated"
+      rightChip={<Badge tone="sky">Delegated</Badge>}
       title={goal?.title || spec.title}
       onRetry={onRetry}
       className={className}
       footer={
         onUnsetDelegation ? (
-          <button
-            type="button"
-            onClick={onUnsetDelegation}
-            className="uppercase transition-colors hover:opacity-90"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9.5,
-              letterSpacing: "0.5px",
-              color: variant === "light" ? "rgba(255,255,255,0.68)" : "var(--muted-fg)",
-            }}
-          >
-            self-track
-          </button>
+          <Button type="button" variant="ghost" size="sm" onClick={onUnsetDelegation}>
+            Self-track
+          </Button>
         ) : null
       }
     >
-      <div
-        className="flex h-full flex-col justify-between gap-2"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 11,
-          lineHeight: 1.5,
-          color: variant === "light" ? "rgba(255,255,255,0.82)" : "var(--muted-fg)",
-        }}
-      >
+      <div className="flex h-full flex-col justify-between gap-2 text-[13px] leading-[1.5] text-muted-fg">
         <div>
-          <span style={{ color: variant === "light" ? "#ffffff" : "var(--fg)", fontWeight: 600 }}>
-            {who}
-          </span>{" "}
-          evaluates this goal — no self-tracking required.
+          <span className="font-bold text-fg">{who}</span> evaluates this goal —
+          no self-tracking required.
         </div>
-        {note ? (
-          <div
-            className="italic"
-            style={{
-              color: variant === "light" ? "rgba(255,255,255,0.62)" : "var(--muted-fg)",
-              fontSize: 10.5,
-            }}
-          >
-            {note}
-          </div>
-        ) : null}
+        {note ? <div className="text-[12px] italic text-muted-fg">{note}</div> : null}
       </div>
     </WidgetShell>
   );

@@ -11,99 +11,60 @@
  * until useApiOrigin() reports a live companion connection. If the user
  * reloads or navigates away mid-step, AuthGuard still bounces them back
  * here — the gate is enforced by the same mechanism that already exists.
+ *
+ * Mounted inside the onboarding page's own white card, which already
+ * carries the "Step N of M" label + progress strip — this component is
+ * just the step's content and its own action row.
  */
 
+import { Button, Card } from "@/components/ui";
 import { CompanionSetupGuide, useApiOrigin } from "@/features/companion";
+import { cn } from "@/lib/cn";
 
 export function CompanionGateStep({ submitting, onContinue, onBack }) {
   const { source, staleHostname, loading, refresh } = useApiOrigin();
   const live = source === "companion";
 
   return (
-    <div className="flex flex-col justify-center">
-      <button
-        type="button"
-        onClick={onBack}
-        className="mb-5 inline-flex w-fit items-center gap-1.5 text-[11px] uppercase tracking-[1px] text-muted-fg transition-colors hover:text-fg"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
-        ← Back
-      </button>
+    <div className="flex flex-col gap-5">
+      <div>
+        <h2 className="text-[18px] font-bold tracking-[-0.01em] text-fg">
+          Connect the companion
+        </h2>
+        <p className="mt-2 text-[14px] leading-[1.5] text-muted-fg">
+          Your engagement routes API calls through your own laptop, so we
+          need to confirm the companion app is installed, paired, and live
+          before letting you into the Dev Hub. This is a one-time check.
+        </p>
+      </div>
 
-      <div
-        className="mb-5 inline-flex w-fit items-center gap-2 rounded-full border border-border-strong px-3 py-1.5"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-      >
+      <Card tone="sky" radius="lg" padding={14} className="flex items-center gap-2.5 text-[13px]">
         <span
-          className="block h-1.5 w-1.5 rounded-full"
-          style={{ background: live ? "var(--good)" : "var(--accent)" }}
+          aria-hidden="true"
+          className={cn("h-2 w-2 shrink-0 rounded-full", live ? "bg-mint-ink" : "bg-sky-ink")}
         />
-        <span className="uppercase tracking-[1.5px] text-muted-fg">
-          Step 2 of 2 · Companion required
+        <span>
+          {live
+            ? "Companion connected."
+            : staleHostname
+              ? "The companion was seen before but has gone offline — reopen it to resume."
+              : "Waiting for the companion to report a live connection…"}
         </span>
-      </div>
+      </Card>
 
-      <h1
-        className="m-0"
-        style={{
-          fontFamily: "var(--font-dot)",
-          fontWeight: 900,
-          fontSize: 42,
-          lineHeight: 0.98,
-          letterSpacing: "1px",
-          textTransform: "uppercase",
-        }}
-      >
-        Connect the <em className="accent">companion</em>.
-      </h1>
+      <CompanionSetupGuide />
 
-      <p
-        className="mb-8 mt-[18px] max-w-xl text-[15px] leading-[1.55]"
-        style={{ color: "var(--muted-fg)" }}
-      >
-        Your engagement routes API calls through your own laptop, so we need
-        to confirm the companion app is installed, paired, and live before
-        letting you into the Dev Hub. This is a one-time check.
-      </p>
-
-      <div className="max-w-xl">
-        <CompanionSetupGuide />
-      </div>
-
-      <div className="mt-6 flex max-w-xl items-center gap-3.5">
-        <button
-          type="button"
-          disabled={!live || submitting}
-          onClick={onContinue}
-          className="rounded-[var(--radius-sub)] px-[22px] py-3 text-[11px] font-bold uppercase tracking-[1px] transition-opacity disabled:opacity-40"
-          style={{
-            fontFamily: "var(--font-mono)",
-            background: "var(--accent)",
-            color: "var(--accent-on)",
-          }}
-        >
-          {submitting ? "Entering…" : "Enter eSpace Dev Hub →"}
-        </button>
-        <button
-          type="button"
-          onClick={() => refresh()}
-          disabled={loading}
-          className="rounded-[var(--radius-sub)] border border-border-strong px-[18px] py-3 text-[11px] font-bold uppercase tracking-[1px] text-fg transition-opacity disabled:opacity-60"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
+      <div className="flex flex-wrap items-center gap-3">
+        <Button size="lg" disabled={!live || submitting} onClick={onContinue}>
+          {submitting ? "Entering…" : "Enter eSpace Dev Hub"}
+        </Button>
+        <Button variant="soft" size="lg" onClick={onBack}>
+          Back
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => refresh()} disabled={loading}>
           {loading ? "Checking…" : "Check now"}
-        </button>
+        </Button>
       </div>
-      {!live ? (
-        <span
-          className="mt-3 block text-[12px]"
-          style={{ fontFamily: "var(--font-mono)", color: "var(--muted-fg)" }}
-        >
-          {staleHostname
-            ? "The companion was seen before but has gone offline — reopen it to resume."
-            : "Waiting for the companion to report a live connection…"}
-        </span>
-      ) : null}
     </div>
   );
 }

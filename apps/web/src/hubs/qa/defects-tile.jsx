@@ -25,7 +25,8 @@
  */
 
 import Link from "next/link";
-import { BentoTile } from "@/components/ui";
+import { ArrowRight } from "lucide-react";
+import { BentoTile, Label } from "@/components/ui";
 import { useHubLink, useQaHubConfig } from "@/features/hubs";
 import { useIntegrations } from "@/features/integrations";
 import { useJiraDefectsForProject } from "@/features/integrations/hooks";
@@ -43,7 +44,7 @@ export function DefectsTile() {
       col="span 4"
       row="span 2"
       label="Defects · last 14d"
-      right={connected ? <span style={meta}>{projectKey}</span> : null}
+      right={connected ? <Label>{projectKey}</Label> : null}
     >
       {connected ? <Body projectKey={projectKey} /> : <NotConnectedBody />}
     </BentoTile>
@@ -56,11 +57,11 @@ function NotConnectedBody() {
     <div className="flex h-full flex-col justify-between">
       <Headline value="—" muted />
       <div>
-        <p className="text-muted-fg" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+        <p className="text-[12.5px] leading-[1.5] text-muted-fg">
           Connect Jira to see how many bugs your team has logged this sprint.
         </p>
-        <Link href={link("/settings")} style={ctaLink}>
-          Connect Jira →
+        <Link href={link("/settings")} className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-bold text-fg">
+          Connect Jira <ArrowRight size={13} />
         </Link>
       </div>
     </div>
@@ -96,13 +97,17 @@ function Body({ projectKey }) {
     <div className="flex h-full flex-col justify-between">
       <div>
         <Headline value={issues.length} />
-        <div style={{ marginTop: 8, ...meta }}>
-          {issues.length === 1 ? "bug" : "bugs"} logged in the last {WINDOW_DAYS} days
+        <div className="mt-2">
+          <Label>
+            {issues.length === 1 ? "bug" : "bugs"} logged in the last {WINDOW_DAYS} days
+          </Label>
         </div>
       </div>
       {issues.length > 0 ? (
         <div>
-          <div style={{ ...meta, marginBottom: 6 }}>Most recent</div>
+          <div className="mb-1.5">
+            <Label>Most recent</Label>
+          </div>
           <div className="flex flex-col gap-1">
             {issues.slice(0, 3).map((it) => (
               <RecentItem key={it.key} issue={it} />
@@ -110,7 +115,7 @@ function Body({ projectKey }) {
           </div>
         </div>
       ) : (
-        <div style={{ fontSize: 12, color: "var(--muted-fg)" }}>
+        <div className="text-[12px] text-muted-fg">
           No bugs in the window. Either things are calm, or nobody&apos;s logged
           one yet.
         </div>
@@ -123,43 +128,17 @@ function RecentItem({ issue }) {
   const summary = issue?.fields?.summary || "(no summary)";
   const priority = issue?.fields?.priority?.name || "—";
   return (
-    <div
-      className="flex items-center gap-2 border-b border-dashed border-border pb-1 last:border-b-0 last:pb-0"
-      style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-    >
-      <span
-        className="font-semibold text-accent"
-        style={{ letterSpacing: "0.2px" }}
-      >
-        {issue.key}
-      </span>
-      <span className="flex-1 truncate" style={{ color: "var(--fg)" }}>
-        {summary}
-      </span>
-      <span
-        style={{
-          fontSize: 9.5,
-          letterSpacing: "0.3px",
-          color: "var(--muted-fg)",
-        }}
-      >
-        {priority}
-      </span>
+    <div className="flex items-center gap-2 border-t border-line pt-1 first:border-t-0 first:pt-0 text-[11px]">
+      <span className="font-mono font-semibold text-fg">{issue.key}</span>
+      <span className="flex-1 truncate text-fg">{summary}</span>
+      <span className="text-[11px] text-muted-fg">{priority}</span>
     </div>
   );
 }
 
 function Headline({ value, muted }) {
   return (
-    <div
-      style={{
-        fontFamily: "var(--font-display)",
-        fontSize: 64,
-        letterSpacing: "-2px",
-        lineHeight: 1,
-        color: muted ? "var(--muted-fg)" : "var(--fg)",
-      }}
-    >
+    <div className={`text-[56px] font-extrabold leading-none tracking-[-0.04em] tabular-nums ${muted ? "text-dim-fg" : "text-fg"}`}>
       {value}
     </div>
   );
@@ -169,28 +148,7 @@ function Body0({ head, sub }) {
   return (
     <div className="flex h-full flex-col justify-between">
       <Headline value={head} muted />
-      <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--muted-fg)" }}>
-        {sub}
-      </div>
+      <div className="text-[12.5px] leading-[1.5] text-muted-fg">{sub}</div>
     </div>
   );
 }
-
-const meta = {
-  fontFamily: "var(--font-mono)",
-  fontSize: 10,
-  color: "var(--muted-fg)",
-  letterSpacing: "0.4px",
-  textTransform: "uppercase",
-};
-const ctaLink = {
-  display: "inline-block",
-  marginTop: 8,
-  fontFamily: "var(--font-mono)",
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.5px",
-  textTransform: "uppercase",
-  color: "var(--accent)",
-  textDecoration: "none",
-};

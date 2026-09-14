@@ -36,220 +36,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import QRCode from "qrcode";
 import { apiPost } from "@/lib/api-client";
+import { Button, Field, Input, Label, Loading } from "@/components/ui";
+import { AuthCard, AuthError } from "./auth-card.jsx";
 import { useSession } from "./use-session.js";
 
 const PHASE_LOADING = "loading";
 const PHASE_SHOW_SECRET = "show_secret";
 const PHASE_VERIFY = "verify";
 const PHASE_DONE = "done";
-
-/* ── Nothing UI auth chrome (inlined per file — mirrors the reference
-   ScreenAuth.dc.html "totp" variant in the migration kit). ────────── */
-
-const FIELD_LABEL = {
-  fontFamily: "var(--font-mono)",
-  fontSize: 10,
-  textTransform: "uppercase",
-  letterSpacing: "1.5px",
-  color: "var(--muted-fg)",
-};
-
-const ERROR = {
-  fontFamily: "var(--font-mono)",
-  fontSize: 11.5,
-  color: "var(--bad)",
-};
-
-const BRAND = {
-  brandTitle: ["Lock it", "down"],
-  brandBody:
-    "Two-factor is required before you reach the app. Your secret stays in this browser.",
-  flow: ["Sign up", "2FA", "Onboarding"],
-  flowActive: 1,
-};
-
-function AuthShell({ brandTitle, brandBody, flow, flowActive, children }) {
-  return (
-    <div
-      style={{
-        "--brand-bg": "#000",
-        "--brand-fg": "#fff",
-        "--brand-muted": "rgba(255,255,255,0.6)",
-        "--brand-dim": "rgba(255,255,255,0.22)",
-        "--brand-line": "rgba(255,255,255,0.22)",
-        "--brand-dot": "rgba(255,255,255,0.13)",
-        display: "grid",
-        gridTemplateColumns: "minmax(0, 1.05fr) minmax(0, 1fr)",
-        minHeight: "100vh",
-        background: "var(--bg)",
-      }}
-      className="auth-shell"
-    >
-      <div
-        className="auth-brand"
-        style={{
-          position: "relative",
-          overflow: "hidden",
-          background: "var(--brand-bg)",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
-          padding: "46px 44px",
-        }}
-      >
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: 0,
-            backgroundImage:
-              "radial-gradient(var(--brand-dot) 1.1px, transparent 1.1px)",
-            backgroundSize: "11px 11px",
-            opacity: 0.6,
-            pointerEvents: "none",
-          }}
-        />
-        <BrandMark />
-        <div style={{ position: "relative" }}>
-          <div
-            style={{
-              fontFamily: "var(--font-dot)",
-              fontWeight: 900,
-              fontSize: 54,
-              lineHeight: 0.9,
-              letterSpacing: "1px",
-              textTransform: "uppercase",
-              color: "var(--brand-fg)",
-            }}
-          >
-            {brandTitle.map((line, i) => (
-              <span key={i}>
-                {line}
-                {i < brandTitle.length - 1 ? <br /> : null}
-              </span>
-            ))}
-            <span style={{ color: "var(--accent)" }}>.</span>
-          </div>
-          <p
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize: 14.5,
-              lineHeight: 1.55,
-              color: "var(--brand-muted)",
-              maxWidth: 340,
-              margin: "22px 0 0",
-            }}
-          >
-            {brandBody}
-          </p>
-        </div>
-        <FlowPills flow={flow} active={flowActive} />
-      </div>
-
-      <div
-        style={{
-          background: "var(--bg)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 40,
-        }}
-      >
-        <div style={{ width: "100%", maxWidth: 380 }}>{children}</div>
-      </div>
-
-      <style>{`
-        @media (max-width: 720px) {
-          .auth-shell { grid-template-columns: 1fr !important; }
-          .auth-brand { display: none !important; }
-        }
-      `}</style>
-    </div>
-  );
-}
-
-function BrandMark() {
-  const cell = (bg) => <i style={{ background: bg, borderRadius: "50%" }} />;
-  return (
-    <div
-      style={{
-        position: "relative",
-        display: "flex",
-        alignItems: "center",
-        gap: 11,
-      }}
-    >
-      <div
-        style={{
-          width: 30,
-          height: 30,
-          borderRadius: 7,
-          border: "1px solid var(--brand-line)",
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gridTemplateRows: "repeat(3, 1fr)",
-          gap: 3,
-          padding: 6,
-        }}
-      >
-        {cell("var(--brand-fg)")}
-        {cell("var(--brand-dim)")}
-        {cell("var(--brand-fg)")}
-        {cell("var(--brand-dim)")}
-        {cell("var(--accent)")}
-        {cell("var(--brand-dim)")}
-        {cell("var(--brand-fg)")}
-        {cell("var(--brand-dim)")}
-        {cell("var(--brand-fg)")}
-      </div>
-      <span
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontWeight: 700,
-          fontSize: 16,
-          color: "var(--brand-fg)",
-        }}
-      >
-        eSpace
-      </span>
-    </div>
-  );
-}
-
-function FlowPills({ flow = [], active = 0 }) {
-  return (
-    <div
-      style={{
-        position: "relative",
-        display: "flex",
-        alignItems: "center",
-        gap: 9,
-        flexWrap: "wrap",
-      }}
-    >
-      {flow.map((label, i) => {
-        const on = i <= active;
-        return (
-          <span
-            key={i}
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9,
-              textTransform: "uppercase",
-              letterSpacing: "1px",
-              color: on ? "var(--brand-fg)" : "var(--brand-dim)",
-              border: `1px solid ${on ? "var(--accent)" : "var(--brand-line)"}`,
-              borderRadius: 999,
-              padding: "4px 9px",
-            }}
-          >
-            {label}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
 
 export function TotpSetupForm() {
   const { refresh } = useSession();
@@ -292,11 +86,13 @@ export function TotpSetupForm() {
     let cancelled = false;
     (async () => {
       try {
+        // No explicit `color` override — the library's default pure
+        // black/white gives the best scan contrast, and a QR code's
+        // pixels aren't a themed UI surface anyway.
         const dataUrl = await QRCode.toDataURL(otpauthUrl, {
           errorCorrectionLevel: "M",
           margin: 1,
           width: 220,
-          color: { dark: "#0b0b0c", light: "#ffffff" },
         });
         if (!cancelled) setQrDataUrl(dataUrl);
       } catch {
@@ -332,101 +128,57 @@ export function TotpSetupForm() {
     toast.success("Two-factor enabled.");
   }
 
-  return (
-    <AuthShell {...BRAND}>
-      <Header phase={phase} />
+  const title = phase === PHASE_DONE ? "Enabled" : "Two-factor";
+  const lead =
+    phase === PHASE_DONE
+      ? "Your account now requires a 6-digit code at sign-in."
+      : "Scan the QR with your authenticator, then enter the 6-digit code it generates.";
 
+  return (
+    <AuthCard title={title} lead={lead}>
       {phase === PHASE_LOADING ? (
-        <LoadingPanel />
+        <Loading label="Generating your secret…" />
       ) : phase === PHASE_DONE ? (
-        <DonePanel />
+        <p className="text-[13.5px] leading-[1.55] text-muted-fg">
+          Routing you to the next step…
+        </p>
       ) : (
         <>
           {phase === PHASE_SHOW_SECRET ? (
             <SecretPanel qrDataUrl={qrDataUrl} secret={secret} />
           ) : null}
 
-          <form onSubmit={handleVerify} className="flex flex-col gap-3">
-            <CodeInput value={code} onChange={setCode} disabled={submitting} />
+          <form onSubmit={handleVerify} className="flex flex-col gap-4">
+            <Field label="Code from your app">
+              <Input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="\d{6}"
+                maxLength={6}
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                disabled={submitting}
+                autoFocus
+                required
+                className="text-center font-mono text-[22px] tracking-[0.3em]"
+              />
+            </Field>
 
-            {error ? <div style={ERROR}>{error}</div> : null}
+            <AuthError>{error}</AuthError>
 
-            <button
+            <Button
               type="submit"
+              size="lg"
               disabled={code.length !== 6 || submitting}
-              style={{
-                width: "100%",
-                fontFamily: "var(--font-mono)",
-                fontSize: 11,
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "1px",
-                color: "var(--accent-on)",
-                background: "var(--accent)",
-                border: 0,
-                borderRadius: "var(--radius-sub)",
-                padding: 13,
-                cursor: submitting ? "wait" : "pointer",
-                opacity: code.length === 6 && !submitting ? 1 : 0.6,
-              }}
+              className="w-full"
             >
-              {submitting ? "Verifying…" : "Verify & enable →"}
-            </button>
+              {submitting ? "Verifying…" : "Verify & enable"}
+            </Button>
           </form>
         </>
       )}
-    </AuthShell>
-  );
-}
-
-function Header({ phase }) {
-  const title = phase === PHASE_DONE ? "Enabled" : "Two-factor";
-  const subtitle =
-    phase === PHASE_DONE
-      ? "Your account now requires a 6-digit code at sign-in."
-      : "Scan the QR with your authenticator, then enter the 6-digit code it generates.";
-
-  return (
-    <div>
-      <h1
-        style={{
-          fontFamily: "var(--font-dot)",
-          fontWeight: 900,
-          fontSize: 30,
-          letterSpacing: "1px",
-          textTransform: "uppercase",
-          color: "var(--fg)",
-          margin: 0,
-        }}
-      >
-        {title}
-      </h1>
-      <p
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: 13,
-          lineHeight: 1.5,
-          color: "var(--muted-fg)",
-          margin: "9px 0 20px",
-        }}
-      >
-        {subtitle}
-      </p>
-    </div>
-  );
-}
-
-function LoadingPanel() {
-  return (
-    <div
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 11.5,
-        color: "var(--muted-fg)",
-      }}
-    >
-      Generating your secret…
-    </div>
+    </AuthCard>
   );
 }
 
@@ -434,152 +186,30 @@ function SecretPanel({ qrDataUrl, secret }) {
   const formatted = useMemo(() => formatSecret(secret), [secret]);
 
   return (
-    <div
-      style={{
-        display: "flex",
-        gap: 16,
-        alignItems: "center",
-        border: "1px solid var(--border-strong)",
-        borderRadius: 9,
-        background: "var(--card)",
-        padding: 16,
-        marginBottom: 16,
-      }}
-    >
+    <div className="mb-5 flex items-center gap-4 rounded-[var(--radius-lg)] bg-card-alt p-4">
       {qrDataUrl ? (
         <img
           src={qrDataUrl}
           alt="TOTP QR code"
-          width={108}
-          height={108}
-          style={{
-            display: "block",
-            flex: "none",
-            background: "#fff",
-            borderRadius: 6,
-            padding: 8,
-            boxSizing: "content-box",
-          }}
+          width={96}
+          height={96}
+          className="block shrink-0 rounded-[var(--radius-md)] bg-white p-2"
         />
       ) : (
-        <div
-          style={{
-            width: 108,
-            height: 108,
-            flex: "none",
-            display: "flex",
-            alignItems: "center",
-            textAlign: "center",
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            color: "var(--muted-fg)",
-          }}
-        >
+        <div className="flex h-24 w-24 shrink-0 items-center text-center text-[11px] text-muted-fg">
           QR rendering failed — use manual entry.
         </div>
       )}
 
-      <div style={{ minWidth: 0 }}>
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9,
-            textTransform: "uppercase",
-            letterSpacing: "1px",
-            color: "var(--muted-fg)",
-            marginBottom: 5,
-          }}
-        >
-          Manual entry secret
-        </div>
-        <code
-          style={{
-            display: "block",
-            fontFamily: "var(--font-mono)",
-            fontSize: 12,
-            letterSpacing: "1px",
-            color: "var(--fg)",
-            wordBreak: "break-all",
-            lineHeight: 1.5,
-          }}
-        >
+      <div className="min-w-0">
+        <Label>Manual entry secret</Label>
+        <code className="mt-1 block break-all font-mono text-[12px] leading-[1.5] text-fg">
           {formatted}
         </code>
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9,
-            color: "var(--dim-fg)",
-            marginTop: 8,
-          }}
-        >
+        <div className="mt-2 text-[11.5px] text-dim-fg">
           SHA-1 · 6 digits · 30s period
         </div>
       </div>
-    </div>
-  );
-}
-
-function CodeInput({ value, onChange, disabled }) {
-  return (
-    <label className="flex flex-col gap-[7px]">
-      <span style={FIELD_LABEL}>Code from your app</span>
-      <input
-        type="text"
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        pattern="\d{6}"
-        maxLength={6}
-        value={value}
-        onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
-        disabled={disabled}
-        autoFocus
-        required
-        style={{
-          fontFamily: "var(--font-dot)",
-          fontWeight: 700,
-          fontSize: 22,
-          letterSpacing: "12px",
-          textAlign: "center",
-          color: "var(--fg)",
-          border: "1px solid var(--border-strong)",
-          borderRadius: "var(--radius-sub)",
-          padding: "9px 14px",
-          background: "var(--card)",
-          outline: "none",
-          width: "100%",
-        }}
-      />
-    </label>
-  );
-}
-
-function DonePanel() {
-  // The AuthGuard re-renders after the refresh() call, which routes
-  // the user onward (to /onboarding if their profile is incomplete,
-  // else to /). This panel is only briefly visible. We don't push
-  // router.replace() here because the guard's effect handles it —
-  // doing both would race.
-  return (
-    <div
-      style={{
-        border: "1px solid var(--border-strong)",
-        borderRadius: "var(--radius-tile)",
-        background: "var(--card)",
-        padding: 16,
-      }}
-    >
-      <p
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: 13.5,
-          lineHeight: 1.55,
-          color: "var(--fg)",
-          margin: 0,
-        }}
-      >
-        Routing you to the next step…
-      </p>
     </div>
   );
 }

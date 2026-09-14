@@ -27,6 +27,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { Button } from "@/components/ui";
 import { apiPost } from "@/lib/api-client";
 import { useSession } from "@/features/auth";
 import { refreshApiOrigin } from "./use-api-origin.js";
@@ -49,14 +50,14 @@ export function CompanionPairForm() {
   }, [code]);
 
   if (loading) {
-    return <Panel title="Loading…" body="One moment." />;
+    return <PanelCard title="Loading…" body="One moment." />;
   }
 
   if (!user) {
     // AuthGuard should never let an unauthenticated user reach here,
     // but if it does for some reason, give the user a clear next step.
     return (
-      <Panel
+      <PanelCard
         title="Sign in to approve."
         body="You need to be signed in to your eSpace Dev Hub account before you can approve a companion device."
       />
@@ -65,7 +66,7 @@ export function CompanionPairForm() {
 
   if (phase === "error" && error?.code === "missing_code") {
     return (
-      <Panel
+      <PanelCard
         title="Missing pairing code."
         body="Your companion app should have opened this page with a code in the URL. Open the companion and click ‘Pair this device’ again."
       />
@@ -74,7 +75,7 @@ export function CompanionPairForm() {
 
   if (phase === "approved") {
     return (
-      <Panel
+      <PanelCard
         title="Companion paired."
         body={
           <>
@@ -106,169 +107,76 @@ export function CompanionPairForm() {
   }
 
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-5 py-12">
-      <div>
-        <h1
-          className="font-semibold"
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 26,
-            letterSpacing: "-0.7px",
-          }}
-        >
+    <div className="mx-auto flex max-w-[440px] flex-col py-12">
+      <div
+        className="rounded-[var(--radius-xl)] bg-card p-7"
+        style={{ boxShadow: "var(--shadow-card)" }}
+      >
+        <h1 className="text-[22px] font-bold tracking-[-0.02em] text-fg">
           Approve companion device
         </h1>
-        <p
-          className="mt-1 text-muted-fg"
-          style={{ fontSize: 13.5, lineHeight: 1.5 }}
-        >
+        <p className="mt-2 text-[13.5px] leading-[1.5] text-muted-fg">
           Approve this only if you started the pairing from your own
           companion app a moment ago. If you didn't, click Cancel and
           tell whoever did to stop.
         </p>
-      </div>
 
-      <DetailGrid
-        rows={[
-          { label: "Pairing code", value: code },
-          { label: "Your account", value: user.email },
-        ]}
-      />
-
-      {error ? (
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 11.5,
-            color: "var(--bad)",
-            lineHeight: 1.5,
-          }}
-        >
-          {humanise(error)}
+        <div className="mt-5">
+          <DetailRow label="Pairing code" value={code} />
+          <DetailRow label="Your account" value={user.email} />
         </div>
-      ) : null}
 
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={handleApprove}
-          disabled={phase === "submitting" || !code}
-          style={primaryBtn(phase === "submitting" || !code)}
-        >
-          {phase === "submitting" ? "Approving…" : "Approve"}
-        </button>
-        <button
-          type="button"
-          onClick={() => window.close()}
-          disabled={phase === "submitting"}
-          style={secondaryBtn(phase === "submitting")}
-        >
-          Cancel
-        </button>
+        {error ? (
+          <p className="mt-4 text-[12.5px] leading-[1.5] text-peach-ink">
+            {humanise(error)}
+          </p>
+        ) : null}
+
+        <div className="mt-6 flex gap-2">
+          <Button
+            type="button"
+            onClick={handleApprove}
+            disabled={phase === "submitting" || !code}
+          >
+            {phase === "submitting" ? "Approving…" : "Approve"}
+          </Button>
+          <Button
+            type="button"
+            variant="soft"
+            onClick={() => window.close()}
+            disabled={phase === "submitting"}
+          >
+            Cancel
+          </Button>
+        </div>
       </div>
     </div>
   );
 }
 
-function DetailGrid({ rows }) {
+function DetailRow({ label, value }) {
   return (
-    <div
-      style={{
-        border: "1px solid var(--border-strong)",
-        borderRadius: "var(--radius-sub, 3px)",
-        background: "var(--card)",
-        padding: 16,
-        display: "grid",
-        gridTemplateColumns: "max-content 1fr",
-        rowGap: 8,
-        columnGap: 16,
-        fontFamily: "var(--font-mono)",
-        fontSize: 12,
-      }}
-    >
-      {rows.map((r) => (
-        <RowEntry key={r.label} label={r.label} value={r.value} />
-      ))}
-    </div>
-  );
-}
-
-function RowEntry({ label, value }) {
-  return (
-    <>
-      <span
-        style={{
-          color: "var(--muted-fg)",
-          textTransform: "uppercase",
-          letterSpacing: "0.5px",
-          fontSize: 10,
-          alignSelf: "center",
-        }}
-      >
-        {label}
-      </span>
-      <span style={{ color: "var(--fg)", overflowWrap: "anywhere" }}>
+    <div className="flex items-center justify-between gap-4 border-t border-line py-2.5 first:border-t-0 first:pt-0">
+      <span className="text-[12px] font-semibold text-muted-fg">{label}</span>
+      <span className="text-[13px] text-fg" style={{ overflowWrap: "anywhere" }}>
         {value}
       </span>
-    </>
-  );
-}
-
-function Panel({ title, body }) {
-  return (
-    <div className="mx-auto flex max-w-sm flex-col gap-3 py-12">
-      <h1
-        className="font-semibold"
-        style={{
-          fontFamily: "var(--font-display)",
-          fontSize: 24,
-          letterSpacing: "-0.6px",
-        }}
-      >
-        {title}
-      </h1>
-      <p
-        className="text-muted-fg"
-        style={{ fontSize: 13.5, lineHeight: 1.5 }}
-      >
-        {body}
-      </p>
     </div>
   );
 }
 
-function primaryBtn(disabled) {
-  return {
-    fontFamily: "var(--font-mono)",
-    fontSize: 11,
-    fontWeight: 700,
-    letterSpacing: "0.5px",
-    textTransform: "uppercase",
-    background: "var(--accent)",
-    color: "var(--accent-on, #fff)",
-    border: 0,
-    borderRadius: "var(--radius-sub, 3px)",
-    padding: "12px 16px",
-    cursor: disabled ? "wait" : "pointer",
-    opacity: disabled ? 0.6 : 1,
-  };
-}
-
-function secondaryBtn(disabled) {
-  return {
-    fontFamily: "var(--font-mono)",
-    fontSize: 11,
-    fontWeight: 700,
-    letterSpacing: "0.5px",
-    textTransform: "uppercase",
-    background: "transparent",
-    color: "var(--fg)",
-    border: "1px solid var(--border-strong)",
-    borderRadius: "var(--radius-sub, 3px)",
-    padding: "12px 16px",
-    cursor: disabled ? "wait" : "pointer",
-    opacity: disabled ? 0.6 : 1,
-  };
+function PanelCard({ title, body }) {
+  return (
+    <div className="mx-auto flex max-w-[440px] flex-col py-12">
+      <div
+        className="rounded-[var(--radius-xl)] bg-card p-7"
+        style={{ boxShadow: "var(--shadow-card)" }}
+      >
+        <h1 className="text-[22px] font-bold tracking-[-0.02em] text-fg">{title}</h1>
+        <p className="mt-2 text-[13.5px] leading-[1.5] text-muted-fg">{body}</p>
+      </div>
+    </div>
+  );
 }
 
 function humanise(err) {

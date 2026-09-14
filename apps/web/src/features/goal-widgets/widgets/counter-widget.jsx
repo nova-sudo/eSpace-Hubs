@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
+import { Minus, Plus } from "lucide-react";
+import { IconButton, Label } from "@/components/ui";
 import { WidgetShell } from "../widget-shell";
 import {
   cadenceWindowLabel,
@@ -64,34 +66,25 @@ export function CounterWidget({ spec, goal, variant = "light", className, onRetr
       className={className}
     >
       <div className="flex h-full flex-col justify-between gap-3">
-        <Headline
-          compliance={compliance}
-          total={total}
-          unit={unit}
-          target={target}
-          cadence={cadence}
-          variant={variant}
-        />
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            color: variant === "light" ? "rgba(255,255,255,0.68)" : "var(--muted-fg)",
-          }}
-        >
-          {promptCopy}
-        </div>
-        <WeeklyBars data={weekly} max={maxW} variant={variant} />
-        <div className="flex items-center gap-1.5">
-          <StepButton variant={variant} onClick={() => append(-1)}>
-            −1
-          </StepButton>
-          <StepButton variant={variant} onClick={() => append(1)}>
-            +1
-          </StepButton>
-          <StepButton variant={variant} onClick={() => append(5)}>
-            +5
-          </StepButton>
+        <Headline compliance={compliance} total={total} unit={unit} target={target} cadence={cadence} />
+        <Label>{promptCopy}</Label>
+        <WeeklyBars data={weekly} max={maxW} />
+        <div className="flex items-center gap-2">
+          <IconButton label="Subtract one" size="md" onCard onClick={() => append(-1)}>
+            <Minus size={16} />
+          </IconButton>
+          <div className="flex flex-1 items-baseline justify-center gap-1">
+            <span className="text-[40px] font-extrabold leading-none tracking-[-0.03em] tabular-nums text-fg">
+              {total}
+            </span>
+            {unit ? <span className="text-[13px] text-muted-fg">{unit}</span> : null}
+          </div>
+          <IconButton label="Add one" size="md" onCard onClick={() => append(1)}>
+            <Plus size={16} />
+          </IconButton>
+          <IconButton label="Add five" size="md" onCard onClick={() => append(5)}>
+            <Plus size={20} />
+          </IconButton>
         </div>
       </div>
     </WidgetShell>
@@ -106,38 +99,22 @@ export function CounterWidget({ spec, goal, variant = "light", className, onRetr
  *   2. no target / unsupported cadence  →  fall back to lifetime total
  *      (the legacy display)
  */
-function Headline({ compliance, total, unit, target, cadence, variant }) {
-  const muted =
-    variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)";
-  const monoStyle = {
-    fontFamily: "var(--font-mono)",
-    fontSize: 11,
-    color: muted,
-    lineHeight: 1.4,
-  };
-
+function Headline({ compliance, total, unit, target, cadence }) {
   if (compliance) {
     const [singular, plural] = cadenceWindowLabel(compliance.cadence);
     const noun = compliance.totalWindows === 1 ? singular : plural;
     return (
       <div className="flex flex-col gap-1.5">
         <div className="flex items-baseline gap-2">
-          <div
-            className="font-semibold leading-none"
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 48,
-              letterSpacing: "-1.6px",
-            }}
-          >
+          <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
             {compliance.pct}%
           </div>
-          <div style={monoStyle}>
+          <span className="text-[13px] text-muted-fg">
             on target
             {compliance.partial ? " · partial cadence" : ""}
-          </div>
+          </span>
         </div>
-        <div style={monoStyle}>
+        <div className="text-[12.5px] text-muted-fg">
           {compliance.metWindows} of {compliance.totalWindows} {noun} at
           target {compliance.targetOp} {compliance.targetValue}
           {unit ? ` ${unit}` : ""}
@@ -152,21 +129,14 @@ function Headline({ compliance, total, unit, target, cadence, variant }) {
   // milestone / continuous). Lifetime sum is the right read here.
   return (
     <div className="flex items-baseline gap-2">
-      <div
-        className="font-semibold leading-none"
-        style={{
-          fontFamily: "var(--font-display)",
-          fontSize: 48,
-          letterSpacing: "-1.6px",
-        }}
-      >
+      <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
         {total}
       </div>
-      <div style={monoStyle}>
+      <span className="text-[13px] text-muted-fg">
         {unit || "total"}
         {target ? ` · target ${target.op} ${target.value}` : ""}
         {cadence ? ` · ${cadence}` : ""}
-      </div>
+      </span>
     </div>
   );
 }
@@ -184,56 +154,21 @@ function weeklyTotals(entries, weeks) {
   return out;
 }
 
-function WeeklyBars({ data, max, variant }) {
+function WeeklyBars({ data, max }) {
   const lastIdx = data.length - 1;
   return (
-    <div className="flex items-end gap-[3px]" style={{ height: 28 }}>
+    <div className="flex items-end gap-1" style={{ height: 28 }}>
       {data.map((v, i) => {
         const h = Math.max(2, (Math.abs(v) / max) * 26);
         const isLast = i === lastIdx;
         return (
           <span
             key={i}
-            className="flex-1 rounded-t-[2px]"
-            style={{
-              height: h,
-              background: isLast
-                ? variant === "light"
-                  ? "#ffffff"
-                  : "var(--accent)"
-                : variant === "light"
-                  ? "rgba(255,255,255,0.35)"
-                  : "var(--accent-dim)",
-            }}
+            className={`flex-1 rounded-t-[3px] ${isLast ? "bg-lav" : "bg-card-alt"}`}
+            style={{ height: h }}
           />
         );
       })}
     </div>
-  );
-}
-
-function StepButton({ children, onClick, variant }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded-[var(--radius-sub)] px-3 py-1.5 font-bold uppercase transition-colors hover:opacity-90"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 11,
-        letterSpacing: "0.4px",
-        border:
-          variant === "light"
-            ? "1px solid rgba(255,255,255,0.25)"
-            : "1px solid var(--border)",
-        background:
-          variant === "light"
-            ? "rgba(255,255,255,0.14)"
-            : "var(--card-alt)",
-        color: variant === "light" ? "#ffffff" : "var(--fg)",
-      }}
-    >
-      {children}
-    </button>
   );
 }

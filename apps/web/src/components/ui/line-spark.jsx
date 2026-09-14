@@ -12,10 +12,10 @@ import { Area, AreaChart, ResponsiveContainer } from "recharts";
  */
 export function LineSpark({
   data = [],
-  color = "var(--accent)",
+  color = "var(--ink)",
   height = 36,
-  strokeWidth = 2,
-  fillOpacity = 0.25,
+  strokeWidth = 1.5,
+  fillOpacity = 0.12,
   showDots = false,
   className,
 }) {

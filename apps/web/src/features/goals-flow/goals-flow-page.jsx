@@ -21,16 +21,23 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui";
+import { ChevronDown, Minus, Plus, Sparkles } from "lucide-react";
+import { Badge, Button, Card, Label, SegmentedControl } from "@/components/ui";
 import { useHubLink } from "@/features/hubs";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
 import { useAllGoalInputs } from "@/features/goal-inputs";
 import { useGoalLocks } from "@/features/goal-locks";
 import { useAnalystOptional, ANALYST_MODES } from "@/features/analyst";
+import { cn } from "@/lib/cn";
 import { layoutFlow } from "./flow-geometry";
 import { FlowRow } from "./flow-row";
 import { EvidenceDrawer } from "./evidence-drawer";
 import { isGoalOwed, cadenceWindowsFor } from "./flow-row-meta";
+
+const DENSITY_OPTIONS = [
+  { value: "comfortable", label: "Comfortable" },
+  { value: "dense", label: "Compact" },
+];
 
 function usePaneWidth() {
   const ref = useRef(null);
@@ -46,22 +53,6 @@ function usePaneWidth() {
     return () => ro.disconnect();
   }, []);
   return [ref, width];
-}
-
-/** Toolbar toggle — the shared Button, `active` picks the filled variant. */
-function TitleBarButton({ onClick, active, children, ...rest }) {
-  return (
-    <Button
-      type="button"
-      size="sm"
-      variant={active ? "primary" : "ghost"}
-      onClick={onClick}
-      className={active ? "" : "text-muted-fg"}
-      {...rest}
-    >
-      {children}
-    </Button>
-  );
 }
 
 export function GoalsFlowPage() {
@@ -118,23 +109,35 @@ export function GoalsFlowPage() {
     return n;
   }, [mergedGroups]);
 
-  // Per-L1 progress: aggregate filled/total across every L2's own cadence
-  // windows (goals with no cadence don't contribute to either side).
+  // Per-L1 progress: aggregate filled/total windows across every L2's own
+  // cadence, plus goal-level counts (on pace / owed / unclassified) for the
+  // card's badge row.
   const l1Progress = useMemo(() => {
     const map = new Map();
     for (const g of mergedGroups) {
       let filled = 0;
       let total = 0;
-      let owed = 0;
+      let owedGoals = 0;
+      let onPaceGoals = 0;
+      let unclassifiedGoalsCount = 0;
       for (const it of g.items) {
         if (it.goal?.kind !== "L2") continue;
+        if (!it.spec) {
+          unclassifiedGoalsCount += 1;
+          continue;
+        }
         const cyc = cadenceWindowsFor(it.goal.id, it.spec);
-        if (!cyc) continue;
+        if (!cyc) {
+          onPaceGoals += 1;
+          continue;
+        }
         filled += cyc.filledCount;
         total += cyc.total;
-        owed += (cyc.windows || []).filter((w) => w.state === "owed").length;
+        const owed = (cyc.windows || []).some((w) => w.state === "owed");
+        if (owed) owedGoals += 1;
+        else onPaceGoals += 1;
       }
-      map.set(g.l1.id, { filled, total, owed });
+      map.set(g.l1.id, { filled, total, owedGoals, onPaceGoals, unclassifiedGoalsCount });
     }
     return map;
   }, [mergedGroups]);
@@ -214,54 +217,61 @@ export function GoalsFlowPage() {
 
   return (
     <div
-      className="relative z-[2] flex flex-col overflow-hidden"
+      className="relative z-[2] flex flex-col overflow-hidden bg-bg"
       style={{ height: "calc(100vh - var(--header-height))" }}
     >
       <span aria-live="polite" className="sr-only">
         {announcement}
       </span>
 
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-2.5">
-        <div className="flex items-baseline gap-2.5">
-          <h1 className="text-[15px] font-semibold" style={{ letterSpacing: "-0.3px" }}>
-            Goals
-          </h1>
-          <span
-            className="text-muted-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.6px" }}
-          >
-            flow map &middot; {layout.l1Cards.length} L1 &middot; {rowIds.length} tracked
+      <div className="flex shrink-0 flex-wrap items-end justify-between gap-4 px-5 py-4 sm:px-8">
+        <div>
+          <Label>
+            {layout.l1Cards.length} objective{layout.l1Cards.length === 1 ? "" : "s"} · {rowIds.length} goal
+            {rowIds.length === 1 ? "" : "s"} tracked
             {ghostCount > 0 ? ` · ${ghostCount} unclassified` : ""}
-          </span>
+          </Label>
+          <h1 className="mt-1.5 text-[28px] font-extrabold leading-[1.1] tracking-[-0.02em] text-fg">Goals</h1>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
           {ghostCount > 0 ? (
-            <TitleBarButton onClick={() => analyst?.requestOpen?.(ANALYST_MODES.ANALYSIS)} active>
-              Analyze {ghostCount} unclassified
-            </TitleBarButton>
-          ) : null}
-          <TitleBarButton onClick={() => setOwedOnly((v) => !v)} active={owedOnly}>
-            Owed only &middot; {owedCount}
-          </TitleBarButton>
-          <TitleBarButton onClick={() => setDensity((d) => (d === "dense" ? "comfortable" : "dense"))}>
-            {density === "dense" ? "Comfortable" : "Dense"}
-          </TitleBarButton>
-          <TitleBarButton onClick={toggleAllGroups}>
-            {allCollapsed ? "Expand all" : "Collapse all"}
-          </TitleBarButton>
-          <div className="flex items-center gap-0.5 rounded-[var(--radius-sub)] border border-border px-0.5 py-0.5">
-            <ZoomButton onClick={() => setZoom((z) => Math.max(0.6, Math.round((z - 0.1) * 10) / 10))} label="&minus;" aria-label="Zoom out" />
-            <span
-              className="px-1 text-muted-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, minWidth: 34, textAlign: "center" }}
+            <Button
+              variant="tint"
+              tone="lav"
+              size="md"
+              onClick={() => analyst?.requestOpen?.(ANALYST_MODES.ANALYSIS)}
             >
+              <Sparkles size={14} />
+              Analyze {ghostCount} unclassified
+            </Button>
+          ) : null}
+          <Button variant={owedOnly ? "ink" : "soft"} size="md" onClick={() => setOwedOnly((v) => !v)}>
+            Owed only
+            <Badge tone="peach">{owedCount}</Badge>
+          </Button>
+          <SegmentedControl options={DENSITY_OPTIONS} value={density} onChange={setDensity} size="sm" />
+          <Button variant="soft" size="md" onClick={toggleAllGroups}>
+            {allCollapsed ? "Expand all" : "Collapse all"}
+          </Button>
+          <div className="flex items-center gap-0.5 rounded-[var(--radius-pill)] bg-card-alt p-1">
+            <ZoomButton onClick={() => setZoom((z) => Math.max(0.6, Math.round((z - 0.1) * 10) / 10))} aria-label="Zoom out">
+              <Minus size={13} />
+            </ZoomButton>
+            <span className="w-10 text-center text-[12px] font-semibold tabular-nums text-muted-fg">
               {Math.round(zoom * 100)}%
             </span>
-            <ZoomButton onClick={() => setZoom((z) => Math.min(1.4, Math.round((z + 0.1) * 10) / 10))} label="+" aria-label="Zoom in" />
+            <ZoomButton onClick={() => setZoom((z) => Math.min(1.4, Math.round((z + 0.1) * 10) / 10))} aria-label="Zoom in">
+              <Plus size={13} />
+            </ZoomButton>
           </div>
-          <TitleBarButton onClick={() => setEvidenceOpen((v) => !v)} active={evidenceOpen} aria-expanded={evidenceOpen}>
+          <Button
+            variant={evidenceOpen ? "ink" : "soft"}
+            size="md"
+            onClick={() => setEvidenceOpen((v) => !v)}
+            aria-expanded={evidenceOpen}
+          >
             Evidence
-          </TitleBarButton>
+          </Button>
         </div>
       </div>
 
@@ -272,24 +282,20 @@ export function GoalsFlowPage() {
           onKeyDown={handleTreeKeyDown}
         >
           {goalsError && !ready ? (
-            <div className="flex flex-col items-start gap-2 p-6">
-              <span className="text-[13px] text-bad">
+            <Card padding={24} className="flex flex-col items-start gap-3">
+              <span className="text-[13px] text-fg">
                 Couldn&apos;t load goals — {goalsError.message || "the server didn't respond"}.
               </span>
-              <button
-                type="button"
-                onClick={() => void retryGoals()}
-                className="rounded-[var(--radius-sub)] border border-border-strong px-3 py-1 text-[12px] text-fg hover:border-accent"
-              >
+              <Button variant="soft" size="sm" onClick={() => void retryGoals()}>
                 Retry
-              </button>
-            </div>
+              </Button>
+            </Card>
           ) : !ready ? (
             <div className="p-6 text-[13px] text-muted-fg">Loading goals&hellip;</div>
           ) : !hasGoals || layout.rows.length === 0 ? (
-            <div className="rounded-[var(--radius-tile)] border border-dashed border-border-strong bg-card-alt p-6 text-center text-[13px] text-muted-fg">
+            <Card padding={24} className="text-center text-[13px] text-muted-fg">
               {owedOnly ? "Nothing owed right now." : "No classified goals to map yet."}
-            </div>
+            </Card>
           ) : (
             <div
               className="relative mx-auto"
@@ -314,13 +320,7 @@ export function GoalsFlowPage() {
                   style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }}
                 >
                   {layout.edges.map((e) => (
-                    <path
-                      key={e.id}
-                      d={e.d}
-                      fill="none"
-                      stroke={e.open ? "var(--border-strong)" : "var(--border)"}
-                      strokeWidth="1"
-                    />
+                    <path key={e.id} d={e.d} fill="none" stroke="var(--line)" strokeWidth="2" />
                   ))}
                 </svg>
 
@@ -340,20 +340,9 @@ export function GoalsFlowPage() {
                     className="absolute whitespace-nowrap"
                     style={{ left: p.x, top: p.y, transform: "translate(-50%, -50%)" }}
                   >
-                    <span
-                      className="text-muted-fg"
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 9,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.5px",
-                        background: "var(--panel)",
-                        padding: "1px 5px",
-                        borderRadius: "var(--radius-pill)",
-                      }}
-                    >
-                      {p.label}
-                    </span>
+                    <Label className="rounded-[var(--radius-pill)] bg-bg px-1.5 py-0.5">
+                      {p.label ? p.label.toLowerCase().replace(/_/g, " ") : ""}
+                    </Label>
                   </div>
                 ))}
 
@@ -387,70 +376,52 @@ export function GoalsFlowPage() {
   );
 }
 
-function ZoomButton({ onClick, label, ...rest }) {
+function ZoomButton({ onClick, children, ...rest }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex h-[22px] w-[22px] items-center justify-center rounded-[4px] border-0 bg-transparent text-muted-fg hover:bg-card-alt"
-      style={{ fontFamily: "var(--font-mono)", fontSize: 12, cursor: "pointer" }}
+      className="flex h-6 w-6 items-center justify-center rounded-full text-muted-fg transition-colors hover:bg-card"
       {...rest}
     >
-      {label}
+      {children}
     </button>
   );
 }
 
 function L1Card({ card, progress, onToggleCollapse }) {
   // Real destination for "edit" — the goals editor owns L1 editing.
-  // This used to be href="#": a visible link that scrolled to the top
-  // and did nothing.
   const link = useHubLink();
   const total = progress?.total || 0;
   const filled = progress?.filled || 0;
-  const owed = progress?.owed || 0;
+  const onPaceGoals = progress?.onPaceGoals || 0;
+  const owedGoals = progress?.owedGoals || 0;
+  const unclassifiedGoalsCount = progress?.unclassifiedGoalsCount || 0;
   const pct = total > 0 ? Math.round((filled / total) * 100) : null;
 
   return (
     <div
       role="group"
       aria-label={`${card.title} — ${card.count} goals`}
-      className="absolute rounded-[var(--radius-tile)] border border-border bg-card p-3"
-      style={{ left: card.left, top: card.top, width: card.width }}
+      className="absolute flex flex-col gap-3.5 rounded-[var(--radius-xl)] bg-card p-[22px]"
+      style={{ left: card.left, top: card.top, width: card.width, boxShadow: "var(--shadow-card)" }}
     >
       <button
         type="button"
         onClick={onToggleCollapse}
         aria-expanded={!card.collapsed}
-        className="mb-1.5 flex w-full items-center gap-1.5 border-0 bg-transparent p-0 text-left"
-        style={{ cursor: "pointer", color: "inherit" }}
+        className="flex items-center justify-between gap-1.5 border-0 bg-transparent p-0 text-left"
       >
-        <span
-          aria-hidden="true"
-          className="text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 11, width: 8 }}
-        >
-          {card.collapsed ? "▸" : "▾"}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <ChevronDown size={13} className={cn("shrink-0 text-dim-fg transition-transform", card.collapsed ? "-rotate-90" : "")} />
+          <Label className="truncate">Objective {String(card.num).slice(0, 8)}</Label>
         </span>
-        <span
-          className="min-w-0 flex-1 truncate text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.5px" }}
-        >
-          L1 {card.category ? `· ${card.category}` : ""}
-        </span>
-        {pct != null ? (
-          <span
-            className="shrink-0 text-muted-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}
-          >
-            {pct}%
-          </span>
-        ) : null}
+        {card.weightage != null ? <Badge tone="lav">{card.weightage}% weight</Badge> : null}
       </button>
+
       <div
-        className="mb-2 text-[13px] font-semibold leading-[1.3]"
+        className="text-[18px] font-bold leading-[1.25] tracking-[-0.02em] text-fg"
         style={{
-          letterSpacing: "-0.1px",
           display: "-webkit-box",
           WebkitLineClamp: 2,
           WebkitBoxOrient: "vertical",
@@ -460,34 +431,31 @@ function L1Card({ card, progress, onToggleCollapse }) {
       >
         {card.title || "(untitled)"}
       </div>
+
       {total > 0 ? (
-        <div
-          className="relative mb-2 overflow-hidden"
-          style={{ height: 3, background: "var(--panel-2)" }}
-        >
-          <span
-            className="absolute left-0 top-0 h-full"
-            style={{ width: `${pct}%`, background: "var(--accent)" }}
-          />
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between text-[12.5px] font-semibold text-muted-fg">
+            <span>Windows filled</span>
+            <span className="tabular-nums text-fg">
+              {filled} / {total}
+            </span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-[var(--radius-pill)] bg-card-alt">
+            <div className="h-full rounded-[var(--radius-pill)] bg-ink" style={{ width: `${pct}%` }} />
+          </div>
         </div>
       ) : null}
-      <div className="flex items-center justify-between gap-2 text-muted-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}>
-        <span>
-          {card.count} goal{card.count === 1 ? "" : "s"}
-          {owed > 0 ? ` · ${owed} owed` : ""}
-        </span>
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        {onPaceGoals > 0 ? <Badge tone="mint">{onPaceGoals} on pace</Badge> : null}
+        {owedGoals > 0 ? <Badge tone="peach">{owedGoals} owed</Badge> : null}
+        {unclassifiedGoalsCount > 0 ? <Badge tone="lemon">{unclassifiedGoalsCount} unclassified</Badge> : null}
       </div>
-      <div
-        className="mt-1.5 flex items-center justify-between gap-2 border-t border-border pt-1.5 text-muted-fg"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}
-      >
-        <span>{card.weightage != null ? `Σ ${card.weightage}% mapped` : ""}</span>
-        <Link
-          href={link("/goals")}
-          className="shrink-0 hover:text-fg"
-          style={{ textTransform: "uppercase", letterSpacing: "0.5px" }}
-        >
-          edit
+
+      <div className="flex items-center justify-between gap-2 border-t border-line pt-2.5 text-[12px] text-muted-fg">
+        <span>{card.collapsed ? `${card.count} goal${card.count === 1 ? "" : "s"} · collapsed` : `${card.count} goal${card.count === 1 ? "" : "s"}`}</span>
+        <Link href={link("/goals")} className={cn("shrink-0 font-bold text-fg")}>
+          Edit
         </Link>
       </div>
     </div>

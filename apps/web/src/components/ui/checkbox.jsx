@@ -1,3 +1,6 @@
+import { Check } from "lucide-react";
+import { cn } from "@/lib/cn";
+
 /**
  * Accessible checkbox span. `label` is REQUIRED in spirit: a bare
  * role="checkbox" announces as "checkbox, not checked" N times in a
@@ -20,23 +23,12 @@ export function Checkbox({ checked, onChange, id, label }) {
           onChange?.();
         }
       }}
-      className="inline-grid h-4 w-4 cursor-pointer place-items-center rounded-[2px] border"
-      style={{
-        borderColor: checked ? "var(--accent)" : "var(--border)",
-        background: checked ? "var(--accent)" : "var(--card)",
-      }}
+      className={cn(
+        "inline-grid h-[18px] w-[18px] cursor-pointer place-items-center rounded-[6px]",
+        checked ? "bg-ink text-ink-on" : "bg-card-alt text-transparent",
+      )}
     >
-      {checked ? (
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-          <path
-            d="M2 5.5l2 2 4-5"
-            stroke="var(--accent-on)"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      ) : null}
+      <Check size={12} strokeWidth={2.5} />
     </span>
   );
 }

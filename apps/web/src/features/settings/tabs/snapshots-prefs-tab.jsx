@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Card, Field, Input, MonoLabel, Section } from "@/components/ui";
+import { Button, Card, Field, Input, Label, Section } from "@/components/ui";
 import { clearAutoSnapshots, useBackfill } from "@/features/snapshots";
 
 const EXPLICIT_NOT = [
@@ -24,11 +24,11 @@ const EXPLICIT_NOT = [
 
 export function SnapshotsPrefsTab() {
   return (
-    <>
-      <Section num="01 /" title="Cycle history">
+    <div className="flex flex-col gap-8">
+      <Section title="Cycle history">
         <BackfillCard />
       </Section>
-      <Section num="02 /" title="Snapshot schedule">
+      <Section title="Snapshot schedule">
         <Card className="p-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <Field
@@ -44,34 +44,23 @@ export function SnapshotsPrefsTab() {
               <Input defaultValue="26 weeks (6 months)" />
             </Field>
           </div>
-          <div
-            className="mt-2.5 rounded-[var(--radius-sub)] bg-accent-dim px-3.5 py-3 text-[12.5px] leading-[1.5]"
-          >
-            <strong className="text-accent">Heads up:</strong> snapshots live in your
-            browser storage. Clearing site data wipes them. Consider exporting to JSON
-            before switching machines.
+          <div className="mt-4 rounded-[var(--radius-lg)] bg-sky text-sky-ink px-3.5 py-3 text-[12.5px] leading-[1.5]">
+            <strong>Heads up:</strong> snapshots live in your browser storage. Clearing
+            site data wipes them. Consider exporting to JSON before switching machines.
           </div>
         </Card>
       </Section>
-      <Section num="03 /" title="What we explicitly do not do">
+      <Section title="What we explicitly do not do">
         <Card className="p-6">
           {EXPLICIT_NOT.map(([title, body]) => (
-            <div
-              key={title}
-              className="border-b border-border border-dashed py-3.5 last:border-b-0"
-            >
-              <div
-                className="mb-1 font-semibold"
-                style={{ fontFamily: "var(--font-display)", fontSize: 15 }}
-              >
-                {title}
-              </div>
+            <div key={title} className="border-t border-line py-3.5 first:border-t-0 first:pt-0 last:pb-0">
+              <div className="mb-1 text-[15px] font-bold text-fg">{title}</div>
               <div className="text-[13px] leading-[1.5] text-muted-fg">{body}</div>
             </div>
           ))}
         </Card>
       </Section>
-    </>
+    </div>
   );
 }
 
@@ -114,15 +103,12 @@ function BackfillCard() {
     <Card className="p-6">
       <div className="flex items-start justify-between gap-6">
         <div className="max-w-[560px]">
-          <MonoLabel>
+          <Label>
             {hasMissing
               ? `${missingWeeks} week${missingWeeks === 1 ? "" : "s"} missing`
               : `${totalWeeks} week${totalWeeks === 1 ? "" : "s"} tracked`}
-          </MonoLabel>
-          <div
-            className="mt-2 font-semibold"
-            style={{ fontFamily: "var(--font-display)", fontSize: 17 }}
-          >
+          </Label>
+          <div className="mt-2 text-[17px] font-bold text-fg">
             Synthesise weekly snapshots from connected data
           </div>
           <p className="mt-2 text-[13px] leading-[1.55] text-muted-fg">
@@ -137,16 +123,13 @@ function BackfillCard() {
             flagged as unavailable rather than zero-effort.
           </p>
           <p className="mt-2 text-[12px] leading-[1.5] text-dim-fg">
-            Your hand-typed notes are preserved. <span className="text-fg">Reset
+            Your hand-typed notes are preserved. <span className="text-fg font-semibold">Reset
             &amp; re-backfill</span> additionally deletes auto-captured
             snapshots first (manual ones are kept) for a clean re-synthesis.
           </p>
           {isRunning && progress ? (
-            <div
-              className="mt-3 inline-flex items-center gap-2 text-[12px]"
-              style={{ fontFamily: "var(--font-mono)" }}
-            >
-              <span className="block h-[6px] w-[6px] animate-pulse rounded-full bg-accent" />
+            <div className="mt-3 inline-flex items-center gap-2 text-[12px] text-muted-fg">
+              <span className="block h-1.5 w-1.5 animate-pulse rounded-full bg-ink" />
               Building week {progress.done} of {progress.total}…
             </div>
           ) : null}

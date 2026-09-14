@@ -2,13 +2,13 @@
 
 /**
  * Header notification bell — unread badge + dropdown inbox. Mounted in
- * the app shell header (authed surfaces only). Theme-aware via tokens, so
- * the badge/accent follow the active hub (cobalt on Dev, orange on the
- * Manager hub).
+ * the app shell header (authed surfaces only).
  */
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Bell } from "lucide-react";
+import { Button, IconButton } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { useHubLink } from "@/features/hubs";
 import { useNotifications } from "./use-notifications";
@@ -85,80 +85,46 @@ export function NotificationBell() {
 
   return (
     <div ref={ref} className="relative">
-      <button
-        type="button"
-        aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+      <IconButton
+        label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
         aria-haspopup="true"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="relative grid h-8 w-8 place-items-center rounded-md text-muted-fg transition-colors hover:bg-accent-dim/60 hover:text-fg"
+        className="relative"
       >
-        <svg
-          width="17"
-          height="17"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.7"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-          <path d="M13.7 21a2 2 0 0 1-3.4 0" />
-        </svg>
+        <Bell size={17} />
         {unread > 0 ? (
           <span
-            className="absolute -right-1 -top-1 grid min-w-[16px] place-items-center rounded-full px-1 text-accent-on"
-            style={{
-              height: 16,
-              background: "var(--accent)",
-              fontFamily: "var(--font-mono)",
-              fontSize: 9.5,
-              fontWeight: 700,
-              border: "2px solid var(--bg)",
-            }}
-          >
-            {unread > 9 ? "9+" : unread}
-          </span>
+            aria-hidden="true"
+            className="absolute right-1.5 top-1.5 h-[7px] w-[7px] rounded-full bg-peach-ink"
+            style={{ boxShadow: "0 0 0 2px var(--card)" }}
+          />
         ) : null}
-      </button>
+      </IconButton>
 
       {open ? (
         <div
           role="dialog"
           aria-label="Notifications"
-          className="absolute right-0 top-[calc(100%+8px)] z-50 w-[340px] max-w-[calc(100vw-24px)] overflow-hidden rounded-lg border bg-card"
-          style={{
-            borderColor: "var(--border-strong)",
-            boxShadow: "0 24px 60px -24px rgba(20,12,0,0.4)",
-          }}
+          className="absolute right-0 top-[calc(100%+8px)] z-50 w-[340px] max-w-[calc(100vw-24px)] overflow-hidden rounded-[var(--radius-xl)] bg-card p-2"
+          style={{ boxShadow: "var(--shadow-float)" }}
         >
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <span
-              className="uppercase tracking-[0.08em] text-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700 }}
-            >
-              Notifications
-            </span>
+          <div className="flex items-center justify-between px-2 py-1.5">
+            <span className="text-[14.5px] font-bold text-fg">Notifications</span>
             {unread > 0 ? (
-              <button
-                type="button"
-                onClick={markAll}
-                className="text-accent hover:underline"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: "0.03em" }}
-              >
+              <Button variant="soft" size="sm" onClick={markAll}>
                 Mark all read
-              </button>
+              </Button>
             ) : null}
           </div>
 
           <div className="max-h-[min(60vh,420px)] overflow-y-auto">
             {loading ? (
-              <p className="px-4 py-8 text-center text-[12.5px] text-muted-fg">
+              <p className="px-3 py-8 text-center text-[12.5px] text-muted-fg">
                 Loading…
               </p>
             ) : items.length === 0 ? (
-              <p className="px-4 py-8 text-center text-[12.5px] text-muted-fg">
+              <p className="px-3 py-8 text-center text-[12.5px] text-muted-fg">
                 You're all caught up.
               </p>
             ) : (
@@ -167,17 +133,17 @@ export function NotificationBell() {
                   key={n.id}
                   type="button"
                   onClick={() => openNotification(n)}
-                  className={cn(
-                    "flex w-full items-start gap-3 border-b border-border px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-card-alt",
-                    !n.read && "bg-accent-dim/30",
-                  )}
+                  className="flex w-full items-start gap-2.5 rounded-[var(--radius-lg)] px-3 py-2.5 text-left transition-colors hover:bg-card-alt"
                 >
                   <span
-                    className="mt-1.5 h-1.5 w-1.5 flex-none rounded-full"
-                    style={{ background: n.read ? "transparent" : "var(--accent)" }}
+                    aria-hidden="true"
+                    className={cn(
+                      "mt-1.5 h-1.5 w-1.5 flex-none rounded-full",
+                      n.read ? "bg-transparent" : "bg-ink",
+                    )}
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[13px] font-semibold leading-snug">
+                    <span className="block text-[13px] font-bold leading-snug text-fg">
                       {n.title}
                     </span>
                     <span className="mt-0.5 block text-[12px] leading-snug text-muted-fg">
@@ -188,10 +154,7 @@ export function NotificationBell() {
                         &ldquo;{n.data.note}&rdquo;
                       </span>
                     ) : null}
-                    <span
-                      className="mt-1 block text-dim-fg"
-                      style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.03em" }}
-                    >
+                    <span className="mt-1 block text-[11.5px] text-dim-fg">
                       {ago(n.createdAt)}
                     </span>
                   </span>

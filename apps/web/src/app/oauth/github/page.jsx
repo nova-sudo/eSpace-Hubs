@@ -17,8 +17,11 @@ export default function GitHubCallbackPage() {
 
 function CallbackShell({ status }) {
   return (
-    <main className="flex min-h-screen items-center justify-center">
-      <div className="rounded-2xl border border-border bg-card/60 px-8 py-6 text-sm">
+    <main className="flex min-h-screen items-center justify-center bg-bg px-4">
+      <div
+        className="rounded-[var(--radius-xl)] bg-card px-8 py-6 text-[14px] text-fg"
+        style={{ boxShadow: "var(--shadow-card)" }}
+      >
         {status}
       </div>
     </main>

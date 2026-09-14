@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { ChevronRight, Paperclip, Upload, X } from "lucide-react";
+import { Badge, IconButton } from "@/components/ui";
 import {
   EVIDENCE_ACCEPT,
   EVIDENCE_MAX_BYTES,
@@ -24,17 +26,7 @@ import {
  * page renders many widgets at once, and most periods have no attachments —
  * a list request per widget per render would be pure noise.
  */
-export function EvidenceAttachments({ goalId, periodKey, variant = "dark", className = "" }) {
-  const isLight = variant === "light";
-  const tone = {
-    fg: isLight ? "#ffffff" : "var(--fg)",
-    muted: isLight ? "rgba(255,255,255,0.68)" : "var(--muted-fg)",
-    faint: isLight ? "rgba(255,255,255,0.45)" : "var(--border-strong)",
-    rule: isLight ? "rgba(255,255,255,0.22)" : "var(--border)",
-    surface: isLight ? "rgba(255,255,255,0.10)" : "var(--card-alt)",
-  };
-  const mono = { fontFamily: "var(--font-mono)", fontSize: 10 };
-
+export function EvidenceAttachments({ goalId, periodKey, className = "" }) {
   const [open, setOpen] = useState(false);
   const [files, setFiles] = useState(null); // null = not loaded yet
   const [busy, setBusy] = useState(false);
@@ -119,33 +111,21 @@ export function EvidenceAttachments({ goalId, periodKey, variant = "dark", class
   const count = files?.length ?? 0;
 
   return (
-    <div className={`flex flex-col gap-1.5 ${className}`}>
+    <div className={`flex flex-col gap-2 ${className}`}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="inline-flex w-fit items-center gap-1.5"
-        style={{
-          ...mono,
-          fontSize: 9,
-          letterSpacing: "0.6px",
-          textTransform: "uppercase",
-          color: tone.muted,
-          border: "none",
-          background: "transparent",
-          cursor: "pointer",
-          padding: 0,
-        }}
+        className="inline-flex w-fit items-center gap-1.5 text-[12.5px] font-semibold text-muted-fg hover:text-fg"
       >
-        <span aria-hidden="true" style={{ display: "inline-block", transform: open ? "rotate(90deg)" : "none" }}>
-          &rsaquo;
-        </span>
-        attach evidence
-        {count > 0 ? <span style={{ color: tone.fg }}>· {count}</span> : null}
+        <ChevronRight size={13} className={open ? "rotate-90 transition-transform" : "transition-transform"} />
+        <Paperclip size={13} />
+        Attach evidence
+        {count > 0 ? <Badge>{count}</Badge> : null}
       </button>
 
       {open ? (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           {/* Drop target. `label`-wrapped so a click and the keyboard both
               reach the file input without a hand-rolled key handler. */}
           <label
@@ -160,16 +140,12 @@ export function EvidenceAttachments({ goalId, periodKey, variant = "dark", class
               setDragging(false);
               void doUpload(e.dataTransfer?.files);
             }}
-            className="flex cursor-pointer items-center justify-center rounded-[var(--radius-sub)] px-2 py-2.5 text-center"
-            style={{
-              ...mono,
-              fontSize: 9.5,
-              color: dragging ? tone.fg : tone.muted,
-              border: `1px dashed ${dragging ? tone.fg : tone.rule}`,
-              background: dragging ? tone.surface : "transparent",
-            }}
+            className={`flex cursor-pointer items-center justify-center gap-2 rounded-[var(--radius-lg)] px-3 py-3 text-center text-[12.5px] font-semibold transition-colors ${
+              dragging ? "bg-lav text-lav-ink" : "bg-card-alt text-muted-fg hover:text-fg"
+            }`}
           >
-            {busy ? "uploading…" : "drop a file here, or click to choose"}
+            <Upload size={14} />
+            {busy ? "Uploading…" : "Drop a file here, or click to choose"}
           </label>
           <input
             ref={inputRef}
@@ -181,60 +157,35 @@ export function EvidenceAttachments({ goalId, periodKey, variant = "dark", class
             onChange={(e) => void doUpload(e.target.files)}
           />
 
-          {error ? (
-            <span style={{ ...mono, fontSize: 9.5, color: isLight ? "#ffd7d7" : "var(--bad)" }}>
-              {error}
-            </span>
-          ) : null}
+          {error ? <span className="text-[12.5px] text-peach-ink">{error}</span> : null}
 
           {count > 0 ? (
             <ul className="flex list-none flex-col gap-1 p-0">
               {files.map((f) => (
-                <li
-                  key={f.id}
-                  className="flex items-center justify-between gap-2 rounded-[var(--radius-sub)] px-2 py-1"
-                  style={{ background: tone.surface }}
-                >
+                <li key={f.id} className="flex items-center justify-between gap-2 rounded-[var(--radius-lg)] bg-card-alt px-2.5 py-1.5">
                   {/* A plain link: the API answers with Content-Disposition:
                       attachment, so even an .html attachment downloads rather
                       than rendering on our origin. */}
                   <a
                     href={evidenceFileUrl(f.id)}
                     download={f.name}
-                    className="truncate underline-offset-2 hover:underline"
-                    style={{ ...mono, fontSize: 10, color: tone.fg }}
+                    className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-[12.5px] font-semibold text-fg hover:underline"
                     title={f.name}
                   >
-                    {f.name}
+                    <Paperclip size={12} className="shrink-0 text-muted-fg" />
+                    <span className="truncate">{f.name}</span>
                   </a>
                   <span className="flex shrink-0 items-center gap-2">
-                    <span style={{ ...mono, fontSize: 9, color: tone.faint }}>
-                      {formatBytes(f.size)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => void remove(f.id)}
-                      disabled={busy}
-                      aria-label={`Remove ${f.name}`}
-                      style={{
-                        ...mono,
-                        fontSize: 9,
-                        color: tone.muted,
-                        border: "none",
-                        background: "transparent",
-                        cursor: busy ? "default" : "pointer",
-                      }}
-                    >
-                      remove
-                    </button>
+                    <span className="text-[11.5px] text-dim-fg">{formatBytes(f.size)}</span>
+                    <IconButton label={`Remove ${f.name}`} size="sm" onCard onClick={() => void remove(f.id)} disabled={busy}>
+                      <X size={12} />
+                    </IconButton>
                   </span>
                 </li>
               ))}
             </ul>
           ) : files !== null ? (
-            <span style={{ ...mono, fontSize: 9.5, color: tone.faint }}>
-              nothing attached to this period yet
-            </span>
+            <span className="text-[12.5px] text-dim-fg">Nothing attached to this period yet</span>
           ) : null}
         </div>
       ) : null}

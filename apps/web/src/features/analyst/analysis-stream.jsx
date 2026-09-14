@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
+import { Badge, Button } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { ANALYSIS } from "./ai/analysis-events";
 import { SPEC_KIND_META } from "@/features/goal-specs";
 
@@ -31,7 +33,7 @@ export function AnalysisStream({ events, phase, error, onSwitchToGrid }) {
   }, [events.length]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <SummaryStrip
         summary={summary}
         phase={phase}
@@ -39,15 +41,12 @@ export function AnalysisStream({ events, phase, error, onSwitchToGrid }) {
         startedAt={startedAt}
         onSwitchToGrid={onSwitchToGrid}
       />
-      <div
-        ref={scrollerRef}
-        className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pr-1"
-      >
+      <div ref={scrollerRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {goalBlocks.length === 0 ? (
           <EmptyPlaceholder />
         ) : (
-          goalBlocks.map((block) => (
-            <GoalBlock key={block.goalId} block={block} />
+          goalBlocks.map((block, i) => (
+            <GoalBlock key={block.goalId} block={block} first={i === 0} />
           ))
         )}
       </div>
@@ -106,133 +105,80 @@ function foldEvents(events) {
 function SummaryStrip({ summary, phase, error, startedAt, onSwitchToGrid }) {
   const elapsed = startedAt ? Math.max(0, Date.now() - startedAt) : 0;
   const elapsedSec = Math.floor(elapsed / 1000);
+  const phaseLabel =
+    phase === "running"
+      ? "Analyzing goals"
+      : phase === "complete"
+        ? "Complete"
+        : phase === "error"
+          ? "Error"
+          : "Idle";
+  const phaseTone =
+    phase === "running" ? "lemon" : phase === "complete" ? "mint" : phase === "error" ? "peach" : "neutral";
 
   return (
-    <div
-      className="flex flex-wrap items-center justify-between gap-3"
-      style={{
-        background: "var(--card)",
-        border: "1px solid var(--border)",
-        borderRadius: 10,
-        padding: "16px 20px",
-      }}
-    >
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
       <div className="flex items-baseline gap-3">
-        <span
-          className="font-black"
-          style={{
-            fontFamily: "var(--font-dot)",
-            fontWeight: 900,
-            fontSize: 38,
-            lineHeight: 0.8,
-            color: "var(--fg)",
-          }}
-        >
+        <span className="text-[38px] font-extrabold leading-none tracking-[-0.03em] tabular-nums text-fg">
           {summary.classified}
-          <span style={{ color: "var(--dim-fg)" }}>
+          <span className="text-dim-fg">
             {summary.totalGoals > 0 ? ` / ${summary.totalGoals}` : ""}
           </span>
         </span>
-        <span
-          className="uppercase tracking-[0.6px]"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            color: "var(--muted-fg)",
-          }}
-        >
-          {phase === "running" ? "analyzing goals" : phase === "complete" ? "complete" : phase === "error" ? "error" : "idle"}
+        <Badge tone={phaseTone}>
+          {phaseLabel}
           {phase === "running" ? ` · ${elapsedSec}s` : ""}
           {summary.failed > 0 ? ` · ${summary.failed} failed` : ""}
-        </span>
+        </Badge>
       </div>
       {error ? (
-        <div
-          className="max-w-[420px] truncate"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 11,
-            color: "var(--bad)",
-          }}
-          title={error}
-        >
+        <div className="max-w-[420px] truncate text-[13px] text-peach-ink" title={error}>
           {error}
         </div>
       ) : null}
       {phase === "complete" && summary.classified > 0 ? (
-        <button
-          type="button"
-          onClick={onSwitchToGrid}
-          className="font-bold uppercase transition-colors"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            letterSpacing: "0.4px",
-            background: "var(--accent)",
-            color: "var(--accent-on)",
-            borderRadius: 6,
-            padding: "9px 15px",
-          }}
-        >
-          View widgets →
-        </button>
+        <Button variant="ink" size="sm" onClick={onSwitchToGrid}>
+          View widgets
+        </Button>
       ) : null}
     </div>
   );
 }
 
-function GoalBlock({ block }) {
+function GoalBlock({ block, first }) {
   const meta = block.spec ? SPEC_KIND_META[block.spec.widget] : null;
+  const dotClass =
+    block.state === "classified"
+      ? "bg-mint-ink"
+      : block.state === "failed"
+        ? "bg-peach-ink"
+        : block.state === "reasoning" || block.state === "reading"
+          ? "bg-lemon-ink"
+          : "bg-dim-fg";
 
   return (
-    <div
-      className="flex flex-col gap-2"
-      style={{
-        background: "var(--card)",
-        border: "1px solid var(--border)",
-        borderRadius: 9,
-        padding: "13px 15px",
-        animation: "analystBlockIn 220ms ease-out",
-      }}
-    >
+    <div className={cn("flex flex-col gap-2 py-4", !first && "border-t border-line")}>
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-baseline gap-2">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span aria-hidden="true" className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", dotClass)} />
           {block.parentL1 ? (
             <span
-              className="uppercase tracking-[0.5px]"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 9.5,
-                color: "var(--dim-fg)",
-              }}
+              className="truncate font-mono text-[12px] text-dim-fg"
               title={`Parent L1: ${block.parentL1}`}
             >
               {truncate(block.parentL1, 38)} /
             </span>
           ) : null}
-          <span
-            className="font-semibold"
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontWeight: 600,
-              fontSize: 14,
-              lineHeight: 1.3,
-              color: "var(--fg)",
-            }}
-            title={block.title}
-          >
+          <span className="truncate text-[13px] font-bold text-fg" title={block.title}>
             {truncate(block.title, 84)}
           </span>
         </div>
-        <StatusChip state={block.state} widgetLabel={meta?.label} />
+        <StatusBadge state={block.state} widgetLabel={meta?.label} />
       </div>
       {block.reasoning ? (
         <div
+          className="pl-3.5 text-[13px] leading-[1.55] text-muted-fg"
           style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            lineHeight: 1.55,
-            color: "var(--muted-fg)",
             maxHeight: block.state === "classified" ? 120 : undefined,
             overflowY: block.state === "classified" ? "auto" : undefined,
           }}
@@ -240,7 +186,7 @@ function GoalBlock({ block }) {
           {block.state === "reasoning" ? (
             <>
               {block.reasoning}
-              <i className="glyph-cursor" />
+              <StreamCaret />
             </>
           ) : (
             stripJsonFences(block.reasoning)
@@ -248,114 +194,38 @@ function GoalBlock({ block }) {
         </div>
       ) : null}
       {block.spec?.reasoning ? (
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            lineHeight: 1.5,
-            color: "var(--muted-fg)",
-            background: "var(--panel-2)",
-            padding: "8px 10px",
-            borderRadius: 5,
-          }}
-        >
-          <strong
-            className="uppercase tracking-[0.5px]"
-            style={{ fontSize: 9, color: "var(--dim-fg)" }}
-          >
-            why ·
-          </strong>{" "}
+        <div className="ml-3.5 rounded-[var(--radius-lg)] bg-card-alt px-3 py-2 text-[12px] leading-[1.5] text-muted-fg">
+          <span className="font-bold text-dim-fg">Why · </span>
           {block.spec.reasoning}
         </div>
       ) : null}
       {block.error ? (
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            color: "var(--bad)",
-          }}
-        >
-          failed: {block.error}
-        </div>
+        <div className="pl-3.5 text-[13px] text-peach-ink">Failed: {block.error}</div>
       ) : null}
-      <style>{`
-        @keyframes analystBlockIn {
-          from { opacity: 0; transform: translateY(6px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
     </div>
   );
 }
 
-function StatusChip({ state, widgetLabel }) {
-  if (state === "classified") {
-    return (
-      <Chip
-        style={{
-          color: "var(--good)",
-          background: "color-mix(in srgb, var(--good) 18%, transparent)",
-        }}
-      >
-        ✓ {widgetLabel || "classified"}
-      </Chip>
-    );
-  }
-  if (state === "failed") {
-    return (
-      <Chip
-        style={{
-          color: "var(--bad)",
-          background: "color-mix(in srgb, var(--bad) 18%, transparent)",
-        }}
-      >
-        failed
-      </Chip>
-    );
-  }
-  if (state === "reading") {
-    return (
-      <Chip style={{ color: "var(--muted-fg)", background: "var(--panel-2)" }}>
-        reading…
-      </Chip>
-    );
-  }
+/** Blinking text-input caret shown while reasoning is still streaming in. */
+function StreamCaret() {
   return (
-    <Chip style={{ color: "var(--muted-fg)", background: "var(--panel-2)" }}>
-      classifying…
-    </Chip>
+    <span
+      aria-hidden="true"
+      className="ml-0.5 inline-block h-[14px] w-[2px] shrink-0 translate-y-[3px] animate-pulse bg-ink align-middle"
+    />
   );
 }
 
-function Chip({ children, style }) {
-  return (
-    <span
-      className="inline-flex items-center gap-1 rounded-full px-2 py-[2px] uppercase"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 9,
-        fontWeight: 700,
-        letterSpacing: "0.4px",
-        ...style,
-      }}
-    >
-      {children}
-    </span>
-  );
+function StatusBadge({ state, widgetLabel }) {
+  if (state === "classified") return <Badge tone="mint">{widgetLabel || "Classified"}</Badge>;
+  if (state === "failed") return <Badge tone="peach">Failed</Badge>;
+  if (state === "reading") return <Badge tone="neutral">Reading…</Badge>;
+  return <Badge tone="lemon">Classifying…</Badge>;
 }
 
 function EmptyPlaceholder() {
   return (
-    <div
-      className="flex items-center justify-center rounded-[var(--radius-tile)] p-6 text-center"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 11,
-        color: "var(--dim-fg)",
-        border: "1px dashed var(--border)",
-      }}
-    >
+    <div className="flex flex-1 items-center justify-center rounded-[var(--radius-lg)] bg-card-alt p-6 text-center text-[13px] text-dim-fg">
       Warming up the analyst — hang tight.
     </div>
   );

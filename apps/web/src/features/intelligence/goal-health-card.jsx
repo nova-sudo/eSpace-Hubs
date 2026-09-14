@@ -1,26 +1,23 @@
 "use client";
 
 /**
- * One goal's health at a glance — the atomic unit of the Intelligence Hub.
- *
- *   ┌──────────────────────────────────────────────────┐
- *   │ COUNTER   Mentoring hours      ↑ [Over] ● On pace │
- *   │ ▓░▓▓  3 / 4 weeks                                  │
- *   │ last logged 2d ago                  Fill now →     │
- *   └──────────────────────────────────────────────────┘
+ * One goal's health at a glance — the atomic unit of the Intelligence Hub's
+ * full board.
  *
  * Receives a pre-derived `health` (+ `trend`) from useGoalHealth() and
  * renders. The only data access it does itself is the AI tier badge, which
  * is a self-contained shared-domain component (GoalTierBadge reads/grades
  * the cached daily verdict and self-hides when the goal has no tiers).
  *
- * Four signals stack right→left in priority: rule-based status pill (always),
- * AI tier verdict (when tiers exist), trend arrow (when a direction exists).
+ * Four signals stack in the header: kind · cadence label (always), AI tier
+ * verdict (when tiers exist), trend badge (when a direction exists), and the
+ * rule-based status badge (always, right-aligned).
  */
 
 import { useState } from "react";
 import Link from "next/link";
-import { Pill } from "@/components/ui";
+import { ArrowDown, ArrowUp } from "lucide-react";
+import { Badge, Card, FillStrip, Label } from "@/components/ui";
 import { SPEC_KIND_META, specCadence } from "@/features/goal-specs";
 import { cadenceWindowLabel } from "@/features/goal-inputs";
 import { GoalTierBadge } from "@/features/goal-tiers";
@@ -32,9 +29,12 @@ import {
 import { skipWindow } from "./skip-window";
 import { GOAL_READINESS, readinessLabel } from "@/features/goal-widgets";
 import { useHubLink } from "@/features/hubs";
-import { cn } from "@/lib/cn";
 import { AutoGoalValue } from "./auto-value";
 import { HEALTH, statusDisplay } from "./status";
+
+function capitalize(s) {
+  return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
 
 function relAgo(ts) {
   if (!ts) return "—";
@@ -65,107 +65,63 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
     !needsSetup && health.needsFill && isInlineFillable(spec?.widget) && !!week;
 
   return (
-    <div
-      className={cn(
-        "flex flex-col gap-2 rounded-md border bg-card px-3.5 py-3 transition-colors",
-        health.needsFill ? "border-border-strong" : "border-border",
-      )}
-    >
-      {/* Header: a meta row (kind chip + trend · AI tier · status) that WRAPS on
-          narrow cards, then the title on its own full-width row.
-
-          The old single-row layout put the chip+title in a flex-1/min-w-0 column
-          beside a shrink-0 badge cluster. In the 3-up grid (~220px cards) the
-          badges (e.g. "ROLE MODEL" + "ON PACE" ≈ 160px) collapsed that column to
-          a few px, but the `w-fit` chip couldn't shrink — so it overflowed and
-          overlapped the badges. Splitting the title onto its own row frees the
-          meta row for just chip+badges, and flex-wrap drops the badges to a
-          second line if they still don't fit. */}
-      <div className="flex flex-col gap-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span
-            className="shrink-0 rounded-[3px] border border-border px-1 py-px text-[9px] uppercase tracking-[0.6px] text-muted-fg"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            {kindLabel}
-          </span>
-          <div className="ml-auto flex shrink-0 items-center gap-1.5">
-            <TrendArrow trend={trend} />
-            <GoalTierBadge goalId={goal?.id} spec={spec} />
-            <Pill tone={meta.tone}>
-              <span
-                className="inline-block h-[6px] w-[6px] rounded-full"
-                style={{ background: meta.dot }}
-              />
-              {meta.label}
-            </Pill>
-          </div>
-        </div>
-        <div className="truncate text-[13px] font-medium text-fg" title={goal?.title}>
-          {goal?.title || spec?.title || "Untitled goal"}
+    <Card padding={20} className="flex flex-col gap-3.5">
+      {/* Header: kind · cadence label, tier badge + status badge on the right. */}
+      <div className="flex items-center justify-between gap-2">
+        <Label>
+          {kindLabel}
+          {cadence ? ` · ${capitalize(cadence)}` : ""}
+        </Label>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <GoalTierBadge goalId={goal?.id} spec={spec} />
+          <Badge tone={meta.tone}>{meta.label}</Badge>
         </div>
       </div>
 
-      {/* Body: setup hint (not ready) · live auto value (auto) · fill strip */}
+      <div className="truncate text-[15px] font-bold leading-[1.3] text-fg" title={goal?.title}>
+        {goal?.title || spec?.title || "Untitled goal"}
+      </div>
+
+      {/* Body: setup hint (not ready) · live auto value (auto) · numeral + strip */}
       {needsSetup ? (
-        <div
-          className="text-[11px] text-muted-fg/80"
-          style={{ lineHeight: 1.4 }}
-        >
-          {readinessLabel(health.readiness)}
-        </div>
+        <div className="text-[13px] leading-[1.4] text-muted-fg">{readinessLabel(health.readiness)}</div>
       ) : health.status === HEALTH.AUTO ? (
         <AutoGoalValue spec={spec} />
       ) : (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           <FillHint health={health} cadence={cadence} />
-          <FillStrip fill={fill} cadence={cadence} />
+          <FillCount fill={fill} cadence={cadence} trend={trend} />
         </div>
       )}
 
       {/* Footer: last entry + CTA */}
-      <div className="flex items-center justify-between">
-        <span
-          className="text-[10px] uppercase tracking-[0.4px] text-muted-fg/70"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
+      <div className="flex items-center justify-between text-[12.5px] text-muted-fg">
+        <span>
           {/* Auto goals aren't hand-logged — no "last logged" line for them;
               setup-pending goals have no log history yet either. */}
           {health.status === HEALTH.AUTO || needsSetup
             ? ""
             : fill?.lastEntryTs
-              ? `last logged ${relAgo(fill.lastEntryTs)}`
-              : "never logged"}
+              ? `Logged ${relAgo(fill.lastEntryTs)}`
+              : "Never logged"}
         </span>
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-3">
           {/* Not ready → the only action is to go finish setup in Goals. */}
           {needsSetup ? (
-            <Link
-              href={hubLink("/goals")}
-              className="text-[11px] font-semibold text-accent hover:underline"
-              style={{ fontFamily: "var(--font-mono)" }}
-            >
-              {health.readiness === GOAL_READINESS.NEEDS_CONTEXT
-                ? "Finish setup →"
-                : "View in Goals →"}
+            <Link href={hubLink("/goals")} className="font-bold text-fg">
+              {health.readiness === GOAL_READINESS.NEEDS_CONTEXT ? "Finish setup" : "View in Goals"}
             </Link>
           ) : null}
           {/* Lock controls — settle a window the user can't / won't fill. */}
           {!needsSetup && health.status === HEALTH.LOCKED ? (
-            <button
-              type="button"
-              onClick={() => reopenCurrentWindow(goal?.id, windowKey)}
-              className="text-[10px] uppercase tracking-[0.4px] text-muted-fg/70 hover:text-fg"
-              style={{ fontFamily: "var(--font-mono)" }}
-            >
+            <button type="button" onClick={() => reopenCurrentWindow(goal?.id, windowKey)} className="text-muted-fg hover:text-fg">
               Reopen
             </button>
           ) : health.needsFill && windowKey ? (
             <button
               type="button"
               onClick={() => skipWindow(goal, windowKey)}
-              className="text-[10px] uppercase tracking-[0.4px] text-muted-fg/60 hover:text-fg"
-              style={{ fontFamily: "var(--font-mono)" }}
+              className="text-muted-fg hover:text-fg"
               title="Mark this period settled — nothing to report"
             >
               Nothing to report
@@ -173,22 +129,13 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
           ) : null}
 
           {!health.needsFill ? null : canInline ? (
-            <button
-              type="button"
-              onClick={() => setOpen((v) => !v)}
-              className="text-[11px] font-semibold text-accent hover:underline"
-              style={{ fontFamily: "var(--font-mono)" }}
-            >
-              {open ? "Close" : "Fill now ▾"}
+            <button type="button" onClick={() => setOpen((v) => !v)} className="font-bold text-fg">
+              {open ? "Close" : "Fill now"}
             </button>
           ) : fillHref ? (
             // Heavy editors (rubric / scorecard) fill on the Goals page now.
-            <Link
-              href={fillHref}
-              className="text-[11px] font-semibold text-accent hover:underline"
-              style={{ fontFamily: "var(--font-mono)" }}
-            >
-              Open in goals →
+            <Link href={fillHref} className="font-bold text-fg">
+              Open in goals
             </Link>
           ) : null}
         </div>
@@ -199,7 +146,7 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
           strip update live (and the card may leave the focus view once
           it's no longer "needs attention"). */}
       {open && canInline ? (
-        <div className="mt-1 border-t border-border pt-2.5">
+        <div className="border-t border-line pt-3">
           <GoalManualEditor
             widget={spec.widget}
             goal={goal}
@@ -208,15 +155,10 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
             weekEnd={week.end}
             activeLabel={week.weekLabel}
           />
-          <div
-            className="mt-2 text-[9px] uppercase tracking-[0.4px] text-muted-fg/60"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            logging to {week.weekLabel}
-          </div>
+          <div className="mt-2 text-[11.5px] text-dim-fg">logging to {week.weekLabel}</div>
         </div>
       ) : null}
-    </div>
+    </Card>
   );
 }
 
@@ -224,7 +166,9 @@ export function GoalHealthCard({ goal, spec, health, trend, fillHref, week }) {
  * Names the window that needs filling, in the goal's cadence terms —
  * "This week not logged yet", "This quarter + 2 earlier empty", "Never
  * logged" — instead of leaving the user to read a bare ratio. Renders
- * nothing when the goal is up to date.
+ * nothing when the goal is up to date. The state signal already lives on
+ * the header badge, so this line stays neutral text rather than repeating
+ * it in color.
  */
 function FillHint({ health, cadence }) {
   const [singular] = cadenceWindowLabel(cadence);
@@ -239,45 +183,29 @@ function FillHint({ health, cadence }) {
         : `This ${singular} not logged yet`;
   }
   if (!text) return null;
-  return (
-    <div
-      className="text-[11px] font-medium"
-      style={{ color: health.overdue ? "var(--bad)" : "var(--warn)" }}
-    >
-      {text}
-    </div>
-  );
+  return <div className="text-[12px] text-muted-fg">{text}</div>;
 }
 
 /**
- * Direction-of-travel glyph. Coloured by GOODNESS (resolved against the
+ * Direction-of-travel badge. Coloured by GOODNESS (resolved against the
  * target op upstream), not raw direction — a falling turnaround time is
- * green, not red. Hidden when flat / not enough history.
+ * mint, not peach. Hidden when flat / not enough history.
  */
-function TrendArrow({ trend }) {
+function TrendBadge({ trend }) {
   if (!trend || trend.dir === "flat") return null;
   const up = trend.dir === "up";
-  const color =
-    trend.good == null
-      ? "var(--muted-fg)"
-      : trend.good
-        ? "var(--good)"
-        : "var(--bad)";
+  const tone = trend.good == null ? "neutral" : trend.good ? "mint" : "peach";
   const title =
     trend.good == null
       ? `Trending ${trend.dir}`
       : trend.good
         ? "Improving vs last snapshot"
         : "Slipping vs last snapshot";
+  const Icon = up ? ArrowUp : ArrowDown;
   return (
-    <span
-      className="text-[13px] font-bold leading-none"
-      style={{ color }}
-      title={title}
-      aria-label={title}
-    >
-      {up ? "↑" : "↓"}
-    </span>
+    <Badge tone={tone} title={title} aria-label={title}>
+      <Icon size={11} />
+    </Badge>
   );
 }
 
@@ -288,15 +216,12 @@ function TrendArrow({ trend }) {
 const DOT_CAP = 12;
 
 /**
- * "N of Y cycle windows filled" bar — one dot per (recent) window, oldest→
- * newest (left→right), solid when that window had at least one entry. Shows
- * the actual fill PATTERN (gaps visible), not just a count. Cycle-anchored
+ * "N / total windows" numeral + a trend badge, then the fill strip below it
+ * — the actual fill PATTERN (gaps visible), not just a count. Cycle-anchored
  * (buildCycleWindows) — the SAME full-year window set the Goals-page cadence
  * stepper shows, so the ratio here always matches what that page reports.
- * The unit noun is cadence-aware so a monthly goal reads "/ 12 months", not
- * "/ 12 weeks".
  */
-function FillStrip({ fill, cadence }) {
+function FillCount({ fill, cadence, trend }) {
   // total:0 covers non-bucketing cadences (fill is a minimal stand-in there,
   // carrying only lastEntryTs for the footer) — no window concept to render.
   if (!fill || !fill.total) return null;
@@ -314,27 +239,21 @@ function FillStrip({ fill, cadence }) {
   // this from rendering nothing on a malformed input).
   const idx = Number.isInteger(fill.currentIndex) ? fill.currentIndex : windows.length - 1;
   const visible =
-    windows.length > DOT_CAP
-      ? windows.slice(Math.max(0, idx - DOT_CAP + 1), idx + 1)
-      : windows;
+    windows.length > DOT_CAP ? windows.slice(Math.max(0, idx - DOT_CAP + 1), idx + 1) : windows;
+  const cells = visible.map((w) => ({ key: w?.key, label: w?.label, state: w?.state || "future" }));
 
   return (
-    <div className="flex items-center gap-2.5">
-      <div className="flex items-center gap-1">
-        {visible.map((w, i) => (
-          <span
-            key={w?.key ?? i}
-            className="inline-block h-2 w-2 rounded-full"
-            style={{ background: w?.filled ? "var(--accent)" : "var(--dot-dim)" }}
-          />
-        ))}
+    <div className="flex flex-col gap-2">
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-[30px] font-extrabold leading-none tracking-[-0.03em] tabular-nums text-fg">
+          {filled}
+        </span>
+        <span className="text-[13px] text-muted-fg">/ {total} {noun}</span>
+        <div className="ml-auto">
+          <TrendBadge trend={trend} />
+        </div>
       </div>
-      <span
-        className="uppercase tabular-nums text-muted-fg"
-        style={{ fontFamily: "var(--font-dot)", fontWeight: 700, fontSize: 13, letterSpacing: "1px" }}
-      >
-        {filled}/{total} {noun}
-      </span>
+      <FillStrip cells={cells} size="sm" />
     </div>
   );
 }

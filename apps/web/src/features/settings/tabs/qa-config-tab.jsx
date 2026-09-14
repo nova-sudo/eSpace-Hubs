@@ -23,12 +23,13 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import {
   Button,
   Card,
   Field,
   Input,
-  MonoLabel,
+  Label,
   Section,
 } from "@/components/ui";
 import { DEFAULT_QA_CONFIG, useQaHubConfig } from "@/features/hubs";
@@ -83,8 +84,8 @@ export function QaConfigTab() {
   };
 
   return (
-    <>
-      <Section num="01 /" title="Data sources">
+    <div className="flex flex-col gap-8">
+      <Section title="Data sources">
         <Card className="p-6">
           <p className="mb-5 text-[13px] leading-[1.55] text-muted-fg">
             Which Jira project the defect widgets query, and which Jenkins job
@@ -102,10 +103,6 @@ export function QaConfigTab() {
                   setDraft((d) => ({ ...d, jiraProjectKey: e.target.value }))
                 }
                 placeholder={DEFAULT_QA_CONFIG.jiraProjectKey}
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  letterSpacing: "0.4px",
-                }}
               />
             </Field>
             <Field
@@ -118,7 +115,6 @@ export function QaConfigTab() {
                   setDraft((d) => ({ ...d, jenkinsJobName: e.target.value }))
                 }
                 placeholder={DEFAULT_QA_CONFIG.jenkinsJobName}
-                style={{ fontFamily: "var(--font-mono)" }}
               />
             </Field>
           </div>
@@ -133,21 +129,21 @@ export function QaConfigTab() {
         </Card>
       </Section>
 
-      <Section num="02 /" title="Jira project requirements">
+      <Section title="Jira project requirements">
         <Card className="p-6">
-          <MonoLabel>For the defect widgets to show data</MonoLabel>
+          <Label>For the defect widgets to show data</Label>
           <ul className="mt-3 grid gap-3 text-[12.5px] leading-[1.55] text-muted-fg">
             <li>
               <span className="text-fg">·</span> The widgets query{" "}
-              <code style={codeStyle}>
+              <code className="rounded-[var(--radius-md)] bg-card-alt px-1.5 py-0.5 font-mono text-[11px] text-fg">
                 project = {(draft.jiraProjectKey || "?").toUpperCase()} AND
                 issuetype = Bug
               </code>{" "}
               — your project needs a <strong className="text-fg">Bug</strong>{" "}
               issuetype enabled. Many Jira Work Management projects ship with
               Task + Epic only; add Bug under{" "}
-              <strong className="text-fg">
-                Project settings → Issue types
+              <strong className="inline-flex items-center gap-0.5 text-fg">
+                Project settings <ChevronRight size={11} /> Issue types
               </strong>
               .
             </li>
@@ -156,28 +152,22 @@ export function QaConfigTab() {
               <strong className="text-fg">Priority</strong> field on the Bug
               create screen. If priority chips all read{" "}
               <em className="text-fg">Unset</em>, enable it under{" "}
-              <strong className="text-fg">
-                Project settings → Issue layout
+              <strong className="inline-flex items-center gap-0.5 text-fg">
+                Project settings <ChevronRight size={11} /> Issue layout
               </strong>
               .
             </li>
             <li>
               <span className="text-fg">·</span> Config lives in your browser
-              under <code style={codeStyle}>eshub:qa:config:v1</code> — clearing
-              site data resets to defaults.
+              under{" "}
+              <code className="rounded-[var(--radius-md)] bg-card-alt px-1.5 py-0.5 font-mono text-[11px] text-fg">
+                eshub:qa:config:v1
+              </code>{" "}
+              — clearing site data resets to defaults.
             </li>
           </ul>
         </Card>
       </Section>
-    </>
+    </div>
   );
 }
-
-const codeStyle = {
-  fontFamily: "var(--font-mono)",
-  fontSize: 11,
-  background: "var(--accent-dim)",
-  color: "var(--accent)",
-  padding: "1px 5px",
-  borderRadius: 3,
-};

@@ -1,26 +1,23 @@
 "use client";
 
 import { useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { PlainSection as Section } from "./plain-section";
 import { GoalWidgetsGrid, useGoalWidgetItems } from "@/features/goal-widgets";
 import { useAnalyst, ANALYST_MODES } from "@/features/analyst";
 import { removeSpec } from "@/features/goal-specs";
-import { Button, Loading } from "@/components/ui";
+import { Badge, Button, Label, Loading } from "@/components/ui";
+import { cn } from "@/lib/cn";
 
 /**
  * GOALS TAB · SECTION 02 — Goal tracking (AI-classified).
  *
- * Light-themed scroll-snap section. Uses the shared `<Section>` wrapper
- * for header chrome (number / title / subtitle / divider) like every
- * other section, then renders the AI-classified widgets grouped by
- * their parent L1.
+ * Uses the shared `<Section>` wrapper for header chrome (number / title /
+ * subtitle) like every other section, then renders the AI-classified
+ * widgets grouped by their parent L1.
  *
- * Each L1 gets its own "shelf" with a serif-italic L1 number, the L1
- * title, optional category + weightage, and the count of widgets in
- * the bucket. The widgets themselves use the standard light-theme card
- * styling (`variant="dark"` — yes, the variant name lies; "dark" maps
- * to fg/card surfaces, "light" was the inverse-on-accent variant we
- * dropped when this section adopted the shared theme).
+ * Each L1 gets its own "shelf" with the L1 number, title, optional
+ * category + weightage, and the count of widgets in the bucket.
  *
  * Empty / no-goals states show a CTA that opens the analyst page in
  * analysis mode so the user can classify in one click.
@@ -113,19 +110,16 @@ function Toolbar({
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <span
-        className="uppercase tracking-[0.5px] text-muted-fg"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-      >
+      <Label>
         {lastAnalyzedAt > 0
           ? `Last analyzed ${relativeTs(lastAnalyzedAt)}`
           : "No classification yet"}
         {unclassifiedCount > 0 ? ` · ${unclassifiedCount} unclassified` : ""}
-      </span>
+      </Label>
       <div className="flex items-center gap-2">
         {hasGoals && hasSpecs ? (
           <Button
-            variant="ghost"
+            variant="soft"
             size="sm"
             onClick={() => requestOpen(ANALYST_MODES.WIDGETS)}
           >
@@ -133,11 +127,7 @@ function Toolbar({
           </Button>
         ) : null}
         {hasGoals ? (
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => requestOpen(ANALYST_MODES.ANALYSIS)}
-          >
+          <Button size="sm" onClick={() => requestOpen(ANALYST_MODES.ANALYSIS)}>
             {hasSpecs ? "Re-analyze" : "Analyze with AI"}
           </Button>
         ) : null}
@@ -165,68 +155,40 @@ function L1Group({ l1, items, index }) {
   const panelId = `l1-group-${l1.id}-panel`;
 
   return (
-    <section
-      aria-labelledby={headingId}
-      className="flex flex-col gap-3"
-    >
+    <section aria-labelledby={headingId} className="flex flex-col gap-3">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls={panelId}
-        className="group flex w-full cursor-pointer items-baseline justify-between gap-4 border-b border-border pb-2 text-left transition-colors hover:border-border-strong"
+        className="group flex w-full cursor-pointer items-baseline justify-between gap-4 pb-2 text-left"
       >
         <div className="flex min-w-0 items-baseline gap-3">
-          {/* Disclosure chevron — `›` when closed, rotated 90° when open.
-              Sits before the L1 number so it reads as a single visual unit. */}
-          <span
+          {/* Disclosure chevron — rotates 90° when open. Sits before the
+              L1 number so it reads as a single visual unit. */}
+          <ChevronRight
+            size={14}
             aria-hidden="true"
-            className="inline-block text-muted-fg transition-transform group-hover:text-fg"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 14,
-              lineHeight: 1,
-              transform: open ? "rotate(90deg)" : "rotate(0deg)",
-              transitionDuration: "200ms",
-              transitionTimingFunction: "cubic-bezier(0.22, 0.61, 0.36, 1)",
-            }}
-          >
-            ›
-          </span>
-          <span
-            className="uppercase text-accent"
-            style={{
-              fontFamily: "var(--font-dot)",
-              fontWeight: 700,
-              fontSize: 16,
-              letterSpacing: "1px",
-              lineHeight: 1,
-            }}
-          >
-            L1 · {numberLabel}
-          </span>
+            className={cn(
+              "shrink-0 self-center text-muted-fg transition-transform duration-200 group-hover:text-fg",
+              open ? "rotate-90" : "",
+            )}
+          />
+          <Label>L1 · {numberLabel}</Label>
           <h3
             id={headingId}
-            className="m-0 truncate font-bold text-fg"
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize: 15,
-              lineHeight: 1.25,
-            }}
+            className="m-0 truncate text-[15px] font-bold leading-[1.25] text-fg"
             title={l1.title}
           >
             {l1.title}
           </h3>
         </div>
-        <div
-          className="flex shrink-0 items-baseline gap-3 uppercase tracking-[0.5px] text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-        >
-          {l1.category ? <span>{l1.category}</span> : null}
-          {l1.weightage != null ? <span>{l1.weightage}%</span> : null}
-          <span>
+        <div className="flex shrink-0 items-center gap-2">
+          {l1.category ? <Badge tone="neutral">{l1.category}</Badge> : null}
+          <Label>
+            {l1.weightage != null ? `${l1.weightage}% · ` : ""}
             {items.length} widget{items.length === 1 ? "" : "s"}
-          </span>
+          </Label>
         </div>
       </button>
       {open ? (
@@ -243,37 +205,17 @@ function L1Group({ l1, items, index }) {
 function EmptyState({ title, body, ctaLabel, ctaHref, onCta }) {
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center">
-      <div className="flex max-w-[580px] flex-col items-start gap-4 rounded-[var(--radius-tile)] border border-border bg-card-alt p-8">
-        <div
-          className="font-semibold text-fg"
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 28,
-            letterSpacing: "-0.6px",
-            lineHeight: 1.15,
-          }}
-        >
-          {title}
-        </div>
-        <div
-          className="text-muted-fg"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 12,
-            lineHeight: 1.6,
-          }}
-        >
-          {body}
-        </div>
+      <div className="flex max-w-[580px] flex-col items-start gap-3 rounded-[var(--radius-xl)] bg-card-alt p-8">
+        <div className="text-[15px] font-bold text-fg">{title}</div>
+        <p className="text-[13px] leading-[1.5] text-muted-fg">{body}</p>
         {onCta ? (
-          <Button variant="primary" size="sm" onClick={onCta}>
+          <Button size="sm" onClick={onCta}>
             {ctaLabel}
           </Button>
         ) : (
           <a
             href={ctaHref}
-            className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-[var(--radius-tile)] border border-accent bg-accent px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.4px] text-accent-on transition-colors hover:opacity-90"
-            style={{ fontFamily: "var(--font-mono)" }}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-[var(--radius-pill)] bg-ink px-4 text-[13px] font-bold text-ink-on transition-colors hover:opacity-90"
           >
             {ctaLabel}
           </a>

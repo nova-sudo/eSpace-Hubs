@@ -45,20 +45,12 @@ export function CommitsTile() {
       ) : (
         <div className="flex flex-1 flex-col justify-center gap-1">
           <div className="flex items-baseline gap-1.5">
-            <span
-              className="font-bold text-accent"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-            >
-              {latest.sha}
-            </span>
+            <span className="font-mono text-[11px] font-bold text-fg">{latest.sha}</span>
             <span className="flex-1 truncate text-[12px]" title={latest.msg}>
               {latest.msg}
             </span>
           </div>
-          <div
-            className="text-dim-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-          >
+          <div className="text-[11px] text-dim-fg">
             {latest.repo} · {latest.when} ago
           </div>
         </div>

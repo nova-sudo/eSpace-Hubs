@@ -125,23 +125,23 @@ export function ContributionHeatmap({
 
   const isLight = variant === "light";
 
-  // Color ramp. The 0-count cell is a faint border-only square; the rest
-  // ramp up the accent (or a green ramp on the inverse theme so it reads
-  // GitHub-like even on indigo).
+  // Color ramp. The 0-count cell is a faint square; the rest ramp up ink
+  // (or white, on the rare inverse-ground usage) so it reads GitHub-like
+  // in both themes without a hardcoded accent hue.
   const palette = isLight
     ? [
         "rgba(255,255,255,0.10)", // 0
-        "rgba(0,196,138,0.35)", // low
-        "rgba(0,196,138,0.55)", // mid
-        "rgba(0,196,138,0.75)", // high
-        "rgba(0,196,138,1)", // peak
+        "rgba(255,255,255,0.35)", // low
+        "rgba(255,255,255,0.55)", // mid
+        "rgba(255,255,255,0.78)", // high
+        "rgba(255,255,255,1)", // peak
       ]
     : [
-        "rgba(56,38,255,0.06)", // 0
-        "rgba(56,38,255,0.25)", // low
-        "rgba(56,38,255,0.5)", // mid
-        "rgba(56,38,255,0.78)", // high
-        "rgb(56,38,255)", // peak
+        "color-mix(in srgb, var(--ink) 6%, transparent)", // 0
+        "color-mix(in srgb, var(--ink) 30%, transparent)", // low
+        "color-mix(in srgb, var(--ink) 55%, transparent)", // mid
+        "color-mix(in srgb, var(--ink) 78%, transparent)", // high
+        "var(--ink)", // peak
       ];
 
   function colorFor(count) {
@@ -190,7 +190,6 @@ export function ContributionHeatmap({
             x={labelGutter + m.col * stride}
             y={10}
             style={{
-              fontFamily: "var(--font-mono)",
               fontSize: 9,
               fill: labelColor,
               letterSpacing: "0.4px",
@@ -211,7 +210,6 @@ export function ContributionHeatmap({
             x={0}
             y={headerHeight + row * stride + cellSize - 1}
             style={{
-              fontFamily: "var(--font-mono)",
               fontSize: 9,
               fill: dimLabelColor,
               letterSpacing: "0.4px",
@@ -253,7 +251,6 @@ export function ContributionHeatmap({
       <div
         className="flex items-center justify-end gap-2"
         style={{
-          fontFamily: "var(--font-mono)",
           fontSize: 9.5,
           color: labelColor,
           letterSpacing: "0.4px",

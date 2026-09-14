@@ -9,14 +9,13 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Card, MonoLabel } from "@/components/ui";
+import { ArrowDown, ArrowUp } from "lucide-react";
+import { Badge, Card, Label } from "@/components/ui";
 
 /**
- * Snapshot trend chart — visually matches the "Signal strength" tile on the
- * Performance page (gradient area, monotone curve, no rest-dots, hover
- * tooltip). Selection UX is preserved: clicking the chart or any X-axis
- * label selects that week, and the selected week renders a small dot + ring
- * so it stays visible without hover.
+ * Snapshot trend chart. Selection UX is preserved: clicking the chart or any
+ * X-axis label selects that week, and the selected week renders a small dot
+ * + ring so it stays visible without hover.
  */
 export function TrendChart({
   series,
@@ -34,22 +33,14 @@ export function TrendChart({
   if (series.length < 2) {
     const only = series[0];
     return (
-      <Card className="mb-9 p-0">
-        <div className="flex items-baseline justify-between border-b border-border px-6 py-5">
+      <Card padding={0} className="mb-9">
+        <div className="flex items-baseline justify-between border-b border-line px-6 py-5">
           <div>
-            <MonoLabel>
+            <Label>
               {metricLabel} · {series.length} week
-            </MonoLabel>
+            </Label>
             <div className="mt-1.5 flex items-baseline gap-3">
-              <span
-                className="leading-none text-accent"
-                style={{
-                  fontFamily: "var(--font-dot)",
-                  fontWeight: 900,
-                  fontSize: 44,
-                  letterSpacing: "0.5px",
-                }}
-              >
+              <span className="text-[44px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg">
                 {only[metricKey] ?? "—"}
                 {unit}
               </span>
@@ -57,7 +48,7 @@ export function TrendChart({
           </div>
         </div>
         <div className="flex h-[260px] flex-col items-center justify-center gap-2 px-6 text-center">
-          <MonoLabel>Needs more snapshots</MonoLabel>
+          <Label>Needs more snapshots</Label>
           <p className="max-w-md text-[13px] leading-[1.5] text-muted-fg">
             Trends need at least two weeks of data. Capture another snapshot next
             Monday and the line will start to build.
@@ -87,51 +78,32 @@ export function TrendChart({
   };
 
   return (
-    <Card className="mb-9 p-0">
-      <div className="flex items-baseline justify-between border-b border-border px-6 py-5">
+    <Card padding={0} className="mb-9">
+      <div className="flex items-baseline justify-between border-b border-line px-6 py-5">
         <div>
-          <MonoLabel>
+          <Label>
             {metricLabel} · {series.length} weeks
-          </MonoLabel>
+          </Label>
           <div className="mt-1.5 flex items-baseline gap-3">
-            <span
-              className="leading-none text-accent"
-              style={{
-                fontFamily: "var(--font-dot)",
-                fontWeight: 900,
-                fontSize: 44,
-                letterSpacing: "0.5px",
-              }}
-            >
+            <span className="text-[44px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg">
               {last}
               {unit}
             </span>
-            <span
-              className="font-semibold"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 12,
-                color: good ? "var(--good)" : "var(--bad)",
-              }}
-            >
-              {delta > 0 ? "↑" : delta < 0 ? "↓" : "·"}{" "}
-              {Math.abs(delta).toFixed(metricKey === "rounds" ? 1 : 0)}
-              {unit} ({pct >= 0 ? "+" : ""}
-              {pct}%)
-            </span>
+            {delta !== 0 ? (
+              <Badge tone={good ? "mint" : "peach"}>
+                {delta > 0 ? <ArrowUp size={11} /> : <ArrowDown size={11} />}
+                {Math.abs(delta).toFixed(metricKey === "rounds" ? 1 : 0)}
+                {unit} ({pct >= 0 ? "+" : ""}
+                {pct}%)
+              </Badge>
+            ) : (
+              <span className="text-[12px] font-semibold text-muted-fg">no change</span>
+            )}
           </div>
         </div>
         <div className="text-right">
-          <MonoLabel>{series.length}-week avg</MonoLabel>
-          <div
-            className="mt-1"
-            style={{
-              fontFamily: "var(--font-dot)",
-              fontWeight: 900,
-              fontSize: 22,
-              letterSpacing: "0.5px",
-            }}
-          >
+          <Label>{series.length}-week avg</Label>
+          <div className="mt-1 text-[22px] font-extrabold tracking-[-0.03em] text-fg">
             {avg.toFixed(metricKey === "rounds" ? 1 : 0)}
             {unit}
           </div>
@@ -149,23 +121,11 @@ export function TrendChart({
           >
             <defs>
               <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="0%"
-                  stopColor="var(--accent)"
-                  stopOpacity={0.4}
-                />
-                <stop
-                  offset="100%"
-                  stopColor="var(--accent)"
-                  stopOpacity={0}
-                />
+                <stop offset="0%" stopColor="var(--ink)" stopOpacity={0.12} />
+                <stop offset="100%" stopColor="var(--ink)" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid
-              vertical={false}
-              stroke="var(--dot-dim)"
-              strokeDasharray="3 5"
-            />
+            <CartesianGrid vertical={false} stroke="var(--line)" />
             <XAxis
               dataKey="week"
               interval={0}
@@ -183,10 +143,9 @@ export function TrendChart({
                       dy={12}
                       textAnchor="middle"
                       style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 10,
-                        fontWeight: isSel ? 700 : 400,
-                        fill: isSel ? "var(--accent)" : "var(--muted-fg)",
+                        fontSize: 11,
+                        fontWeight: isSel ? 700 : 500,
+                        fill: isSel ? "var(--fg)" : "var(--muted-fg)",
                         cursor: "pointer",
                       }}
                       onClick={(e) => {
@@ -202,13 +161,13 @@ export function TrendChart({
             />
             <YAxis hide domain={["auto", "auto"]} />
             <Tooltip
-              cursor={{ stroke: "var(--border-strong)", strokeWidth: 1 }}
+              cursor={{ stroke: "var(--line)", strokeWidth: 1 }}
               contentStyle={{
                 background: "var(--card)",
-                border: "1px solid var(--border-strong)",
-                borderRadius: 4,
-                fontFamily: "var(--font-mono)",
-                fontSize: 11,
+                border: "none",
+                borderRadius: "var(--radius-md)",
+                boxShadow: "var(--shadow-float)",
+                fontSize: 12,
                 padding: "6px 10px",
                 color: "var(--fg)",
               }}
@@ -218,8 +177,8 @@ export function TrendChart({
             <Area
               type="monotone"
               dataKey={metricKey}
-              stroke="var(--accent)"
-              strokeWidth={2.25}
+              stroke="var(--ink)"
+              strokeWidth={1.5}
               fill={`url(#${fillId})`}
               dot={(props) => {
                 // Recharts calls `dot` for every point. We render a marker
@@ -235,20 +194,15 @@ export function TrendChart({
                       cy={props.cy}
                       r={7}
                       fill="none"
-                      stroke="var(--accent)"
+                      stroke="var(--ink)"
                       strokeWidth={1}
                       opacity={0.35}
                     />
-                    <circle
-                      cx={props.cx}
-                      cy={props.cy}
-                      r={4}
-                      fill="var(--accent)"
-                    />
+                    <circle cx={props.cx} cy={props.cy} r={4} fill="var(--ink)" />
                   </g>
                 );
               }}
-              activeDot={{ r: 5, fill: "var(--accent)", strokeWidth: 0 }}
+              activeDot={{ r: 5, fill: "var(--ink)", strokeWidth: 0 }}
             />
           </AreaChart>
         </ResponsiveContainer>

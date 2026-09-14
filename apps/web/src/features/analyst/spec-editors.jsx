@@ -22,7 +22,7 @@
  */
 
 import { useMemo } from "react";
-import { Select, Checkbox } from "@/components/ui";
+import { Select, Checkbox, Input, Label } from "@/components/ui";
 import { SPEC_KIND_META, SPEC_VARIANTS, ALL_SPEC_KINDS } from "@/features/goal-specs";
 import {
   useCombinedMergedSince,
@@ -68,23 +68,8 @@ export function RepoPicker({ value, options, onChange }) {
   }, [options, value]);
 
   return (
-    <div
-      className="flex flex-wrap items-center gap-2 rounded-[var(--radius-sub)] px-2.5 py-1.5"
-      style={{
-        background: "var(--panel-2)",
-        border: "1px solid var(--border)",
-      }}
-    >
-      <span
-        className="uppercase tracking-[0.5px]"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 9,
-          color: "var(--dim-fg)",
-        }}
-      >
-        Repo scope
-      </span>
+    <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-2.5">
+      <Label>Repo scope</Label>
       {hasOptions ? (
         <Select
           tone="default"
@@ -100,38 +85,22 @@ export function RepoPicker({ value, options, onChange }) {
           ))}
         </Select>
       ) : (
-        <input
+        <Input
           type="text"
           value={value || ""}
           onChange={(e) => onChange(e.target.value.trim() || null)}
           placeholder="owner/name (leave empty for all)"
-          className="flex-1 outline-none"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            color: "var(--fg)",
-            background: "var(--field)",
-            border: "1px solid var(--border-strong)",
-            borderRadius: "var(--radius-sub)",
-            padding: "2px 6px",
-            minWidth: 200,
-          }}
+          className="h-9 max-w-[240px]"
         />
       )}
       {value ? (
         <button
           type="button"
           onClick={() => onChange(null)}
-          className="uppercase transition-colors hover:opacity-90"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9,
-            letterSpacing: "0.5px",
-            color: "var(--dim-fg)",
-          }}
+          className="text-[12px] font-bold text-fg"
           title="Drop the repo filter — count across every connected repo."
         >
-          clear
+          Clear
         </button>
       ) : null}
     </div>
@@ -152,23 +121,8 @@ export function JobPicker({ value, options, onChange }) {
   }, [options, value]);
 
   return (
-    <div
-      className="flex flex-wrap items-center gap-2 rounded-[var(--radius-sub)] px-2.5 py-1.5"
-      style={{
-        background: "var(--panel-2)",
-        border: "1px solid var(--border)",
-      }}
-    >
-      <span
-        className="uppercase tracking-[0.5px]"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 9,
-          color: "var(--dim-fg)",
-        }}
-      >
-        Job scope
-      </span>
+    <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-2.5">
+      <Label>Job scope</Label>
       {hasOptions ? (
         <Select
           tone="default"
@@ -184,38 +138,22 @@ export function JobPicker({ value, options, onChange }) {
           ))}
         </Select>
       ) : (
-        <input
+        <Input
           type="text"
           value={value || ""}
           onChange={(e) => onChange(e.target.value.trim() || null)}
           placeholder="job-name"
-          className="flex-1 outline-none"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            color: "var(--fg)",
-            background: "var(--field)",
-            border: "1px solid var(--border-strong)",
-            borderRadius: "var(--radius-sub)",
-            padding: "2px 6px",
-            minWidth: 200,
-          }}
+          className="h-9 max-w-[240px]"
         />
       )}
       {value ? (
         <button
           type="button"
           onClick={() => onChange(null)}
-          className="uppercase transition-colors hover:opacity-90"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9,
-            letterSpacing: "0.5px",
-            color: "var(--dim-fg)",
-          }}
+          className="text-[12px] font-bold text-fg"
           title="Drop the job filter — widget will show 'needs scope' until you pick a job."
         >
-          clear
+          Clear
         </button>
       ) : null}
     </div>
@@ -276,39 +214,16 @@ export function ScorecardEditor({ scorecard, repoOptions = [], onChange }) {
   }
 
   return (
-    <div
-      className="flex flex-col gap-2 rounded-[var(--radius-sub)] px-2.5 py-2"
-      style={{
-        background: "var(--panel-2)",
-        border: "1px solid var(--border)",
-      }}
-    >
+    <div className="flex flex-col gap-2.5 rounded-[var(--radius-lg)] bg-card-alt p-3.5">
       <div className="flex items-center justify-between">
-        <span
-          className="uppercase tracking-[0.5px]"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9,
-            color: "var(--dim-fg)",
-          }}
-        >
+        <Label>
           Scorecard components ({components.length}/{SCORECARD_MAX_COMPONENTS})
-        </span>
+        </Label>
         <button
           type="button"
           onClick={addComponent}
           disabled={components.length >= SCORECARD_MAX_COMPONENTS}
-          className="uppercase transition-opacity hover:opacity-90 disabled:opacity-30"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9.5,
-            letterSpacing: "0.5px",
-            color: "var(--accent)",
-            cursor:
-              components.length >= SCORECARD_MAX_COMPONENTS
-                ? "not-allowed"
-                : "pointer",
-          }}
+          className="text-[12px] font-bold text-fg disabled:opacity-30"
         >
           + Add component
         </button>
@@ -388,109 +303,51 @@ export function ComponentEditorRow({
   }
 
   return (
-    <div
-      className="flex flex-col gap-1.5 rounded-[var(--radius-sub)] px-2 py-1.5"
-      style={{
-        background: "var(--card)",
-        border: "1px solid var(--border)",
-      }}
-    >
+    <div className="flex flex-col gap-2 rounded-[var(--radius-md)] bg-card p-2.5">
       <div className="flex flex-wrap items-center gap-2">
-        <span
-          className="uppercase tracking-[0.5px]"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9,
-            color: "var(--dim-fg)",
-          }}
-        >
-          #{index + 1}
-        </span>
-        <input
+        <Label>#{index + 1}</Label>
+        <Input
           type="text"
           value={component.label || ""}
           onChange={(e) => onPatch({ label: e.target.value.slice(0, 24) })}
           placeholder="label"
-          className="flex-1 bg-transparent outline-none"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 11,
-            color: "var(--fg)",
-            borderBottom: "1px dashed var(--border-strong)",
-            paddingBottom: 1,
-            minWidth: 120,
-          }}
+          className="h-8 flex-1 min-w-[120px]"
         />
         <button
           type="button"
           onClick={onRemove}
           disabled={!canRemove}
-          className="uppercase transition-opacity disabled:opacity-25"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9,
-            letterSpacing: "0.5px",
-            color: "var(--muted-fg)",
-            cursor: canRemove ? "pointer" : "not-allowed",
-          }}
+          className="text-[12px] font-bold text-fg disabled:opacity-30"
           title={
             canRemove
               ? "Remove this component"
               : `Need at least ${SCORECARD_MIN_COMPONENTS} components`
           }
         >
-          ✕ remove
+          Remove
         </button>
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Select
-          tone="default"
-          size="sm"
-          value={component.widget}
-          onChange={(e) => setWidget(e.target.value)}
-        >
+      <div className="flex flex-wrap items-center gap-2">
+        <Select tone="default" size="sm" value={component.widget} onChange={(e) => setWidget(e.target.value)}>
           {SCORECARD_COMPONENT_WIDGETS.map((k) => (
             <option key={k} value={k}>
               {SPEC_KIND_META[k]?.label || k}
             </option>
           ))}
         </Select>
-        <label
-          className="flex items-center gap-1"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            color: "var(--muted-fg)",
-          }}
-        >
-          weight
-          <input
+        <label className="flex items-center gap-1.5 text-[12px] text-muted-fg">
+          Weight
+          <Input
             type="number"
             min={0}
             max={100}
             value={component.weight ?? 0}
             onChange={(e) => onPatch({ weight: Number(e.target.value) || 0 })}
-            className="w-12 text-right outline-none"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10.5,
-              border: "1px solid var(--border-strong)",
-              borderRadius: "var(--radius-sub)",
-              padding: "2px 4px",
-              color: "var(--fg)",
-              background: "var(--field)",
-            }}
+            className="h-8 w-16 text-right"
           />
         </label>
-        <label
-          className="flex items-center gap-1"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            color: "var(--muted-fg)",
-          }}
-        >
-          target
+        <label className="flex items-center gap-1.5 text-[12px] text-muted-fg">
+          Target
           <Select
             tone="default"
             size="sm"
@@ -501,30 +358,17 @@ export function ComponentEditorRow({
             <option value="<=">≤</option>
             <option value="=">=</option>
           </Select>
-          <input
+          <Input
             type="number"
             value={target?.value ?? ""}
             onChange={(e) => setTarget(target?.op || ">=", e.target.value)}
             placeholder="value"
-            className="w-16 text-right outline-none"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10.5,
-              border: "1px solid var(--border-strong)",
-              borderRadius: "var(--radius-sub)",
-              padding: "2px 4px",
-              color: "var(--fg)",
-              background: "var(--field)",
-            }}
+            className="h-8 w-20 text-right"
           />
         </label>
       </div>
       {supportsRepoScope ? (
-        <RepoPicker
-          value={currentRepo}
-          options={repoOptions}
-          onChange={onChangeRepo}
-        />
+        <RepoPicker value={currentRepo} options={repoOptions} onChange={onChangeRepo} />
       ) : null}
       {component.widget === "CODE_RUBRIC" ? (
         <RubricCriteriaEditor
@@ -563,20 +407,8 @@ export function RubricCriteriaEditor({
 }) {
   const text = (criteria || []).join("\n");
   return (
-    <div
-      className="flex flex-col gap-1.5 pt-1.5"
-      style={{ borderTop: "1px solid var(--border)" }}
-    >
-      <span
-        className="uppercase tracking-[0.5px]"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 9,
-          color: "var(--dim-fg)",
-        }}
-      >
-        Rubric criteria — one per line
-      </span>
+    <div className="flex flex-col gap-1.5 border-t border-line pt-2">
+      <Label>Rubric criteria — one per line</Label>
       <textarea
         rows={3}
         value={text}
@@ -587,26 +419,11 @@ export function RubricCriteriaEditor({
             .filter(Boolean);
           onPatchCriteria(items);
         }}
-        placeholder="meaningful tests&#10;no any types&#10;all branches handled"
-        className="w-full outline-none"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10.5,
-          color: "var(--fg)",
-          background: "var(--field)",
-          border: "1px solid var(--border-strong)",
-          borderRadius: "var(--radius-sub)",
-          padding: "4px 6px",
-          resize: "vertical",
-        }}
+        placeholder={"meaningful tests\nno any types\nall branches handled"}
+        className="w-full resize-y rounded-[var(--radius-md)] bg-card-alt px-2.5 py-2 text-[13px] text-fg outline-none focus:ring-2 focus:ring-ink"
       />
       <label
-        className="flex items-center gap-1.5"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          color: "var(--muted-fg)",
-        }}
+        className="flex items-center gap-1.5 text-[12px] text-muted-fg"
         title="Grade each PR against its FIRST review-round comments only."
       >
         <Checkbox
@@ -725,20 +542,8 @@ export function TargetEditor({ spec, onChange }) {
   }
 
   return (
-    <div
-      className="flex flex-col gap-1.5 rounded-[var(--radius-sub)] px-2.5 py-2"
-      style={{ background: "var(--panel-2)", border: "1px solid var(--border)" }}
-    >
-      <span
-        className="uppercase tracking-[0.5px]"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 9,
-          color: "var(--dim-fg)",
-        }}
-      >
-        Target {unit ? `(${unit})` : ""}
-      </span>
+    <div className="flex flex-col gap-1.5 rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-2.5">
+      <Label>Target {unit ? `(${unit})` : ""}</Label>
       <div className="flex items-center gap-1.5">
         <Select
           tone="default"
@@ -750,36 +555,21 @@ export function TargetEditor({ spec, onChange }) {
           <option value="<=">≤ at most</option>
           <option value="=">= exactly</option>
         </Select>
-        <input
+        <Input
           type="number"
           value={target?.value ?? ""}
           onChange={(e) => setTarget(target?.op || ">=", e.target.value)}
           placeholder="value"
-          className="w-24 text-right outline-none"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 11,
-            border: "1px solid var(--border-strong)",
-            borderRadius: "var(--radius-sub)",
-            padding: "3px 6px",
-            color: "var(--fg)",
-            background: "var(--field)",
-          }}
+          className="h-9 w-24 text-right"
         />
         {target ? (
           <button
             type="button"
             onClick={() => onChange(withTarget(spec, null))}
-            className="uppercase transition-colors hover:opacity-90"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9,
-              letterSpacing: "0.5px",
-              color: "var(--dim-fg)",
-            }}
+            className="text-[12px] font-bold text-fg"
             title="Drop the target — just track the number, no rule."
           >
-            clear
+            Clear
           </button>
         ) : null}
       </div>
@@ -850,20 +640,10 @@ export function SpecSetupEditor({ spec, onChange }) {
 
   if (!hasTargetSlot) {
     return (
-      <div
-        className="rounded-[var(--radius-sub)] px-2.5 py-2"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10.5,
-          lineHeight: 1.5,
-          color: "var(--muted-fg)",
-          background: "var(--panel-2)",
-          border: "1px solid var(--border)",
-        }}
-      >
+      <div className="rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-2.5 text-[13px] leading-[1.5] text-muted-fg">
         This widget has no numeric target or weights to edit. Use{" "}
-        <strong>re-analyze</strong> to change how it's tracked, or{" "}
-        <strong>edit truths</strong> for rubric criteria.
+        <strong className="text-fg">re-analyze</strong> to change how it's tracked, or{" "}
+        <strong className="text-fg">edit truths</strong> for rubric criteria.
       </div>
     );
   }

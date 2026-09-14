@@ -1,67 +1,71 @@
 "use client";
 
 /**
- * Sticky sidebar for the goal evidence board: at-a-glance goal-status counts
- * (big Doto numerals) + the "Compile into review →" CTA that switches to the
- * document builder. Goal-oriented — no integration tallies.
+ * Sticky sidebar "Review packet" card: goal-standing compliance at a
+ * glance + the "Compile into review" CTA that switches to the document
+ * builder. Goal-oriented — no integration tallies.
  */
 
-import { Button } from "@/components/ui";
+import { Badge, Button, Card, Stat } from "@/components/ui";
 
 const ROWS = [
-  { key: "onTrack", label: "On track", color: "var(--good)" },
-  { key: "inProgress", label: "In progress", color: "var(--accent)" },
-  { key: "behind", label: "Behind", color: "var(--warn)" },
-  { key: "awaiting", label: "Awaiting data", color: "var(--muted-fg)" },
+  { key: "onTrack", label: "On track", tone: "mint" },
+  { key: "inProgress", label: "In progress", tone: "lav" },
+  { key: "behind", label: "Behind", tone: "peach" },
+  { key: "awaiting", label: "Awaiting data", tone: "neutral" },
 ];
 
-export function EvidenceSummary({ rangeLabel, summary, onCompile, loading }) {
-  // While the goals/specs are still hydrating, "0" is a confident lie —
-  // the board next to this says "Reading your goals…" while the sidebar
-  // asserted On track 0 / Total goals 0 in display numerals.
-  const num = (v) => (loading ? "—" : (v ?? 0));
+export function EvidenceSummary({ rangeLabel, summary, onCompile, loading, lastPacket }) {
+  const total = summary?.total ?? 0;
+  const onTrack = summary?.onTrack ?? 0;
+  const pct = loading || total === 0 ? null : Math.round((onTrack / total) * 100);
+
   return (
-    <div
-      className="flex flex-col gap-[13px]"
-      style={{ position: "sticky", top: "calc(var(--header-height) + 21px)" }}
-    >
-      <div className="rounded-[11px] border border-border bg-card p-[17px]">
-        <div
-          className="mb-3.5 flex items-baseline justify-between uppercase tracking-[2px] text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-        >
-          <span>Goal standing</span>
-          <span className="tracking-[0.5px] text-dim-fg">{rangeLabel}</span>
+    <Card className="flex flex-col gap-4">
+      <div className="text-[15px] font-bold text-fg">Review packet</div>
+
+      <Stat
+        label={rangeLabel}
+        value={pct == null ? "—" : `${pct}%`}
+        unit={pct == null ? undefined : "on track"}
+        sub={`${loading ? "—" : onTrack} of ${loading ? "—" : total} goals on track`}
+        size="lg"
+      />
+
+      {total > 0 ? (
+        <div className="flex gap-1">
+          <span className="h-2 rounded-full bg-ink" style={{ flex: Math.max(onTrack, 0.001) }} />
+          <span
+            className="h-2 rounded-full bg-peach"
+            style={{ flex: Math.max(total - onTrack, 0.001) }}
+          />
         </div>
-        <div className="flex flex-col gap-3">
-          {ROWS.map((r) => (
-            <div key={r.key} className="flex items-baseline justify-between gap-2">
-              <span className="flex items-center gap-2 text-[12.5px] text-muted-fg">
-                <span className="inline-block h-2 w-2 rounded-full" style={{ background: r.color }} />
-                {r.label}
-              </span>
-              <span
-                className="text-fg"
-                style={{ fontFamily: "var(--font-dot)", fontWeight: 900, fontSize: 24, lineHeight: 1 }}
-              >
-                {num(summary?.[r.key])}
-              </span>
-            </div>
-          ))}
-          <div className="mt-1 flex items-baseline justify-between gap-2 border-t border-border pt-2.5">
-            <span className="text-[11px] uppercase tracking-[0.5px] text-dim-fg" style={{ fontFamily: "var(--font-mono)" }}>
-              Total goals
-            </span>
-            <span className="text-[13px] font-semibold text-fg" style={{ fontFamily: "var(--font-mono)" }}>
-              {num(summary?.total)}
-            </span>
+      ) : null}
+
+      <div className="flex flex-col gap-2">
+        {ROWS.map((r) => (
+          <div key={r.key} className="flex items-center justify-between gap-2">
+            <span className="text-[13px] text-muted-fg">{r.label}</span>
+            <Badge tone={r.tone}>{loading ? "—" : (summary?.[r.key] ?? 0)}</Badge>
           </div>
-        </div>
+        ))}
       </div>
 
-      <Button size="lg" className="w-full" onClick={onCompile}>
-        Compile into review →
+      {lastPacket?.submittedAt ? (
+        <div className="flex items-center justify-between border-t border-line pt-3 text-[12.5px] text-muted-fg">
+          <span>Last frozen packet</span>
+          <span className="font-semibold text-fg">
+            {new Date(lastPacket.submittedAt).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+            })}
+          </span>
+        </div>
+      ) : null}
+
+      <Button className="w-full" onClick={onCompile}>
+        Compile into review
       </Button>
-    </div>
+    </Card>
   );
 }

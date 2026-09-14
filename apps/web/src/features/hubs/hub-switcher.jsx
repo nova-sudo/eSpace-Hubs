@@ -7,13 +7,13 @@
  * Click → dropdown of all available hubs → click an item → set the
  * pick in localStorage + router.push to that hub.
  *
- * Visual: a chip in the header that mirrors the active hub's accent.
- * Sits next to the brand mark. Compact by design — the most common
+ * Visual: a compact pill next to the brand mark — the most common
  * action is "I want to stay where I am", so the switcher should
  * feel like a footnote, not a primary nav surface.
  */
 
 import { useRouter } from "next/navigation";
+import { ChevronDown } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -56,46 +56,20 @@ export function HubSwitcher() {
         <button
           type="button"
           aria-label={`Switch hub. Active: ${active.label}`}
-          className={cn(
-            "flex items-center gap-2 rounded-md border px-2.5 py-1 transition-colors hover:opacity-90",
-          )}
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 11,
-            borderColor: "var(--border-strong)",
-            background: "var(--accent-dim)",
-            color: "var(--accent)",
-          }}
+          className="flex items-center gap-1.5 rounded-[var(--radius-pill)] bg-card px-3.5 py-2 text-[13px] font-semibold text-fg transition-colors hover:bg-card-alt"
         >
-          <span
-            className="grid h-4 w-4 place-items-center rounded-sm font-bold"
-            style={{
-              background: "var(--accent)",
-              color: "var(--accent-on)",
-              fontSize: 9,
-            }}
-          >
-            {active.id[0].toUpperCase()}
-          </span>
-          <span className="uppercase tracking-[0.4px]">{active.label}</span>
-          <span style={{ opacity: 0.7 }}>▾</span>
+          {active.label}
+          <ChevronDown size={14} className="text-muted-fg" />
         </button>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent
         align="start"
-        sideOffset={6}
-        className="z-50 min-w-[240px] rounded-md border p-1 shadow-lg"
-        style={{
-          background: "var(--card)",
-          borderColor: "var(--border-strong)",
-          fontFamily: "var(--font-mono)",
-        }}
+        sideOffset={8}
+        className="z-50 min-w-[240px] rounded-[var(--radius-xl)] bg-card p-2"
+        style={{ boxShadow: "var(--shadow-float)" }}
       >
-        <DropdownMenuLabel
-          className="px-2.5 py-2 uppercase tracking-[0.4px] text-dim-fg"
-          style={{ fontSize: 10.5 }}
-        >
+        <DropdownMenuLabel className="px-3 py-2 text-[12px] font-semibold text-muted-fg">
           Switch hub
         </DropdownMenuLabel>
         {hubs.map((hub) => {
@@ -108,51 +82,26 @@ export function HubSwitcher() {
                 pick(hub.id);
               }}
               className={cn(
-                "flex cursor-pointer items-center justify-between rounded-sm px-2.5 py-2 outline-none",
-                "hover:bg-accent-dim focus:bg-accent-dim",
+                "flex cursor-pointer items-center justify-between rounded-[var(--radius-lg)] px-3 py-2.5 outline-none hover:bg-card-alt",
               )}
             >
-              <div className="flex items-center gap-2.5">
-                <span
-                  className="grid h-5 w-5 place-items-center rounded-sm font-bold"
-                  style={{
-                    background: isActive ? "var(--accent-dim)" : "var(--panel-2)",
-                    color: isActive ? "var(--accent)" : "var(--muted-fg)",
-                    fontSize: 10,
-                  }}
-                >
-                  {hub.id[0].toUpperCase()}
-                </span>
-                <div>
-                  <div className="text-[12px] font-semibold text-fg">
-                    {hub.label}
-                  </div>
-                  <div
-                    className="text-dim-fg"
-                    style={{ fontSize: 10 }}
-                  >
-                    /{hub.id}
-                  </div>
-                </div>
+              <div>
+                <div className="text-[13px] font-semibold text-fg">{hub.label}</div>
+                <div className="text-[11.5px] text-dim-fg">/{hub.id}</div>
               </div>
               {isActive ? (
-                <span
-                  className="uppercase tracking-[0.4px]"
-                  style={{ fontSize: 9.5, color: "var(--accent)" }}
-                >
-                  ● current
-                </span>
+                <span className="text-[11.5px] font-bold text-fg">Current</span>
               ) : null}
             </DropdownMenuItem>
           );
         })}
-        <DropdownMenuSeparator className="my-1 h-px bg-border" />
+        <DropdownMenuSeparator className="my-1 h-px bg-line" />
         <DropdownMenuItem
           onSelect={(e) => {
             e.preventDefault();
             rePick();
           }}
-          className="cursor-pointer rounded-sm px-2.5 py-2 text-[11px] text-muted-fg outline-none hover:bg-accent-dim focus:bg-accent-dim"
+          className="cursor-pointer rounded-[var(--radius-lg)] px-3 py-2.5 text-[13px] font-semibold text-muted-fg outline-none hover:bg-card-alt"
         >
           Re-open hub picker
         </DropdownMenuItem>

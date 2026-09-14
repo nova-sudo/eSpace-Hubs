@@ -20,256 +20,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Button, Field, Input } from "@/components/ui";
+import { AuthCard, AuthError } from "./auth-card.jsx";
 import { useSession } from "./use-session.js";
-
-/* ── Nothing UI auth chrome (inlined per file — see CLAUDE.md "features
-   are the boundary"; the brand panel + field styles below mirror the
-   reference ScreenLogin.dc.html in the migration kit). ─────────────── */
-
-const FIELD_LABEL = {
-  fontFamily: "var(--font-mono)",
-  fontSize: 10,
-  textTransform: "uppercase",
-  letterSpacing: "1.5px",
-  color: "var(--muted-fg)",
-};
-
-const INPUT = {
-  fontFamily: "var(--font-mono)",
-  fontSize: 13,
-  color: "var(--fg)",
-  border: "1px solid var(--border-strong)",
-  borderRadius: "var(--radius-sub)",
-  padding: "11px 14px",
-  background: "var(--card)",
-  outline: "none",
-  width: "100%",
-};
-
-const BUTTON_BASE = {
-  width: "100%",
-  fontFamily: "var(--font-mono)",
-  fontSize: 11,
-  fontWeight: 700,
-  textTransform: "uppercase",
-  letterSpacing: "1px",
-  color: "var(--accent-on)",
-  background: "var(--accent)",
-  border: 0,
-  borderRadius: "var(--radius-sub)",
-  padding: 13,
-};
-
-const ERROR = {
-  fontFamily: "var(--font-mono)",
-  fontSize: 11.5,
-  color: "var(--bad)",
-};
-
-function buttonStyle({ busy, enabled }) {
-  return {
-    ...BUTTON_BASE,
-    cursor: busy ? "wait" : "pointer",
-    opacity: enabled ? 1 : 0.6,
-  };
-}
-
-/**
- * Two-panel auth shell: dark brand panel (dot-grid texture, dot-matrix
- * logo glyph + Doto wordmark headline) beside a centred form panel.
- * Collapses to a single column on narrow viewports.
- */
-function AuthShell({ brandTitle, brandBody, brandFooter, children }) {
-  return (
-    <div
-      style={{
-        // Brand-panel-only tokens (the panel is always dark per the
-        // reference); the form panel reads the global --bg/--fg tokens
-        // so it follows light/dark mode.
-        "--brand-bg": "#000",
-        "--brand-fg": "#fff",
-        "--brand-muted": "rgba(255,255,255,0.6)",
-        "--brand-dim": "rgba(255,255,255,0.22)",
-        "--brand-line": "rgba(255,255,255,0.22)",
-        "--brand-dot": "rgba(255,255,255,0.13)",
-        display: "grid",
-        gridTemplateColumns: "minmax(0, 1.05fr) minmax(0, 1fr)",
-        minHeight: "100vh",
-        background: "var(--bg)",
-      }}
-      className="auth-shell"
-    >
-      {/* Brand panel */}
-      <div
-        className="auth-brand"
-        style={{
-          position: "relative",
-          overflow: "hidden",
-          background: "var(--brand-bg)",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
-          padding: "46px 44px",
-        }}
-      >
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: 0,
-            backgroundImage:
-              "radial-gradient(var(--brand-dot) 1.1px, transparent 1.1px)",
-            backgroundSize: "11px 11px",
-            opacity: 0.6,
-            pointerEvents: "none",
-          }}
-        />
-        <BrandMark />
-        <div style={{ position: "relative" }}>
-          <div
-            style={{
-              fontFamily: "var(--font-dot)",
-              fontWeight: 900,
-              fontSize: 58,
-              lineHeight: 0.9,
-              letterSpacing: "1px",
-              textTransform: "uppercase",
-              color: "var(--brand-fg)",
-            }}
-          >
-            {brandTitle.map((line, i) => (
-              <span key={i}>
-                {line}
-                {i < brandTitle.length - 1 ? <br /> : null}
-              </span>
-            ))}
-            <span style={{ color: "var(--accent)" }}>.</span>
-          </div>
-          <p
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize: 14.5,
-              lineHeight: 1.55,
-              color: "var(--brand-muted)",
-              maxWidth: 340,
-              margin: "22px 0 0",
-            }}
-          >
-            {brandBody}
-          </p>
-        </div>
-        <div style={{ position: "relative" }}>{brandFooter}</div>
-      </div>
-
-      {/* Form panel */}
-      <div
-        style={{
-          background: "var(--bg)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 40,
-        }}
-      >
-        <div style={{ width: "100%", maxWidth: 360 }}>{children}</div>
-      </div>
-
-      <style>{`
-        @media (max-width: 720px) {
-          .auth-shell { grid-template-columns: 1fr !important; }
-          .auth-brand { display: none !important; }
-        }
-      `}</style>
-    </div>
-  );
-}
-
-/** 3×3 dot-matrix logo glyph + eSpace/DevHub wordmark. */
-function BrandMark() {
-  const cell = (bg) => (
-    <i style={{ background: bg, borderRadius: "50%" }} />
-  );
-  return (
-    <div
-      style={{
-        position: "relative",
-        display: "flex",
-        alignItems: "center",
-        gap: 11,
-      }}
-    >
-      <div
-        style={{
-          width: 30,
-          height: 30,
-          borderRadius: 7,
-          border: "1px solid var(--brand-line)",
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gridTemplateRows: "repeat(3, 1fr)",
-          gap: 3,
-          padding: 6,
-        }}
-      >
-        {cell("var(--brand-fg)")}
-        {cell("var(--brand-dim)")}
-        {cell("var(--brand-fg)")}
-        {cell("var(--brand-dim)")}
-        {cell("var(--accent)")}
-        {cell("var(--brand-dim)")}
-        {cell("var(--brand-fg)")}
-        {cell("var(--brand-dim)")}
-        {cell("var(--brand-fg)")}
-      </div>
-      <span
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontWeight: 700,
-          fontSize: 16,
-          color: "var(--brand-fg)",
-        }}
-      >
-        eSpace
-      </span>
-    </div>
-  );
-}
-
-/** Doto uppercase page title. */
-function AuthTitle({ children, size = 38 }) {
-  return (
-    <h1
-      style={{
-        fontFamily: "var(--font-dot)",
-        fontWeight: 900,
-        fontSize: size,
-        letterSpacing: "1px",
-        textTransform: "uppercase",
-        color: "var(--fg)",
-        margin: 0,
-      }}
-    >
-      {children}
-    </h1>
-  );
-}
-
-/** Hanken lead paragraph under the title. */
-function AuthLead({ children }) {
-  return (
-    <p
-      style={{
-        fontFamily: "var(--font-sans)",
-        fontSize: 13.5,
-        lineHeight: 1.5,
-        color: "var(--muted-fg)",
-        margin: "10px 0 28px",
-      }}
-    >
-      {children}
-    </p>
-  );
-}
 
 export function LoginForm({ onSuccess }) {
   const { user, needsTotp, error, login, verifyTotp, loading } = useSession();
@@ -309,24 +62,15 @@ export function LoginForm({ onSuccess }) {
 
   const errorMessage = error ? humanizeError(error) : null;
 
-  return (
-    <AuthShell
-      brandTitle={["Your", "evidence,", "in one", "place"]}
-      brandBody="Every PR, review, and goal reading — gathered, classified, and review-ready. Nothing leaves your browser."
-      brandFooter={<TickStrip total={14} on={9} />}
-    >
-      <AuthTitle>Sign in</AuthTitle>
-      <AuthLead>
-        eSpace Dev Hub — your performance evidence, in one place.
-      </AuthLead>
-
-      {needsTotp ? (
-        <form className="flex flex-col gap-3" onSubmit={handleTotp}>
-          <label className="flex flex-col gap-[7px]">
-            <span style={FIELD_LABEL}>
-              6-digit code from your authenticator
-            </span>
-            <input
+  if (needsTotp) {
+    return (
+      <AuthCard
+        title="Enter your code"
+        lead="6-digit code from your authenticator app."
+      >
+        <form className="flex flex-col gap-4" onSubmit={handleTotp}>
+          <Field label="Authentication code">
+            <Input
               type="text"
               inputMode="numeric"
               autoComplete="one-time-code"
@@ -337,143 +81,73 @@ export function LoginForm({ onSuccess }) {
               autoFocus
               disabled={submitting || loading}
               required
-              style={{
-                ...INPUT,
-                fontSize: 18,
-                letterSpacing: "8px",
-                textAlign: "center",
-              }}
+              className="text-center font-mono text-[22px] tracking-[0.3em]"
             />
-          </label>
-          {errorMessage ? <div style={ERROR}>{errorMessage}</div> : null}
-          <button
+          </Field>
+          <AuthError>{errorMessage}</AuthError>
+          <Button
             type="submit"
+            size="lg"
             disabled={code.length !== 6 || submitting || loading}
-            style={{
-              ...buttonStyle({
-                busy: submitting,
-                enabled: code.length === 6 && !submitting,
-              }),
-              marginTop: 18,
-            }}
+            className="w-full"
           >
-            {submitting ? "Verifying…" : "Verify code →"}
-          </button>
+            {submitting ? "Verifying…" : "Verify code"}
+          </Button>
         </form>
-      ) : (
-        <form className="flex flex-col gap-4" onSubmit={handlePassword}>
-          <label className="flex flex-col gap-[7px]">
-            <span style={FIELD_LABEL}>Email</span>
-            <input
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={submitting || loading}
-              autoFocus
-              required
-              style={INPUT}
-            />
-          </label>
-          <label className="flex flex-col gap-[7px]">
-            <span style={FIELD_LABEL}>Password</span>
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={submitting || loading}
-              required
-              minLength={8}
-              style={INPUT}
-            />
-          </label>
-          {errorMessage ? <div style={ERROR}>{errorMessage}</div> : null}
-          <button
-            type="submit"
-            disabled={submitting || loading}
-            style={{
-              ...buttonStyle({ busy: submitting, enabled: !submitting }),
-              marginTop: 4,
-            }}
-          >
-            {submitting ? "Signing in…" : "Continue →"}
-          </button>
+      </AuthCard>
+    );
+  }
 
-          {/* Forgot-password link — only on the password step, not the
-              TOTP step (a user on step 2 already authenticated and is
-              just stuck on the 6-digit code; the right recovery there
-              is backup codes, not password reset). */}
-          <div
-            className="mt-[6px] flex flex-col gap-[9px]"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              color: "var(--muted-fg)",
-              textAlign: "center",
-            }}
-          >
-            <Link
-              href="/forgot-password"
-              className="text-accent hover:underline"
-              style={{ fontWeight: 600 }}
-            >
-              Forgot password?
-            </Link>
-            <div>
-              Don't have an account?{" "}
-              <Link
-                href="/signup"
-                className="text-accent hover:underline"
-                style={{ fontWeight: 600 }}
-              >
-                Create one
-              </Link>
-            </div>
-          </div>
-        </form>
-      )}
-
-      {!needsTotp ? (
-        <div
-          className="mt-7 flex items-center gap-[10px]"
-          aria-hidden
-        >
-          <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
-          <span
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9,
-              textTransform: "uppercase",
-              letterSpacing: "1px",
-              color: "var(--dim-fg)",
-            }}
-          >
-            2FA protected
-          </span>
-          <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
-        </div>
-      ) : null}
-    </AuthShell>
-  );
-}
-
-/** Brand-footer tick strip — accent dots fading into dim dots. */
-function TickStrip({ total, on }) {
   return (
-    <div style={{ display: "flex", gap: 7 }}>
-      {Array.from({ length: total }, (_, i) => (
-        <span
-          key={i}
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: i < on ? "var(--accent)" : "var(--brand-dim)",
-          }}
-        />
-      ))}
-    </div>
+    <AuthCard
+      title="Sign in"
+      lead="eSpace Dev Hub — your performance evidence, in one place."
+    >
+      <form className="flex flex-col gap-4" onSubmit={handlePassword}>
+        <Field label="Email">
+          <Input
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={submitting || loading}
+            autoFocus
+            required
+          />
+        </Field>
+        <Field label="Password">
+          <Input
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={submitting || loading}
+            required
+            minLength={8}
+          />
+        </Field>
+        <AuthError>{errorMessage}</AuthError>
+        <Button type="submit" size="lg" disabled={submitting || loading} className="w-full">
+          {submitting ? "Signing in…" : "Continue"}
+        </Button>
+
+        {/* Forgot-password link — only on the password step, not the
+            TOTP step (a user on step 2 already authenticated and is
+            just stuck on the 6-digit code; the right recovery there
+            is backup codes, not password reset). */}
+        <div className="mt-1.5 flex flex-col items-center gap-2 text-center text-[13px]">
+          <Link href="/forgot-password" className="font-bold text-fg">
+            Forgot password?
+          </Link>
+          <div className="text-muted-fg">
+            Don&apos;t have an account?{" "}
+            <Link href="/signup" className="font-bold text-fg">
+              Create one
+            </Link>
+          </div>
+        </div>
+      </form>
+    </AuthCard>
   );
 }
 

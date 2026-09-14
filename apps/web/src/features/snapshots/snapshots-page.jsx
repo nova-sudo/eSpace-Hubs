@@ -3,12 +3,16 @@
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
+import { ArrowLeft } from "lucide-react";
 import {
+  Badge,
   Button,
+  Card,
   Delta,
-  MonoLabel,
+  Label,
   PageHeader,
   Section,
+  SegmentedControl,
   Select,
   Stat,
 } from "@/components/ui";
@@ -77,14 +81,15 @@ export function SnapshotsPage() {
               : "Snapshots · loading…"
         }
         title="Your trend, on record."
-        italicWord="trend"
         // Honest cadence (#239): capture fires on dashboard visits (plus
         // this button) — there is no Monday cron yet (F4's snapshot half).
         subtitle="Each week you visit gets frozen into a snapshot. The line you're watching is you, vs. you."
         right={
           <div className="flex gap-2">
             <Link href={link("")}>
-              <Button variant="ghost">← Intelligence</Button>
+              <Button variant="ghost">
+                <ArrowLeft size={14} /> Intelligence
+              </Button>
             </Link>
             <Button onClick={() => void handleSnapshotNow()} disabled={capturing}>
               {capturing ? "Capturing…" : "Snapshot now"}
@@ -101,22 +106,13 @@ export function SnapshotsPage() {
         ) : null
       ) : (
         <>
-          <div className="mb-5 flex flex-wrap gap-1.5">
-            {METRICS.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setMetric(m.id)}
-                className={cn(
-                  "cursor-pointer rounded-[var(--radius-sub)] border px-3.5 py-2 uppercase tracking-[0.5px] transition-colors",
-                  metric === m.id
-                    ? "border-accent bg-accent text-accent-on"
-                    : "border-border bg-transparent text-fg hover:border-border-strong",
-                )}
-                style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600 }}
-              >
-                {m.label}
-              </button>
-            ))}
+          <div className="mb-5">
+            <SegmentedControl
+              options={METRICS.map((m) => ({ value: m.id, label: m.label }))}
+              value={metric}
+              onChange={setMetric}
+              size="sm"
+            />
           </div>
 
           <TrendChart
@@ -131,7 +127,6 @@ export function SnapshotsPage() {
 
           {selectedSnap ? (
             <Section
-              num="01 /"
               title={`Selected week · ${selectedSnap.week} (${fullDate(selectedSnap.capturedAt)})`}
               right={
                 <CompareSelector
@@ -142,45 +137,32 @@ export function SnapshotsPage() {
                 />
               }
             >
-              <div className="grid grid-cols-5 gap-3.5 py-1.5">
-                <StatCard>
-                  <Stat label="Merged PRs" value={selectedSnap.merged} sub="in the week" />
-                </StatCard>
-                <StatCard>
-                  <Stat
-                    label="Reviews given"
-                    value={selectedSnap.reviews}
-                    sub="comments on MRs"
-                  />
-                </StatCard>
-                <StatCard>
-                  <Stat
-                    label="Turnaround"
-                    value={selectedSnap.turnaround}
-                    unit="h"
-                    sub="median open → merge"
-                  />
-                </StatCard>
-                <StatCard>
-                  <Stat
-                    label="Jira linkage"
-                    value={`${selectedSnap.linkage}%`}
-                    sub="MRs with ticket key"
-                  />
-                </StatCard>
-                <StatCard>
-                  <Stat label="Rounds / MR" value={selectedSnap.rounds} sub="reviewer comments" />
-                </StatCard>
-              </div>
+              <Card className="grid grid-cols-5 gap-4">
+                <Stat label="Merged PRs" value={selectedSnap.merged} sub="in the week" />
+                <Stat
+                  label="Reviews given"
+                  value={selectedSnap.reviews}
+                  sub="comments on MRs"
+                />
+                <Stat
+                  label="Turnaround"
+                  value={selectedSnap.turnaround}
+                  unit="h"
+                  sub="median open → merge"
+                />
+                <Stat
+                  label="Jira linkage"
+                  value={`${selectedSnap.linkage}%`}
+                  sub="MRs with ticket key"
+                />
+                <Stat label="Rounds / MR" value={selectedSnap.rounds} sub="reviewer comments" />
+              </Card>
               {compareSnap ? (
                 <CompareGrid base={selectedSnap} other={compareSnap} />
               ) : null}
-              <div className="mt-4 rounded-[var(--radius-sub)] border border-dashed border-border bg-card-alt px-4 py-3.5">
-                <MonoLabel>Week note</MonoLabel>
-                <div
-                  className="mt-1 italic"
-                  style={{ fontFamily: "var(--font-serif)", fontSize: 17, lineHeight: 1.4 }}
-                >
+              <div className="mt-4 rounded-[var(--radius-lg)] bg-card-alt px-4 py-3.5">
+                <Label>Week note</Label>
+                <div className="mt-1 text-[14.5px] italic leading-[1.4] text-fg">
                   {selectedSnap.note
                     ? `"${selectedSnap.note}"`
                     : "No note this week — click Snapshot now with a note to capture one."}
@@ -189,11 +171,7 @@ export function SnapshotsPage() {
             </Section>
           ) : null}
 
-          <Section
-            num="02 /"
-            title="All snapshots"
-            right={<MonoLabel>{snapshots.length} weeks</MonoLabel>}
-          >
+          <Section title="All snapshots" right={<Label>{snapshots.length} weeks</Label>}>
             <SnapshotTable
               snapshots={snapshots}
               selected={selected}
@@ -206,112 +184,57 @@ export function SnapshotsPage() {
   );
 }
 
-/** Bordered shell for a selected-week Stat — the boxed grid in the reference. */
-function StatCard({ children }) {
-  return (
-    <div className="rounded-[var(--radius-tile)] border border-border bg-card px-3.5 py-3.5">
-      {children}
-    </div>
-  );
-}
-
 function SnapshotTable({ snapshots, selected, onSelect }) {
-  const cols = "62px 56px 110px 80px 80px 90px 80px 80px 1fr";
+  const cols = "62px 76px 110px 80px 80px 90px 80px 80px 1fr";
   return (
-    <div className="overflow-hidden rounded-[var(--radius-sub)] border border-border bg-card">
+    <Card padding={0} className="overflow-hidden">
       <div
-        className="grid border-b border-border bg-panel px-3.5 py-2.5 uppercase tracking-[1px] text-muted-fg"
-        style={{
-          gridTemplateColumns: cols,
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-        }}
+        className="grid border-b border-line px-3.5 py-2.5"
+        style={{ gridTemplateColumns: cols }}
       >
-        <span>Week</span>
-        <span>Source</span>
-        <span>Date</span>
-        <span>Merged</span>
-        <span>Reviews</span>
-        <span>Turn.</span>
-        <span>Link.</span>
-        <span>Rounds</span>
-        <span>Note · goals</span>
+        {["Week", "Source", "Date", "Merged", "Reviews", "Turn.", "Link.", "Rounds", "Note · goals"].map(
+          (h) => (
+            <Label key={h}>{h}</Label>
+          ),
+        )}
       </div>
-      {snapshots.map((s, i) => {
+      {snapshots.map((s) => {
         const isSel = s.week === selected;
         const goalsCount = s.goalReadings
           ? Object.keys(s.goalReadings).length
           : 0;
+        const sourceBadge =
+          s.capturedBy === "auto"
+            ? s.partial
+              ? "Auto · partial"
+              : "Auto"
+            : s.partial
+              ? "Partial"
+              : null;
         return (
           <button
             key={s.week}
             onClick={() => onSelect(s.week)}
-            className="grid w-full cursor-pointer items-center px-3.5 py-3 text-left"
-            style={{
-              gridTemplateColumns: cols,
-              borderBottom:
-                i < snapshots.length - 1 ? "1px dashed var(--border)" : "none",
-              background: isSel ? "var(--accent-dim)" : "transparent",
-              fontSize: 13,
-            }}
+            className={cn(
+              "grid w-full cursor-pointer items-center border-t border-line px-3.5 py-3 text-left first:border-t-0 text-[13px]",
+              isSel ? "bg-card-alt" : "hover:bg-card-alt",
+            )}
+            style={{ gridTemplateColumns: cols }}
           >
-            <span
-              className="font-bold"
-              style={{
-                fontFamily: "var(--font-dot)",
-                letterSpacing: "1px",
-                color: isSel ? "var(--accent)" : "var(--fg)",
-              }}
-            >
+            <span className={cn("font-mono font-bold", isSel ? "text-fg" : "text-fg")}>
               {s.week}
             </span>
-            {/* Capture-source pill: AUTO (mono accent) vs MANUAL (muted) */}
-            <span
-              className="inline-flex items-center justify-center rounded-[3px] px-1.5 py-0.5 uppercase"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 8.5,
-                letterSpacing: "0.5px",
-                fontWeight: 700,
-                background:
-                  s.capturedBy === "auto"
-                    ? "var(--accent-dim)"
-                    : "var(--panel)",
-                color:
-                  s.capturedBy === "auto"
-                    ? "var(--accent)"
-                    : "var(--muted-fg)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              {s.capturedBy === "auto" ? "auto" : "manual"}
-            </span>
-            <span
-              className="text-muted-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-            >
-              {fullDate(s.capturedAt)}
-            </span>
-            <span className="font-bold" style={{ fontFamily: "var(--font-dot)" }}>
-              {s.merged}
-            </span>
-            <span className="font-bold" style={{ fontFamily: "var(--font-dot)" }}>
-              {s.reviews}
-            </span>
-            <span style={{ fontFamily: "var(--font-mono)" }}>{s.turnaround}h</span>
-            <span style={{ fontFamily: "var(--font-mono)" }}>{s.linkage}%</span>
-            <span style={{ fontFamily: "var(--font-mono)" }}>{s.rounds}</span>
-            <span className="truncate text-muted-fg" style={{ fontSize: 12.5 }}>
+            {sourceBadge ? <Badge tone="sky">{sourceBadge}</Badge> : <span />}
+            <span className="text-muted-fg">{fullDate(s.capturedAt)}</span>
+            <span className="font-bold tabular-nums">{s.merged}</span>
+            <span className="font-bold tabular-nums">{s.reviews}</span>
+            <span className="tabular-nums">{s.turnaround}h</span>
+            <span className="tabular-nums">{s.linkage}%</span>
+            <span className="tabular-nums">{s.rounds}</span>
+            <span className="truncate text-muted-fg">
               {s.note || "—"}
               {goalsCount > 0 ? (
-                <span
-                  className="ml-2"
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 10,
-                    color: "var(--accent)",
-                  }}
-                >
+                <span className="ml-2 text-dim-fg">
                   · {goalsCount} goal{goalsCount === 1 ? "" : "s"}
                 </span>
               ) : null}
@@ -319,7 +242,7 @@ function SnapshotTable({ snapshots, selected, onSelect }) {
           </button>
         );
       })}
-    </div>
+    </Card>
   );
 }
 
@@ -331,13 +254,8 @@ function SnapshotTable({ snapshots, selected, onSelect }) {
 function CompareSelector({ snapshots, selected, compareWeek, setCompareWeek }) {
   const candidates = snapshots.filter((s) => s.week !== selected);
   return (
-    <label
-      className="inline-flex items-center gap-2"
-      style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-    >
-      <span className="uppercase tracking-[0.5px] text-muted-fg">
-        Compare to
-      </span>
+    <label className="inline-flex items-center gap-2">
+      <Label>Compare to</Label>
       <Select
         tone="default"
         size="sm"
@@ -369,19 +287,15 @@ function CompareGrid({ base, other }) {
     { key: "rounds", label: "Rounds / MR", invert: true },
   ];
   return (
-    <div className="mt-3 overflow-hidden rounded-[var(--radius-sub)] border border-border bg-card-alt">
+    <Card padding={0} className="mt-3 overflow-hidden">
       <div
-        className="grid border-b border-border bg-card px-3.5 py-2 uppercase tracking-[0.5px] text-muted-fg"
-        style={{
-          gridTemplateColumns: "1.4fr 1fr 1fr 0.8fr",
-          fontFamily: "var(--font-mono)",
-          fontSize: 9.5,
-        }}
+        className="grid border-b border-line px-3.5 py-2"
+        style={{ gridTemplateColumns: "1.4fr 1fr 1fr 0.8fr" }}
       >
-        <span>Metric</span>
-        <span>{base.week}</span>
-        <span>{other.week}</span>
-        <span className="text-right">Δ</span>
+        <Label>Metric</Label>
+        <Label>{base.week}</Label>
+        <Label>{other.week}</Label>
+        <Label className="text-right">Δ</Label>
       </div>
       {rows.map((r) => {
         const a = Number(base[r.key]) || 0;
@@ -390,44 +304,27 @@ function CompareGrid({ base, other }) {
         return (
           <div
             key={r.key}
-            className="grid items-center border-b border-border border-dashed px-3.5 py-2 last:border-b-0"
-            style={{
-              gridTemplateColumns: "1.4fr 1fr 1fr 0.8fr",
-              fontSize: 13,
-            }}
+            className="grid items-center border-t border-line px-3.5 py-2 text-[13px]"
+            style={{ gridTemplateColumns: "1.4fr 1fr 1fr 0.8fr" }}
           >
-            <span className="text-muted-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>
-              {r.label}
-            </span>
-            <span className="font-bold" style={{ fontFamily: "var(--font-dot)" }}>
-              {a}
-            </span>
-            <span className="text-muted-fg" style={{ fontFamily: "var(--font-mono)" }}>
-              {b}
-            </span>
+            <span className="text-muted-fg">{r.label}</span>
+            <span className="font-bold tabular-nums">{a}</span>
+            <span className="text-muted-fg tabular-nums">{b}</span>
             <span className="text-right">
               <Delta value={delta > 0 ? `+${delta}` : `${delta}`} invert={r.invert} />
             </span>
           </div>
         );
       })}
-    </div>
+    </Card>
   );
 }
 
 function EmptyState({ onCapture }) {
   return (
-    <div className="rounded-[var(--radius-tile)] border border-dashed border-border-strong bg-card px-4 sm:px-10 py-16 text-center">
-      <MonoLabel>No snapshots yet</MonoLabel>
-      <h2
-        className="mx-auto mt-3 max-w-[520px] font-bold uppercase"
-        style={{
-          fontFamily: "var(--font-dot)",
-          fontSize: 28,
-          letterSpacing: "0.5px",
-          lineHeight: 1.0,
-        }}
-      >
+    <Card className="px-4 sm:px-10 py-16 text-center">
+      <Label>No snapshots yet</Label>
+      <h2 className="mx-auto mt-3 max-w-[520px] text-[18px] font-bold tracking-[-0.01em] text-fg">
         Capture your first snapshot to start building a trend.
       </h2>
       <p className="mx-auto mt-2 max-w-[480px] text-[13px] text-muted-fg">
@@ -437,6 +334,6 @@ function EmptyState({ onCapture }) {
       <div className="mt-6 flex justify-center">
         <Button onClick={onCapture}>Snapshot now</Button>
       </div>
-    </div>
+    </Card>
   );
 }

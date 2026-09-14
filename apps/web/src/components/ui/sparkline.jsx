@@ -4,9 +4,9 @@
  */
 export function Sparkline({
   data = [],
-  color = "currentColor",
+  color = "var(--ink)",
   height = 40,
-  strokeWidth = 2,
+  strokeWidth = 1.5,
   showDots = false,
   fillOpacity = 0,
   className,

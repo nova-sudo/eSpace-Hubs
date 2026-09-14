@@ -1,5 +1,6 @@
 "use client";
 
+import { Badge, Label } from "@/components/ui";
 import { fmtNumber } from "@/lib/fmt";
 import { WidgetShell, TargetChip } from "../widget-shell";
 import { useDataSource } from "../data-sources/use-data-source";
@@ -59,48 +60,21 @@ export function ReviewRoundsWidget({ spec, goal, variant = "light", className, o
     >
       <div className="flex h-full flex-col justify-between gap-3">
         <div className="flex items-baseline gap-2">
-          <div
-            className="font-semibold leading-none"
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 48,
-              letterSpacing: "-1.6px",
-            }}
-          >
+          <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
             {error ? "!" : isLoading ? "…" : fmtNumber(value ?? 0, 1)}
           </div>
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              color: variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)",
-            }}
-          >
-            avg · lower is tighter
-          </div>
+          <span className="text-[13px] text-muted-fg">avg · lower is tighter</span>
           {meets != null ? (
-            <div
-              className="ml-auto uppercase tracking-[0.5px]"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                color: meets ? "var(--accent-2)" : "rgba(255,255,255,0.7)",
-              }}
-            >
-              {meets ? "on target" : "drifting"}
-            </div>
+            <Badge tone={meets ? "mint" : "peach"} className="ml-auto">
+              {meets ? "On target" : "Drifting"}
+            </Badge>
           ) : null}
         </div>
 
         {/* Single bar: your average. If a target exists, draw a vertical
             tick-mark on the bar to show where the rule sits — no second
             bar comparing against fake team data. */}
-        <BarWithTarget
-          value={value != null ? fmtNumber(value, 1) : "—"}
-          fill={fillYou}
-          targetFill={targetFill}
-          variant={variant}
-        />
+        <BarWithTarget value={value != null ? fmtNumber(value, 1) : "—"} fill={fillYou} targetFill={targetFill} />
         {/* Cadence compliance — % of historical weeks at target,
             computed from the snapshot stream. The headline number
             above is "right now"; this line is "over time". */}
@@ -110,44 +84,22 @@ export function ReviewRoundsWidget({ spec, goal, variant = "light", className, o
   );
 }
 
-function BarWithTarget({ value, fill, targetFill, variant }) {
-  const track = variant === "light" ? "rgba(255,255,255,0.2)" : "var(--border)";
-  const fillColor = variant === "light" ? "#ffffff" : "var(--accent)";
-  const tickColor =
-    variant === "light" ? "rgba(255,255,255,0.55)" : "var(--accent-2)";
-  const muted = variant === "light" ? "rgba(255,255,255,0.7)" : "var(--muted-fg)";
-
+function BarWithTarget({ value, fill, targetFill }) {
   return (
     <div className="flex items-center gap-2">
-      <span
-        className="w-8 shrink-0"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: muted }}
-      >
-        You
-      </span>
-      <div
-        className="relative h-1.5 flex-1 overflow-hidden rounded-full"
-        style={{ background: track }}
-      >
-        <div
-          className="absolute inset-y-0 left-0 rounded-full"
-          style={{ width: `${fill}%`, background: fillColor }}
-        />
+      <Label className="w-8 shrink-0">You</Label>
+      <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-card-alt">
+        <div className="absolute inset-y-0 left-0 rounded-full bg-ink" style={{ width: `${fill}%` }} />
         {targetFill != null ? (
           <div
             aria-hidden="true"
             title="target"
-            className="absolute inset-y-[-2px] w-[2px] rounded-full"
-            style={{ left: `${targetFill}%`, background: tickColor }}
+            className="absolute inset-y-[-2px] w-[2px] rounded-full bg-lav-ink"
+            style={{ left: `${targetFill}%` }}
           />
         ) : null}
       </div>
-      <span
-        className="w-8 shrink-0 text-right font-semibold"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-      >
-        {value}
-      </span>
+      <span className="w-8 shrink-0 text-right text-[13px] font-bold text-fg">{value}</span>
     </div>
   );
 }

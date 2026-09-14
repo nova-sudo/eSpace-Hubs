@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { BentoTile, Pill, TileState } from "@/components/ui";
+import { ArrowUpRight } from "lucide-react";
+import { Badge, BentoTile, TileState } from "@/components/ui";
 import { useGoals } from "@/features/goals";
 import { useGoalSpecs } from "@/features/goal-specs";
 import { GoalTierBadge, GoalTierLadder } from "@/features/goal-tiers";
@@ -31,7 +32,7 @@ export function GoalsTile() {
         title="Your performance goals"
         titleSize={18}
       >
-        <TileState kind="loading" silhouette="kanban" message="Loading goals…" />
+        <TileState kind="loading" message="Loading goals…" />
       </BentoTile>
     );
   }
@@ -52,10 +53,10 @@ export function GoalsTile() {
           </div>
           <Link
             href={link("/settings")}
-            className="inline-flex items-center rounded-[var(--radius-sub)] border border-accent bg-accent-dim px-3 py-1.5 text-accent hover:opacity-90"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700 }}
+            className="inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] bg-ink px-3.5 py-1.5 text-[12px] font-bold text-ink-on hover:opacity-90"
           >
-            Add goals ↗
+            Add goals
+            <ArrowUpRight size={13} />
           </Link>
         </div>
       </BentoTile>
@@ -72,10 +73,10 @@ export function GoalsTile() {
       right={
         <Link
           href={link("/settings")}
-          className="text-[10px] uppercase tracking-[0.4px] text-muted-fg hover:text-fg"
-          style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}
+          className="inline-flex items-center gap-1 text-[12px] font-bold text-fg"
         >
-          Edit ↗
+          Edit
+          <ArrowUpRight size={12} />
         </Link>
       }
     >
@@ -98,21 +99,14 @@ function L1Column({ l1, index, getSpec }) {
   );
 
   return (
-    <div className="flex min-h-0 min-w-[18rem] flex-col rounded-[var(--radius-sub)] border border-border bg-card-alt p-3">
+    <div className="flex min-h-0 min-w-[18rem] flex-col rounded-[var(--radius-lg)] bg-card-alt p-3">
       <header className="mb-2 flex items-start justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          <Pill tone="accent">L1 · {String(index + 1).padStart(2, "0")}</Pill>
-          {l1.weightage > 0 ? (
-            <Pill tone="muted">{l1.weightage}%</Pill>
-          ) : null}
-          {l1.category ? <Pill tone="muted">{l1.category}</Pill> : null}
+          <Badge tone="neutral">L1 · {String(index + 1).padStart(2, "0")}</Badge>
+          {l1.weightage > 0 ? <Badge tone="lav">{l1.weightage}%</Badge> : null}
+          {l1.category ? <Badge tone="neutral">{l1.category}</Badge> : null}
         </div>
-        <span
-          className="text-dim-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-        >
-          {l1.l2s.length} L2
-        </span>
+        <span className="text-[11px] text-dim-fg">{l1.l2s.length} L2</span>
       </header>
       <div
         className="mb-1 line-clamp-2 text-[12.5px] font-medium leading-[1.35]"
@@ -122,8 +116,7 @@ function L1Column({ l1, index, getSpec }) {
       </div>
       {l1.description ? (
         <div
-          className="mb-2 line-clamp-2 text-dim-fg"
-          style={{ fontSize: 11, lineHeight: 1.35 }}
+          className="mb-2 line-clamp-2 text-[11px] leading-[1.35] text-dim-fg"
           title={l1.description}
         >
           {l1.description}
@@ -131,21 +124,13 @@ function L1Column({ l1, index, getSpec }) {
       ) : null}
       {l1.l2s.length > 0 ? (
         <>
-          <div
-            className="mb-2 text-dim-fg"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-          >
-            Σ {l2Weight}% mapped
-          </div>
+          <div className="mb-2 text-[11px] text-dim-fg">Σ {l2Weight}% mapped</div>
           <ul className="flex-1 space-y-1 overflow-y-auto pr-0.5">
             {l1.l2s.slice(0, 6).map((l2) => (
               <L2Row key={l2.id} l2={l2} getSpec={getSpec} />
             ))}
             {l1.l2s.length > 6 ? (
-              <li
-                className="py-1 text-dim-fg"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-              >
+              <li className="py-1 text-[11px] text-dim-fg">
                 + {l1.l2s.length - 6} more…
               </li>
             ) : null}
@@ -160,15 +145,13 @@ function L1Column({ l1, index, getSpec }) {
   );
 }
 
-/**
- * Priority → pill tone. Reserved tones elsewhere:
- *   accent = active / highlighted  · ok = green · warn = red
- * We intentionally avoid "ok" here since L2 priority isn't a success state.
- */
+/** Priority → Badge tone. High reads danger (peach), medium reads pending
+ *  (lemon); low stays neutral — L2 priority isn't a success state, so
+ *  "mint" is never used here. */
 const PRIORITY_TONE = {
-  high: "warn",
-  medium: "accent",
-  low: "muted",
+  high: "peach",
+  medium: "lemon",
+  low: "neutral",
 };
 
 function L2Row({ l2, getSpec }) {
@@ -177,7 +160,7 @@ function L2Row({ l2, getSpec }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <li className="rounded-[var(--radius-sub)] border border-border bg-card px-2 py-1.5">
+    <li className="rounded-[var(--radius-lg)] bg-card px-2.5 py-1.5">
       <button
         type="button"
         onClick={() => hasTiers && setExpanded((v) => !v)}
@@ -196,13 +179,9 @@ function L2Row({ l2, getSpec }) {
               to expand the full ladder below (whole-goal verdict, pooled
               across every submitted period). */}
           <GoalTierBadge goalId={l2.id} spec={spec} />
-          {Number(l2.weightage) > 0 ? (
-            <Pill tone="muted">{l2.weightage}%</Pill>
-          ) : null}
+          {Number(l2.weightage) > 0 ? <Badge tone="lav">{l2.weightage}%</Badge> : null}
           {l2.priority ? (
-            <Pill tone={PRIORITY_TONE[l2.priority] || "muted"}>
-              {l2.priority}
-            </Pill>
+            <Badge tone={PRIORITY_TONE[l2.priority] || "neutral"}>{l2.priority}</Badge>
           ) : null}
         </div>
       </button>
@@ -216,14 +195,7 @@ function L2MetaLine({ l2 }) {
   if (l2.category) parts.push(l2.category);
   if (l2.dueDate) parts.push(`due ${fmtDate(l2.dueDate)}`);
   if (parts.length === 0) return null;
-  return (
-    <div
-      className="mt-0.5 text-dim-fg"
-      style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-    >
-      {parts.join(" · ")}
-    </div>
-  );
+  return <div className="mt-0.5 text-[11px] text-dim-fg">{parts.join(" · ")}</div>;
 }
 
 function fmtDate(iso) {

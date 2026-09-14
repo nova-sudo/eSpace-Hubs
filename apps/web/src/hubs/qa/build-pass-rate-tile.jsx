@@ -7,11 +7,11 @@
  *   - Headline %     pass rate over the last ~30 days of builds
  *                    (SUCCESS / total non-in-flight)
  *   - Counts         passed · failed · unstable · aborted
- *   - Last 5 builds  green/red/yellow dots, newest on the right
+ *   - Last 5 builds  colored dots, newest on the right
  *   - Job picker     dropdown when the user has > 1 job
  *
  * The tile gracefully degrades when Jenkins isn't connected — shows
- * a "Connect from Settings →" link instead of an error. The QA hub
+ * a "Connect from Settings" link instead of an error. The QA hub
  * stays useful even before any QA-specific integrations land.
  *
  * Why pass-rate over total-count: a high build count tells you about
@@ -24,7 +24,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { BentoTile, MonoLabel, Select } from "@/components/ui";
+import { ArrowRight } from "lucide-react";
+import { Badge, BentoTile, Label, Select } from "@/components/ui";
 import { useHubLink, useQaHubConfig } from "@/features/hubs";
 import { useIntegrations } from "@/features/integrations";
 import {
@@ -43,21 +44,10 @@ export function BuildPassRateTile() {
       col="span 4"
       row="span 2"
       label="Build pass rate · last 30d"
-      right={connected ? <WindowLabel /> : null}
+      right={connected ? <Label>last {WINDOW_DAYS}d</Label> : null}
     >
       {connected ? <ConnectedBody /> : <NotConnectedBody />}
     </BentoTile>
-  );
-}
-
-function WindowLabel() {
-  return (
-    <span
-      className="text-muted-fg"
-      style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-    >
-      last {WINDOW_DAYS}d
-    </span>
   );
 }
 
@@ -65,37 +55,16 @@ function NotConnectedBody() {
   const link = useHubLink();
   return (
     <div className="flex h-full flex-col justify-between">
-      <div
-        style={{
-          fontFamily: "var(--font-display)",
-          fontSize: 64,
-          letterSpacing: "-2px",
-          lineHeight: 1,
-          color: "var(--muted-fg)",
-        }}
-      >
+      <div className="text-[56px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-dim-fg">
         —
       </div>
       <div>
-        <div
-          className="text-muted-fg"
-          style={{ fontSize: 12.5, lineHeight: 1.5 }}
-        >
+        <div className="text-[12.5px] leading-[1.5] text-muted-fg">
           Connect Jenkins to see your suite's pass rate, flake
           tendencies, and slowest tests.
         </div>
-        <Link
-          href={link("/settings")}
-          className="mt-2 inline-block text-accent hover:underline"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 11,
-            letterSpacing: "0.5px",
-            textTransform: "uppercase",
-            fontWeight: 700,
-          }}
-        >
-          Connect Jenkins →
+        <Link href={link("/settings")} className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-bold text-fg">
+          Connect Jenkins <ArrowRight size={13} />
         </Link>
       </div>
     </div>
@@ -173,17 +142,9 @@ function JobView({ jobs, selected, onSelect }) {
         <JobPicker jobs={jobs} selected={selected} onSelect={onSelect} />
         <div className="mt-2 flex items-baseline gap-3">
           <div
-            className="font-semibold"
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 64,
-              letterSpacing: "-2px",
-              lineHeight: 1,
-              color:
-                stats.completed === 0
-                  ? "var(--muted-fg)"
-                  : "var(--fg)",
-            }}
+            className={`text-[56px] font-extrabold leading-none tracking-[-0.04em] tabular-nums ${
+              stats.completed === 0 ? "text-dim-fg" : "text-fg"
+            }`}
           >
             {isLoading
               ? "…"
@@ -192,43 +153,18 @@ function JobView({ jobs, selected, onSelect }) {
                 : `${Math.round(stats.passRate * 100)}%`}
           </div>
           {stats.completed > 0 ? (
-            <div
-              className="text-muted-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
-            >
-              <div>
-                <span style={{ color: "var(--good, #16a34a)" }}>
-                  {stats.passed} passed
-                </span>
-              </div>
-              <div>
-                <span style={{ color: "var(--bad, #b91c1c)" }}>
-                  {stats.failed} failed
-                </span>
-                {stats.unstable > 0 ? (
-                  <>
-                    {" · "}
-                    <span style={{ color: "var(--warn, #c47b00)" }}>
-                      {stats.unstable} unstable
-                    </span>
-                  </>
-                ) : null}
-                {stats.aborted > 0 ? (
-                  <>
-                    {" · "}
-                    <span className="text-dim-fg">
-                      {stats.aborted} aborted
-                    </span>
-                  </>
-                ) : null}
-              </div>
+            <div className="flex flex-wrap gap-1.5">
+              <Badge tone="mint">{stats.passed} passed</Badge>
+              {stats.failed > 0 ? <Badge tone="peach">{stats.failed} failed</Badge> : null}
+              {stats.unstable > 0 ? <Badge tone="lemon">{stats.unstable} unstable</Badge> : null}
+              {stats.aborted > 0 ? <Badge>{stats.aborted} aborted</Badge> : null}
             </div>
           ) : null}
         </div>
       </div>
 
       <div>
-        <MonoLabel>Recent</MonoLabel>
+        <Label>Recent</Label>
         <BuildPills builds={stats.recent} />
       </div>
     </div>
@@ -237,27 +173,10 @@ function JobView({ jobs, selected, onSelect }) {
 
 function JobPicker({ jobs, selected, onSelect }) {
   if (jobs.length <= 1) {
-    return (
-      <div
-        className="text-muted-fg"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 11,
-          letterSpacing: "0.3px",
-        }}
-      >
-        {selected ?? jobs[0]?.name ?? "—"}
-      </div>
-    );
+    return <div className="text-[11px] text-muted-fg">{selected ?? jobs[0]?.name ?? "—"}</div>;
   }
   return (
-    <Select
-      tone="default"
-      size="sm"
-      value={selected ?? ""}
-      onChange={(e) => onSelect(e.target.value)}
-      className="max-w-full"
-    >
+    <Select size="sm" value={selected ?? ""} onChange={(e) => onSelect(e.target.value)} className="max-w-full">
       {jobs.map((j) => (
         <option key={j.name} value={j.name}>
           {j.name}
@@ -269,14 +188,7 @@ function JobPicker({ jobs, selected, onSelect }) {
 
 function BuildPills({ builds }) {
   if (builds.length === 0) {
-    return (
-      <div
-        className="text-muted-fg"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}
-      >
-        No builds in window.
-      </div>
-    );
+    return <div className="mt-1.5 text-[11px] text-muted-fg">No builds in window.</div>;
   }
   return (
     <div className="mt-1.5 flex items-center gap-1.5">
@@ -284,56 +196,35 @@ function BuildPills({ builds }) {
         <span
           key={b.number}
           title={`#${b.number} · ${b.result ?? "in flight"}`}
-          style={{
-            display: "inline-block",
-            width: 12,
-            height: 12,
-            borderRadius: 3,
-            background: pillColor(b.result),
-            border: "1px solid var(--border)",
-          }}
+          className={`inline-block h-3 w-3 rounded-[3px] ${pillClass(b.result)}`}
         />
       ))}
     </div>
   );
 }
 
-function pillColor(result) {
+function pillClass(result) {
   switch (result) {
     case "SUCCESS":
-      return "var(--good, #16a34a)";
+      return "bg-mint";
     case "FAILURE":
-      return "var(--bad, #b91c1c)";
+      return "bg-peach";
     case "UNSTABLE":
-      return "var(--warn, #c47b00)";
+      return "bg-lemon";
     case "ABORTED":
-      return "var(--dim-fg, #9a9a9a)";
+      return "bg-card-alt";
     default:
-      return "transparent";
+      return "bg-transparent";
   }
 }
 
 function Body({ headline, sub, muted }) {
   return (
     <div className="flex h-full flex-col justify-between">
-      <div
-        className="font-semibold"
-        style={{
-          fontFamily: "var(--font-display)",
-          fontSize: 64,
-          letterSpacing: "-2px",
-          lineHeight: 1,
-          color: muted ? "var(--muted-fg)" : "var(--fg)",
-        }}
-      >
+      <div className={`text-[56px] font-extrabold leading-none tracking-[-0.04em] ${muted ? "text-dim-fg" : "text-fg"}`}>
         {headline}
       </div>
-      <div
-        className="text-muted-fg"
-        style={{ fontSize: 12.5, lineHeight: 1.5 }}
-      >
-        {sub}
-      </div>
+      <div className="text-[12.5px] leading-[1.5] text-muted-fg">{sub}</div>
     </div>
   );
 }

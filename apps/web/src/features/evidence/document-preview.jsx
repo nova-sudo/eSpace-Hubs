@@ -1,15 +1,11 @@
 "use client";
 
-import { Card, DitherField } from "@/components/ui";
+import { ExternalLink } from "lucide-react";
+import { Badge, Card, Label } from "@/components/ui";
 import { useIntegrations } from "@/features/integrations";
 import { formatExpected } from "./format-expected";
 
-const STATUS_PILL_COLORS = {
-  ok: { bg: "color-mix(in srgb, var(--good) 14%, transparent)", fg: "var(--good)" },
-  accent: { bg: "var(--accent-dim)", fg: "var(--accent)" },
-  warn: { bg: "color-mix(in srgb, var(--bad) 14%, transparent)", fg: "var(--bad)" },
-  muted: { bg: "var(--card-alt)", fg: "var(--muted-fg)" },
-};
+const STATUS_TONE = { ok: "mint", accent: "lav", warn: "peach", muted: "neutral" };
 
 const TIER_SHORT = {
   not_achieved: "Not met",
@@ -40,138 +36,69 @@ export function DocumentPreview({
 
   const showStarred =
     include.starred !== false && Array.isArray(starred) && starred.length > 0;
-  // Count the sections actually rendered into the preview — drives the
-  // Doto "N sections" tally in the preview header. Goal-oriented: summary
-  // narrative + per-goal readings + hand-picked starred proof.
   const sectionCount =
     (include.narrative ? 1 : 0) +
     (include.goals && goalReadings && goalReadings.length > 0 ? 1 : 0) +
     (showStarred ? 1 : 0);
 
   return (
-    <Card className="overflow-hidden p-0">
-      <div
-        className="flex items-center justify-between border-b border-border px-[18px] py-[11px]"
-        style={{ background: "var(--panel)" }}
-      >
-        <span
-          className="uppercase text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "2px" }}
-        >
-          Document preview · {filename}
-        </span>
-        <span
-          className="tracking-[1px] text-accent"
-          style={{ fontFamily: "var(--font-dot)", fontWeight: 700, fontSize: 12 }}
-        >
+    <Card padding={0}>
+      <div className="flex items-center justify-between border-b border-line px-5 py-3">
+        <Label>Document preview · {filename}</Label>
+        <Label>
           {sectionCount} section{sectionCount === 1 ? "" : "s"}
-        </span>
+        </Label>
       </div>
 
-      <div className="relative min-h-[640px] bg-card px-12 py-10">
-        <div className="pointer-events-none absolute right-5 top-5 opacity-25 text-accent">
-          <DitherField
-            width={100}
-            height={60}
-            cell={4}
-            color="currentColor"
-            falloff={(u) => Math.max(0, 1 - u * 1.2)}
-            jitter={0.35}
-            seed={17}
-          />
-        </div>
-
-        <div
-          className="uppercase text-fg"
-          style={{
-            fontFamily: "var(--font-dot)",
-            fontWeight: 900,
-            fontSize: 24,
-            letterSpacing: "0.5px",
-            lineHeight: 1.05,
-          }}
-        >
+      <div className="min-h-[640px] p-7">
+        <div className="text-[22px] font-bold tracking-[-0.01em] leading-[1.15] text-fg">
           {me?.name ?? "Your name"} — {me?.team ?? "—"}
         </div>
-        <div
-          className="mt-[5px] uppercase text-muted-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "1px" }}
-        >
+        <div className="mt-1 text-[13px] text-muted-fg">
           Level {level} · {rangeLabel}
         </div>
-        <div
-          aria-hidden="true"
-          className="my-4"
-          style={{ height: 1, background: "var(--border)" }}
-        />
+        <div className="my-4 border-t border-line" aria-hidden="true" />
 
         {include.narrative ? (
-          <DocSection title="01 / Summary" rangeLabel={rangeLabel}>
+          <DocSection title="Summary" rangeLabel={rangeLabel}>
             <textarea
               value={narrative}
               onChange={(e) => setNarrative(e.target.value)}
               rows={5}
               placeholder="A few sentences on what this window meant for your goals — what moved, what stalled, what's next. The per-goal readings below are the receipts; this is the throughline."
-              className="w-full rounded-[var(--radius-sub)] border border-dashed border-border-strong bg-card-alt p-2.5 text-fg outline-none placeholder:text-dim-fg focus:border-accent"
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontSize: 14.5,
-                lineHeight: 1.6,
-                resize: "vertical",
-              }}
+              className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt p-3 text-[14.5px] leading-[1.6] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
             />
-            <div
-              className="mt-1 uppercase tracking-[0.4px] text-dim-fg"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-            >
-              Click to edit · your words, not ours
-            </div>
+            <div className="mt-1 text-[12px] text-dim-fg">Click to edit · your words, not ours</div>
           </DocSection>
         ) : null}
 
         {include.goals && goalReadings && goalReadings.length > 0 ? (
           <DocSection
-            title={`02 / Performance goals · ${countL1(goalReadings)} L1 · ${countL2(goalReadings)} L2`}
-            rangeLabel="ai-classified · live"
+            title={`Performance goals · ${countL1(goalReadings)} L1 · ${countL2(goalReadings)} L2`}
+            rangeLabel="AI-classified · live"
           >
             <GoalReadingsBlock readings={goalReadings} />
           </DocSection>
         ) : null}
 
         {showStarred ? (
-          <DocSection title={`03 / Starred proof · ${starred.length}`} rangeLabel="hand-picked">
+          <DocSection title={`Starred proof · ${starred.length}`} rangeLabel="Hand-picked">
             <ul className="flex flex-col gap-1.5">
               {starred.map((s) => (
-                <li key={s.id} className="flex items-baseline gap-2 text-[12px] leading-[1.45] text-fg/85">
-                  {s.ref ? (
-                    <span
-                      className="shrink-0 text-accent"
-                      style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, fontWeight: 700 }}
-                    >
-                      {s.ref}
-                    </span>
-                  ) : null}
+                <li key={s.id} className="flex items-baseline gap-2 text-[13px] leading-[1.45] text-fg">
+                  {s.ref ? <span className="shrink-0 font-mono font-bold text-muted-fg">{s.ref}</span> : null}
                   <span className="min-w-0">
                     {s.title || "(untitled)"}
-                    {s.impact?.trim() ? (
-                      <span className="text-muted-fg"> — {s.impact.trim()}</span>
-                    ) : null}
+                    {s.impact?.trim() ? <span className="text-muted-fg"> — {s.impact.trim()}</span> : null}
                   </span>
-                  {s.date ? (
-                    <span className="ml-auto shrink-0 text-dim-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}>
-                      {s.date}
-                    </span>
-                  ) : null}
+                  {s.date ? <span className="ml-auto shrink-0 text-dim-fg">{s.date}</span> : null}
                 </li>
               ))}
             </ul>
           </DocSection>
         ) : null}
 
-        <div
-          className="mt-10 flex justify-between border-t border-border pt-4 text-dim-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}
-        >
+        <div className="mt-10 flex justify-between border-t border-line pt-4 text-[12px] text-dim-fg">
           <span>
             Generated by eSpace/DevHub ·{" "}
             {new Date().toLocaleDateString("en-US", {
@@ -190,24 +117,9 @@ export function DocumentPreview({
 function DocSection({ title, rangeLabel, children }) {
   return (
     <div className="mb-3.5 mt-6">
-      <div className="mb-[5px] flex items-baseline justify-between gap-3">
-        <h3
-          className="m-0 uppercase text-accent"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            letterSpacing: "1.5px",
-            fontWeight: 400,
-          }}
-        >
-          {title}
-        </h3>
-        <span
-          className="uppercase tracking-[0.5px] text-dim-fg"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 9.5 }}
-        >
-          {rangeLabel}
-        </span>
+      <div className="mb-2 flex items-baseline justify-between gap-3">
+        <h3 className="m-0 text-[15px] font-bold text-fg">{title}</h3>
+        <span className="text-[12px] text-dim-fg">{rangeLabel}</span>
       </div>
       {children}
     </div>
@@ -250,29 +162,19 @@ function GoalReadingsBlock({ readings }) {
     <div className="flex flex-col gap-5">
       {grouped.map((g, gi) => (
         <div key={(g.l1.goal && g.l1.goal.id) || gi}>
-          <div className="flex items-baseline justify-between gap-3 border-b border-border pb-1.5">
-            <span
-              className="min-w-0 truncate text-fg"
-              style={{ fontFamily: "var(--font-display)", fontSize: 13.5, fontWeight: 600, letterSpacing: "-0.2px" }}
-              title={g.l1.goal?.title}
-            >
+          <div className="flex items-baseline justify-between gap-3 border-b border-line pb-1.5">
+            <span className="min-w-0 truncate text-[14px] font-bold text-fg" title={g.l1.goal?.title}>
               {g.l1.goal?.title || "(untitled L1)"}
               {g.l1.goal?.weightage > 0 ? (
-                <span className="ml-2 text-dim-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>
-                  {g.l1.goal.weightage}% weight
-                </span>
+                <span className="ml-2 text-[12px] font-normal text-dim-fg">{g.l1.goal.weightage}% weight</span>
               ) : null}
             </span>
             {g.l1.reading ? (
-              <span className="shrink-0 text-muted-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>
-                {g.l1.reading.value}
-              </span>
+              <span className="shrink-0 text-[12px] text-muted-fg">{g.l1.reading.value}</span>
             ) : null}
           </div>
           {g.items.length === 0 ? (
-            <div className="mt-2 text-dim-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 10.5 }}>
-              No L2s classified yet for this L1.
-            </div>
+            <div className="mt-2 text-[13px] text-dim-fg">No L2s classified yet for this L1.</div>
           ) : (
             <div className="mt-2.5 flex flex-col gap-3">
               {g.items.map((r) => (
@@ -297,31 +199,27 @@ function PreviewGoalBlock({ r }) {
   const evidence = Array.isArray(r.evidence) ? r.evidence : [];
 
   return (
-    <div style={{ borderLeft: "2px solid var(--border)", paddingLeft: 12 }}>
+    <div className="border-l-2 border-line pl-3">
       <div className="flex items-start justify-between gap-2">
-        <span className="min-w-0 text-[13px] font-medium text-fg" title={r.goal.title}>
+        <span className="min-w-0 text-[13.5px] font-semibold text-fg" title={r.goal.title}>
           {r.goal.title || "(untitled L2)"}
         </span>
         <div className="flex shrink-0 items-center gap-1.5">
-          {tier ? (
-            <span className="uppercase" style={{ fontFamily: "var(--font-mono)", fontSize: 9, fontWeight: 700, color: "var(--accent)" }}>
-              {tier}
-            </span>
-          ) : null}
+          {tier ? <Badge tone="lav">{tier}</Badge> : null}
           {r.reading?.statusLabel ? (
-            <StatusPill tone={r.reading.statusTone} label={r.reading.statusLabel} />
+            <Badge tone={STATUS_TONE[r.reading.statusTone] || "neutral"}>{r.reading.statusLabel}</Badge>
           ) : null}
         </div>
       </div>
-      <div className="mt-1 text-[11.5px] text-muted-fg">
-        <span className="uppercase text-dim-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}>Target </span>
+      <div className="mt-1 text-[12.5px] text-muted-fg">
+        <span className="text-dim-fg">Target </span>
         {expected || "—"}
-        <span className="uppercase text-dim-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}>  →  Achieved </span>
+        <span className="text-dim-fg">  →  Achieved </span>
         {r.reading?.value || "—"}
       </div>
       {reasoning ? (
-        <div className="mt-1 text-[11.5px] leading-[1.45] text-fg/80">
-          <span className="uppercase text-dim-fg" style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}>Assessment </span>
+        <div className="mt-1 text-[12.5px] leading-[1.45] text-fg">
+          <span className="text-dim-fg">Assessment </span>
           {reasoning}
           {v.confidence === "low" ? <span className="text-dim-fg"> · low confidence</span> : null}
         </div>
@@ -329,11 +227,8 @@ function PreviewGoalBlock({ r }) {
       {evidence.length ? (
         <ul className="mt-1.5 flex flex-col gap-1">
           {evidence.map((ev, i) => (
-            <li key={i} className="flex items-start gap-2 text-[11px] leading-[1.4] text-fg/80">
-              <span
-                className="mt-px shrink-0 uppercase tracking-[0.3px] text-dim-fg"
-                style={{ fontFamily: "var(--font-mono)", fontSize: 9, width: 40 }}
-              >
+            <li key={i} className="flex items-start gap-2 text-[12px] leading-[1.4] text-fg">
+              <span className="mt-px shrink-0 text-dim-fg" style={{ width: 40 }}>
                 {fmtDate(ev.ts)}
               </span>
               <span className="min-w-0">
@@ -341,7 +236,14 @@ function PreviewGoalBlock({ r }) {
                 {ev.url ? (
                   <>
                     {" "}
-                    <a href={ev.url} target="_blank" rel="noreferrer" className="text-accent hover:underline">↗</a>
+                    <a
+                      href={ev.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 font-bold text-fg hover:underline"
+                    >
+                      <ExternalLink size={11} />
+                    </a>
                   </>
                 ) : null}
               </span>
@@ -353,29 +255,9 @@ function PreviewGoalBlock({ r }) {
   );
 }
 
-function StatusPill({ tone, label }) {
-  const colors = STATUS_PILL_COLORS[tone] || STATUS_PILL_COLORS.muted;
-  return (
-    <span
-      className="shrink-0 rounded-full px-2 py-[2px] uppercase"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 9,
-        fontWeight: 700,
-        letterSpacing: "0.4px",
-        background: colors.bg,
-        color: colors.fg,
-      }}
-    >
-      {label}
-    </span>
-  );
-}
-
 function countL1(readings) {
   return readings.filter((r) => r.level === "L1").length;
 }
 function countL2(readings) {
   return readings.filter((r) => r.level === "L2").length;
 }
-

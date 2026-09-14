@@ -28,8 +28,8 @@
  */
 
 import { useMemo, useState } from "react";
-import { Minus, Plus, Check } from "lucide-react";
-import { Select, Input, ItemEvidence } from "@/components/ui";
+import { Minus, Plus, Check, X, ArrowRight } from "lucide-react";
+import { Select, Input, Button, Label, Badge, ItemEvidence } from "@/components/ui";
 import { useGoalInputs } from "@/features/goal-inputs";
 import { useGoalContext, resolveMilestoneItems } from "@/features/goal-context";
 import { useTierFillFeedback } from "@/features/goal-tiers";
@@ -112,12 +112,11 @@ export function ScaleEditor({ goal, weekStart, weekEnd, activeLabel, writeTs }) 
           type="button"
           onClick={() => pick(n)}
           className={cn(
-            "h-7 w-7 rounded-md border border-border text-[12px] font-medium transition-colors",
+            "h-7 w-7 rounded-[var(--radius-pill)] text-[12px] font-bold transition-colors",
             currentValue === n
-              ? "bg-accent text-accent-on"
-              : "text-muted-fg hover:bg-accent-dim/60 hover:text-fg",
+              ? "bg-ink text-ink-on"
+              : "bg-card-alt text-muted-fg hover:text-fg",
           )}
-          style={{ fontFamily: "var(--font-mono)" }}
         >
           {n}
         </button>
@@ -163,13 +162,11 @@ export function MilestoneEditor({ goal, spec, weekStart, weekEnd, activeLabel, w
 
   return (
     <div className="flex w-full flex-col gap-1.5">
-      <div className="flex items-center justify-between text-[11px] text-muted-fg" style={{ fontFamily: "var(--font-mono)" }}>
+      <div className="flex items-center justify-between text-[11.5px] text-muted-fg">
         <span>
           {done} / {total} done · {pct}%
         </span>
-        {weekStart && (
-          <span className="opacity-60">latest snapshot ≤ week-end</span>
-        )}
+        {weekStart && <span className="text-dim-fg">latest snapshot ≤ week-end</span>}
       </div>
       <div className="flex flex-col gap-1.5">
         {items.map((it) => (
@@ -178,10 +175,8 @@ export function MilestoneEditor({ goal, spec, weekStart, weekEnd, activeLabel, w
               type="button"
               onClick={() => toggle(it.id)}
               className={cn(
-                "flex w-fit items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] transition-colors",
-                it.done
-                  ? "bg-accent-dim text-fg"
-                  : "text-muted-fg hover:bg-accent-dim/40",
+                "flex w-fit items-center gap-1 rounded-[var(--radius-pill)] px-2.5 py-1 text-[12px] font-semibold transition-colors",
+                it.done ? "bg-mint text-mint-ink" : "bg-card-alt text-muted-fg hover:text-fg",
               )}
             >
               {it.done && <Check size={11} />}
@@ -230,23 +225,18 @@ export function FreeTextEditor({ goal, weekStart, weekEnd, activeLabel, writeTs 
         rows={2}
         maxLength={500}
         placeholder="Note for this week…"
-        className="w-full resize-none rounded-md border border-border bg-bg px-2 py-1.5 text-[12px]"
-        style={{ fontFamily: "var(--font-mono)" }}
+        className="w-full resize-none rounded-[var(--radius-lg)] bg-card-alt p-3 text-[13px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
       />
       <div className="flex items-center justify-between">
-        <span className="text-[10px] text-muted-fg/70">{draft.length} / 500</span>
-        <button
-          type="button"
+        <span className="text-[11.5px] text-dim-fg">{draft.length} / 500</span>
+        <Button
+          size="sm"
+          variant={dirty ? "ink" : "soft"}
           onClick={save}
           disabled={!dirty || draft.length === 0}
-          className={cn(
-            "rounded-md px-2.5 py-1 text-[10px] uppercase tracking-[0.4px] transition-opacity disabled:opacity-40",
-            "bg-accent text-accent-on",
-          )}
-          style={{ fontFamily: "var(--font-mono)" }}
         >
           {dirty ? "Save note" : "Saved"}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -277,15 +267,10 @@ export function DateLogEditor({ goal, weekStart, weekEnd, activeLabel, writeTs }
   return (
     <div className="flex items-center gap-2">
       <ValueChip value={weekCount} unit={weekCount === 1 ? "log" : "logs"} />
-      <button
-        type="button"
-        onClick={add}
-        className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] uppercase tracking-[0.4px] text-muted-fg transition-colors hover:bg-accent-dim/60 hover:text-fg"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
-        <Plus size={11} />
+      <Button size="sm" variant="soft" onClick={add}>
+        <Plus size={12} />
         Log
-      </button>
+      </Button>
     </div>
   );
 }
@@ -322,23 +307,17 @@ export function BeforeAfterEditor({ goal, weekStart, weekEnd, activeLabel, write
       <NumberField
         value={draft.baseline}
         onChange={(v) => setDraft((d) => ({ ...d, baseline: v }))}
-        label="baseline"
+        label="Baseline"
       />
-      <span className="text-[11px] text-muted-fg">→</span>
+      <ArrowRight size={12} className="shrink-0 text-muted-fg" aria-hidden="true" />
       <NumberField
         value={draft.current}
         onChange={(v) => setDraft((d) => ({ ...d, current: v }))}
-        label="current"
+        label="Current"
       />
-      <button
-        type="button"
-        onClick={save}
-        disabled={!dirty}
-        className="rounded-md px-2 py-1 text-[10px] uppercase tracking-[0.4px] bg-accent text-accent-on transition-opacity disabled:opacity-40"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
+      <Button size="sm" variant="ink" onClick={save} disabled={!dirty}>
         Save
-      </button>
+      </Button>
     </div>
   );
 }
@@ -425,38 +404,30 @@ export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel,
 
   return (
     <div className="flex w-full max-w-[320px] flex-col gap-2">
-      <div
-        className="flex items-baseline justify-between text-[11px] text-muted-fg"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
+      <div className="flex items-baseline justify-between text-[11.5px] text-muted-fg">
         <span>
           {inWindow.length} {noun}
           {inWindow.length === 1 ? "" : "s"} this week
         </span>
-        {totalDowntime > 0 && (
-          <span>Σ {totalDowntime} min downtime</span>
-        )}
+        {totalDowntime > 0 && <span>Σ {totalDowntime} min downtime</span>}
       </div>
 
       {inWindow.length > 0 && (
-        <ul className="flex flex-col gap-1 rounded-md border border-border bg-bg/40 p-1.5">
+        <ul className="flex flex-col gap-1 rounded-[var(--radius-lg)] bg-card-alt p-1.5">
           {inWindow.map((e) => (
             <li
               key={e.ts}
-              className="flex items-center justify-between gap-2 text-[11px]"
-              style={{ fontFamily: "var(--font-mono)" }}
+              className="flex items-center justify-between gap-2 text-[11.5px]"
             >
               <span className="flex items-center gap-1.5">
-                <span className="rounded-[3px] border border-border px-1 py-px text-[9px] uppercase text-muted-fg">
-                  {e.value.severity || "P?"}
-                </span>
+                <Badge tone="neutral">{e.value.severity || "P?"}</Badge>
                 <span className="text-fg">{e.value.downtime ?? 0}m</span>
                 {e.value.link && (
                   <a
                     href={e.value.link}
                     target="_blank"
                     rel="noreferrer"
-                    className="truncate text-muted-fg underline"
+                    className="truncate font-bold text-fg underline"
                   >
                     link
                   </a>
@@ -465,20 +436,18 @@ export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel,
               <button
                 type="button"
                 onClick={() => remove(e.ts)}
-                className="text-[10px] text-muted-fg/60 hover:text-fg"
+                className="shrink-0 text-muted-fg hover:text-fg"
+                aria-label="Remove incident"
                 title="Remove incident"
               >
-                ×
+                <X size={12} />
               </button>
             </li>
           ))}
         </ul>
       )}
 
-      <div
-        className="flex flex-wrap items-center gap-1.5"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
+      <div className="flex flex-wrap items-center gap-1.5">
         <Select
           value={severity}
           onChange={(ev) => setSeverity(ev.target.value)}
@@ -502,26 +471,18 @@ export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel,
               ? "Duration (optional, minutes)"
               : "Downtime (minutes)"
           }
-          className="h-7 w-16 px-1.5 text-[11px]"
+          className="h-9 w-16 px-2 text-[12.5px]"
         />
         <Input
           type="url"
           value={link}
           onChange={(ev) => setLink(ev.target.value)}
           placeholder="link (optional)"
-          className="h-7 min-w-0 flex-1 px-1.5 text-[11px]"
+          className="h-9 min-w-0 flex-1 px-2 text-[12.5px]"
         />
-        <button
-          type="button"
-          onClick={log}
-          disabled={!canLog}
-          className={cn(
-            "rounded-md bg-accent px-2.5 py-1 text-[10px] uppercase tracking-[0.4px] text-accent-on transition-opacity",
-            !canLog && "opacity-40",
-          )}
-        >
+        <Button size="sm" onClick={log} disabled={!canLog}>
           Log
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -583,21 +544,15 @@ export function RecurringMilestoneEditor({ goal, spec, activeLabel, writeTs }) {
 
   return (
     <div className="flex w-full flex-col gap-1.5">
-      <div
-        className="flex items-baseline justify-between text-[11px] text-muted-fg"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
+      <div className="flex items-baseline justify-between text-[11.5px] text-muted-fg">
         <span>
           {done} / {total} this {cadenceWord(cadence)} · {pct}%
         </span>
-        <span className="opacity-70">{activePeriodKey}</span>
+        <span className="text-dim-fg">{activePeriodKey}</span>
       </div>
       <div className="flex flex-col gap-1.5">
         {items.length === 0 ? (
-          <span
-            className="text-[10px] text-muted-fg/70"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
+          <span className="text-[11.5px] text-dim-fg">
             No checklist items — define them via the dashboard widget first.
           </span>
         ) : (
@@ -607,10 +562,8 @@ export function RecurringMilestoneEditor({ goal, spec, activeLabel, writeTs }) {
                 type="button"
                 onClick={() => toggle(it.id)}
                 className={cn(
-                  "flex w-fit items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] transition-colors",
-                  it.done
-                    ? "bg-accent-dim text-fg"
-                    : "text-muted-fg hover:bg-accent-dim/40",
+                  "flex w-fit items-center gap-1 rounded-[var(--radius-pill)] px-2.5 py-1 text-[12px] font-semibold transition-colors",
+                  it.done ? "bg-mint text-mint-ink" : "bg-card-alt text-muted-fg hover:text-fg",
                 )}
               >
                 {it.done && <Check size={11} />}
@@ -637,14 +590,7 @@ export function AutoReadout({ value, unit, target, hint }) {
   return (
     <div className="flex items-center gap-2">
       <ValueChip value={value} unit={unit} target={target} suffix={target ? `${target.op}${target.value}` : null} />
-      {hint && (
-        <span
-          className="text-[10px] uppercase tracking-[0.4px] text-muted-fg/70"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          {hint}
-        </span>
-      )}
+      {hint && <span className="text-[11.5px] text-dim-fg">{hint}</span>}
     </div>
   );
 }
@@ -653,10 +599,7 @@ export function AutoReadout({ value, unit, target, hint }) {
 
 export function UnsupportedStub({ message }) {
   return (
-    <div
-      className="rounded-md border border-dashed border-border px-2.5 py-1 text-[11px] text-muted-fg/80"
-      style={{ fontFamily: "var(--font-mono)" }}
-    >
+    <div className="rounded-[var(--radius-lg)] bg-card-alt px-3 py-2 text-[12px] text-muted-fg">
       {/* Honest copy (audit #238): no inline editor is planned for these
           kinds — composed trackers fill per-period on their own widget,
           which is a design decision, not a pending feature. */}
@@ -673,12 +616,9 @@ function StepButton({ onClick, children, primary, ...rest }) {
       type="button"
       onClick={onClick}
       className={cn(
-        "flex h-7 min-w-7 items-center justify-center rounded-md border border-border px-1.5 text-[11px] font-medium transition-colors",
-        primary
-          ? "bg-accent text-accent-on hover:opacity-90"
-          : "text-muted-fg hover:bg-accent-dim/60 hover:text-fg",
+        "flex h-8 min-w-8 items-center justify-center rounded-[var(--radius-pill)] px-2 text-[12px] font-bold transition-colors",
+        primary ? "bg-ink text-ink-on hover:opacity-90" : "bg-card-alt text-muted-fg hover:text-fg",
       )}
-      style={{ fontFamily: "var(--font-mono)" }}
       {...rest}
     >
       {children}
@@ -688,18 +628,13 @@ function StepButton({ onClick, children, primary, ...rest }) {
 
 function NumberField({ value, onChange, label }) {
   return (
-    <label className="flex items-center gap-1">
-      <span
-        className="text-[10px] uppercase tracking-[0.4px] text-muted-fg/70"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
-        {label}
-      </span>
+    <label className="flex items-center gap-1.5">
+      <Label className="shrink-0">{label}</Label>
       <Input
         type="number"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-7 w-16 px-1.5 text-[12px]"
+        className="h-9 w-16 px-2 text-[12.5px]"
       />
     </label>
   );
@@ -713,23 +648,17 @@ function ValueChip({ value, unit, target, suffix }) {
     ? "—"
     : String(value);
   const meetsTarget = evalMet(numeric, target);
+  const toneClass =
+    meetsTarget === true
+      ? "bg-mint text-mint-ink"
+      : meetsTarget === false
+        ? "bg-peach text-peach-ink"
+        : "bg-card-alt text-fg";
   return (
-    <div
-      className={cn(
-        "flex items-baseline gap-1 rounded-md border border-border px-2 py-1",
-        meetsTarget === true
-          ? "border-success/40 bg-success/5"
-          : meetsTarget === false
-          ? "border-amber/40 bg-amber/5"
-          : "bg-bg",
-      )}
-      style={{ fontFamily: "var(--font-mono)" }}
-    >
-      <span className="text-[13px] font-semibold text-fg">{display}</span>
-      {unit && <span className="text-[10px] text-muted-fg">{unit}</span>}
-      {suffix && (
-        <span className="ml-1 text-[10px] text-muted-fg/70">/ {suffix}</span>
-      )}
+    <div className={cn("flex items-baseline gap-1 rounded-[var(--radius-lg)] px-2.5 py-1.5", toneClass)}>
+      <span className="text-[13px] font-extrabold tabular-nums">{display}</span>
+      {unit && <span className="text-[11px] opacity-80">{unit}</span>}
+      {suffix && <span className="text-[11px] opacity-70">/ {suffix}</span>}
     </div>
   );
 }

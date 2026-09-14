@@ -4,27 +4,15 @@
  * CodeRubricWidget — AI-graded pull requests scored against a user-defined
  * rubric captured in `spec.context.answers`.
  *
- * Visual shape (inverse theme):
- *   ┌──────────────────────────────────────────────┐
- *   │ RUBRIC · YTD · 14 of 18 passing              │
- *   │ [goal title]                                  │
- *   │ ───────────────                               │
- *   │ 78%  pass rate          [Grade now]          │
- *   │ ▓▓▓▓▓▓▓▓▓▓░░░                                │
- *   │ ─────                                         │
- *   │ #13  ESD-110 audit logging             ✓ pass│
- *   │ #11  ESD-108 rate limiting             ✗ fail│
- *   │      └─ reviewer concern unaddressed…        │
- *   │ …                                             │
- *   └──────────────────────────────────────────────┘
- *
  * All grading happens client-side via the `useGradedPrs` hook; this
  * component is purely presentational.
  */
 
 import { useMemo, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { Badge, Button, Label } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { WidgetShell } from "../widget-shell";
 import { useGradedPrs } from "@/features/grading";
 import { weekLabel, weekRangeFromLabel } from "@/lib/date";
@@ -144,48 +132,24 @@ export function CodeRubricWidget({ spec, goal, variant = "light", className, onR
   // Empty / setup states come first — short-circuit before the grid.
   if (!hasGithub) {
     return (
-      <WidgetShell
-        spec={spec}
-        variant={variant}
-        label={label}
-        title={goal?.title || spec.title}
-        onRetry={onRetry}
-        className={className}
-      >
-        <EmptyNote variant={variant}>
-          Connect GitHub or GitLab to grade pull requests against your rubric.
-        </EmptyNote>
+      <WidgetShell spec={spec} variant={variant} label={label} title={goal?.title || spec.title} onRetry={onRetry} className={className}>
+        <EmptyNote>Connect GitHub or GitLab to grade pull requests against your rubric.</EmptyNote>
       </WidgetShell>
     );
   }
   if (rubric.length === 0) {
     return (
-      <WidgetShell
-        spec={spec}
-        variant={variant}
-        label={label}
-        title={goal?.title || spec.title}
-        onRetry={onRetry}
-        className={className}
-      >
-        <EmptyNote variant={variant}>
-          Define your rubric first — use <strong>edit truths</strong> below,
-          add one criterion per line, then come back here to grade.
+      <WidgetShell spec={spec} variant={variant} label={label} title={goal?.title || spec.title} onRetry={onRetry} className={className}>
+        <EmptyNote>
+          Define your rubric first — use <strong>edit truths</strong> below, add one criterion per line, then come back here to grade.
         </EmptyNote>
       </WidgetShell>
     );
   }
   if (isListLoading && prs.length === 0) {
     return (
-      <WidgetShell
-        spec={spec}
-        variant={variant}
-        label={label}
-        title={goal?.title || spec.title}
-        onRetry={onRetry}
-        className={className}
-      >
-        <EmptyNote variant={variant}>Reading your PRs…</EmptyNote>
+      <WidgetShell spec={spec} variant={variant} label={label} title={goal?.title || spec.title} onRetry={onRetry} className={className}>
+        <EmptyNote>Reading your PRs…</EmptyNote>
       </WidgetShell>
     );
   }
@@ -194,69 +158,31 @@ export function CodeRubricWidget({ spec, goal, variant = "light", className, onR
     const isRateLimit =
       /rate limit|403/i.test(msg) || /secondary rate/i.test(msg);
     return (
-      <WidgetShell
-        spec={spec}
-        variant={variant}
-        label={label}
-        title={goal?.title || spec.title}
-        onRetry={onRetry}
-        className={className}
-      >
+      <WidgetShell spec={spec} variant={variant} label={label} title={goal?.title || spec.title} onRetry={onRetry} className={className}>
         <div className="flex h-full flex-col justify-between gap-2">
-          <EmptyNote variant={variant}>
+          <EmptyNote>
             {isRateLimit ? (
               <>
-                Provider rate limit hit — the grader pauses and retries
-                automatically; wait a moment and press <strong>Retry</strong>{" "}
+                Provider rate limit hit — the grader pauses and retries automatically; wait a moment and press <strong>Retry</strong>{" "}
                 if it stalls.
                 <br />
-                <span
-                  style={{
-                    fontSize: 10,
-                    color:
-                      variant === "light"
-                        ? "rgba(255,255,255,0.55)"
-                        : "var(--dim-fg)",
-                  }}
-                >
-                  {msg.slice(0, 180)}
-                </span>
+                <span className="text-[11px] text-dim-fg">{msg.slice(0, 180)}</span>
               </>
             ) : (
               <>Could not load PRs: {msg}</>
             )}
           </EmptyNote>
-          <button
-            type="button"
-            onClick={refreshList}
-            className="self-start rounded-[var(--radius-sub)] px-3 py-1 uppercase font-bold transition-opacity"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10,
-              letterSpacing: "0.5px",
-              background: variant === "light" ? "#ffffff" : "var(--accent)",
-              color: variant === "light" ? "var(--accent)" : "var(--accent-on)",
-            }}
-          >
+          <Button size="sm" className="self-start" onClick={refreshList}>
             Retry
-          </button>
+          </Button>
         </div>
       </WidgetShell>
     );
   }
   if (prs.length === 0) {
     return (
-      <WidgetShell
-        spec={spec}
-        variant={variant}
-        label={label}
-        title={goal?.title || spec.title}
-        onRetry={onRetry}
-        className={className}
-      >
-        <EmptyNote variant={variant}>
-          No PRs authored by you since Jan 1 — nothing to grade yet.
-        </EmptyNote>
+      <WidgetShell spec={spec} variant={variant} label={label} title={goal?.title || spec.title} onRetry={onRetry} className={className}>
+        <EmptyNote>No PRs authored by you since Jan 1 — nothing to grade yet.</EmptyNote>
       </WidgetShell>
     );
   }
@@ -275,31 +201,12 @@ export function CodeRubricWidget({ spec, goal, variant = "light", className, onR
       className={className}
     >
       <div className="flex min-h-0 flex-1 flex-col gap-2">
-        <PctRow pct={summary.pct} variant={variant} />
-        <div
-          className="flex h-1.5 w-full overflow-hidden rounded-full"
-          style={{
-            background:
-              variant === "light" ? "rgba(255,255,255,0.18)" : "var(--border)",
-          }}
-        >
-          <div
-            className="h-full"
-            style={{
-              width: `${summary.pct ?? 0}%`,
-              background:
-                variant === "light" ? "#ffffff" : "var(--accent)",
-            }}
-          />
+        <PctRow pct={summary.pct} />
+        <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-card-alt">
+          <div className="h-full bg-ink" style={{ width: `${summary.pct ?? 0}%` }} />
         </div>
-        <ThisWeekRow
-          variant={variant}
-          weekLabel={thisWeek?.weekLabel}
-          stats={thisWeekStats}
-          prCount={thisWeekPrs.length}
-        />
+        <ThisWeekRow weekLabel={thisWeek?.weekLabel} stats={thisWeekStats} prCount={thisWeekPrs.length} />
         <GradeActionRow
-          variant={variant}
           progress={progress}
           hasUngraded={hasUngraded}
           hasUngradedThisWeek={hasUngradedThisWeek}
@@ -311,32 +218,16 @@ export function CodeRubricWidget({ spec, goal, variant = "light", className, onR
           allWeeksWithPrs={allWeeksWithPrs}
           onGradeWeek={(weekPrs) => grade(weekPrs)}
         />
-        <ListDisclosure
-          variant={variant}
-          open={listOpen}
-          count={prs.length}
-          summary={summary}
-          onToggle={() => setListOpen((v) => !v)}
-        />
+        <ListDisclosure open={listOpen} count={prs.length} summary={summary} onToggle={() => setListOpen((v) => !v)} />
         {listOpen ? (
-          <ul
-            className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              maxHeight: 320,
-            }}
-          >
+          <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1 text-[13px]" style={{ maxHeight: 320 }}>
             {prs.map((pr) => (
               <PrRow
                 key={pr.id}
                 pr={pr}
                 verdict={verdictsByPr.get(pr.id)}
                 expanded={expandedPrId === pr.id}
-                onToggle={() =>
-                  setExpandedPrId((id) => (id === pr.id ? null : pr.id))
-                }
-                variant={variant}
+                onToggle={() => setExpandedPrId((id) => (id === pr.id ? null : pr.id))}
               />
             ))}
           </ul>
@@ -346,29 +237,13 @@ export function CodeRubricWidget({ spec, goal, variant = "light", className, onR
   );
 }
 
-function PctRow({ pct, variant }) {
+function PctRow({ pct }) {
   return (
     <div className="flex items-baseline gap-2">
-      <div
-        className="font-semibold leading-none"
-        style={{
-          fontFamily: "var(--font-display)",
-          fontSize: 44,
-          letterSpacing: "-1.6px",
-        }}
-      >
+      <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
         {pct == null ? "—" : `${pct}%`}
       </div>
-      <div
-        className="uppercase tracking-[0.5px]"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          color: variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)",
-        }}
-      >
-        pass rate
-      </div>
+      <Label>pass rate</Label>
     </div>
   );
 }
@@ -380,33 +255,19 @@ function PctRow({ pct, variant }) {
  * showing "0 PRs merged" is more informative than the row vanishing
  * (which made the user think the per-week framing wasn't deployed).
  */
-function ThisWeekRow({ variant, weekLabel, stats, prCount }) {
-  const muted =
-    variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)";
-  const fg = variant === "light" ? "#ffffff" : "var(--fg)";
+function ThisWeekRow({ weekLabel, stats, prCount }) {
   let right;
   if (prCount === 0) {
     right = "0 PRs merged";
   } else if (stats.graded === 0) {
     right = `${prCount} to grade`;
   } else {
-    right = `${stats.pass}/${stats.graded} pass${
-      stats.ungraded > 0 ? ` · ${stats.ungraded} to grade` : ""
-    }`;
+    right = `${stats.pass}/${stats.graded} pass${stats.ungraded > 0 ? ` · ${stats.ungraded} to grade` : ""}`;
   }
   return (
-    <div
-      className="flex items-baseline justify-between gap-2"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 10,
-        color: muted,
-      }}
-    >
-      <span className="uppercase tracking-[0.4px]">
-        This week{weekLabel ? ` · ${weekLabel}` : ""}
-      </span>
-      <span style={{ color: fg }}>{right}</span>
+    <div className="flex items-baseline justify-between gap-2 text-[12.5px] text-muted-fg">
+      <span>This week{weekLabel ? ` · ${weekLabel}` : ""}</span>
+      <span className="text-fg">{right}</span>
     </div>
   );
 }
@@ -427,7 +288,6 @@ function ThisWeekRow({ variant, weekLabel, stats, prCount }) {
  * When everything's graded both collapse to "All graded".
  */
 function GradeActionRow({
-  variant,
   progress,
   hasUngraded,
   hasUngradedThisWeek,
@@ -449,8 +309,7 @@ function GradeActionRow({
 
   let thisWeekLabel;
   if (running) thisWeekLabel = `Grading ${progress.done}/${progress.total}…`;
-  else if (hasUngradedThisWeek)
-    thisWeekLabel = `Grade week (${thisWeekUngraded})`;
+  else if (hasUngradedThisWeek) thisWeekLabel = `Grade week (${thisWeekUngraded})`;
   else thisWeekLabel = "Week done";
 
   let ytdLabel;
@@ -460,16 +319,9 @@ function GradeActionRow({
 
   return (
     <div className="flex items-center justify-between gap-2">
-      <div
-        className="uppercase tracking-[0.5px]"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 9.5,
-          color: variant === "light" ? "rgba(255,255,255,0.6)" : "var(--dim-fg)",
-        }}
-      >
+      <Label>
         {totalPrs} PR{totalPrs === 1 ? "" : "s"} YTD
-      </div>
+      </Label>
       <div className="flex items-center gap-1.5">
         {/* Primary button + adjacent chevron form a "split button":
             click the wide part → grade this week; click the chevron
@@ -477,59 +329,19 @@ function GradeActionRow({
             Popover.Trigger so the wide button keeps its straight
             onClick handler. */}
         <div className="flex items-stretch">
-          <button
-            type="button"
-            onClick={onGradeThisWeek}
+          <Button
+            size="sm"
             disabled={thisWeekDisabled}
-            className={
-              hasPastWeeks
-                ? "rounded-l-[var(--radius-sub)] px-3 py-1 uppercase font-bold transition-opacity disabled:opacity-40"
-                : "rounded-[var(--radius-sub)] px-3 py-1 uppercase font-bold transition-opacity disabled:opacity-40"
-            }
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10,
-              letterSpacing: "0.5px",
-              background: variant === "light" ? "#ffffff" : "var(--accent)",
-              color:
-                variant === "light" ? "var(--accent)" : "var(--accent-on)",
-            }}
+            className={hasPastWeeks ? "rounded-r-none pr-3" : ""}
+            onClick={onGradeThisWeek}
           >
             {thisWeekLabel}
-          </button>
-          {hasPastWeeks ? (
-            <WeekPickerDropdown
-              variant={variant}
-              running={running}
-              weeks={allWeeksWithPrs}
-              onPick={onGradeWeek}
-            />
-          ) : null}
+          </Button>
+          {hasPastWeeks ? <WeekPickerDropdown running={running} weeks={allWeeksWithPrs} onPick={onGradeWeek} /> : null}
         </div>
-        <button
-          type="button"
-          onClick={onGradeAll}
-          disabled={ytdDisabled}
-          title={
-            ytdDisabled && !hasUngraded
-              ? "Nothing left to grade"
-              : "Grade everything ungraded this year"
-          }
-          className="rounded-[var(--radius-sub)] border px-2 py-1 uppercase font-bold transition-opacity disabled:opacity-40"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9.5,
-            letterSpacing: "0.5px",
-            background: "transparent",
-            borderColor:
-              variant === "light"
-                ? "rgba(255,255,255,0.4)"
-                : "var(--border)",
-            color: variant === "light" ? "#ffffff" : "var(--fg)",
-          }}
-        >
+        <Button size="sm" variant="soft" disabled={ytdDisabled} title={ytdDisabled && !hasUngraded ? "Nothing left to grade" : "Grade everything ungraded this year"} onClick={onGradeAll}>
           {ytdLabel}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -542,9 +354,7 @@ function GradeActionRow({
  * see them without accidentally re-grading. Picking a week fires
  * `onPick(weekPrs)` immediately — there's no two-step "confirm" UX.
  */
-function WeekPickerDropdown({ variant, running, weeks, onPick }) {
-  const triggerBg = variant === "light" ? "#ffffff" : "var(--accent)";
-  const triggerFg = variant === "light" ? "var(--accent)" : "var(--accent-on)";
+function WeekPickerDropdown({ running, weeks, onPick }) {
   return (
     <Popover.Root>
       <Popover.Trigger asChild>
@@ -552,13 +362,7 @@ function WeekPickerDropdown({ variant, running, weeks, onPick }) {
           type="button"
           disabled={running}
           aria-label="Pick a past week to grade"
-          className="rounded-r-[var(--radius-sub)] border-l px-1.5 py-1 transition-opacity disabled:opacity-40"
-          style={{
-            background: triggerBg,
-            color: triggerFg,
-            borderLeftColor:
-              variant === "light" ? "rgba(0,0,0,0.10)" : "rgba(0,0,0,0.18)",
-          }}
+          className="rounded-r-[var(--radius-pill)] bg-ink px-2 text-ink-on transition-opacity disabled:opacity-40"
         >
           <ChevronDown size={12} />
         </button>
@@ -567,53 +371,31 @@ function WeekPickerDropdown({ variant, running, weeks, onPick }) {
         <Popover.Content
           align="end"
           sideOffset={6}
-          className="z-50 w-[260px] rounded-md border shadow-lg"
-          style={{
-            background: "var(--card)",
-            borderColor: "var(--border)",
-            maxHeight: 320,
-            overflowY: "auto",
-            fontFamily: "var(--font-mono)",
-            fontSize: 11,
-          }}
+          className="z-50 w-[280px] overflow-hidden rounded-[var(--radius-lg)] bg-card"
+          style={{ boxShadow: "var(--shadow-float)", maxHeight: 320, overflowY: "auto" }}
         >
-          <div
-            className="border-b px-2 py-1.5 uppercase tracking-[0.4px]"
-            style={{
-              borderColor: "var(--border)",
-              fontSize: 9.5,
-              color: "var(--muted-fg)",
-            }}
-          >
-            Grade a specific week
+          <div className="border-b border-line px-3 py-2">
+            <Label>Grade a specific week</Label>
           </div>
           <ul className="flex flex-col">
             {weeks.map((w) => {
               const fullyGraded = w.stats.ungraded === 0;
-              const disabled = fullyGraded;
               return (
                 <li key={w.weekLabel}>
                   <button
                     type="button"
                     onClick={() => {
-                      if (!disabled) onPick(w.prs);
+                      if (!fullyGraded) onPick(w.prs);
                     }}
-                    disabled={disabled}
-                    className="flex w-full items-baseline justify-between gap-2 px-2 py-1.5 text-left transition-opacity disabled:opacity-50 hover:bg-accent-dim/30"
+                    disabled={fullyGraded}
+                    className="flex w-full items-baseline justify-between gap-2 px-3 py-2 text-left text-[12.5px] transition-opacity hover:bg-card-alt disabled:opacity-50"
                   >
-                    <span
-                      className="font-semibold"
-                      style={{ color: "var(--fg)" }}
-                    >
-                      {w.weekLabel}
-                    </span>
-                    <span style={{ color: "var(--muted-fg)" }}>
+                    <span className="font-bold text-fg">{w.weekLabel}</span>
+                    <span className="text-muted-fg">
                       {fullyGraded
                         ? `${w.stats.pass}/${w.stats.graded} · all graded`
                         : w.stats.graded === 0
-                          ? `${w.prs.length} PR${
-                              w.prs.length === 1 ? "" : "s"
-                            } · ${w.stats.ungraded} to grade`
+                          ? `${w.prs.length} PR${w.prs.length === 1 ? "" : "s"} · ${w.stats.ungraded} to grade`
                           : `${w.stats.pass}/${w.stats.graded} pass · ${w.stats.ungraded} to grade`}
                     </span>
                   </button>
@@ -661,115 +443,40 @@ function summarisePrs(prList, verdictsByPr) {
  * list is collapsed — the count gives them the gist; expand to see
  * which PRs.
  */
-function ListDisclosure({ variant, open, count, summary, onToggle }) {
-  const muted =
-    variant === "light" ? "rgba(255,255,255,0.65)" : "var(--muted-fg)";
-  const fg = variant === "light" ? "#ffffff" : "var(--fg)";
+function ListDisclosure({ open, count, summary, onToggle }) {
   const passCount = summary?.pass ?? 0;
   const failCount = (summary?.total ?? 0) - passCount;
   const ungraded = summary?.ungraded ?? 0;
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-expanded={open}
-      className="group flex items-center justify-between gap-2 border-t pt-2 text-left"
-      style={{
-        borderColor:
-          variant === "light"
-            ? "rgba(255,255,255,0.18)"
-            : "var(--border)",
-      }}
-    >
-      <span
-        className="flex items-baseline gap-1.5"
-        style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: muted }}
-      >
-        <span
-          aria-hidden="true"
-          className="inline-block transition-transform"
-          style={{
-            transform: open ? "rotate(90deg)" : "rotate(0deg)",
-            transitionDuration: "200ms",
-            transitionTimingFunction: "cubic-bezier(0.22, 0.61, 0.36, 1)",
-            color: fg,
-          }}
-        >
-          ›
-        </span>
-        <span
-          className="uppercase tracking-[0.4px] font-bold"
-          style={{ color: fg }}
-        >
-          {open ? "Hide PRs" : "Show PRs"}
-        </span>
-        <span className="uppercase tracking-[0.4px]">·</span>
-        <span className="uppercase tracking-[0.4px]">
+    <button type="button" onClick={onToggle} aria-expanded={open} className="group flex items-center justify-between gap-2 border-t border-line pt-2 text-left">
+      <span className="flex items-baseline gap-1.5 text-[12.5px] text-muted-fg">
+        <ChevronRight size={13} className={cn("shrink-0 text-fg transition-transform", open && "rotate-90")} aria-hidden="true" />
+        <span className="font-bold text-fg">{open ? "Hide PRs" : "Show PRs"}</span>
+        <span>·</span>
+        <span>
           {passCount} pass · {failCount} fail
           {ungraded > 0 ? ` · ${ungraded} ungraded` : ""}
         </span>
       </span>
-      <span
-        className="uppercase tracking-[0.5px]"
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 9.5,
-          color: muted,
-        }}
-      >
-        {count} total
-      </span>
+      <Label>{count} total</Label>
     </button>
   );
 }
 
-function PrRow({ pr, verdict, expanded, onToggle, variant }) {
-  const muted = variant === "light" ? "rgba(255,255,255,0.62)" : "var(--muted-fg)";
-  const dim = variant === "light" ? "rgba(255,255,255,0.42)" : "var(--dim-fg)";
-  const fg = variant === "light" ? "#ffffff" : "var(--fg)";
-
+function PrRow({ pr, verdict, expanded, onToggle }) {
   return (
     <li className="flex flex-col">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center gap-2 py-1 text-left"
-        style={{ color: fg }}
-      >
-        <span
-          className="shrink-0 font-bold"
-          style={{
-            color: variant === "light" ? "rgba(255,255,255,0.85)" : "var(--accent)",
-            width: 46,
-          }}
-        >
-          #{pr.number}
-        </span>
+      <button type="button" onClick={onToggle} className="flex w-full items-center gap-2 py-1 text-left text-fg">
+        <span className="w-[46px] shrink-0 font-mono font-bold text-lav-ink">#{pr.number}</span>
         <span className="flex-1 truncate" title={pr.title}>
           {pr.title}
         </span>
-        <VerdictBadge verdict={verdict} variant={variant} />
-        <span
-          className="shrink-0 uppercase"
-          style={{ color: dim, fontSize: 9.5 }}
-        >
-          {pr.state}
-        </span>
+        <VerdictBadge verdict={verdict} />
+        <span className="shrink-0 text-[11px] text-dim-fg">{pr.state}</span>
       </button>
       {expanded && verdict ? (
-        <div
-          className="ml-[54px] mb-1 rounded-[var(--radius-sub)] px-2 py-1.5"
-          style={{
-            background:
-              variant === "light" ? "rgba(255,255,255,0.08)" : "var(--card-alt)",
-            color: muted,
-            fontSize: 10.5,
-            lineHeight: 1.45,
-          }}
-        >
-          <div style={{ color: fg, marginBottom: verdict.violations?.length ? 4 : 0 }}>
-            {verdict.reasoning || "(no reasoning)"}
-          </div>
+        <div className="mb-1 ml-[54px] rounded-[var(--radius-md)] bg-card-alt px-2.5 py-2 text-[12px] leading-[1.45] text-muted-fg">
+          <div className="mb-1 text-fg">{verdict.reasoning || "(no reasoning)"}</div>
           {verdict.violations?.length ? (
             <ul className="list-inside list-disc">
               {verdict.violations.map((v, i) => (
@@ -778,17 +485,8 @@ function PrRow({ pr, verdict, expanded, onToggle, variant }) {
             </ul>
           ) : null}
           {pr.htmlUrl ? (
-            <a
-              href={pr.htmlUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-1 inline-block uppercase tracking-[0.5px]"
-              style={{
-                fontSize: 9.5,
-                color: variant === "light" ? "rgba(255,255,255,0.85)" : "var(--accent)",
-              }}
-            >
-              open ↗
+            <a href={pr.htmlUrl} target="_blank" rel="noreferrer" className="mt-1 inline-block font-bold text-fg">
+              Open
             </a>
           ) : null}
         </div>
@@ -797,63 +495,22 @@ function PrRow({ pr, verdict, expanded, onToggle, variant }) {
   );
 }
 
-function VerdictBadge({ verdict, variant }) {
-  if (!verdict) {
-    return (
-      <span
-        className="shrink-0 uppercase"
-        style={{
-          color: variant === "light" ? "rgba(255,255,255,0.5)" : "var(--dim-fg)",
-          fontSize: 9.5,
-        }}
-      >
-        ungraded
-      </span>
-    );
-  }
+function VerdictBadge({ verdict }) {
+  if (!verdict) return <span className="shrink-0 text-[11px] text-dim-fg">ungraded</span>;
   if (verdict.errored) {
     return (
-      <span
-        className="shrink-0 uppercase"
-        title={verdict.reasoning}
-        style={{
-          color: variant === "light" ? "rgba(255,255,255,0.62)" : "var(--muted-fg)",
-          fontSize: 9.5,
-        }}
-      >
+      <span className="shrink-0 text-[11px] text-muted-fg" title={verdict.reasoning}>
         err
       </span>
     );
   }
   return (
-    <span
-      className="shrink-0 font-bold uppercase"
-      style={{
-        color: verdict.pass
-          ? "var(--accent-2)"
-          : variant === "light"
-            ? "#ffffff"
-            : "var(--bad)",
-        fontSize: 10,
-      }}
-    >
-      {verdict.pass ? "✓ pass" : "✗ fail"}
-    </span>
+    <Badge tone={verdict.pass ? "mint" : "peach"} className="shrink-0">
+      {verdict.pass ? "Pass" : "Fail"}
+    </Badge>
   );
 }
 
-function EmptyNote({ children, variant }) {
-  return (
-    <div
-      className="flex h-full items-center"
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 11,
-        lineHeight: 1.5,
-        color: variant === "light" ? "rgba(255,255,255,0.72)" : "var(--muted-fg)",
-      }}
-    >
-      {children}
-    </div>
-  );
+function EmptyNote({ children }) {
+  return <div className="flex h-full items-center text-[13px] leading-[1.5] text-muted-fg">{children}</div>;
 }

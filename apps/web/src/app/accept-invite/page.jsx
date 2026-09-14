@@ -28,18 +28,8 @@ export const dynamic = "force-dynamic";
 
 export default function AcceptInvitePage() {
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "var(--bg)",
-        color: "var(--fg)",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <Suspense fallback={null}>
-        <AcceptInviteForm />
-      </Suspense>
-    </main>
+    <Suspense fallback={null}>
+      <AcceptInviteForm />
+    </Suspense>
   );
 }

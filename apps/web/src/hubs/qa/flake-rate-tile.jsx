@@ -34,7 +34,7 @@
  *   when we wire JUnit-per-build fetching.
  *
  * The headline number degrades gracefully:
- *   - Jenkins not connected → "—" + Connect Jenkins → link
+ *   - Jenkins not connected → "—" + Connect Jenkins link
  *   - No completed builds in window → "—" + "no recent builds" copy
  *   - <5 completed builds → number shown, "low signal" subtitle
  *   - >=5 builds → headline with comparison spark
@@ -42,7 +42,8 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { BentoTile } from "@/components/ui";
+import { ArrowRight } from "lucide-react";
+import { Badge, BentoTile, Label } from "@/components/ui";
 import { useHubLink, useQaHubConfig } from "@/features/hubs";
 import { useIntegrations } from "@/features/integrations";
 import { useJenkinsBuildsForJob } from "@/features/integrations/hooks";
@@ -71,16 +72,15 @@ export function FlakeRateTile() {
       label={isDemoJob ? "Flake rate · demo data" : "Flake rate · last 30d"}
       right={
         connected ? (
-          <span
-            style={meta}
+          <Label
             title={
               isDemoJob
                 ? "Reading the synthetic qa-sim-target job. Pick your real Jenkins job in Settings → QA Hub config."
                 : undefined
             }
           >
-            {isDemoJob ? "qa-sim-target · demo" : "UNSTABLE / completed"}
-          </span>
+            {isDemoJob ? "qa-sim-target · demo" : "unstable / completed"}
+          </Label>
         ) : null
       }
     >
@@ -95,12 +95,12 @@ function NotConnectedBody() {
     <div className="flex h-full flex-col justify-between">
       <Headline value="—" muted />
       <div>
-        <p className="text-muted-fg" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+        <p className="text-[12.5px] leading-[1.5] text-muted-fg">
           Connect Jenkins to see how often the suite goes yellow without a
           real failure.
         </p>
-        <Link href={link("/settings")} style={ctaLink}>
-          Connect Jenkins →
+        <Link href={link("/settings")} className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-bold text-fg">
+          Connect Jenkins <ArrowRight size={13} />
         </Link>
       </div>
     </div>
@@ -125,20 +125,16 @@ function Body({ jobName }) {
     <div className="flex h-full flex-col justify-between">
       <div>
         <Headline value={`${Math.round(stats.flakeRate * 100)}%`} />
-        <div style={breakdown}>
-          <span style={{ color: "var(--warn, #c47b00)" }}>
-            {stats.unstable} unstable
-          </span>{" "}
-          / {stats.completed} completed
+        <div className="mt-2 flex items-center gap-1.5 text-[11.5px] text-muted-fg">
+          <Badge tone="lemon">{stats.unstable} unstable</Badge>
+          <span>/ {stats.completed} completed</span>
         </div>
       </div>
       <div>
-        <div style={{ ...meta, marginBottom: 6 }}>SUITE</div>
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>
-          {jobName}
-        </div>
+        <Label>Suite</Label>
+        <div className="mt-1.5 font-mono text-[12px]">{jobName}</div>
         {stats.completed < LOW_SIGNAL_THRESHOLD ? (
-          <div className="mt-2" style={lowSignal}>
+          <div className="mt-2 text-[11px] text-dim-fg">
             Low signal — fewer than {LOW_SIGNAL_THRESHOLD} builds in window
           </div>
         ) : null}
@@ -149,15 +145,7 @@ function Body({ jobName }) {
 
 function Headline({ value, muted }) {
   return (
-    <div
-      style={{
-        fontFamily: "var(--font-display)",
-        fontSize: 64,
-        letterSpacing: "-2px",
-        lineHeight: 1,
-        color: muted ? "var(--muted-fg)" : "var(--fg)",
-      }}
-    >
+    <div className={`text-[56px] font-extrabold leading-none tracking-[-0.04em] tabular-nums ${muted ? "text-dim-fg" : "text-fg"}`}>
       {value}
     </div>
   );
@@ -167,9 +155,7 @@ function Body0({ head, sub }) {
   return (
     <div className="flex h-full flex-col justify-between">
       <Headline value={head} muted />
-      <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--muted-fg)" }}>
-        {sub}
-      </div>
+      <div className="text-[12.5px] leading-[1.5] text-muted-fg">{sub}</div>
     </div>
   );
 }
@@ -211,36 +197,3 @@ function compute(builds, windowDays) {
   const flakeRate = denom === 0 ? 0 : unstable / denom;
   return { unstable, failure, success, aborted, completed: denom, flakeRate };
 }
-
-// ─── styles (mono pixels are stable across re-renders, no css var lookup
-//      cost in the tile body) ───
-const meta = {
-  fontFamily: "var(--font-mono)",
-  fontSize: 10,
-  color: "var(--muted-fg)",
-  letterSpacing: "0.4px",
-  textTransform: "uppercase",
-};
-const breakdown = {
-  marginTop: 8,
-  fontFamily: "var(--font-mono)",
-  fontSize: 11.5,
-  color: "var(--muted-fg)",
-};
-const lowSignal = {
-  fontFamily: "var(--font-mono)",
-  fontSize: 10.5,
-  color: "var(--dim-fg)",
-  letterSpacing: "0.2px",
-};
-const ctaLink = {
-  display: "inline-block",
-  marginTop: 8,
-  fontFamily: "var(--font-mono)",
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.5px",
-  textTransform: "uppercase",
-  color: "var(--accent)",
-  textDecoration: "none",
-};

@@ -43,7 +43,7 @@ export { GoalTierBadge, GoalTierLadder } from "./goal-tier-ui";
 export { numericReadingFor, gradeNumericTier } from "./grade-numeric";
 // F9 — instant tier feedback.
 export { tierDelta } from "./tier-diff";
-export { TIER_COLOR, tierBadgeFg } from "./tier-colors";
+export { TIER_COLOR, tierBadgeFg, tierTone } from "./tier-colors";
 export {
   recordTierTransition,
   readTierTransition,

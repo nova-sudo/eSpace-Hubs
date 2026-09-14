@@ -1,6 +1,5 @@
 "use client";
 
-import { Grain } from "@/components/ui";
 import { AnalystPage, AnalystProvider, useAnalyst } from "@/features/analyst";
 import { CommandPalette, useGlobalShortcuts } from "@/features/command-palette";
 import { BackfillBanner, useAutoSnapshot } from "@/features/snapshots";
@@ -45,9 +44,6 @@ function AppShellInner({ children, hideFooter }) {
   useGlobalShortcuts();
   return (
     <>
-      {/* No forced blend — Grain follows the theme (screen on dark, multiply
-          on light) so the speckle is visible on the pure-black canvas. */}
-      <Grain opacity={0.55} />
       {/* Everything that should swipe off left when the analyst opens
           lives inside this wrapper. We transform the wrapper rather than
           the `body` so sticky headers inside continue to work (sticky

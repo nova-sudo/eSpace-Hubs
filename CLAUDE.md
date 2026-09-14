@@ -8,12 +8,16 @@
 
 - **Next.js 16** App Router, JSX (no TS).
 - **Tailwind v4** CSS-variables-first. Tokens in `src/app/globals.css`.
-- **Fonts (Nothing UI):** Doto (dot-matrix display / big numerals), Hanken Grotesk
-  (display + sans/body), Space Mono (mono / labels). Loaded via Google Fonts
-  `@import` in `globals.css` (`--font-dot`, `--font-display`, `--font-sans`, `--font-mono`).
+- **Design system v2 ("Zinc"):** `docs/design-system-v2.md` is the contract.
+  One sans (Manrope) for everything, JetBrains Mono only for codes/hashes, one
+  brand color (ink), five pastel tints (mint/sky/lav/peach/lemon) that carry
+  state, borderless 20px cards on a cool grey canvas. Fonts load via a
+  `<link>` in `app/layout.jsx`. A guard test (`src/design-system-guard.test.js`)
+  fails the build on the retired idioms (dot font, dither, dashed borders,
+  inline fontFamily, raw hex).
 - **SWR** for all remote data. No React Query.
 - **Recharts** for the snapshot trend chart only; other charts are hand-rolled SVG
-  (sparkline, dither fields, bars) to keep the Nothing UI aesthetic crisp.
+  (sparkline, bars) recolored from tokens only.
 - **Framer Motion** reserved for interaction polish — not required for correctness.
 - **sonner** for toasts.
 
@@ -54,7 +58,6 @@ what a feature is allowed to import from.
 | `pr-reviews` | `/[hub]/reviews` |
 | `snapshots` | `/[hub]/snapshots` (also a shared domain — the store) |
 | `onboarding` | `/onboarding` |
-| `landing` | `/` signed-out (root gate → landing or hub redirect) |
 | `chat` | overlay |
 
 Hub-specific pages (manager / admin / qa surfaces) live under `src/hubs/<hub>/`,
@@ -85,7 +88,7 @@ Import rules by category:
 apps/web/src/
 ├── app/                              # Next.js App Router — thin.
 │   ├── layout.jsx                    # Fonts, no-flash theme script, <Toaster>
-│   ├── page.jsx                      # → <RootGate /> (landing or hub redirect)
+│   ├── page.jsx                      # → <RootGate /> (signed-out → /login, else hub redirect)
 │   ├── [hub]/                        # Every product page is hub-prefixed
 │   │   ├── page.jsx                  # dev → Intelligence · manager → Team · admin/qa → Overview
 │   │   ├── goals/ (flow map) · goals-v2/ (redirect) · evidence/ · snapshots/ · reviews/ · settings/
@@ -101,10 +104,11 @@ apps/web/src/
 │   │   ├── button.jsx                # The ONE button — all CTAs use it
 │   │   ├── input.jsx                 # Input + Field
 │   │   ├── use-focus-trap.js         # Dialog focus trap
-│   │   ├── bento-tile · card · pill · mono-label · page-header · section
-│   │   ├── sparkline · line-spark · bars · dither-field · grain · loader …
+│   │   ├── bento-tile · card · page-header · section · stat · select · checkbox
+│   │   ├── badge · label · segmented-control · filter-chip · insight-row · fill-strip · icon-button
+│   │   ├── sparkline · line-spark · bars · loader …
 │   │   └── index.js                  # Barrel — always import from here
-│   └── shell/                        # Header (hamburger < md, ⌘K chip), footer, app-shell
+│   └── shell/                        # Header (pill nav, hamburger < md), footer, app-shell
 │
 ├── hubs/                             # Hub-specific pages (NOT features)
 │   ├── dev/ · manager/ · admin/ · qa/
@@ -121,7 +125,7 @@ apps/web/src/
 │   ├── goal-editors/ · grading/ · notifications/ · date-range/
 │   ├── integrations/                 # Provider layer: api-clients/, hooks/ (SWR), metrics/ (pure), refresh.js
 │   ├── analyst/ · command-palette/ · companion/ · migrate/ · prefs/
-│   ├── auth/ · hubs/ · landing/ · onboarding/ · settings/ · pr-reviews/ · chat/
+│   ├── auth/ · hubs/ · onboarding/ · settings/ · pr-reviews/ · chat/
 │   └── architecture-boundaries.test.js  # Enforces barrel-only cross-feature imports
 │
 └── lib/                              # Framework-agnostic helpers.
@@ -139,9 +143,8 @@ apps/api/src/
 └── db/                               # collections.ts (accessors + indexes), schemas/ ($jsonSchema validators), types.ts
 ```
 
-The landing page (`features/landing`) deliberately ships its own scoped
-dark-only palette under `.lp` — it's a marketing surface, not a themed app
-screen; don't "fix" it onto the app tokens.
+The marketing landing page was removed with design system v2; `/` sends a
+signed-out visitor to `/login`.
 
 ## Rules of the road
 
@@ -197,8 +200,8 @@ rotation: see BL-004 in `docs/backlog.md`.
 All colors, fonts, radii live as CSS variables in `globals.css` and are mapped
 into Tailwind v4 via `@theme inline`. If you need a new shade, add the token
 first; don't hard-code hex in components. Exception: the `MergedTile` /
-`ExportTile` solid-accent tiles use `#ffffff` explicitly for white text on
-accent — that's deliberate, since `--accent-on` may one day diverge from white.
+`ExportTile` solid tiles render as the ink card and use `text-ink-on`; the
+only literal colors live in `features/evidence/pdf/`.
 
 ### 6. "As a tech lead" checklist for new code
 
@@ -212,9 +215,9 @@ accent — that's deliberate, since `--accent-on` may one day diverge from white
 - [ ] If it touches localStorage, did you broadcast via a change event so
       sibling tabs/hooks stay in sync?
 - [ ] Did you keep the API proxy dumb?
-- [ ] Did you match the Nothing UI aesthetic (mono labels, dot-matrix Doto
-      titles/accent word, dot-grid textures, dashed hairlines, 8px radii,
-      light + dark via the `--*` tokens in globals.css)?
+- [ ] Did you follow `docs/design-system-v2.md` (Manrope, sentence case,
+      ink + tints, borderless 20px cards, Badge/Label/Card primitives, no
+      hex, no dashed borders, light + dark via the `--*` tokens)?
 
 ## Running it
 
@@ -250,8 +253,9 @@ npm run dev                  # http://localhost:3000
 See `.design-reference/README.md` — the Claude Design handoff covers these
 in detail. Notable ones still open:
 
-1. ~~Accent swap~~ — RESOLVED: cobalt `#1D4ED8` won (`--accent` in
-   `globals.css`), with per-hub accents layered on top by the hub registry.
+1. ~~Accent swap~~ — SUPERSEDED by design system v2: ink is the only brand
+   color; per-hub accents are no longer applied (registry `theme` fields are
+   inert).
 2. Proper "review rounds" requires per-MR `/discussions` calls (N+1); current
    implementation is `user_notes_count` as a proxy (tracked as BL-012).
 3. ~~Snapshot cron~~ — RESOLVED (F4, #229): the API scheduler

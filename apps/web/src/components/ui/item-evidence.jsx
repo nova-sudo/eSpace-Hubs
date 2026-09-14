@@ -14,9 +14,13 @@
  * cadence-stepper / check-in editors can render it without a cross-feature
  * import cycle. Evidence is a plain string (`item.evidence`), backward
  * compatible (absent on old entries).
+ *
+ * `variant="light"` is for use on an ink (dark) tile — text follows
+ * `--ink-on` instead of the normal fg/muted tokens.
  */
 
 import { useState } from "react";
+import { cn } from "@/lib/cn";
 
 const isUrl = (s) => /^https?:\/\//i.test(String(s).trim());
 
@@ -25,13 +29,9 @@ export function ItemEvidence({ value, onSave, variant = "light" }) {
   const [draft, setDraft] = useState(value || "");
 
   const isLight = variant === "light";
-  const muted = isLight ? "rgba(255,255,255,0.62)" : "var(--muted-fg)";
-  const fg = isLight ? "#ffffff" : "var(--fg)";
-  const linkColor = isLight ? "#ffffff" : "var(--accent)";
-  const fieldBg = isLight ? "rgba(255,255,255,0.10)" : "var(--bg)";
-  const fieldBorder = isLight
-    ? "1px solid rgba(255,255,255,0.22)"
-    : "1px solid var(--border-strong)";
+  const mutedClass = isLight ? "text-ink-on/65" : "text-muted-fg";
+  const fgClass = isLight ? "text-ink-on" : "text-fg";
+  const fieldClass = isLight ? "bg-ink-on/10" : "bg-card-alt";
 
   function commit() {
     onSave((draft || "").trim());
@@ -40,7 +40,7 @@ export function ItemEvidence({ value, onSave, variant = "light" }) {
 
   if (editing) {
     return (
-      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      <div className="flex items-center gap-1.5">
         <input
           autoFocus
           value={draft}
@@ -57,18 +57,11 @@ export function ItemEvidence({ value, onSave, variant = "light" }) {
           }}
           onBlur={commit}
           placeholder="note, link, or measured value…"
-          style={{
-            flex: 1,
-            minWidth: 0,
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            color: fg,
-            background: fieldBg,
-            border: fieldBorder,
-            borderRadius: "var(--radius-sub)",
-            padding: "3px 7px",
-            outline: "none",
-          }}
+          className={cn(
+            "min-w-0 flex-1 rounded-[var(--radius-md)] px-2 py-1 text-[12px] outline-none",
+            fieldClass,
+            fgClass,
+          )}
         />
       </div>
     );
@@ -76,45 +69,20 @@ export function ItemEvidence({ value, onSave, variant = "light" }) {
 
   if (value) {
     return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          fontSize: 10,
-          color: muted,
-          minWidth: 0,
-        }}
-      >
-        <span style={{ opacity: 0.75, flexShrink: 0 }}>evidence:</span>
+      <div className={cn("flex min-w-0 items-center gap-1.5 text-[12px]", mutedClass)}>
+        <span className="shrink-0">Evidence:</span>
         {isUrl(value) ? (
           <a
             href={value}
             target="_blank"
             rel="noreferrer"
             title={value}
-            style={{
-              color: linkColor,
-              textDecoration: "underline",
-              minWidth: 0,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
+            className={cn("min-w-0 truncate underline", fgClass)}
           >
             {value}
           </a>
         ) : (
-          <span
-            title={value}
-            style={{
-              minWidth: 0,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              fontFamily: "var(--font-mono)",
-            }}
-          >
+          <span title={value} className="min-w-0 truncate">
             {value}
           </span>
         )}
@@ -125,17 +93,9 @@ export function ItemEvidence({ value, onSave, variant = "light" }) {
             setEditing(true);
           }}
           aria-label="edit evidence"
-          style={{
-            flexShrink: 0,
-            border: "none",
-            background: "transparent",
-            color: muted,
-            cursor: "pointer",
-            fontFamily: "var(--font-mono)",
-            fontSize: 9.5,
-          }}
+          className={cn("shrink-0 text-[11.5px]", mutedClass)}
         >
-          edit
+          Edit
         </button>
       </div>
     );
@@ -148,18 +108,9 @@ export function ItemEvidence({ value, onSave, variant = "light" }) {
         setDraft("");
         setEditing(true);
       }}
-      style={{
-        border: "none",
-        background: "transparent",
-        color: muted,
-        cursor: "pointer",
-        fontFamily: "var(--font-mono)",
-        fontSize: 9.5,
-        opacity: 0.85,
-        padding: 0,
-      }}
+      className={cn("text-[11.5px]", mutedClass)}
     >
-      + note / link
+      + Note / link
     </button>
   );
 }

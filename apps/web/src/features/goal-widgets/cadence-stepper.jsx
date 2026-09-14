@@ -14,9 +14,9 @@
  * phases make cells selectable (pick a window to fill/backfill) and fold in
  * goal-locks "settled" state — at which point this replaces the /checkin page.
  *
- * State is never colour-only (a11y): each cell carries shape + glyph + a
- * `title` tooltip (`Q2 · current`). `prefers-reduced-motion` is respected by
- * using no animation at all here.
+ * Every cell carries an aria-label + `title` tooltip naming its state, so the
+ * state is never color-only even though the visual language (FillStrip's
+ * filled/owed/current/future/settled palette) leans on color first.
  *
  * NESTED CADENCES. A COMPOSED period can itself frame a whole second cadence
  * (`period.nested` — see composed-widget.jsx's header comment for the full
@@ -31,6 +31,8 @@
  */
 
 import { useMemo, useState } from "react";
+import { Check } from "lucide-react";
+import { Button, Label } from "@/components/ui";
 import {
   useGoalInputs,
   buildCycleWindows,
@@ -69,57 +71,23 @@ const STATE_LABEL = {
   settled: "nothing to report",
 };
 
-function palette(variant) {
-  const light = variant === "light";
-  return {
-    label: light ? "rgba(255,255,255,0.68)" : "var(--muted-fg)",
-    dim: light ? "rgba(255,255,255,0.45)" : "var(--dim-fg)",
-    filledBg: light ? "rgba(255,255,255,0.92)" : "var(--accent)",
-    filledFg: light ? "#1d4ed8" : "var(--accent-on)",
-    currentBorder: light ? "#ffffff" : "var(--accent)",
-    currentBg: light ? "rgba(255,255,255,0.16)" : "var(--accent-dim)",
-    currentFg: light ? "#ffffff" : "var(--accent)",
-    owedBorder: light ? "rgba(255,255,255,0.55)" : "var(--border)",
-    owedDot: light ? "rgba(255,255,255,0.85)" : "var(--muted-fg)",
-    futureBorder: light ? "rgba(255,255,255,0.22)" : "var(--border)",
-  };
-}
-
-function Check({ size = 15, color }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M5 13l4 4L19 7" />
-    </svg>
-  );
-}
-
-function cellVisual(state, p) {
+// One place to translate a window's state into the FillStrip visual
+// language — filled = ink, owed = peach-ink at 55%, current = card-alt with
+// a dashed dim outline (the ONE dashed exception in the app), future and
+// settled = card-alt (settled dimmed).
+const CURRENT_DASH = { border: "1.5px dashed var(--dim-fg)" };
+function cellVisual(state) {
   switch (state) {
     case "filled":
-      return { background: p.filledBg, border: "none", glyph: <Check color={p.filledFg} /> };
-    case "current":
-      return {
-        background: p.currentBg,
-        border: `2px solid ${p.currentBorder}`,
-        glyph: (
-          <span style={{ color: p.currentFg, fontSize: 16, lineHeight: 1 }}>+</span>
-        ),
-      };
-    case "settled":
-      return {
-        background:
-          "repeating-linear-gradient(45deg, rgba(128,128,128,0.18), rgba(128,128,128,0.18) 3px, transparent 3px, transparent 6px)",
-        border: `1px solid ${p.futureBorder}`,
-        glyph: <span style={{ color: p.dim, fontSize: 13 }}>–</span>,
-      };
+      return { className: "bg-ink text-ink-on", style: undefined, glyph: <Check size={14} /> };
     case "owed":
-      return {
-        background: "transparent",
-        border: `1.5px dashed ${p.owedBorder}`,
-        glyph: <span style={{ width: 5, height: 5, borderRadius: "50%", background: p.owedDot }} />,
-      };
+      return { className: "bg-peach-ink opacity-55", style: undefined, glyph: null };
+    case "current":
+      return { className: "bg-card-alt text-fg", style: CURRENT_DASH, glyph: null };
+    case "settled":
+      return { className: "bg-card-alt text-dim-fg opacity-60", style: undefined, glyph: null };
     default: // future
-      return { background: "transparent", border: `1px solid ${p.futureBorder}`, glyph: null, faint: true };
+      return { className: "bg-card-alt text-dim-fg", style: undefined, glyph: null };
   }
 }
 
@@ -130,16 +98,15 @@ function cellVisual(state, p) {
  * Does NOT render the editor panel below it — each caller owns that, since
  * what goes in it (grading controls vs. not) differs by level.
  */
-function WindowsGrid({ goalId, data, variant, fillable, selectedKey, onSelect }) {
-  const p = palette(variant);
+function WindowsGrid({ goalId, data, fillable, selectedKey, onSelect }) {
   const windows = data.windows || [];
   const settledOf = (w) =>
     isLocked(goalId, w.key) && w.state !== "filled" && w.state !== "future";
 
   const header = (
-    <div className="mb-1.5 flex items-center justify-between" style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: p.label }}>
-      <span style={{ textTransform: "uppercase", letterSpacing: "0.5px" }}>{data.cadence} · cycle</span>
-      <span>{data.filledCount}/{data.total} filled</span>
+    <div className="mb-2.5 flex items-center justify-between gap-2">
+      <Label>{data.cadence} cycle</Label>
+      <Label>{data.filledCount}/{data.total} filled</Label>
     </div>
   );
 
@@ -150,18 +117,16 @@ function WindowsGrid({ goalId, data, variant, fillable, selectedKey, onSelect })
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(11px, 1fr))", gap: 3 }}>
           {windows.map((w) => {
             const effState = settledOf(w) ? "settled" : w.state;
-            const v = cellVisual(effState, p);
+            const v = cellVisual(effState);
             const isSelected = w.key === selectedKey;
             const canFill = fillable && w.state !== "future";
             const cellStyle = {
               aspectRatio: "1 / 1",
               width: "100%",
               borderRadius: 2,
-              background: v.background,
-              border: v.border,
-              opacity: v.faint ? 0.5 : 1,
-              boxShadow: isSelected ? `0 0 0 2px ${p.currentBorder}` : "none",
+              boxShadow: isSelected ? "0 0 0 2px var(--ink)" : "none",
               padding: 0,
+              ...v.style,
             };
             return canFill ? (
               <button
@@ -171,10 +136,11 @@ function WindowsGrid({ goalId, data, variant, fillable, selectedKey, onSelect })
                 aria-pressed={isSelected}
                 aria-label={`${isSelected ? "Close" : "Log"} ${w.label} (${STATE_LABEL[effState]})`}
                 title={`${w.label} · ${STATE_LABEL[effState]}`}
+                className={v.className}
                 style={{ ...cellStyle, cursor: "pointer" }}
               />
             ) : (
-              <div key={w.key} title={`${w.label} · ${STATE_LABEL[effState]}`} style={cellStyle} />
+              <div key={w.key} title={`${w.label} · ${STATE_LABEL[effState]}`} className={v.className} style={cellStyle} />
             );
           })}
         </div>
@@ -190,7 +156,7 @@ function WindowsGrid({ goalId, data, variant, fillable, selectedKey, onSelect })
         {windows.map((w) => {
           const settled = settledOf(w);
           const effState = settled ? "settled" : w.state;
-          const v = cellVisual(effState, p);
+          const v = cellVisual(effState);
           const isCurrent = w.state === "current";
           const isSelected = w.key === selectedKey;
           const canFill = fillable && w.state !== "future";
@@ -198,22 +164,13 @@ function WindowsGrid({ goalId, data, variant, fillable, selectedKey, onSelect })
           const cell = (
             <div
               title={`${w.label} · ${STATE_LABEL[effState]}`}
+              className={`flex items-center justify-center rounded-[var(--radius-md)] ${v.className}`}
               style={{
                 width: "100%",
                 maxWidth: sz + 8,
                 height: sz,
-                borderRadius: 8,
-                background: v.background,
-                border: v.border,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: v.faint ? 0.45 : 1,
-                boxShadow: isSelected
-                  ? `0 0 0 2px ${p.currentBorder}`
-                  : isCurrent
-                    ? `0 0 0 3px ${p.currentBg}`
-                    : "none",
+                boxShadow: isSelected ? "0 0 0 2px var(--ink)" : "none",
+                ...v.style,
               }}
             >
               {v.glyph}
@@ -234,14 +191,7 @@ function WindowsGrid({ goalId, data, variant, fillable, selectedKey, onSelect })
               ) : (
                 cell
               )}
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 8.5,
-                  color: isCurrent || isSelected ? p.currentFg : p.dim,
-                  fontWeight: isCurrent || isSelected ? 500 : 400,
-                }}
-              >
+              <span className={`text-[11px] ${isCurrent || isSelected ? "font-bold text-fg" : "text-dim-fg"}`}>
                 {w.label}
               </span>
             </div>
@@ -267,7 +217,6 @@ function NestedStepperLevel({
   periodKeyPrefix,
   fallbackStart,
   fallbackEnd,
-  variant,
   fillable,
   depth,
 }) {
@@ -303,61 +252,44 @@ function NestedStepperLevel({
   const fullSelectedKey = selected ? `${periodKeyPrefix}::${selected.key}` : null;
 
   const editorPanel = selected ? (
-    <div
-      className="mt-2 rounded-[var(--radius-sub)] p-2.5"
-      style={{ background: "var(--card)", color: "var(--fg)", border: "1px solid var(--border)" }}
-    >
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-          logging {selectedPeriod?.authored && selectedPeriod.label ? selectedPeriod.label : selected.label}
+    <div className="mt-3 flex flex-col gap-2.5 border-t border-line pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[13px] font-bold text-fg">
+          Logging {selectedPeriod?.authored && selectedPeriod.label ? selectedPeriod.label : selected.label}
         </span>
-        <div className="flex items-center gap-3">
-          <button
+        <div className="flex items-center gap-1.5">
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setLock(goalId, fullSelectedKey, !isLocked(goalId, fullSelectedKey))}
-            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", border: "none", background: "transparent", cursor: "pointer" }}
             title="Settle this period — nothing happened, stop flagging it as owed"
           >
-            {isLocked(goalId, fullSelectedKey) ? "reopen" : "nothing to report"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelectedKey(null)}
-            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", border: "none", background: "transparent", cursor: "pointer" }}
-          >
-            close
-          </button>
+            {isLocked(goalId, fullSelectedKey) ? "Reopen" : "Nothing to report"}
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedKey(null)}>
+            Close
+          </Button>
         </div>
       </div>
       {selectedPeriod?.authored && selectedPeriod.prompt ? (
-        <div className="mb-2" style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted-fg)", lineHeight: 1.5 }}>
+        <div className="text-[12.5px] leading-[1.5] text-muted-fg">
           {selectedPeriod.prompt}
           {selectedPeriod.dueAt ? ` · due ${selectedPeriod.dueAt}` : ""}
         </div>
       ) : null}
       {/* Backfilling week 9 six weeks late is exactly when the plan's own
           words matter most — the brief travels with the window. */}
-      <PeriodDetail
-        detail={selectedPeriod?.detail}
-        notes={selectedPeriod?.notes}
-        variant="dark"
-        className="mb-2"
-      />
+      <PeriodDetail detail={selectedPeriod?.detail} notes={selectedPeriod?.notes} />
       {selectedPeriod?.fields?.length > 0 ? (
         <ComposedFields
           goalId={goalId}
           fields={selectedPeriod.fields}
           periodKey={fullSelectedKey}
           writeTs={Math.floor((selected.start + selected.end) / 2)}
-          variant="dark"
         />
       ) : null}
-      <EvidenceAttachments
-        goalId={goalId}
-        periodKey={fullSelectedKey}
-        variant="dark"
-        className="mt-2"
-      />
+      <EvidenceAttachments goalId={goalId} periodKey={fullSelectedKey} />
       {selectedPeriod?.nested ? (
         <NestedStepperLevel
           goalId={goalId}
@@ -366,7 +298,6 @@ function NestedStepperLevel({
           periodKeyPrefix={fullSelectedKey}
           fallbackStart={selected.start}
           fallbackEnd={selected.end}
-          variant={variant}
           fillable={fillable}
           depth={depth + 1}
         />
@@ -375,11 +306,10 @@ function NestedStepperLevel({
   ) : null;
 
   return (
-    <div className="mt-3" style={{ borderTop: "1px dashed var(--border)", paddingTop: 10 }}>
+    <div className="mt-3 rounded-[var(--radius-lg)] bg-card-alt p-4.5">
       <WindowsGrid
         goalId={goalId}
         data={data}
-        variant={variant}
         fillable={fillable}
         selectedKey={selectedKey}
         onSelect={setSelectedKey}
@@ -399,7 +329,7 @@ const WINDOW_TIER_COLOR = TIER_COLOR;
  * only: no cached verdict shows "not graded yet" with a "grade this window"
  * button, rather than auto-grading the moment the fields are filled.
  */
-function WindowTierPanel({ goalId, spec, periodKey, windowStart, windowEnd, variant }) {
+function WindowTierPanel({ goalId, spec, periodKey, windowStart, windowEnd }) {
   const { hasTiers, tiers, tierGoverned, verdict, grading, grade } = useGoalWindowTier(
     goalId,
     spec,
@@ -408,57 +338,39 @@ function WindowTierPanel({ goalId, spec, periodKey, windowStart, windowEnd, vari
     windowEnd,
   );
   if (!hasTiers) return null;
-  const isLight = variant === "light";
-  const muted = isLight ? "rgba(255,255,255,0.62)" : "var(--muted-fg)";
-  const dim = isLight ? "rgba(255,255,255,0.40)" : "var(--dim-fg)";
-  const fg = isLight ? "#ffffff" : "var(--fg)";
-  const color = verdict?.tier ? WINDOW_TIER_COLOR[verdict.tier] : muted;
+  const color = verdict?.tier ? WINDOW_TIER_COLOR[verdict.tier] : "var(--muted-fg)";
   const current = verdict?.tier || null;
   const tierMap = tiers || {};
 
   return (
-    <div
-      className="mt-2 border-t pt-2"
-      style={{ borderColor: isLight ? "rgba(255,255,255,0.15)" : "var(--border)" }}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <span
-            className="uppercase tracking-[0.5px]"
-            style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: muted }}
-          >
-            This window&apos;s tier{tierGoverned ? " (manager-governed)" : ""} —{" "}
-          </span>
+    <div className="mt-3 flex flex-col gap-2.5 border-t border-line pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0 text-[12px] font-semibold text-muted-fg">
+          This window&apos;s tier{tierGoverned ? " (manager-governed)" : ""} —{" "}
           {verdict?.tier ? (
-            <span
-              className="font-bold uppercase"
-              style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color }}
-              title={verdict.reasoning || ""}
-            >
+            <span className="font-bold" style={{ color }} title={verdict.reasoning || ""}>
               {TIER_LABELS[verdict.tier]}
             </span>
           ) : (
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: muted }}>
-              not graded yet
-            </span>
+            <span>not graded yet</span>
           )}
         </div>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={grade}
           disabled={grading}
-          className="shrink-0 uppercase tracking-[0.5px] hover:opacity-100 disabled:opacity-40"
-          style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: fg, opacity: 0.8 }}
           title="Grade this window against the tier criteria"
         >
-          {grading ? "grading…" : verdict?.tier ? "re-grade window" : "grade window"}
-        </button>
+          {grading ? "Grading…" : verdict?.tier ? "Re-grade window" : "Grade window"}
+        </Button>
       </div>
       {/* The criteria themselves — what "over achieved" etc. actually MEAN for
           this window, visible before grading. Without this a dev filling the
           window had no way to know what they were being judged against until
           after clicking "grade window". */}
-      <div className="mt-2 flex flex-col gap-1">
+      <div className="flex flex-wrap gap-1.5">
         {TIER_ORDER.map((t) => {
           const criterion = tierMap[TIER_FIELD[t]];
           const isCurrent = t === current;
@@ -466,27 +378,15 @@ function WindowTierPanel({ goalId, spec, periodKey, windowStart, windowEnd, vari
           return (
             <div
               key={t}
-              className="flex items-start gap-1.5"
+              className="min-w-[130px] flex-1 rounded-[var(--radius-md)] bg-card-alt p-2.5"
               style={{ opacity: isCurrent || !current ? 1 : 0.5 }}
             >
-              <span
-                className="shrink-0 font-bold uppercase"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 8.5,
-                  letterSpacing: "0.3px",
-                  color: isCurrent ? tColor : muted,
-                  width: 58,
-                }}
-              >
+              <div className="text-[11px] font-bold" style={{ color: isCurrent ? tColor : "var(--muted-fg)" }}>
                 {TIER_LABELS[t]}
-              </span>
-              <span
-                className="min-w-0 flex-1"
-                style={{ fontSize: 10, lineHeight: 1.3, color: isCurrent ? fg : muted }}
-              >
-                {criterion || <span style={{ color: dim }}>—</span>}
-              </span>
+              </div>
+              <div className="mt-0.5 text-[11.5px] leading-[1.3]" style={{ color: isCurrent ? "var(--fg)" : "var(--muted-fg)" }}>
+                {criterion || "—"}
+              </div>
             </div>
           );
         })}
@@ -495,7 +395,7 @@ function WindowTierPanel({ goalId, spec, periodKey, windowStart, windowEnd, vari
   );
 }
 
-export function CadenceStepper({ spec, variant = "light" }) {
+export function CadenceStepper({ spec }) {
   const goalId = spec?.goalId;
   const { entries } = useGoalInputs(goalId);
   // Single-record kinds (MILESTONE / BEFORE_AFTER) render as one completion pip
@@ -535,28 +435,18 @@ export function CadenceStepper({ spec, variant = "light" }) {
     [entries, cadence, spec],
   );
 
-  const p = palette(variant);
-
   if (data.mode === "pip") {
     const done = data.complete;
     return (
-      <div className="mt-3 flex items-center gap-2" style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: p.label }}>
+      <div className="mt-3 flex items-center gap-2 text-[12px] font-semibold text-muted-fg">
         <span
           title={done ? "complete" : "not complete"}
-          style={{
-            width: 18,
-            height: 18,
-            borderRadius: "50%",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: done ? p.filledBg : "transparent",
-            border: done ? "none" : `1.5px dashed ${p.owedBorder}`,
-          }}
+          className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full"
+          style={done ? { background: "var(--ink)" } : CURRENT_DASH}
         >
-          {done ? <Check size={12} color={p.filledFg} /> : null}
+          {done ? <Check size={12} className="text-ink-on" /> : null}
         </span>
-        {done ? "complete" : "not completed yet"}
+        {done ? "Complete" : "Not completed yet"}
       </div>
     );
   }
@@ -571,56 +461,40 @@ export function CadenceStepper({ spec, variant = "light" }) {
   const selectedPeriod = selected ? resolvePeriodContent(spec, selectedIndex) : null;
 
   const editorPanel = selected ? (
-    <div
-      className="mt-2 rounded-[var(--radius-sub)] p-2.5"
-      style={{ background: "var(--card)", color: "var(--fg)", border: "1px solid var(--border)" }}
-    >
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-          logging {selectedPeriod?.authored && selectedPeriod.label
+    <div className="mt-3 flex flex-col gap-2.5 border-t border-line pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[13px] font-bold text-fg">
+          Logging {selectedPeriod?.authored && selectedPeriod.label
             ? selectedPeriod.label
             : selected.label}
         </span>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5">
           {/* "Nothing to report" settle — the same goal-locks escape hatch the
               check-in had, so a quiet period stops reading as owed. */}
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setLock(goalId, selected.key, !isLocked(goalId, selected.key))}
-            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", border: "none", background: "transparent", cursor: "pointer" }}
             title="Settle this period — nothing happened, stop flagging it as owed"
           >
-            {isLocked(goalId, selected.key) ? "reopen" : "nothing to report"}
-          </button>
-          <button
+            {isLocked(goalId, selected.key) ? "Reopen" : "Nothing to report"}
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedKey(null)}>
+            Close
+          </Button>
+          {/* Primary action — commit + re-grade. The one ink button in this
+              panel, so it reads as the affirmative step after filling the
+              period. */}
+          <Button
             type="button"
-            onClick={() => setSelectedKey(null)}
-            style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--muted-fg)", border: "none", background: "transparent", cursor: "pointer" }}
-          >
-            close
-          </button>
-          {/* Primary action — commit + re-grade. Highlighted (accent) so it
-              reads as the affirmative step after filling the period. */}
-          <button
-            type="button"
+            variant="ink"
+            size="sm"
             onClick={saveAndGrade}
-            className="uppercase transition-[filter] hover:brightness-110"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9.5,
-              fontWeight: 700,
-              letterSpacing: "0.5px",
-              color: "var(--accent-on)",
-              background: "var(--accent)",
-              border: "1px solid var(--accent)",
-              borderRadius: "var(--radius-sub)",
-              padding: "4px 10px",
-              cursor: "pointer",
-            }}
             title={hasTiers ? "Save this period and re-grade the goal" : "Save this period"}
           >
             {hasTiers ? "Save & grade" : "Save"}
-          </button>
+          </Button>
         </div>
       </div>
       {isComposed ? (
@@ -628,38 +502,19 @@ export function CadenceStepper({ spec, variant = "light" }) {
           {/* What this specific period was for. Only rendered when the spec
               authored it — a uniform tracker has nothing extra to say. */}
           {selectedPeriod?.authored && selectedPeriod.prompt ? (
-            <div
-              className="mb-2"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                color: "var(--muted-fg)",
-                lineHeight: 1.5,
-              }}
-            >
+            <div className="text-[12.5px] leading-[1.5] text-muted-fg">
               {selectedPeriod.prompt}
               {selectedPeriod.dueAt ? ` · due ${selectedPeriod.dueAt}` : ""}
             </div>
           ) : null}
-          <PeriodDetail
-            detail={selectedPeriod?.detail}
-            notes={selectedPeriod?.notes}
-            variant="dark"
-            className="mb-2"
-          />
+          <PeriodDetail detail={selectedPeriod?.detail} notes={selectedPeriod?.notes} />
           <ComposedFields
             goalId={goalId}
             fields={selectedPeriod?.fields ?? spec.fields}
             periodKey={selected.key}
             writeTs={Math.floor((selected.start + selected.end) / 2)}
-            variant="dark"
           />
-          <EvidenceAttachments
-            goalId={goalId}
-            periodKey={selected.key}
-            variant="dark"
-            className="mt-2"
-          />
+          <EvidenceAttachments goalId={goalId} periodKey={selected.key} />
           {selectedPeriod?.nested ? (
             <NestedStepperLevel
               goalId={goalId}
@@ -668,7 +523,6 @@ export function CadenceStepper({ spec, variant = "light" }) {
               periodKeyPrefix={selected.key}
               fallbackStart={selected.start}
               fallbackEnd={selected.end}
-              variant="dark"
               fillable={fillable}
               depth={1}
             />
@@ -692,18 +546,16 @@ export function CadenceStepper({ spec, variant = "light" }) {
           periodKey={selected.key}
           windowStart={selected.start}
           windowEnd={selected.end}
-          variant="dark"
         />
       ) : null}
     </div>
   ) : null;
 
   return (
-    <div className="mt-3">
+    <div className="mt-3 rounded-[var(--radius-lg)] bg-card-alt p-4.5">
       <WindowsGrid
         goalId={goalId}
         data={data}
-        variant={variant}
         fillable={fillable}
         selectedKey={selectedKey}
         onSelect={setSelectedKey}

@@ -20,6 +20,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ChevronDown } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -46,6 +47,14 @@ function initialsOf(name, fallbackEmail) {
   );
 }
 
+function Avatar({ initials }) {
+  return (
+    <div className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full bg-lav text-[11px] font-extrabold text-lav-ink">
+      {initials}
+    </div>
+  );
+}
+
 export function UserChip() {
   const { user, loading, logout } = useSession();
   // Legacy integrations-derived identity — only consulted when there's
@@ -59,17 +68,9 @@ export function UserChip() {
   // placeholder so the chip doesn't pop in/out.
   if (loading && !user && !legacyMe) {
     return (
-      <div
-        className="flex items-center gap-2 rounded-full border border-border py-1 pl-1 pr-3 opacity-60"
-        aria-hidden
-      >
-        <div
-          className="grid h-6 w-6 place-items-center rounded-full bg-accent-dim text-fg"
-          style={{ fontSize: 11 }}
-        >
-          ·
-        </div>
-        <div className="text-[12px] font-semibold text-muted-fg">…</div>
+      <div className="flex h-[38px] items-center gap-2 rounded-[var(--radius-pill)] bg-card py-1 pl-1 pr-3 opacity-60" aria-hidden>
+        <Avatar initials="…" />
+        <div className="text-[13px] font-semibold text-muted-fg">…</div>
       </div>
     );
   }
@@ -93,51 +94,32 @@ export function UserChip() {
           <button
             type="button"
             className={cn(
-              "flex items-center gap-2 rounded-full border border-border py-1 pl-1 pr-3 transition-colors hover:bg-accent-dim/60",
-              open && "bg-accent-dim/60",
+              "flex h-[38px] items-center gap-2 rounded-[var(--radius-pill)] bg-card pl-1 pr-3 transition-colors hover:bg-card-alt",
+              open && "bg-card-alt",
             )}
             aria-label={`Account menu for ${displayName}`}
           >
-            <div
-              className="grid h-6 w-6 place-items-center rounded-full font-bold"
-              style={{
-                fontSize: 9,
-                fontFamily: "var(--font-mono)",
-                color: "var(--muted-fg)",
-                background: "var(--panel-2)",
-                border: "1px solid var(--border-strong)",
-                backgroundImage: "radial-gradient(var(--dot) 1px, transparent 1px)",
-                backgroundSize: "4px 4px",
-              }}
-            >
-              {initials}
-            </div>
-            <div
-              className="text-[11px] uppercase tracking-[0.3px]"
-              style={{ fontFamily: "var(--font-mono)", color: "var(--muted-fg)" }}
-            >
+            <Avatar initials={initials} />
+            <span className="max-w-[140px] truncate text-[13px] font-semibold text-fg">
               {displayName}
-            </div>
+            </span>
+            <ChevronDown size={14} className="shrink-0 text-muted-fg" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          sideOffset={6}
-          className="z-50 min-w-[220px] rounded-md border border-border bg-card p-1 shadow-lg"
-          style={{
-            background: "var(--card)",
-            borderColor: "var(--border-strong)",
-            fontFamily: "var(--font-mono)",
-          }}
+          sideOffset={8}
+          className="z-50 min-w-[220px] rounded-[var(--radius-xl)] bg-card p-2"
+          style={{ boxShadow: "var(--shadow-float)" }}
         >
-          <DropdownMenuLabel className="px-2.5 py-2 text-[11px] uppercase tracking-[0.4px] text-dim-fg">
+          <DropdownMenuLabel className="px-3 py-2 text-[12px] font-semibold text-muted-fg">
             Signed in as
           </DropdownMenuLabel>
-          <div className="px-2.5 pb-2 text-[12px] leading-tight">
-            <div className="font-semibold">{displayName}</div>
+          <div className="px-3 pb-2 text-[13px] leading-tight">
+            <div className="font-bold text-fg">{displayName}</div>
             <div className="text-muted-fg">{user.email}</div>
           </div>
-          <DropdownMenuSeparator className="my-1 h-px bg-border" />
+          <DropdownMenuSeparator className="my-1 h-px bg-line" />
           <DropdownMenuItem
             disabled={isPending}
             onSelect={(e) => {
@@ -147,8 +129,7 @@ export function UserChip() {
               onLogout();
             }}
             className={cn(
-              "cursor-pointer rounded-sm px-2.5 py-2 text-[12px] outline-none",
-              "hover:bg-accent-dim focus:bg-accent-dim",
+              "cursor-pointer rounded-[var(--radius-lg)] px-3 py-2.5 text-[13px] font-semibold text-peach-ink outline-none hover:bg-card-alt",
               isPending && "cursor-wait opacity-60",
             )}
           >
@@ -163,16 +144,11 @@ export function UserChip() {
   if (legacyMe) {
     return (
       <div
-        className="flex items-center gap-2 rounded-full border border-border py-1 pl-1 pr-3"
+        className="flex h-[38px] items-center gap-2 rounded-[var(--radius-pill)] bg-card pl-1 pr-3"
         title="Local-only mode — no server session"
       >
-        <div
-          className="grid h-6 w-6 place-items-center rounded-full bg-accent font-bold text-accent-on"
-          style={{ fontSize: 11 }}
-        >
-          {legacyMe.initials || "?"}
-        </div>
-        <div className="text-[12px] font-semibold">{legacyMe.name}</div>
+        <Avatar initials={legacyMe.initials || "?"} />
+        <div className="text-[13px] font-semibold text-fg">{legacyMe.name}</div>
       </div>
     );
   }
@@ -181,15 +157,10 @@ export function UserChip() {
   return (
     <Link
       href="/login"
-      className="flex items-center gap-2 rounded-full border border-border py-1 pl-1 pr-3 transition-colors hover:bg-accent-dim/60"
+      className="flex h-[38px] items-center gap-2 rounded-[var(--radius-pill)] bg-card pl-1 pr-3 transition-colors hover:bg-card-alt"
     >
-      <div
-        className="grid h-6 w-6 place-items-center rounded-full bg-accent-dim text-fg"
-        style={{ fontSize: 11 }}
-      >
-        ?
-      </div>
-      <div className="text-[12px] font-semibold">Sign in</div>
+      <Avatar initials="?" />
+      <div className="text-[13px] font-semibold text-fg">Sign in</div>
     </Link>
   );
 }
