@@ -284,10 +284,30 @@ function buildCurrentData(spec, entries, reading, liveReading) {
         }: ${lines.join("; ")}`;
       };
 
+      // The cycle's OWN windows, so the summary can say where in the cycle we
+      // are and can tell an in-cycle period from an orphan. A period key
+      // written before the cycle's dates were edited no longer tiles the
+      // cycle; it must not inflate the denominator the grader reasons about.
+      const cycle = buildCycleWindows({
+        entries: list,
+        cadence: spec.composed?.cadence,
+        now: Date.now(),
+        ...composedBounds,
+      });
+      const cycleWindows = Array.isArray(cycle?.windows) ? cycle.windows : [];
+      const inCycle = new Set(cycleWindows.map((w) => w.key));
+      const elapsed = cycleWindows.filter(
+        (w) => w.state !== "future" && w.state !== "current",
+      ).length;
+
       // Newest period first; cap to bound the prompt for high-frequency
       // cadences (weekly/daily). Quarterly/monthly fit comfortably.
       const CAP = 8;
-      const keys = [...byPeriod.keys()].sort().reverse();
+      const allKeys = [...byPeriod.keys()].sort().reverse();
+      const keys = allKeys.filter(
+        (pk) => pk === "__single__" || inCycle.size === 0 || inCycle.has(pk),
+      );
+      const orphanCount = allKeys.length - keys.length;
       const blocks = keys.slice(0, CAP).map((pk) => renderPeriod(pk, byPeriod.get(pk)));
       const completeCount = keys.filter((pk) => recComplete(byPeriod.get(pk), pk)).length;
       let streak = 0;
@@ -296,13 +316,29 @@ function buildCurrentData(spec, entries, reading, liveReading) {
         else break;
       }
 
+      // Two different measures, named as two different things. A period is
+      // LOGGED when an entry exists for it (what the cadence strip counts) and
+      // COMPLETE when every required field of that period holds a value.
+      // Reporting only the second made a goal with 12 logged weeks read to the
+      // grader as "0 periods", which is true but lands as "did nothing".
+      const cadenceNoun = spec.composed?.cadence || "period";
       const head =
-        `composed widget — ${byPeriod.size} period(s) submitted, ${completeCount} fully complete; ` +
-        `streak of consecutive complete periods (newest back): ${streak}. ` +
-        `Judge the achievement tier across ALL submitted periods below. Tiers that describe ` +
-        `a single cycle (e.g. "achieved") are met when the most recent SUBMITTED period satisfies ` +
-        `them — ignore not-yet-started future periods. Tiers that say "every period" require ALL ` +
-        `submitted periods to satisfy them.` +
+        `composed widget — ${keys.length} period(s) logged, of which ${completeCount} have ` +
+        `every required field filled; streak of consecutive complete periods ` +
+        `(newest back): ${streak}.` +
+        (cycleWindows.length
+          ? ` Cycle progress: ${elapsed} of ${cycleWindows.length} ${cadenceNoun} window(s) ` +
+            `have elapsed, so the cycle is ` +
+            `${elapsed >= cycleWindows.length ? "COMPLETE" : "STILL RUNNING"}.`
+          : "") +
+        ` Judge the achievement tier across the periods below. Tiers that describe a single ` +
+        `cycle (e.g. "achieved") are met when the most recent LOGGED period satisfies them ` +
+        `— ignore not-yet-started future periods. Tiers that say "every period" require ALL ` +
+        `logged periods to satisfy them.` +
+        (orphanCount > 0
+          ? ` Ignoring ${orphanCount} entr(ies) whose period no longer falls inside the cycle ` +
+            `(its dates were edited after they were written).`
+          : "") +
         (keys.length > CAP ? ` Showing the ${CAP} most recent of ${keys.length} periods.` : "");
       return [head, ...blocks].join("\n");
     }

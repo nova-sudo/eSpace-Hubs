@@ -106,7 +106,14 @@ function WindowsGrid({ goalId, data, fillable, selectedKey, onSelect }) {
   const header = (
     <div className="mb-2.5 flex items-center justify-between gap-2">
       <Label>{data.cadence} cycle</Label>
-      <Label>{data.filledCount}/{data.total} filled</Label>
+      {/* "logged" not "filled": a window counts here as soon as an entry
+          exists for it, whatever that entry contains. The tier grader
+          separately reports how many periods have every required field,
+          which is a smaller number — naming both "filled" made the two
+          read as a contradiction. */}
+      <Label title="A window counts as logged once it has an entry, whatever that entry contains.">
+        {data.filledCount}/{data.total} logged
+      </Label>
     </div>
   );
 

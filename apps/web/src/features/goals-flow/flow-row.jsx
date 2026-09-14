@@ -50,7 +50,7 @@ function WindowStrip({ goalId, cyc, showLabels }) {
     <div
       className="flex min-w-0 shrink items-end gap-[3px]"
       style={{ width: Math.min(windows.length * 15 + 40, 420) }}
-      title={`${cyc.filledCount}/${cyc.total} filled`}
+      title={`${cyc.filledCount}/${cyc.total} windows logged`}
     >
       {windows.map((w) => {
         const color = tierColor(windowTier(goalId, w.key));
