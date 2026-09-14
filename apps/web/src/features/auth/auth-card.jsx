@@ -19,7 +19,9 @@ export function AuthCard({ title, lead, children, footer }) {
       >
         <div className="mb-7 flex items-center gap-2.5">
           <LogoMark size={28} />
-          <span className="text-[17px] font-extrabold text-fg">DevHub</span>
+          <span className="text-[17px] font-extrabold tracking-[-0.02em] text-fg">
+            eSpace <span className="font-semibold text-muted-fg">Hubs</span>
+          </span>
         </div>
         {title ? (
           <h1 className="text-[26px] font-extrabold tracking-[-0.03em] text-fg">

@@ -101,7 +101,7 @@ export function LoginForm({ onSuccess }) {
   return (
     <AuthCard
       title="Sign in"
-      lead="eSpace Dev Hub — your performance evidence, in one place."
+      lead="eSpace Hubs — your performance evidence, in one place."
     >
       <form className="flex flex-col gap-4" onSubmit={handlePassword}>
         <Field label="Email">

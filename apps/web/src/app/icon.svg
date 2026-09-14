@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!--
+    Favicon cut of the hub-cluster mark: tighter inset and larger tiles so it
+    holds at 16px. Mono in both themes — a favicon cannot read the page's CSS
+    variables, so the ink/ink-on values are inlined and swapped by the
+    browser's own colour-scheme preference.
+  -->
+  <style>
+    .plate { fill: #18181b; }
+    .tile  { fill: #ffffff; }
+    @media (prefers-color-scheme: dark) {
+      .plate { fill: #f4f4f5; }
+      .tile  { fill: #18181b; }
+    }
+  </style>
+  <rect class="plate" width="64" height="64" rx="20.57" />
+  <rect class="tile" x="12" y="12" width="15" height="15" rx="4.5" />
+  <rect class="tile" x="37" y="12" width="15" height="15" rx="4.5" opacity="0.55" />
+  <rect class="tile" x="12" y="37" width="15" height="15" rx="4.5" opacity="0.55" />
+</svg>

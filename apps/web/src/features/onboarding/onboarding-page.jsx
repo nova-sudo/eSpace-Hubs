@@ -161,7 +161,7 @@ export function OnboardingPage() {
       <div className="mx-auto max-w-2xl px-4 pb-16 pt-14 sm:px-10">
         <PageHeader
           crumb="One-time setup"
-          title="Welcome to eSpace Dev Hub"
+          title="Welcome to eSpace Hubs"
           subtitle="A few quick fields so we know how to route you. You can change them later from your profile — there's no wrong answer here."
         />
 

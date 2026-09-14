@@ -65,7 +65,7 @@ export function ChatPage() {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="DevHub assistant"
+      aria-label="Hubs assistant"
       aria-hidden={!open}
       className="fixed inset-0 z-[50] flex flex-col bg-bg text-fg"
       style={{
@@ -82,7 +82,7 @@ export function ChatPage() {
       }}
     >
       <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-4 sm:px-10">
-        <h1 className="text-[18px] font-bold tracking-[-0.01em] text-fg">DevHub assistant</h1>
+        <h1 className="text-[18px] font-bold tracking-[-0.01em] text-fg">Hubs assistant</h1>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={() => clearMessages()}>
             Clear thread

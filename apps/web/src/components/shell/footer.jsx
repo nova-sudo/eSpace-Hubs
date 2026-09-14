@@ -12,7 +12,7 @@ export function Footer() {
   const { me } = useIntegrations();
   return (
     <footer className="mt-8 flex justify-between py-4 text-[12.5px] text-muted-fg">
-      <div>eSpace DevHub{me?.team ? ` · ${me.team}` : ""}</div>
+      <div>eSpace Hubs{me?.team ? ` · ${me.team}` : ""}</div>
       <div className="text-dim-fg">{new Date().getFullYear()} · eSpace</div>
     </footer>
   );

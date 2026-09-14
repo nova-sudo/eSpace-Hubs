@@ -159,8 +159,10 @@ export function Header() {
           </IconButton>
           <Link href={hubPrefix || "/"} className="flex min-w-0 items-center gap-2.5">
             <LogoMark />
-            <span className="truncate text-[17px] font-extrabold tracking-[-0.02em]">
-              DevHub
+            {/* Name treatment from the brand kit: "eSpace" at 800, "Hubs"
+                at 600 in muted. */}
+            <span className="truncate text-[17px] font-extrabold tracking-[-0.02em] text-fg">
+              eSpace <span className="font-semibold text-muted-fg">Hubs</span>
             </span>
           </Link>
           {/* Multi-hub users see a switcher chip here. Single-hub users

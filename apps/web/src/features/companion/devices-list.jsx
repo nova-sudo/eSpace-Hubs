@@ -7,7 +7,7 @@
  *   DELETE /api/v1/companion/devices/:id     — soft-revoke
  *
  * Used inside the CompanionTab (Settings → Companion). Read-only
- * surface for the user to audit "what laptops have my Dev Hub token?"
+ * surface for the user to audit "what laptops have my Hubs token?"
  * and pull the plug if a device walks off.
  *
  * The bearer token is NEVER returned by either endpoint — `devices`

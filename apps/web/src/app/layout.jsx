@@ -10,7 +10,7 @@ import { JobsToast } from "@/components/shell/jobs-toast";
 // see docs/design-system-v2.md.
 
 export const metadata = {
-  title: "eSpace Dev Hub",
+  title: "eSpace Hubs",
   description:
     "A personal performance dashboard and evidence tracker for eSpace engineers.",
 };

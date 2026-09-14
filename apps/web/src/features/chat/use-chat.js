@@ -43,7 +43,7 @@ const WELCOME_THREAD = Object.freeze({
       id: "welcome",
       role: "assistant",
       content:
-        "Hey — this is your DevHub assistant. Ask about your PRs, Jira tickets, review turnaround, or anything you see on the dashboard.",
+        "Hey — this is your Hubs assistant. Ask about your PRs, Jira tickets, review turnaround, or anything you see on the dashboard.",
       ts: 0,
     }),
   ],

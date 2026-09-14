@@ -59,7 +59,7 @@ export function CompanionPairForm() {
     return (
       <PanelCard
         title="Sign in to approve."
-        body="You need to be signed in to your eSpace Dev Hub account before you can approve a companion device."
+        body="You need to be signed in to your eSpace Hubs account before you can approve a companion device."
       />
     );
   }

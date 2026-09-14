@@ -24,10 +24,10 @@ export function ChatActivator() {
       tone="lav"
       size="sm"
       onClick={() => setOpen(true)}
-      aria-label="Open DevHub assistant"
+      aria-label="Open Hubs assistant"
     >
       <Sparkles size={14} />
-      Ask DevHub
+      Ask Hubs
       {hasConversation ? <Badge dot tone="mint" /> : null}
     </Button>
   );

@@ -34,7 +34,7 @@ export function CompanionGateStep({ submitting, onContinue, onBack }) {
         <p className="mt-2 text-[14px] leading-[1.5] text-muted-fg">
           Your engagement routes API calls through your own laptop, so we
           need to confirm the companion app is installed, paired, and live
-          before letting you into the Dev Hub. This is a one-time check.
+          before letting you in. This is a one-time check.
         </p>
       </div>
 
@@ -56,7 +56,7 @@ export function CompanionGateStep({ submitting, onContinue, onBack }) {
 
       <div className="flex flex-wrap items-center gap-3">
         <Button size="lg" disabled={!live || submitting} onClick={onContinue}>
-          {submitting ? "Entering…" : "Enter eSpace Dev Hub"}
+          {submitting ? "Entering…" : "Enter eSpace Hubs"}
         </Button>
         <Button variant="soft" size="lg" onClick={onBack}>
           Back

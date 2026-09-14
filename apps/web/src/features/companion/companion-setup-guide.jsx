@@ -102,7 +102,7 @@ export function CompanionSetupGuide() {
             <>
               Click <strong>Start backend</strong> in the companion. The
               Docker stack comes up, the tunnel hostname is registered
-              with the Dev Hub, and a heartbeat keeps it fresh every 60
+              with eSpace Hubs, and a heartbeat keeps it fresh every 60
               seconds. The chip in the top-right of this page turns mint
               once routing is live.
             </>
