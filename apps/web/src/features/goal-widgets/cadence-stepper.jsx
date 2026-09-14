@@ -30,7 +30,7 @@
  * beyond closing back up to the level above it.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { Button, Label } from "@/components/ui";
 import {
@@ -312,7 +312,7 @@ function NestedStepperLevel({
         data={data}
         fillable={fillable}
         selectedKey={selectedKey}
-        onSelect={setSelectedKey}
+        onSelect={selectWindow}
       />
       {editorPanel}
     </div>
@@ -395,7 +395,7 @@ function WindowTierPanel({ goalId, spec, periodKey, windowStart, windowEnd }) {
   );
 }
 
-export function CadenceStepper({ spec }) {
+export function CadenceStepper({ spec, onEditingWindowChange }) {
   const goalId = spec?.goalId;
   const { entries } = useGoalInputs(goalId);
   // Single-record kinds (MILESTONE / BEFORE_AFTER) render as one completion pip
@@ -434,6 +434,30 @@ export function CadenceStepper({ spec }) {
     () => buildCycleWindows({ entries, cadence, now: Date.now(), ...composedCycleBounds(spec) }),
     [entries, cadence, spec],
   );
+
+  // The window the cycle is in right now. It is the DEFAULT editing target:
+  // the widget body above already fills it, so selecting it here means
+  // "go back to the default" rather than opening a second editor for it.
+  const currentWindow = useMemo(
+    () => (data.windows || []).find((w) => w.state === "current") || null,
+    [data],
+  );
+  const currentKey = currentWindow?.key ?? null;
+  // True while the user is editing some OTHER window (a backfill). The shell
+  // hides its own body for the duration so the two editors never stack.
+  const editingOtherWindow = selectedKey != null && selectedKey !== currentKey;
+  const notifyRef = useRef(onEditingWindowChange);
+  notifyRef.current = onEditingWindowChange;
+  useEffect(() => {
+    notifyRef.current?.(editingOtherWindow);
+  }, [editingOtherWindow]);
+  useEffect(() => () => notifyRef.current?.(false), []);
+
+  function selectWindow(key) {
+    // Clicking the current window returns to the default body instead of
+    // duplicating it in the panel.
+    setSelectedKey(key === currentKey ? null : key);
+  }
 
   if (data.mode === "pip") {
     const done = data.complete;
@@ -481,7 +505,7 @@ export function CadenceStepper({ spec }) {
             {isLocked(goalId, selected.key) ? "Reopen" : "Nothing to report"}
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedKey(null)}>
-            Close
+            {currentWindow ? `Back to ${currentWindow.label}` : "Close"}
           </Button>
           {/* Primary action — commit + re-grade. The one ink button in this
               panel, so it reads as the affirmative step after filling the

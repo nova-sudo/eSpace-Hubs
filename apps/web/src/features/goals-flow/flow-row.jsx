@@ -1,25 +1,16 @@
 "use client";
 
 /**
- * One flow-map row: a collapsed summary (kind label, title, tier/status
- * badge, mini cadence stepper, headline value + chevron) that expands in
- * place to the goal's full detail.
+ * One goal in the map. Collapsed it is a two-line card: an identity line
+ * (kind, title, tier, status) and a state line (window strip, count,
+ * action). Open, it expands in place inside its objective's lane.
  *
  * The expanded body is NOT reimplemented here — it mounts the same
- * `<GoalWidget>` + `<GoalTierLadder>` the rest of the app already uses for
- * a classified goal. `GoalWidget` already walks the full readiness state
- * tree (untrackable / pending-approval / delegated / needs-context / ready)
- * and, for a ready MANUAL-variant widget, already mounts `<CadenceStepper>`
- * (all three cadence modes, nested cadences, the window panel, the
- * per-cadence tier ladder) plus the full action footer (why / edit setup /
- * edit truths / delegate / build my own / re-analyze). `GoalTierLadder`
- * renders the Final (whole-goal) ladder, all five verdict states, the
- * consistency-cap note, and the three governance/lock treatments.
- *
- * Reusing these means Phases 3–6 of the flow-map design are near-zero new
- * UI code — the flow map differs from the current Goals page only in HOW
- * these are laid out (a row that expands in place vs. a grid tile), not in
- * what they show.
+ * `<GoalWidget>` + `<GoalTierLadder>` the rest of the app already uses for a
+ * classified goal. `GoalWidget` walks the full readiness state tree and, for
+ * a ready MANUAL widget, mounts `<CadenceStepper>` (all cadence modes, the
+ * window panel, the per-window tier ladder) plus the action footer.
+ * `GoalTierLadder` renders the whole-goal ladder and its lock treatments.
  */
 
 import { ChevronDown, ChevronUp, Sparkles } from "lucide-react";
@@ -33,49 +24,62 @@ import { cn } from "@/lib/cn";
 import { cadenceWindowsFor, windowTier, tierColor, goalHeadline } from "./flow-row-meta";
 
 // A per-cell tier-colored underline isn't something the shared FillStrip
-// primitive supports, so the collapsed row's mini stepper is built locally
-// with the SAME cell size/state colors as FillStrip's `row` size, plus that
-// one extra decoration.
-const ROW_CELL_BG = {
+// primitive supports, so the strip is built locally with the SAME cell
+// states/colors as FillStrip, plus that one extra decoration.
+const CELL_BG = {
   filled: "var(--ink)",
   owed: "var(--peach-ink)",
   current: "var(--card-alt)",
   future: "var(--card-alt)",
   settled: "var(--card-alt)",
 };
-const ROW_CELL_OPACITY = { owed: 0.55, settled: 0.6 };
+const CELL_OPACITY = { owed: 0.55, settled: 0.6 };
 
-/** Compact per-window stepper for the collapsed row, capped to the last 12
- *  windows so it fits a row, with a 2px tier-colored underline on any
- *  window that's already been graded (see `windowTier`) — visible without
- *  opening the row. */
-function MiniStepper({ goalId, cyc }) {
+// Capped so a weekly goal's 52 windows don't turn the strip into a hairline
+// comb. The count beside it always states the true total.
+const MAX_CELLS = 24;
+
+/**
+ * The goal's cycle windows as a strip. Sized to the window count rather than
+ * stretched across the lane, so a 5-window goal doesn't render five slabs.
+ */
+function WindowStrip({ goalId, cyc, showLabels }) {
   if (!cyc) return null;
-  const windows = (cyc.windows || []).slice(-12);
+  const windows = (cyc.windows || []).slice(-MAX_CELLS);
   return (
-    <div className="flex shrink-0 items-center gap-[3px]" title={`${cyc.filledCount}/${cyc.total} filled`}>
+    <div
+      className="flex min-w-0 shrink items-end gap-[3px]"
+      style={{ width: Math.min(windows.length * 15 + 40, 420) }}
+      title={`${cyc.filledCount}/${cyc.total} filled`}
+    >
       {windows.map((w) => {
         const color = tierColor(windowTier(goalId, w.key));
         return (
-          <span
-            key={w.key}
-            title={`${w.label} · ${w.state}`}
-            className="h-4 w-2 shrink-0 rounded-[3px]"
-            style={{
-              background: ROW_CELL_BG[w.state] || ROW_CELL_BG.future,
-              opacity: ROW_CELL_OPACITY[w.state] ?? 1,
-              border: w.state === "current" ? "1.5px dashed var(--dim-fg)" : undefined,
-              borderBottom: color ? `2px solid ${color}` : undefined,
-              boxSizing: "border-box",
-            }}
-          />
+          <span key={w.key} className="flex min-w-0 flex-1 flex-col items-center gap-[3px]">
+            <span
+              title={`${w.label} · ${w.state}`}
+              className="h-3.5 w-full rounded-[4px]"
+              style={{
+                background: CELL_BG[w.state] || CELL_BG.future,
+                opacity: CELL_OPACITY[w.state] ?? 1,
+                border: w.state === "current" ? "1.5px dashed var(--dim-fg)" : undefined,
+                borderBottom: color ? `2px solid ${color}` : undefined,
+                boxSizing: "border-box",
+              }}
+            />
+            {showLabels ? (
+              <span className="w-full truncate text-center text-[11px] leading-none text-dim-fg">
+                {shortLabel(w.label)}
+              </span>
+            ) : null}
+          </span>
         );
       })}
     </div>
   );
 }
 
-export function FlowRow({ item, style, open, onToggle, level = 2, focused, rowRef }) {
+export function FlowRow({ item, open, onToggle, level = 2, focused, rowRef, density = "comfortable" }) {
   const { goal, spec } = item;
   const goalId = goal.id;
   const isGhost = !spec;
@@ -86,6 +90,8 @@ export function FlowRow({ item, style, open, onToggle, level = 2, focused, rowRe
   const kindLabel = spec?.widget ? humanizeKind(spec.widget) : "Unclassified";
   const cyc = isGhost ? null : cadenceWindowsFor(goalId, spec);
   const headline = isGhost ? null : goalHeadline(goalId, spec);
+  const compact = density === "dense";
+  const showLabels = !compact && (cyc?.windows?.length ?? 0) <= MAX_CELLS;
 
   function handleKeyDown(e) {
     if (e.key === "Enter" || e.key === " ") {
@@ -99,22 +105,42 @@ export function FlowRow({ item, style, open, onToggle, level = 2, focused, rowRe
     analyst?.requestOpen?.(ANALYST_MODES.ANALYSIS);
   }
 
+  // Ghost (unclassified) goals have no widget, cadence or grade — a single
+  // dashed line with the one action that changes that.
+  if (isGhost) {
+    return (
+      <div
+        role="treeitem"
+        aria-level={level}
+        aria-expanded={false}
+        aria-label={`Unclassified — ${goal.title || "untitled"}`}
+        className="flex min-w-0 items-center gap-3 rounded-[var(--radius-lg)] px-4 py-2.5"
+        style={{ border: "1.5px dashed var(--dim-fg)", boxSizing: "border-box" }}
+      >
+        <Label className="shrink-0">Unclassified</Label>
+        <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-muted-fg">
+          {goal.title || "(untitled)"}
+        </span>
+        <Button variant="tint" tone="lav" size="sm" onClick={openAnalyst}>
+          <Sparkles size={13} />
+          Classify
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div
       role="treeitem"
       aria-level={level}
       aria-expanded={open}
       aria-label={`${kindLabel} — ${spec?.title || goal.title || "untitled"}`}
-      tabIndex={-1}
       data-flow-row={goalId}
-      className="absolute overflow-hidden rounded-[var(--radius-lg)]"
-      style={{
-        ...style,
-        background: isGhost ? "transparent" : "var(--card)",
-        boxShadow: isGhost ? undefined : "var(--shadow-card)",
-        border: isGhost ? "1.5px dashed var(--dim-fg)" : undefined,
-        boxSizing: "border-box",
-      }}
+      className={cn(
+        "min-w-0 overflow-hidden rounded-[var(--radius-lg)] bg-card",
+        open ? "ring-2 ring-ink" : "",
+      )}
+      style={{ boxShadow: "var(--shadow-card)" }}
     >
       <div
         ref={rowRef}
@@ -123,72 +149,77 @@ export function FlowRow({ item, style, open, onToggle, level = 2, focused, rowRe
         onClick={() => onToggle(goalId)}
         onKeyDown={handleKeyDown}
         aria-pressed={open}
-        className="grid w-full cursor-pointer items-center gap-3.5 px-5 py-4 text-left"
-        style={{ gridTemplateColumns: "84px minmax(0,1fr) auto auto auto auto" }}
+        className={cn(
+          "flex w-full cursor-pointer flex-col gap-2.5 text-left",
+          compact ? "px-4 py-2.5" : "px-4 py-3",
+        )}
       >
-        <Label className="truncate">{kindLabel}</Label>
-
-        <div
-          className={cn("truncate", isGhost ? "text-[14.5px] font-semibold text-muted-fg" : "text-[14.5px] font-bold text-fg")}
-        >
-          {spec?.title || goal.title || "(untitled)"}
+        {/* Identity — what this goal is and how it stands. */}
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Label className="shrink-0">{kindLabel}</Label>
+          <span className="min-w-0 flex-1 truncate text-[14px] font-bold text-fg">
+            {spec?.title || goal.title || "(untitled)"}
+          </span>
+          {readiness !== "ready" ? (
+            <Badge tone={readiness === "needs-context" || readiness === "pending-approval" ? "lemon" : "neutral"}>
+              {readinessLabel(readiness) || "Not ready"}
+            </Badge>
+          ) : hasTiers ? (
+            <GoalTierBadge goalId={goalId} spec={spec} />
+          ) : null}
+          {open ? (
+            <ChevronUp size={16} className="shrink-0 text-muted-fg" />
+          ) : (
+            <ChevronDown size={16} className="shrink-0 text-muted-fg" />
+          )}
         </div>
 
-        {isGhost ? (
-          <span />
-        ) : readiness !== "ready" ? (
-          <Badge tone={readiness === "needs-context" || readiness === "pending-approval" ? "lemon" : "neutral"}>
-            {readinessLabel(readiness) || "Not ready"}
-          </Badge>
-        ) : hasTiers ? (
-          <GoalTierBadge goalId={goalId} spec={spec} />
-        ) : (
-          <span />
-        )}
-
-        {cyc ? <MiniStepper goalId={goalId} cyc={cyc} /> : <span />}
-
-        {headline ? (
-          <span className="text-right text-[14px] font-extrabold tabular-nums text-fg">{headline.value}</span>
-        ) : (
-          <span />
-        )}
-
-        {isGhost ? (
-          <Button variant="tint" tone="lav" size="sm" onClick={openAnalyst}>
-            <Sparkles size={13} />
-            Classify with AI
-          </Button>
-        ) : open ? (
-          <ChevronUp size={16} className="shrink-0 text-muted-fg" />
-        ) : (
-          <ChevronDown size={16} className="shrink-0 text-muted-fg" />
-        )}
+        {/* State — the cycle so far, or the headline value for an auto goal. */}
+        {!open && (cyc || headline) ? (
+          <div className="flex min-w-0 items-end gap-3">
+            {cyc ? <WindowStrip goalId={goalId} cyc={cyc} showLabels={showLabels} /> : null}
+            {cyc ? (
+              <span
+                className="shrink-0 text-[12.5px] font-extrabold tabular-nums text-fg"
+                style={{ paddingBottom: showLabels ? 16 : 0 }}
+              >
+                {cyc.filledCount}/{cyc.total}
+              </span>
+            ) : null}
+            {headline && !cyc ? (
+              <span className="flex min-w-0 items-baseline gap-1.5">
+                <span className="text-[22px] font-extrabold leading-none tracking-[-0.03em] tabular-nums text-fg">
+                  {headline.value}
+                </span>
+                {headline.status ? (
+                  <span className="truncate text-[11.5px] font-semibold" style={{ color: headline.statusColor }}>
+                    {headline.status}
+                  </span>
+                ) : null}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {open ? (
-        <div className="border-t border-line px-5 py-4">
-          {isGhost ? (
-            <div className="flex flex-col gap-2.5">
-              <p className="text-[13px] leading-[1.5] text-muted-fg">
-                The analyst hasn&apos;t classified this goal yet — it has no widget, no
-                cadence, and nothing to grade until it is.
-              </p>
-              <Button variant="tint" tone="lav" size="sm" className="w-fit" onClick={openAnalyst}>
-                <Sparkles size={13} />
-                Classify with AI
-              </Button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-              <GoalWidget spec={spec} goal={goal} variant="dark" />
-              <GoalTierLadder spec={spec} variant="dark" />
-            </div>
-          )}
+        <div className="border-t border-line px-4 py-4">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <GoalWidget spec={spec} goal={goal} />
+            <GoalTierLadder spec={spec} />
+          </div>
         </div>
       ) : null}
     </div>
   );
+}
+
+/** "Week 37" → "37", "September" → "Sep" — the strip has room for a hint. */
+function shortLabel(label) {
+  const s = String(label || "");
+  const num = s.match(/(\d+)\s*$/);
+  if (num) return num[1];
+  return s.slice(0, 3);
 }
 
 function humanizeKind(widget) {

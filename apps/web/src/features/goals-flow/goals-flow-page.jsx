@@ -1,27 +1,27 @@
 "use client";
 
 /**
- * Goals flow map — full page (Phases 2–8 of the design handoff).
+ * Goals map — one objective per row: a compact L1 node on the left, a spine,
+ * and that objective's goals stacked in the lane beside it. Most objectives
+ * carry a single goal, so the row reads as a pair rather than a grid.
  *
- * L1 goal cards on the left, L2 rows branching right via orthogonal SVG
- * connectors. One row expands in place; expanding mounts the SAME
- * `<GoalWidget>` + `<GoalTierLadder>` the rest of the app uses for a
- * classified goal (see flow-row.jsx's header comment for why that means
- * Phases 3–6 of the design are almost entirely reuse, not new UI).
+ * A goal expands IN PLACE inside its own lane; the rest of the map stays put.
+ * The expanded body mounts the same `<GoalWidget>` + `<GoalTierLadder>` the
+ * rest of the app uses, so this file owns layout only, never widget content.
  *
- * Data: the same `useGoalWidgetItems` hook the current Goals page uses —
- * this is a new presentation layer over existing, already-correct data.
+ * Layout is plain CSS grid. The previous absolute-positioned canvas (with
+ * measured row heights and SVG elbows) collided whenever a card grew past the
+ * height the geometry assumed; a grid cannot overlap by construction.
  *
- * Accessibility: the canvas is `role="tree"`, each L1 is `role="group"`,
- * each row is `role="treeitem"` with a roving tabindex (only the focused
- * row's header button is in the tab order; arrow keys move focus, → / ←
- * expand/collapse, Enter/Space toggles). A polite live region announces
- * expand/collapse and filter changes.
+ * Accessibility: the map is `role="tree"`, each objective is `role="group"`,
+ * each goal is `role="treeitem"` with a roving tabindex (arrow keys move
+ * focus, → / ← expand/collapse, Enter/Space toggles). A polite live region
+ * announces expand/collapse and filter changes.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, Minus, Plus, Sparkles } from "lucide-react";
+import { ChevronDown, Sparkles } from "lucide-react";
 import { Badge, Button, Card, Label, SegmentedControl } from "@/components/ui";
 import { useHubLink } from "@/features/hubs";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
@@ -29,7 +29,6 @@ import { useAllGoalInputs } from "@/features/goal-inputs";
 import { useGoalLocks } from "@/features/goal-locks";
 import { useAnalystOptional, ANALYST_MODES } from "@/features/analyst";
 import { cn } from "@/lib/cn";
-import { layoutFlow } from "./flow-geometry";
 import { FlowRow } from "./flow-row";
 import { EvidenceDrawer } from "./evidence-drawer";
 import { isGoalOwed, cadenceWindowsFor } from "./flow-row-meta";
@@ -39,47 +38,29 @@ const DENSITY_OPTIONS = [
   { value: "dense", label: "Compact" },
 ];
 
-function usePaneWidth() {
-  const ref = useRef(null);
-  const [width, setWidth] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const measure = () => setWidth(el.clientWidth);
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return [ref, width];
-}
-
 export function GoalsFlowPage() {
   const { groupedItems, unclassifiedGoals, hasGoals, ready, goalsError, retryGoals } =
     useGoalWidgetItems();
-  const [paneRef, paneWidth] = usePaneWidth();
   const [openId, setOpenId] = useState(null);
   const [owedOnly, setOwedOnly] = useState(false);
   const [density, setDensity] = useState("comfortable");
   const [collapsedL1Ids, setCollapsedL1Ids] = useState(() => new Set());
   const [evidenceOpen, setEvidenceOpen] = useState(false);
-  const [zoom, setZoom] = useState(1);
   const [focusedId, setFocusedId] = useState(null);
   const [announcement, setAnnouncement] = useState("");
   const rowRefs = useRef(new Map());
   const analyst = useAnalystOptional();
 
   // Re-render when entries/locks change so "owed" (derived from cadence
-  // windows) and the mini steppers inside expanded rows stay live.
+  // windows) and the per-row steppers stay live.
   useAllGoalInputs();
   useGoalLocks();
 
   // Merge in unclassified ("ghost") L2s next to their classified siblings —
   // `useGoalWidgetItems().groupedItems` only includes goals that already
   // have a spec, so an L1 whose goals are ALL unclassified would otherwise
-  // never appear on the map at all. `spec: null` on the merged item is what
-  // FlowRow reads to render the dashed ghost row.
+  // never appear on the map at all. `spec: null` is what FlowRow reads to
+  // render the dashed ghost row.
   const mergedGroups = useMemo(() => {
     const byL1 = new Map(groupedItems.map((g) => [g.l1.id, { l1: g.l1, items: [...g.items] }]));
     for (const g of unclassifiedGoals) {
@@ -110,8 +91,7 @@ export function GoalsFlowPage() {
   }, [mergedGroups]);
 
   // Per-L1 progress: aggregate filled/total windows across every L2's own
-  // cadence, plus goal-level counts (on pace / owed / unclassified) for the
-  // card's badge row.
+  // cadence, plus goal-level counts for the node's status line.
   const l1Progress = useMemo(() => {
     const map = new Map();
     for (const g of mergedGroups) {
@@ -143,23 +123,44 @@ export function GoalsFlowPage() {
   }, [mergedGroups]);
 
   // "Owed only" HIDES (not dims) and drops groups that empty out — a dim
-  // filter isn't a filter once a tree has 30+ goals (design call, PASS2 §Scale).
-  // Ghost rows have no cadence, so they're never "owed" — filtered out too.
+  // filter isn't a filter once a tree has 30+ goals. Ghost rows have no
+  // cadence, so they're never "owed" and are filtered out too.
   const filteredGroups = useMemo(() => {
     if (!owedOnly) return mergedGroups;
-    return mergedGroups.map((g) => ({
-      l1: g.l1,
-      items: g.items.filter((it) => it.goal?.kind !== "L2" || isGoalOwed(it.goal.id, it.spec)),
-    }));
+    return mergedGroups
+      .map((g) => ({
+        l1: g.l1,
+        items: g.items.filter((it) => it.goal?.kind !== "L2" || isGoalOwed(it.goal.id, it.spec)),
+      }))
+      .filter((g) => g.items.length > 0);
   }, [mergedGroups, owedOnly]);
 
-  const layout = layoutFlow(filteredGroups, paneWidth, { openId, density, collapsedL1Ids });
-  const rowIds = layout.rows.map((r) => r.id);
+  // Rows currently reachable by keyboard: every L2 in a group that isn't
+  // collapsed, in visual order.
+  const rowIds = useMemo(() => {
+    const ids = [];
+    for (const g of filteredGroups) {
+      if (collapsedL1Ids.has(g.l1.id)) continue;
+      for (const it of g.items) {
+        if (it.goal?.kind === "L2") ids.push(it.goal.id);
+      }
+    }
+    return ids;
+  }, [filteredGroups, collapsedL1Ids]);
+
+  const totalGoals = useMemo(
+    () =>
+      mergedGroups.reduce(
+        (n, g) => n + g.items.filter((it) => it.goal?.kind === "L2").length,
+        0,
+      ),
+    [mergedGroups],
+  );
 
   function toggleRow(goalId) {
     setOpenId((prev) => {
       const next = prev === goalId ? null : goalId;
-      setAnnouncement(next ? "Expanded row" : "Collapsed row");
+      setAnnouncement(next ? "Expanded goal" : "Collapsed goal");
       return next;
     });
     setFocusedId(goalId);
@@ -176,7 +177,7 @@ export function GoalsFlowPage() {
 
   function toggleAllGroups() {
     setCollapsedL1Ids(allCollapsed ? new Set() : new Set(allL1Ids));
-    setAnnouncement(allCollapsed ? "Expanded all groups" : "Collapsed all groups");
+    setAnnouncement(allCollapsed ? "Expanded all objectives" : "Collapsed all objectives");
   }
 
   function focusRow(id) {
@@ -214,59 +215,48 @@ export function GoalsFlowPage() {
   }
 
   const ghostCount = unclassifiedGoals.length;
+  const objectiveCount = mergedGroups.length;
 
   return (
-    <div
-      className="relative z-[2] flex flex-col overflow-hidden bg-bg"
-      style={{ height: "calc(100vh - var(--header-height))" }}
-    >
+    <div className="relative z-[2] flex min-h-0 flex-1 flex-col bg-bg">
       <span aria-live="polite" className="sr-only">
         {announcement}
       </span>
 
-      <div className="flex shrink-0 flex-wrap items-end justify-between gap-4 px-5 py-4 sm:px-8">
-        <div>
-          <Label>
-            {layout.l1Cards.length} objective{layout.l1Cards.length === 1 ? "" : "s"} · {rowIds.length} goal
-            {rowIds.length === 1 ? "" : "s"} tracked
+      <div className="mx-auto flex w-full max-w-[1560px] flex-wrap items-center justify-between gap-3 px-4 pb-4 pt-5 sm:px-7">
+        <div className="flex min-w-0 items-baseline gap-3">
+          <h1 className="text-[26px] font-extrabold leading-none tracking-[-0.03em] text-fg">
+            Goals
+          </h1>
+          <Label className="truncate">
+            {objectiveCount} objective{objectiveCount === 1 ? "" : "s"} · {totalGoals} goal
+            {totalGoals === 1 ? "" : "s"}
             {ghostCount > 0 ? ` · ${ghostCount} unclassified` : ""}
           </Label>
-          <h1 className="mt-1.5 text-[28px] font-extrabold leading-[1.1] tracking-[-0.02em] text-fg">Goals</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {ghostCount > 0 ? (
             <Button
               variant="tint"
               tone="lav"
-              size="md"
+              size="sm"
               onClick={() => analyst?.requestOpen?.(ANALYST_MODES.ANALYSIS)}
             >
-              <Sparkles size={14} />
-              Analyze {ghostCount} unclassified
+              <Sparkles size={13} />
+              Classify {ghostCount}
             </Button>
           ) : null}
-          <Button variant={owedOnly ? "ink" : "soft"} size="md" onClick={() => setOwedOnly((v) => !v)}>
+          <Button variant={owedOnly ? "ink" : "soft"} size="sm" onClick={() => setOwedOnly((v) => !v)}>
             Owed only
             <Badge tone="peach">{owedCount}</Badge>
           </Button>
           <SegmentedControl options={DENSITY_OPTIONS} value={density} onChange={setDensity} size="sm" />
-          <Button variant="soft" size="md" onClick={toggleAllGroups}>
+          <Button variant="soft" size="sm" onClick={toggleAllGroups}>
             {allCollapsed ? "Expand all" : "Collapse all"}
           </Button>
-          <div className="flex items-center gap-0.5 rounded-[var(--radius-pill)] bg-card-alt p-1">
-            <ZoomButton onClick={() => setZoom((z) => Math.max(0.6, Math.round((z - 0.1) * 10) / 10))} aria-label="Zoom out">
-              <Minus size={13} />
-            </ZoomButton>
-            <span className="w-10 text-center text-[12px] font-semibold tabular-nums text-muted-fg">
-              {Math.round(zoom * 100)}%
-            </span>
-            <ZoomButton onClick={() => setZoom((z) => Math.min(1.4, Math.round((z + 0.1) * 10) / 10))} aria-label="Zoom in">
-              <Plus size={13} />
-            </ZoomButton>
-          </div>
           <Button
             variant={evidenceOpen ? "ink" : "soft"}
-            size="md"
+            size="sm"
             onClick={() => setEvidenceOpen((v) => !v)}
             aria-expanded={evidenceOpen}
           >
@@ -275,189 +265,165 @@ export function GoalsFlowPage() {
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 items-stretch">
-        <div
-          ref={paneRef}
-          className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-5"
-          onKeyDown={handleTreeKeyDown}
-        >
-          {goalsError && !ready ? (
-            <Card padding={24} className="flex flex-col items-start gap-3">
-              <span className="text-[13px] text-fg">
-                Couldn&apos;t load goals — {goalsError.message || "the server didn't respond"}.
-              </span>
-              <Button variant="soft" size="sm" onClick={() => void retryGoals()}>
-                Retry
-              </Button>
-            </Card>
-          ) : !ready ? (
-            <div className="p-6 text-[13px] text-muted-fg">Loading goals&hellip;</div>
-          ) : !hasGoals || layout.rows.length === 0 ? (
-            <Card padding={24} className="text-center text-[13px] text-muted-fg">
-              {owedOnly ? "Nothing owed right now." : "No classified goals to map yet."}
-            </Card>
-          ) : (
-            <div
-              className="relative mx-auto"
-              style={{ width: layout.canvas * zoom, height: layout.height * zoom }}
-            >
-              <div
-                role="tree"
-                aria-label="Goals by L1 objective"
-                className="absolute left-0 top-0"
-                style={{
-                  width: layout.canvas,
-                  height: layout.height,
-                  transform: `scale(${zoom})`,
-                  transformOrigin: "0 0",
-                }}
-              >
-                <svg
-                  width={layout.canvas}
-                  height={layout.height}
-                  aria-hidden="true"
-                  focusable="false"
-                  style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }}
+      <div
+        className="mx-auto w-full max-w-[1560px] px-4 pb-16 sm:px-7"
+        onKeyDown={handleTreeKeyDown}
+      >
+        {goalsError && !ready ? (
+          <Card padding={24} className="flex flex-col items-start gap-3">
+            <span className="text-[13px] text-fg">
+              Couldn&apos;t load goals — {goalsError.message || "the server didn't respond"}.
+            </span>
+            <Button variant="soft" size="sm" onClick={() => void retryGoals()}>
+              Retry
+            </Button>
+          </Card>
+        ) : !ready ? (
+          <div className="p-6 text-[13px] text-muted-fg">Loading goals&hellip;</div>
+        ) : !hasGoals || filteredGroups.length === 0 ? (
+          <Card padding={24} className="text-center text-[13px] text-muted-fg">
+            {owedOnly ? "Nothing owed right now." : "No goals to map yet."}
+          </Card>
+        ) : (
+          <div role="tree" aria-label="Goals by objective" className="flex flex-col gap-3.5">
+            {filteredGroups.map((group, i) => {
+              const collapsed = collapsedL1Ids.has(group.l1.id);
+              const l2s = group.items.filter((it) => it.goal?.kind === "L2");
+              return (
+                <div
+                  key={group.l1.id}
+                  role="group"
+                  aria-label={`${group.l1.title || "Untitled objective"} — ${l2s.length} goals`}
+                  className="grid grid-cols-1 gap-2.5 md:grid-cols-[196px_32px_minmax(0,1fr)] md:gap-0"
                 >
-                  {layout.edges.map((e) => (
-                    <path key={e.id} d={e.d} fill="none" stroke="var(--line)" strokeWidth="2" />
-                  ))}
-                </svg>
-
-                {layout.l1Cards.map((c) => (
-                  <L1Card
-                    key={c.id}
-                    card={c}
-                    progress={l1Progress.get(c.id)}
-                    onToggleCollapse={() => toggleL1(c.id)}
+                  <L1Node
+                    l1={group.l1}
+                    num={String(i + 1).padStart(2, "0")}
+                    count={l2s.length}
+                    progress={l1Progress.get(group.l1.id)}
+                    collapsed={collapsed}
+                    onToggleCollapse={() => toggleL1(group.l1.id)}
                   />
-                ))}
-
-                {layout.pills.map((p) => (
-                  <div
-                    key={p.id}
-                    aria-hidden="true"
-                    className="absolute whitespace-nowrap"
-                    style={{ left: p.x, top: p.y, transform: "translate(-50%, -50%)" }}
-                  >
-                    <Label className="rounded-[var(--radius-pill)] bg-bg px-1.5 py-0.5">
-                      {p.label ? p.label.toLowerCase().replace(/_/g, " ") : ""}
-                    </Label>
-                  </div>
-                ))}
-
-                {layout.rows.map((r) => (
-                  <FlowRow
-                    key={r.id}
-                    item={{ goal: r.goal, spec: r.spec }}
-                    open={r.open}
-                    onToggle={toggleRow}
-                    focused={focusedId ? focusedId === r.id : r.id === rowIds[0]}
-                    rowRef={(el) => {
-                      if (el) rowRefs.current.set(r.id, el);
-                      else rowRefs.current.delete(r.id);
-                    }}
-                    style={{
-                      left: r.left,
-                      top: r.top,
-                      width: r.width,
-                      ...(r.open ? { maxHeight: r.height, overflowY: "auto" } : {}),
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {evidenceOpen ? <EvidenceDrawer onClose={() => setEvidenceOpen(false)} /> : null}
+                  <Spine hidden={collapsed || l2s.length === 0} />
+                  {collapsed ? (
+                    <span />
+                  ) : (
+                    <div className="flex min-w-0 flex-col gap-2.5">
+                      {l2s.map((it) => (
+                        <FlowRow
+                          key={it.goal.id}
+                          item={it}
+                          density={density}
+                          open={openId === it.goal.id}
+                          onToggle={toggleRow}
+                          focused={focusedId ? focusedId === it.goal.id : it.goal.id === rowIds[0]}
+                          rowRef={(el) => {
+                            if (el) rowRefs.current.set(it.goal.id, el);
+                            else rowRefs.current.delete(it.goal.id);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {evidenceOpen ? <EvidenceDrawer onClose={() => setEvidenceOpen(false)} /> : null}
     </div>
   );
 }
 
-function ZoomButton({ onClick, children, ...rest }) {
+/** The vertical connector between an objective and its goals. Decorative. */
+function Spine({ hidden }) {
+  if (hidden) return <span aria-hidden="true" />;
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex h-6 w-6 items-center justify-center rounded-full text-muted-fg transition-colors hover:bg-card"
-      {...rest}
-    >
-      {children}
-    </button>
+    <div aria-hidden="true" className="relative hidden md:block">
+      <span className="absolute bottom-5 left-[15px] top-5 w-[2px] bg-line" />
+      <span className="absolute left-[15px] top-[34px] h-[2px] w-[17px] bg-line" />
+    </div>
   );
 }
 
-function L1Card({ card, progress, onToggleCollapse }) {
-  // Real destination for "edit" — the goals editor owns L1 editing.
+/**
+ * Compact objective node. Deliberately narrow: an objective usually carries
+ * one goal, so the node is a label for the lane beside it, not a panel.
+ */
+function L1Node({ l1, num, count, progress, collapsed, onToggleCollapse }) {
   const link = useHubLink();
   const total = progress?.total || 0;
   const filled = progress?.filled || 0;
   const onPaceGoals = progress?.onPaceGoals || 0;
   const owedGoals = progress?.owedGoals || 0;
-  const unclassifiedGoalsCount = progress?.unclassifiedGoalsCount || 0;
-  const pct = total > 0 ? Math.round((filled / total) * 100) : null;
+  const unclassifiedCount = progress?.unclassifiedGoalsCount || 0;
+  const pct = total > 0 ? Math.round((filled / total) * 100) : 0;
 
   return (
     <div
-      role="group"
-      aria-label={`${card.title} — ${card.count} goals`}
-      className="absolute flex flex-col gap-3.5 rounded-[var(--radius-xl)] bg-card p-[22px]"
-      style={{ left: card.left, top: card.top, width: card.width, boxShadow: "var(--shadow-card)" }}
+      className="flex h-fit flex-col gap-2.5 self-start rounded-[var(--radius-lg)] bg-card px-3.5 py-3"
+      style={{ boxShadow: "var(--shadow-card)" }}
     >
       <button
         type="button"
         onClick={onToggleCollapse}
-        aria-expanded={!card.collapsed}
-        className="flex items-center justify-between gap-1.5 border-0 bg-transparent p-0 text-left"
+        aria-expanded={!collapsed}
+        className="flex items-center gap-2 border-0 bg-transparent p-0 text-left"
       >
-        <span className="flex min-w-0 items-center gap-1.5">
-          <ChevronDown size={13} className={cn("shrink-0 text-dim-fg transition-transform", card.collapsed ? "-rotate-90" : "")} />
-          <Label className="truncate">Objective {String(card.num).slice(0, 8)}</Label>
-        </span>
-        {card.weightage != null ? <Badge tone="lav">{card.weightage}% weight</Badge> : null}
+        <Label className="tabular-nums">{num}</Label>
+        {l1.weightage != null ? <Badge tone="lav">{l1.weightage}%</Badge> : null}
+        <ChevronDown
+          size={13}
+          className={cn("ml-auto shrink-0 text-dim-fg transition-transform", collapsed ? "-rotate-90" : "")}
+        />
       </button>
 
       <div
-        className="text-[18px] font-bold leading-[1.25] tracking-[-0.02em] text-fg"
+        className="text-[13.5px] font-bold leading-[1.35] tracking-[-0.01em] text-fg"
         style={{
           display: "-webkit-box",
-          WebkitLineClamp: 2,
+          WebkitLineClamp: 3,
           WebkitBoxOrient: "vertical",
           overflow: "hidden",
         }}
-        title={card.title}
+        title={l1.title}
       >
-        {card.title || "(untitled)"}
+        {l1.title || "(untitled)"}
       </div>
 
       {total > 0 ? (
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between text-[12.5px] font-semibold text-muted-fg">
-            <span>Windows filled</span>
-            <span className="tabular-nums text-fg">
-              {filled} / {total}
-            </span>
-          </div>
-          <div className="h-2 overflow-hidden rounded-[var(--radius-pill)] bg-card-alt">
+        <div className="flex items-center gap-2">
+          <div className="h-1 flex-1 overflow-hidden rounded-[var(--radius-pill)] bg-card-alt">
             <div className="h-full rounded-[var(--radius-pill)] bg-ink" style={{ width: `${pct}%` }} />
           </div>
+          <span className="text-[11px] font-bold tabular-nums text-muted-fg">
+            {filled}/{total}
+          </span>
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        {onPaceGoals > 0 ? <Badge tone="mint">{onPaceGoals} on pace</Badge> : null}
-        {owedGoals > 0 ? <Badge tone="peach">{owedGoals} owed</Badge> : null}
-        {unclassifiedGoalsCount > 0 ? <Badge tone="lemon">{unclassifiedGoalsCount} unclassified</Badge> : null}
-      </div>
-
-      <div className="flex items-center justify-between gap-2 border-t border-line pt-2.5 text-[12px] text-muted-fg">
-        <span>{card.collapsed ? `${card.count} goal${card.count === 1 ? "" : "s"} · collapsed` : `${card.count} goal${card.count === 1 ? "" : "s"}`}</span>
-        <Link href={link("/goals")} className={cn("shrink-0 font-bold text-fg")}>
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] font-semibold text-muted-fg">
+        {onPaceGoals > 0 ? <StatusDot color="var(--mint-ink)" label={`${onPaceGoals} on pace`} /> : null}
+        {owedGoals > 0 ? <StatusDot color="var(--peach-ink)" label={`${owedGoals} owed`} /> : null}
+        {unclassifiedCount > 0 ? (
+          <StatusDot color="var(--lemon-ink)" label={`${unclassifiedCount} to classify`} />
+        ) : null}
+        {collapsed ? <span>{count} hidden</span> : null}
+        <Link href={link("/goals")} className="ml-auto shrink-0 font-bold text-fg">
           Edit
         </Link>
       </div>
     </div>
+  );
+}
+
+function StatusDot({ color, label }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: color }} />
+      {label}
+    </span>
   );
 }

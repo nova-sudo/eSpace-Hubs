@@ -23,6 +23,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Badge, Button, Label } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { useWidgetControls } from "./widget-controls-context";
 import { SPEC_KIND_META, SPEC_VARIANTS } from "@/features/goal-specs";
 import { useIsContextComplete } from "@/features/goal-context";
@@ -45,10 +46,12 @@ export function WidgetShell({
 }) {
   const [showReason, setShowReason] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
+  // Set by <CadenceStepper> while a PAST window is open for backfill.
+  const [editingWindow, setEditingWindow] = useState(false);
   // Optional user-controls injected by <GoalWidget>. Null handlers skip
   // rendering — widgets rendered outside the resolver (e.g. tests) still
   // work unchanged.
-  const { onMarkDelegated, onEditContext, onReanalyze, onComposeOwn, onEditSetup } =
+  const { onMarkDelegated, onEditContext, onReanalyze, onComposeOwn, onEditSetup, onEditPlan } =
     useWidgetControls();
   // Readiness gate for the cadence stepper. The state shells (ContextCollector
   // / Delegated / Untrackable) also render through WidgetShell, so gating the
@@ -110,7 +113,13 @@ export function WidgetShell({
         </div>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+      {/* The widget body fills the CURRENT window. While the stepper below is
+          editing a past window, it is hidden rather than unmounted (so a
+          half-typed current-period entry survives the detour) — the backfill
+          editor replaces it instead of stacking under it. */}
+      <div className={cn("flex min-h-0 flex-1 flex-col", editingWindow ? "hidden" : "")}>
+        {children}
+      </div>
 
       {/* Cadence stepper — per-window fill/status gauge for MANUAL widgets.
           Gated on the manual variant (so AUTO tiles don't mount the goal-inputs
@@ -119,7 +128,7 @@ export function WidgetShell({
       {spec &&
       SPEC_KIND_META[spec.widget]?.variant === SPEC_VARIANTS.MANUAL &&
       isGoalReady(spec, contextComplete) ? (
-        <CadenceStepper spec={spec} />
+        <CadenceStepper spec={spec} onEditingWindowChange={setEditingWindow} />
       ) : null}
 
       {/* F5 data-honesty chip — what the number is made of + refresh.
@@ -131,7 +140,7 @@ export function WidgetShell({
         </div>
       ) : null}
 
-      {(spec?.reasoning || onRetry || onReanalyze || footer || onMarkDelegated || onEditContext || onComposeOwn || onEditSetup) ? (
+      {(spec?.reasoning || onRetry || onReanalyze || footer || onMarkDelegated || onEditContext || onComposeOwn || onEditSetup || onEditPlan) ? (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             {spec?.reasoning ? (
@@ -147,6 +156,11 @@ export function WidgetShell({
             {onEditSetup ? (
               <Button type="button" variant="ghost" size="sm" onClick={onEditSetup}>
                 Edit setup
+              </Button>
+            ) : null}
+            {onEditPlan ? (
+              <Button type="button" variant="ghost" size="sm" onClick={onEditPlan}>
+                Edit plan
               </Button>
             ) : null}
             {onEditContext ? (
