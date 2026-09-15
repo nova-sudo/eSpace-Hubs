@@ -68,6 +68,9 @@ import { Badge, Button, IconButton, Label } from "@/components/ui";
 import { useIsContextComplete } from "@/features/goal-context";
 import { ContextCollector } from "./state-shells/context-collector";
 import { WidgetErrorBoundary } from "./widget-error-boundary";
+// One vocabulary for field kinds: the preview names them here and the form
+// names them beside each label, so they come from the same map.
+import { FIELD_KIND_HINT } from "./field-status";
 import { PlanEditor } from "./plan-editor/plan-editor";
 import {
   describeCycle,
@@ -108,17 +111,6 @@ const PHASE_ANNOUNCEMENT = {
 };
 
 const ACCEPTED_EXTENSIONS = ATTACHMENT_ACCEPT.split(",");
-
-const KIND_HINT = {
-  checkbox: "yes / no",
-  counter: "count",
-  scale: "1–5",
-  number: "number",
-  text: "note",
-  date: "date",
-  select: "choice",
-  link: "link",
-};
 
 export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
   const [description, setDescription] = useState("");
@@ -1093,8 +1085,8 @@ function SpecPreview({ preview, needsContext, planBounds }) {
                   ) : (
                     <span className="shrink-0 text-[11.5px] font-semibold text-dim-fg">
                       {f.target
-                        ? `${KIND_HINT[f.kind] || f.kind} · ${f.target.op}${f.target.value}`
-                        : KIND_HINT[f.kind] || f.kind}
+                        ? `${FIELD_KIND_HINT[f.kind] || f.kind} · ${f.target.op}${f.target.value}`
+                        : FIELD_KIND_HINT[f.kind] || f.kind}
                     </span>
                   )}
                 </div>

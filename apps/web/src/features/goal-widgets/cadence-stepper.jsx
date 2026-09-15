@@ -319,7 +319,7 @@ function NestedStepperLevel({
         data={data}
         fillable={fillable}
         selectedKey={selectedKey}
-        onSelect={selectWindow}
+        onSelect={setSelectedKey}
       />
       {editorPanel}
     </div>
@@ -589,7 +589,7 @@ export function CadenceStepper({ spec, onEditingWindowChange }) {
         data={data}
         fillable={fillable}
         selectedKey={selectedKey}
-        onSelect={setSelectedKey}
+        onSelect={selectWindow}
       />
       {editorPanel}
     </div>

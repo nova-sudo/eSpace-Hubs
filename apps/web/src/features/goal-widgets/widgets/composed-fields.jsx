@@ -9,8 +9,17 @@
  * resets every quarter and you can fill any quarter independently. `periodKey`
  * is null for non-bucketing / cadence-less goals (one running record).
  *
- * Reads/writes the goal-inputs store directly; renders one control per field
- * kind plus optional per-field evidence.
+ * Reads/writes the goal-inputs store directly. Layout is claim-and-proof (see
+ * field-block.jsx): each field is one object holding what you're claiming and
+ * what backs it, side by side. This file owns the DATA — the store read/write,
+ * the auto-field fetch and the control switch; the block owns how it looks.
+ *
+ * Why the two halves: evidence used to be a grey line under every field,
+ * indistinguishable whether it held a link to a report or nothing at all, so
+ * it went unfilled — and the tier grader folds `evidence` into the data it
+ * judges. A period could read "5/5 captured" while giving the grader bare
+ * booleans to rule on. Proof now has a state (field-status.js) and the header
+ * counts answers and proof separately.
  *
  * AUTO FIELDS. A field may carry `source` — an allowlisted query the server
  * resolves against GitHub/GitLab on the user's behalf. Such a field is never a
@@ -51,8 +60,19 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGoalInputs } from "@/features/goal-inputs";
-import { Button, Input, Select, Checkbox, ItemEvidence, Label } from "@/components/ui";
+import { Badge, Button, Input, Select, Checkbox, Label } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import {
+  FIELD_KIND_HINT,
+  PROOF,
+  TARGET_OP_LABEL,
+  hasValue,
+  isAutoField,
+  meetsTarget,
+  proofState,
+  summarizeFields,
+} from "../field-status";
+import { AnswerRow, FieldBlock, ProofCell } from "./field-block.jsx";
 import { apiPost } from "@/lib/api-client";
 // Namespace import, deliberately: the plain-English description is authored by
 // the shared query-template registry, but the server sends its own copy along
@@ -77,15 +97,6 @@ function unavailableReason(error) {
     return "disconnected";
   }
   return "unresolved";
-}
-
-function isAutoField(f) {
-  return !!(f && f.source && typeof f.source === "object" && f.source.query);
-}
-
-function hasValue(v, kind) {
-  if (kind === "checkbox") return v === true;
-  return v != null && v !== "";
 }
 
 /** Format a resolved primitive for display, per the extractor that produced it. */
@@ -243,21 +254,68 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
     });
   }, []);
 
-  // An auto field is "captured" when the repo answered, not when someone typed.
-  const filled = list.filter((f) =>
-    isAutoField(f) ? auto[f.id]?.value != null : hasValue(values[f.id], f.kind),
-  ).length;
-  const total = list.length;
+  // Answered vs backed-by-proof, counted separately — the whole point of the
+  // claim-and-proof layout is that those are two different questions, and the
+  // old single "5/5 captured" line could read complete on a period carrying no
+  // justification for anything. An auto field is answered when the repo
+  // replied, not when someone typed.
+  const summary = useMemo(
+    () => summarizeFields({ fields: list, values, evidence, auto }),
+    [list, values, evidence, auto],
+  );
 
+  /**
+   * The target a spec set for a measurement, shown beside it. Display-only —
+   * the grader has its own numeric path — but it answers "what counts as
+   * good", which today's form never says out loud. Mint only once it's met;
+   * neutral otherwise, so a half-typed "2" on the way to "20" never flashes
+   * a failure at someone mid-entry.
+   */
+  function targetBadge(f, v) {
+    if (!f.target || typeof f.target !== "object") return null;
+    const op = TARGET_OP_LABEL[f.target.op] || f.target.op;
+    return (
+      <Badge tone={meetsTarget(f.target, v) ? "mint" : "neutral"} className="shrink-0">
+        {op} {f.target.value}
+        {f.unit ? ` ${f.unit}` : ""}
+      </Badge>
+    );
+  }
+
+  /**
+   * The claim half of a field.
+   *
+   * Every branch returns a 44px row on `bg-card`, which is what gives the
+   * column a single left edge and one height — the old switch returned a
+   * 110px input here, a small pill there and a bare checkbox somewhere else.
+   * Controls built from chips (checkbox / counter / scale) get an explicit
+   * <AnswerRow> because they have no fill of their own; the primitives carry
+   * `bg-card` directly, overriding their resting `bg-card-alt`, which on this
+   * block's own `bg-card-alt` would be invisible.
+   */
   function control(f) {
     const v = values[f.id];
     switch (f.kind) {
       case "checkbox":
-        return <Checkbox checked={v === true} onChange={() => setValue(f.id, v !== true)} label={f.label || f.id} />;
+        return (
+          <AnswerRow>
+            <Checkbox
+              checked={v === true}
+              onChange={() => setValue(f.id, v !== true)}
+              label={f.label || f.id}
+            />
+            {/* The word is the checkbox's answer in plain language. The old
+                layout put the box at the far right of the row, a full label
+                away from the question it answered. */}
+            <span className={cn("text-[13px]", v === true ? "text-fg" : "text-dim-fg")}>
+              {v === true ? "Yes" : "Not yet"}
+            </span>
+          </AnswerRow>
+        );
       case "counter": {
         const n = Number.isFinite(Number(v)) ? Number(v) : 0;
         return (
-          <div className="flex items-center gap-1.5">
+          <AnswerRow>
             <button
               type="button"
               onClick={() => setValue(f.id, Math.max(0, n - 1))}
@@ -268,7 +326,7 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
             </button>
             <span className="min-w-[28px] text-center text-[14px] text-fg">
               {n}
-              {f.unit ? <span className="text-[11px] text-muted-fg"> {f.unit}</span> : null}
+              {f.unit ? <span className="text-[11.5px] text-muted-fg"> {f.unit}</span> : null}
             </span>
             <button
               type="button"
@@ -278,17 +336,19 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
             >
               +
             </button>
-          </div>
+            {targetBadge(f, n)}
+          </AnswerRow>
         );
       }
       case "scale":
         return (
-          <div className="flex gap-1">
+          <AnswerRow className="gap-1">
             {[1, 2, 3, 4, 5].map((n) => (
               <button
                 key={n}
                 type="button"
                 onClick={() => setValue(f.id, n)}
+                aria-pressed={Number(v) === n}
                 className={cn(
                   "h-7 w-7 rounded-[var(--radius-md)] text-[13px] font-bold transition-colors",
                   Number(v) === n ? "bg-ink text-ink-on" : "bg-card-alt text-fg",
@@ -297,17 +357,22 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
                 {n}
               </button>
             ))}
-          </div>
+          </AnswerRow>
         );
       case "number":
         return (
-          <Input
-            type="number"
-            value={v ?? ""}
-            onChange={(e) => setValue(f.id, e.target.value === "" ? "" : Number(e.target.value))}
-            placeholder={f.unit ? f.unit : "value"}
-            className="w-[110px]"
-          />
+          <div className="flex min-h-[44px] min-w-0 items-center gap-2">
+            <Input
+              type="number"
+              value={v ?? ""}
+              onChange={(e) => setValue(f.id, e.target.value === "" ? "" : Number(e.target.value))}
+              placeholder="0"
+              aria-label={f.label}
+              className="w-[92px] shrink-0 bg-card"
+            />
+            {f.unit ? <span className="shrink-0 text-[12.5px] text-muted-fg">{f.unit}</span> : null}
+            {targetBadge(f, v)}
+          </div>
         );
       case "date":
         return (
@@ -315,12 +380,18 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
             type="date"
             value={typeof v === "string" ? v : ""}
             onChange={(e) => setValue(f.id, e.target.value)}
-            className="w-[150px]"
+            aria-label={f.label}
+            className="bg-card"
           />
         );
       case "select":
         return (
-          <Select size="sm" value={typeof v === "string" ? v : ""} onChange={(e) => setValue(f.id, e.target.value)} style={{ minWidth: 120 }}>
+          <Select
+            value={typeof v === "string" ? v : ""}
+            onChange={(e) => setValue(f.id, e.target.value)}
+            aria-label={f.label}
+            className="w-full bg-card"
+          >
             <option value="">—</option>
             {(f.options || []).map((opt) => (
               <option key={opt} value={opt}>
@@ -336,6 +407,8 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
             value={typeof v === "string" ? v : ""}
             onChange={(e) => setValue(f.id, e.target.value)}
             placeholder="https://…"
+            aria-label={f.label}
+            className="bg-card"
           />
         );
       case "text":
@@ -346,6 +419,8 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
             value={typeof v === "string" ? v : ""}
             onChange={(e) => setValue(f.id, e.target.value)}
             placeholder={f.help || "…"}
+            aria-label={f.label}
+            className="bg-card"
           />
         );
     }
@@ -354,30 +429,51 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       {showHeadline ? (
-        <Label>
-          {filled}/{total} captured
-        </Label>
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+          <Label>
+            <span className="font-bold text-fg">{summary.answered}</span> of {summary.total} answered
+          </Label>
+          {/* Proof gets its own count, and its own nudge when something is
+              owed. One combined "captured" number let a period read finished
+              while carrying no justification for any of it — which is the
+              number the tier grader then had to judge. */}
+          {summary.owed > 0 ? (
+            <Badge tone="lemon">
+              {summary.owed} need{summary.owed === 1 ? "s" : ""} proof
+            </Badge>
+          ) : summary.proofable > 0 ? (
+            <Label>
+              {summary.withProof} of {summary.proofable} with proof
+            </Label>
+          ) : null}
+        </div>
       ) : null}
       {list.length === 0 ? <div className="text-[13px] text-muted-fg">No fields defined for this widget yet.</div> : null}
       {list.map((f) =>
         isAutoField(f) ? (
           <AutoField key={f.id} goalId={goalId} field={f} periodKey={periodKey} stored={auto[f.id]} onResolved={recordAuto} />
         ) : (
-          <div key={f.id} className="flex min-w-0 flex-col gap-1">
-            <div className="flex min-w-0 items-center justify-between gap-2">
-              <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted-fg" title={f.label}>
-                {f.label}
-                {f.optional ? <span className="opacity-60"> (optional)</span> : null}
-              </span>
-              {f.kind === "checkbox" ? control(f) : null}
-            </div>
-            {f.kind === "checkbox" ? null : <div className="min-w-0">{control(f)}</div>}
-            {f.kind === "link" ? null : (
-              <div className="min-w-0">
-                <ItemEvidence value={evidence[f.id]} variant="dark" onSave={(t) => setEvidence(f.id, t)} />
-              </div>
-            )}
-          </div>
+          <FieldBlock
+            key={f.id}
+            label={f.label}
+            optional={f.optional}
+            kind={FIELD_KIND_HINT[f.kind] || null}
+            captured={hasValue(values[f.id], f.kind)}
+            answer={control(f)}
+            /* A link field has no second half: the URL the user pasted IS the
+               evidence, so asking for proof of it would be asking twice. The
+               caption carries that instead of a redundant empty column. */
+            answerCaption={f.kind === "link" ? "Evidence link" : "Answer"}
+            proof={
+              f.kind === "link" ? null : (
+                <ProofCell
+                  state={proofState({ field: f, value: values[f.id], evidence: evidence[f.id] })}
+                  value={evidence[f.id]}
+                  onSave={(t) => setEvidence(f.id, t)}
+                />
+              )
+            }
+          />
         ),
       )}
     </div>
@@ -391,9 +487,9 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
  * beside it — each auto field succeeds or fails on its own terms, and the user
  * can see which one is the problem.
  *
- * No <ItemEvidence> here on purpose: evidence exists so a person can justify
- * what they entered, and nothing on this field was entered. The repo is the
- * evidence, and the description below the value says which repo.
+ * No user-supplied proof here on purpose: evidence exists so a person can
+ * justify what they entered, and nothing on this field was entered. The repo
+ * is the evidence, so the proof half names the query instead.
  */
 function AutoField({ goalId, field, periodKey, stored, onResolved }) {
   const [state, setState] = useState(() =>
@@ -473,45 +569,62 @@ function AutoField({ goalId, field, periodKey, stored, onResolved }) {
   const reading = state.reading || null;
   const sentence = sourceSentence(field, reading);
   const providerLabel = reading?.provider || (field.source?.provider !== "ask" ? field.source?.provider : null);
+  const resolved = state.status === "resolved";
 
+  /**
+   * An auto field is the layout's best case rather than its exception: the
+   * repo reading IS a claim, and the query behind it IS the proof. So it uses
+   * the same two halves as a typed field, with "Source" naming the second one
+   * — the user supplies no evidence here, and asking them to would invite a
+   * sentence about a measurement they didn't take.
+   */
   return (
-    <div className="flex min-w-0 flex-col gap-1">
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted-fg" title={field.label}>
-          {field.label}
-        </span>
-        <span
-          className="shrink-0 rounded-[var(--radius-md)] bg-card-alt px-1.5 py-0.5 text-[11px] font-bold text-muted-fg"
-          title="Read automatically — nothing to fill in"
-        >
+    <FieldBlock
+      label={field.label}
+      captured={resolved && reading?.value != null}
+      kind={
+        <Badge tone="lav" title="Read automatically — nothing to fill in">
           Auto{providerLabel ? ` · ${providerLabel}` : ""}
-        </span>
-      </div>
-
-      {state.status === "loading" ? (
-        <div className="rounded-[var(--radius-md)] bg-card-alt px-2.5 py-1.5 text-[13px] text-muted-fg">Reading…</div>
-      ) : state.status === "resolved" ? (
-        <div className="rounded-[var(--radius-md)] bg-card-alt px-2.5 py-1.5 text-[13px] text-fg">
-          {formatAuto(reading?.value, reading?.extract)}
-          {state.busy ? <span className="text-[11px] text-muted-fg"> · refreshing</span> : null}
+        </Badge>
+      }
+      proofCaption="Source"
+      answer={
+        state.status === "loading" ? (
+          <AnswerRow>
+            <span className="text-[13px] text-muted-fg">Reading…</span>
+          </AnswerRow>
+        ) : resolved ? (
+          <AnswerRow>
+            <span className="min-w-0 truncate text-[13px] font-semibold text-fg">
+              {formatAuto(reading?.value, reading?.extract)}
+            </span>
+            {state.busy ? <span className="shrink-0 text-[11.5px] text-muted-fg">refreshing</span> : null}
+          </AnswerRow>
+        ) : (
+          <AnswerRow className="justify-between pr-1.5">
+            <span className="min-w-0 flex-1 truncate text-[13px] text-muted-fg">
+              {state.reason === "disconnected"
+                ? "Not connected — link the provider in Settings"
+                : "Couldn't read this yet"}
+            </span>
+            <Button size="sm" variant="soft" className="shrink-0" onClick={() => setNonce((n) => n + 1)}>
+              Retry
+            </Button>
+          </AnswerRow>
+        )
+      }
+      proof={
+        <div className="flex min-h-[44px] min-w-0 flex-col justify-center gap-0.5">
+          {sentence ? (
+            <span className="text-[12px] leading-[1.4] text-muted-fg">{sentence}</span>
+          ) : null}
+          {resolved && reading?.fetchedAt ? (
+            <span className="text-[11.5px] text-dim-fg">{fetchedLabel(reading.fetchedAt)}</span>
+          ) : state.status === "unavailable" && state.message ? (
+            <span className="text-[11.5px] leading-[1.4] text-dim-fg">{state.message}</span>
+          ) : null}
         </div>
-      ) : (
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="flex-1 rounded-[var(--radius-md)] bg-card-alt px-2.5 py-1.5 text-[13px] text-muted-fg">
-            {state.reason === "disconnected" ? "Not connected — link the provider in Settings" : "Couldn't read this yet"}
-          </div>
-          <Button size="sm" variant="soft" onClick={() => setNonce((n) => n + 1)}>
-            Retry
-          </Button>
-        </div>
-      )}
-
-      {sentence ? <div className="text-[11px] leading-[1.4] text-muted-fg">{sentence}</div> : null}
-      {state.status === "resolved" && reading?.fetchedAt ? (
-        <div className="text-[11px] text-dim-fg">{fetchedLabel(reading.fetchedAt)}</div>
-      ) : state.status === "unavailable" && state.message ? (
-        <div className="text-[11px] leading-[1.4] text-dim-fg">{state.message}</div>
-      ) : null}
-    </div>
+      }
+    />
   );
 }
