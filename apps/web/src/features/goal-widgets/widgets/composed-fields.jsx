@@ -306,7 +306,7 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
             {/* The word is the checkbox's answer in plain language. The old
                 layout put the box at the far right of the row, a full label
                 away from the question it answered. */}
-            <span className={cn("text-[13px]", v === true ? "text-fg" : "text-dim-fg")}>
+            <span className={cn("text-[13px]", v === true ? "text-fg" : "text-muted-fg")}>
               {v === true ? "Yes" : "Not yet"}
             </span>
           </AnswerRow>
@@ -618,9 +618,9 @@ function AutoField({ goalId, field, periodKey, stored, onResolved }) {
             <span className="text-[12px] leading-[1.4] text-muted-fg">{sentence}</span>
           ) : null}
           {resolved && reading?.fetchedAt ? (
-            <span className="text-[11.5px] text-dim-fg">{fetchedLabel(reading.fetchedAt)}</span>
+            <span className="text-[11.5px] text-muted-fg">{fetchedLabel(reading.fetchedAt)}</span>
           ) : state.status === "unavailable" && state.message ? (
-            <span className="text-[11.5px] leading-[1.4] text-dim-fg">{state.message}</span>
+            <span className="text-[11.5px] leading-[1.4] text-muted-fg">{state.message}</span>
           ) : null}
         </div>
       }

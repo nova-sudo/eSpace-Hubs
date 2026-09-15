@@ -32,8 +32,8 @@ explicitly named as such.
 | `--card` | `#ffffff` | `#17171a` | `bg-card` | every card |
 | `--card-alt` | `#f7f7f8` | `#202024` | `bg-card-alt` | inset panels, soft buttons, resting inputs, chips on a card |
 | `--fg` | `#18181b` | `#f4f4f5` | `text-fg` | primary text |
-| `--muted-fg` | `#71717a` | `#a1a1aa` | `text-muted-fg` | secondary text, labels |
-| `--dim-fg` | `#a1a1aa` | `#62626b` | `text-dim-fg` | tertiary text, placeholders |
+| `--muted-fg` | `#6d6d76` | `#a1a1aa` | `text-muted-fg` | secondary text, labels (4.66:1 on the canvas — AA) |
+| `--dim-fg` | `#a1a1aa` | `#62626b` | `text-dim-fg` | placeholders ONLY — 2.56:1, below the AA body-text bar |
 | `--line` | `rgba(24,24,27,.07)` | `rgba(255,255,255,.08)` | `border-line` | dividers INSIDE cards only |
 | `--ink` | `#18181b` | `#f4f4f5` | `bg-ink` | the brand: primary buttons, active nav pill, filled progress |
 | `--ink-on` | `#ffffff` | `#18181b` | `text-ink-on` | text on ink |

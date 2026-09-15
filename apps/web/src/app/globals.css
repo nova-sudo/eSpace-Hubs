@@ -19,7 +19,16 @@
   --card: #ffffff;
   --card-alt: #f7f7f8;
   --fg: #18181b;
-  --muted-fg: #71717a;
+  /* Zinc-500 (#71717a) measured 4.40:1 against --bg, just under the 4.5:1
+     WCAG AA bar for body text — and secondary text sits directly on the
+     canvas all over the app (page subtitles, labels outside a card). Four
+     units darker clears it on every surface: 4.66:1 on --bg, 5.12:1 on
+     --card, 4.78:1 on --card-alt. Off the Tailwind ramp on purpose; the
+     tokens are the source of truth, not the ramp. Guarded by
+     src/design-system-contrast.test.js. */
+  --muted-fg: #6d6d76;
+  /* Tertiary/placeholder ONLY — 2.56:1 on --card, below the body-text bar
+     by design. Never use it for text a reader has to read. */
   --dim-fg: #a1a1aa;
   --line: rgba(24, 24, 27, 0.07);
 

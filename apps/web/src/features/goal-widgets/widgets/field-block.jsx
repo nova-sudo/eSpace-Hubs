@@ -76,7 +76,7 @@ export function FieldBlock({
       <div className="flex min-w-0 items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-fg" title={label}>
           {label}
-          {optional ? <span className="font-medium text-dim-fg"> optional</span> : null}
+          {optional ? <span className="font-medium text-muted-fg"> optional</span> : null}
         </span>
         {captured ? (
           <span
@@ -87,7 +87,7 @@ export function FieldBlock({
             <Check size={11} strokeWidth={2.6} />
           </span>
         ) : null}
-        {kind ? <span className="shrink-0 text-[11.5px] text-dim-fg">{kind}</span> : null}
+        {kind ? <span className="shrink-0 text-[11.5px] text-muted-fg">{kind}</span> : null}
       </div>
 
       {/* auto-fit, not a breakpoint: this block renders at tile width, modal
@@ -219,7 +219,7 @@ export function ProofCell({ state, value, onSave }) {
           type="button"
           variant="ghost"
           size="sm"
-          className="px-2.5 text-dim-fg"
+          className="px-2.5 text-muted-fg"
           onClick={() => {
             setDraft("");
             setEditing(true);
