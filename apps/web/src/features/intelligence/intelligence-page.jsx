@@ -1,37 +1,34 @@
 "use client";
 
 /**
- * Goal Intelligence Hub — the app's home surface (Dev hub), "Focus" layout.
+ * Goal Intelligence Hub — the app's home surface (Dev hub).
  *
- * One thing at a time. Instead of a wall of health cards, the page leads with
- * a single hero for the most-slipping goal (queue[0]), a short "also needs
- * you" list (queue[1..3]) and a snapshot nudge beside it, and the full health
- * board tucked behind a disclosure. When nothing needs the user, a calm
- * "all caught up" card.
+ * Three blocks, in the order a person actually needs them:
+ *
+ *   1. A summary strip — weighted cadence completion against the pacing tick
+ *      and the status counts. One row, no charts.
+ *   2. The focus block — queue[0] as a full-width hero, the rest of the
+ *      attention queue as one-line tinted rows. This is the point of the
+ *      page; everything below it is quieter by design.
+ *   3. The board as outline bands — every objective a band, every goal a row.
+ *      It used to hide behind a "show full board" disclosure; seeing your
+ *      whole tree is the page's second job, not an optional extra.
  *
  * Data comes from two shared-domain hooks only (useGoalWidgetItems +
  * useGoalHealth) — no product-surface imports, no integration tiles.
  * `queue` is severity-sorted, so queue[0] IS the top priority.
  */
 
-import { useState } from "react";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
-import { Badge, Button, Card, Label, Loader, Reveal } from "@/components/ui";
-import { readinessLabel, useGoalWidgetItems } from "@/features/goal-widgets";
+import { Button, Card, Label, Loader, Reveal, Section } from "@/components/ui";
+import { useGoalWidgetItems } from "@/features/goal-widgets";
 import { useHubLink } from "@/features/hubs";
-import { specCadence } from "@/features/goal-specs";
-import { cadenceWindowLabel } from "@/features/goal-inputs";
-import { cn } from "@/lib/cn";
 import { ActionQueue } from "./action-queue";
-import { FocusCarousel } from "./focus-carousel";
-import { GoalHealthGrid } from "./goal-health-grid";
-import { HEALTH } from "./status";
+import { FocusSection } from "./focus-section";
+import { ObjectiveBands } from "./objective-bands";
+import { statusCounts, weightedProgressPercent } from "./progress";
+import { SummaryStrip } from "./summary-strip";
 import { useGoalHealth } from "./use-goal-health";
-
-function capitalize(s) {
-  return s ? s[0].toUpperCase() + s.slice(1) : s;
-}
 
 export function IntelligencePage() {
   const {
@@ -48,12 +45,14 @@ export function IntelligencePage() {
   const link = useHubLink();
   const fillHref = link("/goals");
   const snapshotHref = link("/snapshots");
-  const [showBoard, setShowBoard] = useState(false);
 
   const loading = !itemsReady || !inputsReady;
   const needCount = queue?.length ?? 0;
   const crumb =
     hasSpecs && !loading ? `Start here · ${needCount} of ${summary.total} need you` : "Goal intelligence";
+
+  const counts = statusCounts(summary, unclassifiedGoals.length);
+  const progress = weightedProgressPercent(groups);
 
   return (
     <main className="relative z-[2] mx-auto max-w-[1040px] px-4 pb-16 pt-7 sm:px-10">
@@ -82,7 +81,7 @@ export function IntelligencePage() {
         <EmptyState
           title="No goals yet"
           body="Add your performance goals to start tracking them here."
-          ctaHref={link("/goals")}
+          ctaHref={fillHref}
           ctaLabel="Add goals"
         />
       ) : !hasSpecs ? (
@@ -91,114 +90,43 @@ export function IntelligencePage() {
           body={`You have goals, but none are classified into trackable widgets. Open the analyst (top-right) to classify them${
             unclassifiedGoals.length ? ` — ${unclassifiedGoals.length} waiting` : ""
           }.`}
-          ctaHref={link("/goals")}
+          ctaHref={fillHref}
           ctaLabel="Review goals"
         />
       ) : (
-        <Reveal stagger className="flex flex-col gap-4">
-          {needCount > 0 ? (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-              <div className="lg:col-span-2">
-                <FocusCarousel queue={queue} />
-              </div>
-              <div className="flex flex-col gap-4">
-                {queue.length > 1 ? <AlsoNeedsYou items={queue.slice(1, 4)} fillHref={fillHref} /> : null}
-                <ActionQueue snapshotHref={snapshotHref} />
-              </div>
+        <Reveal stagger>
+          <SummaryStrip percent={progress} counts={counts} className="mb-7" />
+
+          <Section
+            title={needCount > 0 ? "Needs you first" : "Where you stand"}
+            right={
+              needCount > 1 ? (
+                <span className="text-[13px] text-muted-fg">{needCount} waiting</span>
+              ) : null
+            }
+          >
+            <FocusSection queue={queue} fillHref={fillHref} total={summary.total} />
+            <div className="mt-2.5">
+              <ActionQueue snapshotHref={snapshotHref} />
             </div>
-          ) : (
-            <AllCaughtUp total={summary.total} />
-          )}
+          </Section>
 
-          {unclassifiedGoals.length > 0 ? <UnclassifiedNote count={unclassifiedGoals.length} /> : null}
-
-          {/* Full health board — tucked away so the page stays calm. */}
-          <div>
-            <Button variant="soft" size="sm" onClick={() => setShowBoard((v) => !v)}>
-              {showBoard ? "Hide" : `Show full board · ${summary.total} goals`}
-            </Button>
-            {showBoard ? (
-              <div className="mt-4">
-                <GoalHealthGrid groups={groups} fillHref={fillHref} />
-              </div>
+          <Section
+            title="All objectives"
+            right={
+              <span className="text-[13px] text-muted-fg">
+                {summary.total} goal{summary.total === 1 ? "" : "s"} · {counts.onPace} on pace
+              </span>
+            }
+          >
+            <ObjectiveBands groups={groups} />
+            {unclassifiedGoals.length > 0 ? (
+              <UnclassifiedNote count={unclassifiedGoals.length} />
             ) : null}
-          </div>
+          </Section>
         </Reveal>
       )}
     </main>
-  );
-}
-
-/** Which tint a queue item reads as in "Also needs you" — lemon for
- *  not-logged/needs-setup, peach for behind/overdue/stale. */
-function alsoNeedsYouTone(health) {
-  if (health?.overdue) return "peach";
-  if (health?.status === HEALTH.BEHIND || health?.status === HEALTH.STALE) return "peach";
-  return "lemon";
-}
-
-/** One-line status text for an "Also needs you" row, in the goal's own
- *  cadence terms. */
-function alsoNeedsYouLine(card) {
-  const { health, spec } = card;
-  if (health?.status === HEALTH.NEEDS_SETUP) {
-    return readinessLabel(health.readiness) || "Needs setup";
-  }
-  const cadence = specCadence(spec);
-  if (health?.status === HEALTH.NO_DATA) {
-    return cadence ? `Not logged yet · ${capitalize(cadence)}` : "Not logged yet";
-  }
-  if (health?.status === HEALTH.STALE) {
-    const [singular, plural] = cadenceWindowLabel(cadence);
-    const missed = health.missedWindows || 1;
-    return `Gone quiet · ${missed} ${missed === 1 ? singular : plural}`;
-  }
-  if (health?.status === HEALTH.BEHIND) return "Behind target";
-  return "Needs attention";
-}
-
-/** The short list beside the hero — queue[1..3], each a tinted row linking
- *  back to Goals (where the fuller fill/edit UI lives). */
-function AlsoNeedsYou({ items, fillHref }) {
-  return (
-    <Card padding={22} className="flex flex-col gap-3.5">
-      <div className="flex items-center justify-between">
-        <div className="text-[15px] font-bold text-fg">Also needs you</div>
-        <Badge>{items.length}</Badge>
-      </div>
-      <div className="flex flex-col gap-2.5">
-        {items.map((card) => (
-          <Link
-            key={card.goal.id}
-            href={fillHref}
-            className={cn(
-              "flex flex-col gap-2 rounded-[var(--radius-lg)] p-3.5",
-              alsoNeedsYouTone(card.health) === "peach" ? "bg-peach text-peach-ink" : "bg-lemon text-lemon-ink",
-            )}
-          >
-            <div className="text-[14px] font-bold leading-[1.3]">{card.goal.title}</div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[12px] font-semibold opacity-80">{alsoNeedsYouLine(card)}</span>
-              <span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-full bg-ink text-ink-on">
-                <ChevronRight size={13} />
-              </span>
-            </div>
-          </Link>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-/** Shown when the attention queue is empty — everything's on pace. */
-function AllCaughtUp({ total }) {
-  return (
-    <Card tone="mint" padding={30} className="text-center">
-      <div className="text-[22px] font-extrabold tracking-[-0.02em] text-mint-ink">All caught up.</div>
-      <div className="mx-auto mt-2 max-w-[380px] text-[13.5px] leading-[1.5] text-mint-ink/80">
-        Every one of your {total} goals has reached Achieved or better. Nothing needs you right now.
-      </div>
-    </Card>
   );
 }
 
@@ -216,7 +144,7 @@ function EmptyState({ title, body, ctaHref, ctaLabel }) {
 
 function UnclassifiedNote({ count }) {
   return (
-    <Card padding={16} className="text-[13px] text-muted-fg">
+    <Card padding={16} className="mt-2.5 text-[13px] text-muted-fg">
       {count} goal{count === 1 ? "" : "s"} not yet classified — open the analyst (top-right) to make{" "}
       {count === 1 ? "it" : "them"} trackable.
     </Card>
