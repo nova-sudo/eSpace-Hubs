@@ -14,14 +14,33 @@
  * other. A goal with nothing set here falls back to its own AI-extracted
  * or self-authored tiers, unchanged.
  *
+ * The layout is a rail plus a compare area that holds TWO codes open at
+ * once. Authoring a ladder is a comparison act — "Achieved" for DP-L0-2
+ * and for R-L0-3 differ by one word, and an accordion that opens one row
+ * at a time made that impossible to see. A code governing zero goals is
+ * flagged in the rail, where you choose, rather than after you open it.
+ *
  * Data: GET/PUT/DELETE /api/v1/manager/tier-policies[/:code].
  */
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { X } from "lucide-react";
 import { apiDelete, apiGet, apiPut } from "@/lib/api-client";
-import { Badge, Button, Field, Input, Label, PageHeader } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  Field,
+  IconButton,
+  Input,
+  Label,
+  PageHeader,
+} from "@/components/ui";
+import { cn } from "@/lib/cn";
+import { ConfirmDialog } from "./confirm-dialog";
+import { EmptyCard } from "./manager-ui";
+import { plural } from "./manager-format";
 
 const TIER_ORDER = ["notAchieved", "achieved", "overAchieved", "roleModel"];
 const TIER_LABELS = {
@@ -30,10 +49,12 @@ const TIER_LABELS = {
   overAchieved: "Over achieved",
   roleModel: "Role model",
 };
-
-function emptyLadder() {
-  return { notAchieved: "", achieved: "", overAchieved: "", roleModel: "" };
-}
+const TIER_TONE = {
+  notAchieved: "peach",
+  achieved: "mint",
+  overAchieved: "sky",
+  roleModel: "lav",
+};
 
 function ladderFromPolicy(criteria) {
   const c = criteria || {};
@@ -62,7 +83,8 @@ function policyKey(p) {
 export function ManagerTierPolicies() {
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [openKey, setOpenKey] = useState(null);
+  // Up to two codes open side by side — the whole point of the layout.
+  const [openKeys, setOpenKeys] = useState([]);
   const [newCode, setNewCode] = useState("");
   // F6 — the codes that actually exist in the org, with blast radius.
   // Feeds the picker and the per-row "affects N goals · M people" chip.
@@ -88,6 +110,14 @@ export function ManagerTierPolicies() {
     void reload();
   }, []);
 
+  function openPolicy(key) {
+    setOpenKeys((prev) => {
+      if (prev.includes(key)) return prev.filter((k) => k !== key);
+      // Two at a time: the newest pick pushes out the older one.
+      return [...prev, key].slice(-2);
+    });
+  }
+
   function applyUpdate(policy) {
     setPolicies((prev) => {
       const idx = prev.findIndex((p) => policyKey(p) === policyKey(policy));
@@ -100,6 +130,7 @@ export function ManagerTierPolicies() {
 
   function applyDelete(policy) {
     setPolicies((prev) => prev.filter((p) => policyKey(p) !== policyKey(policy)));
+    setOpenKeys((prev) => prev.filter((k) => k !== policyKey(policy)));
   }
 
   function addCode(code) {
@@ -114,14 +145,12 @@ export function ManagerTierPolicies() {
     };
     const existing = policies.find((p) => policyKey(p) === policyKey(draft));
     if (existing) {
-      setOpenKey(policyKey(existing));
+      openPolicy(policyKey(existing));
       setNewCode("");
       return;
     }
-    setPolicies((prev) =>
-      [...prev, draft].sort((a, b) => a.code.localeCompare(b.code)),
-    );
-    setOpenKey(policyKey(draft));
+    setPolicies((prev) => [...prev, draft].sort((a, b) => a.code.localeCompare(b.code)));
+    setOpenKeys((prev) => [...prev.filter((k) => k !== policyKey(draft)), policyKey(draft)].slice(-2));
     setNewCode("");
   }
 
@@ -149,8 +178,12 @@ export function ManagerTierPolicies() {
     (c) => c.code.toLowerCase() === filter,
   );
 
+  const open = openKeys
+    .map((k) => policies.find((p) => policyKey(p) === k))
+    .filter(Boolean);
+
   return (
-    <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
+    <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-7 sm:px-10">
       <PageHeader
         crumb="Manager · achievement-tier governance"
         title="Set tiers by Goal Code."
@@ -159,11 +192,11 @@ export function ManagerTierPolicies() {
             Author the Final (whole-goal) and Per-Cadence (per-window)
             achievement-tier ladders for a Goal Code (L1 or L2) — it applies
             to every developer whose goal carries that code. An L2 code
-            overrides its parent L1's code, field by field. A goal with
+            overrides its parent L1&apos;s code, field by field. A goal with
             nothing set here keeps using its own AI-extracted or
             self-authored tiers. Policies are scoped to a performance
-            cycle (year) — this year's criteria never silently grade next
-            year's goals — and affected engineers are notified on save.
+            cycle (year) — this year&apos;s criteria never silently grade next
+            year&apos;s goals — and affected engineers are notified on save.
           </>
         }
       />
@@ -171,12 +204,14 @@ export function ManagerTierPolicies() {
       <form className="flex flex-wrap items-end gap-2" onSubmit={handleAdd}>
         <Field
           label={`Goal Code — governs cycle ${currentCycle}`}
-          className="flex-1 min-w-[200px]"
+          className="min-w-[200px] flex-1"
         >
           <Input
             value={newCode}
             onChange={(e) => setNewCode(e.target.value)}
-            placeholder={codes === null ? "Loading codes…" : "Filter existing codes, or type one"}
+            placeholder={
+              codes === null ? "Loading codes…" : "Filter existing codes, or type one"
+            }
             className="font-mono"
           />
         </Field>
@@ -198,12 +233,14 @@ export function ManagerTierPolicies() {
               className="flex items-center justify-between gap-3 border-t border-line px-3 py-2 text-left transition-colors first:border-t-0 hover:bg-card"
             >
               <span className="flex min-w-0 items-baseline gap-2">
-                <code className="shrink-0 font-mono text-[11.5px] font-bold text-fg">{c.code}</code>
+                <code className="shrink-0 font-mono text-[11.5px] font-bold text-fg">
+                  {c.code}
+                </code>
                 <span className="truncate text-[11.5px] text-muted-fg">{c.title}</span>
               </span>
               <span className="shrink-0 text-[11px] text-dim-fg">
-                {c.level} · {c.goals} goal{c.goals === 1 ? "" : "s"} · {c.people}{" "}
-                {c.people === 1 ? "person" : "people"}
+                {c.level} · {plural(c.goals, "goal", "goals")} ·{" "}
+                {plural(c.people, "person", "people")}
               </span>
             </button>
           ))}
@@ -218,81 +255,91 @@ export function ManagerTierPolicies() {
 
       <div className="mt-6">
         {loading ? (
-          <div className="text-[12px] text-muted-fg">Loading…</div>
+          <EmptyCard>Loading…</EmptyCard>
         ) : policies.length === 0 ? (
-          <div className="rounded-[var(--radius-xl)] bg-card p-6 text-[13px] leading-[1.6] text-muted-fg" style={{ boxShadow: "var(--shadow-card)" }}>
+          <EmptyCard>
             No tier policies yet. Add a Goal Code above to start governing it.
-          </div>
+          </EmptyCard>
         ) : (
-          <>
-            <Label>
-              {policies.length} code{policies.length === 1 ? "" : "s"} governed
-            </Label>
-            <div className="mt-3 flex flex-col gap-2">
-              {policies.map((p) => (
-                <PolicyRow
-                  key={policyKey(p)}
-                  policy={p}
-                  scope={(codes || []).find((c) => c.code === p.code) || null}
-                  expanded={openKey === policyKey(p)}
-                  onExpand={() =>
-                    setOpenKey(openKey === policyKey(p) ? null : policyKey(p))
-                  }
-                  onUpdate={applyUpdate}
-                  onDelete={applyDelete}
-                />
-              ))}
-            </div>
-          </>
+          <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+            <Card padding={11}>
+              <Label className="mb-2 block px-2">
+                {plural(policies.length, "code", "codes")} governed
+              </Label>
+              {policies.map((p) => {
+                const key = policyKey(p);
+                const scope = (codes || []).find((c) => c.code === p.code) || null;
+                const active = openKeys.includes(key);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => openPolicy(key)}
+                    className={cn(
+                      "flex w-full items-center gap-2.5 rounded-[var(--radius-lg)] px-2.5 py-2 text-left transition-colors",
+                      active ? "bg-card-alt" : "hover:bg-card-alt",
+                    )}
+                  >
+                    <code className="shrink-0 font-mono text-[12px] font-bold text-fg">
+                      {p.code}
+                    </code>
+                    <span className="min-w-0 flex-1 truncate text-[11.5px] text-muted-fg">
+                      {scope?.title || p.cycleKey || "any cycle"}
+                    </span>
+                    {/* The blast radius — who this row actually governs.
+                        Zero is a warning, not silence: a policy matching
+                        nothing is either a typo or a stale code. */}
+                    {scope && scope.goals > 0 ? (
+                      <span className="shrink-0 text-[11px] tabular-nums text-dim-fg">
+                        {scope.goals}g · {scope.people}p
+                      </span>
+                    ) : (
+                      <Badge tone="lemon">0 goals</Badge>
+                    )}
+                  </button>
+                );
+              })}
+            </Card>
+
+            {open.length === 0 ? (
+              <EmptyCard>
+                Pick a code on the left to author its ladders. Pick a second to
+                hold both open and compare them word for word.
+              </EmptyCard>
+            ) : (
+              <div
+                className={cn(
+                  "grid gap-3",
+                  open.length > 1 ? "xl:grid-cols-2" : "grid-cols-1",
+                )}
+              >
+                {open.map((p) => (
+                  <PolicyEditor
+                    key={policyKey(p)}
+                    policy={p}
+                    scope={(codes || []).find((c) => c.code === p.code) || null}
+                    onClose={() => openPolicy(policyKey(p))}
+                    onUpdate={applyUpdate}
+                    onDelete={applyDelete}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </main>
   );
 }
 
-function PolicyRow({ policy, scope, expanded, onExpand, onUpdate, onDelete }) {
-  return (
-    <div className="rounded-[var(--radius-xl)] bg-card" style={{ boxShadow: "var(--shadow-card)" }}>
-      <button
-        type="button"
-        onClick={onExpand}
-        className="flex w-full items-center justify-between gap-4 px-5 py-3.5 text-left transition-colors hover:bg-card-alt"
-      >
-        <div className="flex flex-1 flex-wrap items-baseline gap-3">
-          <code className="font-mono text-[13px] font-bold text-fg">{policy.code}</code>
-          <Badge>{policy.cycleKey || "any cycle"}</Badge>
-          {/* The blast radius — who this row actually governs. Zero is a
-              warning, not silence: a policy matching nothing is either a
-              typo or a stale code. */}
-          {scope && scope.goals > 0 ? (
-            <span className="text-[11px] text-dim-fg">
-              affects {scope.goals} goal{scope.goals === 1 ? "" : "s"} · {scope.people}{" "}
-              {scope.people === 1 ? "person" : "people"}
-            </span>
-          ) : (
-            <Badge tone="lemon">matches no goals</Badge>
-          )}
-          {policy.finalTiers ? <span className="text-[11px] text-muted-fg">final set</span> : null}
-          {policy.cadenceTiers ? <span className="text-[11px] text-muted-fg">cadence set</span> : null}
-        </div>
-        {expanded ? <ChevronDown size={15} className="text-dim-fg" /> : <ChevronRight size={15} className="text-dim-fg" />}
-      </button>
-
-      {expanded ? (
-        <PolicyEditor policy={policy} onUpdate={onUpdate} onDelete={onDelete} />
-      ) : null}
-    </div>
-  );
-}
-
-function PolicyEditor({ policy, onUpdate, onDelete }) {
-  const [finalTiers, setFinalTiers] = useState(() =>
-    ladderFromPolicy(policy.finalTiers),
-  );
+function PolicyEditor({ policy, scope, onClose, onUpdate, onDelete }) {
+  const [finalTiers, setFinalTiers] = useState(() => ladderFromPolicy(policy.finalTiers));
   const [cadenceTiers, setCadenceTiers] = useState(() =>
     ladderFromPolicy(policy.cadenceTiers),
   );
   const [saving, setSaving] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   async function handleSave() {
     setSaving(true);
@@ -321,22 +368,20 @@ function PolicyEditor({ policy, onUpdate, onDelete }) {
       onDelete(policy);
     }
     onUpdate(r.data?.policy);
-    toast.success(`Saved ${cycleKey} tiers for "${policy.code}". Affected engineers are notified.`);
+    toast.success(
+      `Saved ${cycleKey} tiers for "${policy.code}". Affected engineers are notified.`,
+    );
   }
 
   async function handleDelete() {
-    if (
-      !window.confirm(
-        `Remove the ${policy.cycleKey || "any-cycle"} tier policy for "${policy.code}"?\n\nMatching goals fall back to their own AI-extracted or self-authored tiers again.`,
-      )
-    ) {
-      return;
-    }
     setSaving(true);
     const r = await apiDelete(
-      `/manager/tier-policies/${encodeURIComponent(policy.code)}?cycleKey=${encodeURIComponent(policy.cycleKey || "legacy")}`,
+      `/manager/tier-policies/${encodeURIComponent(policy.code)}?cycleKey=${encodeURIComponent(
+        policy.cycleKey || "legacy",
+      )}`,
     );
     setSaving(false);
+    setConfirmOpen(false);
     if (!r.ok) {
       toast.error(r.error?.message || "Couldn't remove tier policy.");
       return;
@@ -346,17 +391,37 @@ function PolicyEditor({ policy, onUpdate, onDelete }) {
   }
 
   return (
-    <div className="border-t border-line px-5 py-5">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+    <Card padding={18}>
+      <div className="flex flex-wrap items-center gap-2">
+        <code className="font-mono text-[13px] font-bold text-fg">{policy.code}</code>
+        <Badge tone="lav">{policy.cycleKey || "any cycle"}</Badge>
+        <span className="flex-1" />
+        {scope && scope.goals > 0 ? (
+          <Badge>
+            {plural(scope.goals, "goal", "goals")} ·{" "}
+            {plural(scope.people, "person", "people")}
+          </Badge>
+        ) : (
+          <Badge tone="lemon">matches no goals</Badge>
+        )}
+        <IconButton label="Close this code" size="sm" onCard onClick={onClose}>
+          <X size={14} />
+        </IconButton>
+      </div>
+      {scope?.title ? (
+        <div className="mt-1 text-[12px] text-muted-fg">{scope.title}</div>
+      ) : null}
+
+      <div className="mt-4 grid gap-5">
         <Ladder
-          title="Final tiers"
+          title="Whole goal"
           hint="The whole-goal ladder — pooled across every submitted period."
           ladder={finalTiers}
           onChange={setFinalTiers}
           disabled={saving}
         />
         <Ladder
-          title="Per-cadence tiers"
+          title="Per window"
           hint="Graded once per cadence window (e.g. one quarter on its own)."
           ladder={cadenceTiers}
           onChange={setCadenceTiers}
@@ -364,15 +429,31 @@ function PolicyEditor({ policy, onUpdate, onDelete }) {
         />
       </div>
 
-      <div className="mt-6 flex items-center justify-end gap-2">
-        <Button type="button" variant="danger" size="sm" onClick={handleDelete} disabled={saving}>
+      <div className="mt-5 flex items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="danger"
+          size="sm"
+          onClick={() => setConfirmOpen(true)}
+          disabled={saving}
+        >
           Remove policy
         </Button>
         <Button type="button" variant="ink" size="sm" onClick={handleSave} disabled={saving}>
           {saving ? "Saving…" : "Save"}
         </Button>
       </div>
-    </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        busy={saving}
+        title={`Remove the ${policy.cycleKey || "any-cycle"} policy for ${policy.code}?`}
+        body="Matching goals fall back to their own AI-extracted or self-authored tiers again."
+        confirmLabel="Remove policy"
+        onConfirm={handleDelete}
+        onClose={() => setConfirmOpen(false)}
+      />
+    </Card>
   );
 }
 
@@ -383,16 +464,20 @@ function Ladder({ title, hint, ladder, onChange, disabled }) {
       <p className="mt-1 text-[11.5px] leading-[1.5] text-muted-fg">{hint}</p>
       <div className="mt-2 flex flex-col gap-2.5">
         {TIER_ORDER.map((k) => (
-          <Field key={k} label={TIER_LABELS[k]}>
+          <div key={k}>
+            <Badge tone={TIER_TONE[k]} className="mb-1.5">
+              {TIER_LABELS[k]}
+            </Badge>
             <textarea
               rows={2}
+              aria-label={`${title} · ${TIER_LABELS[k]}`}
               value={ladder[k]}
               onChange={(e) => onChange({ ...ladder, [k]: e.target.value })}
               disabled={disabled}
               className="w-full rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-2.5 text-[12.5px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
               style={{ resize: "vertical" }}
             />
-          </Field>
+          </div>
         ))}
       </div>
     </div>

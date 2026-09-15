@@ -7,124 +7,196 @@
  * delegated judgement to you — no self-tracking). Each opens the same
  * grading drawer as the employee board; ungraded ones are surfaced first.
  *
+ * Two things this view owes you that it used to swallow:
+ *   - HOW LONG it has been waiting. A queue with no age can't be
+ *     triaged: "3 delegated goals" says nothing about the one that has
+ *     been sitting since August.
+ *   - WHAT YOU DECIDED. A graded item showed a tier and nothing else —
+ *     not the date, not the note you wrote — and re-opening it handed
+ *     the drawer an empty note, which then saved straight over the
+ *     reasoning the engineer had been given.
+ *
  * Data: GET /manager/delegated-queue.
  */
 
-import { useState } from "react";
-import { Badge, Button, Label, PageHeader } from "@/components/ui";
+import { useMemo, useState } from "react";
+import { Avatar, Badge, Button, Card, SegmentedControl, PageHeader } from "@/components/ui";
 import { TIER_LABELS } from "@/features/goal-tiers";
 import { useDelegatedQueue } from "./use-delegated-queue";
 import { ManagerGradeDrawer } from "./manager-grade-drawer";
+import { EmptyCard, TierBadge } from "./manager-ui";
+import { daysWaiting, onDate, waitedFor } from "./manager-format";
 
-function initials(name) {
-  const parts = String(name || "")
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2);
-  return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
-}
-
-const TIER_TONE = {
-  not_achieved: "peach",
-  achieved: "neutral",
-  over_achieved: "mint",
-  role_model: "lav",
-};
-
-function VerdictChip({ verdict }) {
-  if (!verdict) return <Badge tone="lav">Awaiting your grade</Badge>;
-  const tone = TIER_TONE[verdict.tier] ?? "neutral";
-  return <Badge tone={tone}>{TIER_LABELS[verdict.tier] ?? verdict.tier}</Badge>;
-}
+const FILTERS = ["awaiting", "graded", "all"];
 
 export function ManagerDelegated() {
   const { loading, items, error, refresh } = useDelegatedQueue();
   const [grading, setGrading] = useState(null);
+  const [filter, setFilter] = useState("awaiting");
 
   const pending = items.filter((it) => !it.verdict).length;
+  const graded = items.length - pending;
+
+  const shown = useMemo(() => {
+    const rows = items.filter((it) => {
+      if (filter === "awaiting") return !it.verdict;
+      if (filter === "graded") return !!it.verdict;
+      return true;
+    });
+    // Oldest first inside each bucket — the thing that has been sitting
+    // longest is the thing you are most likely to owe an answer on.
+    return [...rows].sort(
+      (a, b) =>
+        daysWaiting(b.verdict?.gradedAt ?? b.since) -
+        daysWaiting(a.verdict?.gradedAt ?? a.since),
+    );
+  }, [items, filter]);
 
   return (
-    <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
+    <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-7 sm:px-10">
       <PageHeader
         crumb="Delegated to you · your judgement required"
         title="Goals only you can score."
         subtitle="These reports marked a goal “manager evaluates” — there's no self-tracking, so it stays open until you grade it."
+        right={
+          <SegmentedControl
+            size="sm"
+            value={filter}
+            onChange={(v) => FILTERS.includes(v) && setFilter(v)}
+            options={[
+              { value: "awaiting", label: "Awaiting you", count: pending },
+              { value: "graded", label: "Graded", count: graded },
+              { value: "all", label: "All", count: items.length },
+            ]}
+          />
+        }
       />
 
-      <Label>
-        {loading ? "Loading…" : `${items.length} delegated · ${pending} awaiting you`}
-      </Label>
-
-      <div className="mt-3 grid gap-3">
+      <div className="grid max-w-[900px] gap-3">
         {error ? (
           <EmptyCard>
-            Couldn't load your delegated goals right now. Refresh, or check
+            Couldn&apos;t load your delegated goals right now. Refresh, or check
             back in a moment.
           </EmptyCard>
         ) : loading ? (
           <EmptyCard>Loading…</EmptyCard>
         ) : items.length === 0 ? (
           <EmptyCard>
-            No goals are delegated to you right now. When a report marks a
-            goal “manager evaluates,” it shows up here for your verdict.
+            No goals are delegated to you right now. When a report marks a goal
+            “manager evaluates,” it shows up here for your verdict.
+          </EmptyCard>
+        ) : shown.length === 0 ? (
+          <EmptyCard>
+            {filter === "awaiting"
+              ? "Nothing is waiting on your judgement — every delegated goal is graded."
+              : "Nothing graded yet."}
           </EmptyCard>
         ) : (
-          items.map((it) => (
-            <div
-              key={`${it.user.id}:${it.goal.id}`}
-              className="rounded-[var(--radius-xl)] bg-card p-5"
-              style={{ boxShadow: "var(--shadow-card)" }}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 text-[11.5px] text-muted-fg">
-                    <span className="grid h-5 w-5 flex-none place-items-center rounded-full bg-card-alt text-[11px] font-bold">
-                      {initials(it.user.displayName)}
-                    </span>
-                    {[it.user.displayName, it.user.role, it.user.department]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </div>
-                  <h3 className="mt-2 text-[16px] font-bold">{it.goal.title}</h3>
-                  {it.note ? (
-                    <p className="mt-1.5 max-w-[62ch] text-[13px] leading-[1.5] text-muted-fg">
-                      {it.note}
-                    </p>
-                  ) : null}
-                </div>
-                <VerdictChip verdict={it.verdict} />
-              </div>
+          shown.map((it) => {
+            const waited = waitedFor(it.since);
+            return (
+              <Card key={`${it.user.id}:${it.goal.id}`} padding={18}>
+                <div className="flex items-start gap-3">
+                  <Avatar
+                    name={it.user.displayName}
+                    size={32}
+                    tone={it.verdict ? "lav" : "lemon"}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[13.5px] font-bold text-fg">
+                        {it.user.displayName}
+                      </span>
+                      <span className="text-[11.5px] text-muted-fg">
+                        {[it.user.role, it.user.department].filter(Boolean).join(" · ")}
+                      </span>
+                      <span className="flex-1" />
+                      {it.verdict ? (
+                        <TierBadge tier={it.verdict.tier} />
+                      ) : (
+                        <Badge tone="lemon">Awaiting you</Badge>
+                      )}
+                      {waited && !it.verdict ? (
+                        <Badge>waiting {waited}</Badge>
+                      ) : null}
+                    </div>
 
-              <div className="mt-4 flex items-center gap-3">
-                <Button
-                  type="button"
-                  variant="ink"
-                  size="sm"
-                  onClick={() =>
-                    setGrading({
-                      id: it.goal.id,
-                      title: it.goal.title,
-                      userId: it.user.id,
-                      userName: it.user.displayName,
-                      tier: it.verdict
-                        ? {
-                            tier: it.verdict.tier,
-                            source: "manager",
-                            reasoning: "",
-                            gradedByName: it.verdict.gradedByName,
-                          }
-                        : null,
-                    })
-                  }
-                >
-                  {it.verdict ? "Update grade" : "Grade this goal"}
-                </Button>
-                {it.kindLabel ? (
-                  <span className="text-[11px] text-dim-fg">{it.kindLabel}</span>
-                ) : null}
-              </div>
-            </div>
-          ))
+                    <h3 className="mt-1.5 text-[14.5px] font-bold text-fg">
+                      {it.goal.title}
+                    </h3>
+
+                    {it.note ? (
+                      <div className="mt-2 flex flex-wrap items-baseline gap-2 rounded-[var(--radius-lg)] bg-card-alt px-3 py-2.5">
+                        <span className="shrink-0 text-[11px] font-bold text-muted-fg">
+                          Their note
+                        </span>
+                        <span className="min-w-0 flex-1 text-[12.5px] leading-[1.5] text-fg">
+                          {it.note}
+                        </span>
+                      </div>
+                    ) : null}
+
+                    {/* What you decided, and what you said when you decided
+                        it — the note the drawer now re-opens with. */}
+                    {it.verdict ? (
+                      <div className="mt-2 rounded-[var(--radius-lg)] bg-mint px-3 py-2.5 text-mint-ink">
+                        <div className="flex flex-wrap items-baseline gap-2">
+                          <span className="shrink-0 text-[11px] font-bold">
+                            You graded
+                          </span>
+                          <span className="min-w-0 flex-1 text-[12.5px] leading-[1.5]">
+                            <b>{TIER_LABELS[it.verdict.tier] ?? it.verdict.tier}</b>
+                            {onDate(it.verdict.gradedAt)
+                              ? ` on ${onDate(it.verdict.gradedAt)}`
+                              : ""}
+                            {it.verdict.gradedByName
+                              ? ` by ${it.verdict.gradedByName}`
+                              : ""}
+                            {it.verdict.note ? ` — “${it.verdict.note}”` : ""}
+                          </span>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="mt-3 flex flex-wrap items-center gap-2.5">
+                      {it.kindLabel ? (
+                        <span className="text-[11.5px] text-muted-fg">
+                          {it.kindLabel}
+                        </span>
+                      ) : null}
+                      <span className="flex-1" />
+                      <Button
+                        type="button"
+                        variant={it.verdict ? "soft" : "ink"}
+                        size="sm"
+                        onClick={() =>
+                          setGrading({
+                            id: it.goal.id,
+                            title: it.goal.title,
+                            kindLabel: it.kindLabel,
+                            userId: it.user.id,
+                            userName: it.user.displayName,
+                            tier: it.verdict
+                              ? {
+                                  tier: it.verdict.tier,
+                                  source: "manager",
+                                  // The note you wrote, so re-opening
+                                  // edits it instead of erasing it.
+                                  reasoning: it.verdict.note ?? "",
+                                  gradedByName: it.verdict.gradedByName,
+                                }
+                              : null,
+                          })
+                        }
+                      >
+                        {it.verdict ? "Change grade" : "Grade this goal"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            );
+          })
         )}
       </div>
 
@@ -140,16 +212,5 @@ export function ManagerDelegated() {
         }}
       />
     </main>
-  );
-}
-
-function EmptyCard({ children }) {
-  return (
-    <div
-      className="rounded-[var(--radius-xl)] bg-card p-6 text-[13px] leading-[1.6] text-muted-fg"
-      style={{ boxShadow: "var(--shadow-card)" }}
-    >
-      {children}
-    </div>
   );
 }
