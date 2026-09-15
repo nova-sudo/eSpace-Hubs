@@ -1,20 +1,24 @@
 /**
- * Roll-up math for the Intelligence page's summary strip and objective
- * bands. Pure — no React, no IO. Everything here reads the cards
- * `useGoalHealth()` already derived.
+ * The Intelligence page's bridge onto the canonical roll-up.
  *
- * The one number this file computes is CADENCE COMPLETION: of the windows a
- * goal's cycle asks for, how many are logged. It is the only progress figure
- * the app can state without inventing one, and it is directly comparable to
- * the pacing tick `<PacedBar>` draws (how far through the year we are), which
- * is what makes a bare percentage mean anything.
- *
- * Goals with no window model — AUTO trackers, goals still awaiting setup,
- * unclassified ones — return null and are EXCLUDED from the averages rather
- * than counted as zero. A band of two auto goals says "—", not "0%".
+ * The maths and the status vocabulary live in
+ * `goal-inputs/goal-progress` — this file only translates a
+ * `useGoalHealth()` card into the shared shape. It used to own a second copy
+ * of the arithmetic, which is how this page came to print 89% while the
+ * Goals page printed 33% for the same cycle: one excluded unmeasurable
+ * objectives, the other scored them zero.
  */
 
-import { HEALTH, statusDisplay } from "./status";
+import { HEALTH } from "./status";
+import {
+  GOAL_STATUS,
+  STATUS_META,
+  goalProgress,
+  objectiveProgress,
+  weightedProgress,
+  worstStatus,
+  countStatuses,
+} from "@/features/goal-inputs";
 
 /**
  * One goal's cadence completion, 0–100, or null when it has no windows to
@@ -22,25 +26,36 @@ import { HEALTH, statusDisplay } from "./status";
  *
  * @param {{ health: object }} card  a useGoalHealth() card
  */
+
+/** A `useGoalHealth()` card's health, in the shared status vocabulary. */
+export function statusOf(card) {
+  const h = card?.health;
+  if (!h) return GOAL_STATUS.UNCLASSIFIED;
+  const tier = card?.tier;
+  if (tier === "over_achieved" || tier === "role_model") return GOAL_STATUS.EXCEEDING;
+  switch (h.status) {
+    case HEALTH.UNCLASSIFIED:
+      return GOAL_STATUS.UNCLASSIFIED;
+    case HEALTH.NEEDS_SETUP:
+      return GOAL_STATUS.NEEDS_SETUP;
+    case HEALTH.AUTO:
+      return GOAL_STATUS.AUTO;
+    case HEALTH.NO_DATA:
+      return GOAL_STATUS.NOT_LOGGED;
+    case HEALTH.STALE:
+    case HEALTH.BEHIND:
+      return GOAL_STATUS.BEHIND;
+    default:
+      return GOAL_STATUS.ON_PACE;
+  }
+}
+
 export function goalProgressPercent(card) {
-  const health = card?.health;
-  if (!health) return null;
-  if (
-    health.status === HEALTH.AUTO ||
-    health.status === HEALTH.NEEDS_SETUP ||
-    health.status === HEALTH.UNCLASSIFIED
-  ) {
-    return null;
-  }
-  const fill = health.fill;
-  if (fill && fill.total > 0) {
-    return clampPct((fill.filledCount / fill.total) * 100);
-  }
-  if (health.status === HEALTH.NO_DATA) return 0;
-  // Non-bucketing kinds (milestone / before-after / per-incident): they have
-  // data or they don't — there is no partial.
-  if (fill?.hasData) return 100;
-  return null;
+  return goalProgress({
+    status: statusOf(card),
+    cycle: card?.health?.fill,
+    hasData: Boolean(card?.health?.fill?.hasData),
+  });
 }
 
 /**
@@ -48,11 +63,7 @@ export function goalProgressPercent(card) {
  * Returns null when nothing under it is measurable.
  */
 export function objectiveProgressPercent(cards) {
-  const values = (cards || [])
-    .map((c) => goalProgressPercent(c))
-    .filter((v) => v != null);
-  if (values.length === 0) return null;
-  return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+  return objectiveProgress((cards || []).map((c) => goalProgressPercent(c)));
 }
 
 /**
@@ -62,47 +73,22 @@ export function objectiveProgressPercent(cards) {
  * instead of a zero.
  */
 export function weightedProgressPercent(groups) {
-  let weighted = 0;
-  let weight = 0;
-  const measurable = [];
-  for (const group of groups || []) {
-    const pct = objectiveProgressPercent(group.cards);
-    if (pct == null) continue;
-    measurable.push(pct);
-    const w = Number(group.l1?.weightage) || 0;
-    if (w > 0) {
-      weighted += pct * w;
-      weight += w;
-    }
-  }
-  if (measurable.length === 0) return null;
-  if (weight > 0) return Math.round(weighted / weight);
-  return Math.round(measurable.reduce((a, b) => a + b, 0) / measurable.length);
+  return weightedProgress(
+    (groups || []).map((g) => ({
+      pct: objectiveProgressPercent(g.cards),
+      weight: g.l1?.weightage,
+    })),
+  );
 }
 
-// Worst-first. Perdoo's rule: a parent's STATUS is its weakest child even
-// though its NUMBER is an average — a band that averages to 80% while one
-// goal is behind must still read "Behind".
-const TONE_SEVERITY = ["peach", "lemon", "neutral", "sky", "lav", "mint"];
 
 /**
  * The weakest child's status chip for an objective's band header.
  * @returns {{ label: string, tone: string } | null}
  */
 export function worstChildStatus(cards) {
-  let worst = null;
-  let worstRank = Infinity;
-  for (const card of cards || []) {
-    const meta = statusDisplay(card.health);
-    if (!meta) continue;
-    const rank = TONE_SEVERITY.indexOf(meta.tone);
-    const r = rank < 0 ? TONE_SEVERITY.length : rank;
-    if (r < worstRank) {
-      worstRank = r;
-      worst = { label: meta.label, tone: meta.tone };
-    }
-  }
-  return worst;
+  const key = worstStatus((cards || []).map((c) => statusOf(c)));
+  return key ? { label: STATUS_META[key].label, tone: STATUS_META[key].tone } : null;
 }
 
 /**
@@ -113,14 +99,10 @@ export function worstChildStatus(cards) {
  * isn't derivable from the health groups (an unclassified goal never reaches
  * them), so it is passed in from useGoalWidgetItems().
  */
-export function statusCounts(summary, unclassified = 0) {
-  const s = summary || {};
-  return {
-    onPace: (s.onPace || 0) + (s.auto || 0),
-    behind: s.behind || 0,
-    notLogged: (s.noData || 0) + (s.stale || 0) + (s.setup || 0),
-    unclassified: unclassified || 0,
-  };
+export function statusCounts(groups, unclassified = 0) {
+  const statuses = (groups || []).flatMap((g) => (g.cards || []).map((c) => statusOf(c)));
+  for (let i = 0; i < (unclassified || 0); i += 1) statuses.push(GOAL_STATUS.UNCLASSIFIED);
+  return countStatuses(statuses);
 }
 
 /**

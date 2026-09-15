@@ -18,17 +18,10 @@ export function SummaryStrip({ percent, counts, className }) {
   const expected = Math.round(yearElapsedPercent());
   const value = percent == null ? 0 : percent;
 
-  const badges = [
-    { key: "onPace", tone: "mint", label: `${counts.onPace} on pace`, n: counts.onPace },
-    { key: "behind", tone: "peach", label: `${counts.behind} behind`, n: counts.behind },
-    { key: "notLogged", tone: "lemon", label: `${counts.notLogged} not logged`, n: counts.notLogged },
-    {
-      key: "unclassified",
-      tone: "neutral",
-      label: `${counts.unclassified} unclassified`,
-      n: counts.unclassified,
-    },
-  ].filter((b) => b.n > 0);
+  // `counts` is the canonical ordered array from goal-inputs, worst first —
+  // the same list the Goals page renders, so the two pages can never tally
+  // the same goals differently again.
+  const badges = counts || [];
 
   return (
     <Card padding={20} className={className}>
@@ -54,8 +47,8 @@ export function SummaryStrip({ percent, counts, className }) {
         {badges.length > 0 ? (
           <div className="flex flex-wrap gap-1.5 sm:shrink-0">
             {badges.map((b) => (
-              <Badge key={b.key} tone={b.tone}>
-                {b.label}
+              <Badge key={b.status} tone={b.tone}>
+                {b.count} {b.label.toLowerCase()}
               </Badge>
             ))}
           </div>

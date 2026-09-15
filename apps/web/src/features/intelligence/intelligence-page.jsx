@@ -51,7 +51,7 @@ export function IntelligencePage() {
   const crumb =
     hasSpecs && !loading ? `Start here · ${needCount} of ${summary.total} need you` : "Goal intelligence";
 
-  const counts = statusCounts(summary, unclassifiedGoals.length);
+  const counts = statusCounts(groups, unclassifiedGoals.length);
   const progress = weightedProgressPercent(groups);
 
   return (
