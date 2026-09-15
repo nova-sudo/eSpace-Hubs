@@ -64,7 +64,6 @@ import { Badge, Button, Input, Select, Checkbox, Label } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import {
   FIELD_KIND_HINT,
-  PROOF,
   TARGET_OP_LABEL,
   hasValue,
   isAutoField,
