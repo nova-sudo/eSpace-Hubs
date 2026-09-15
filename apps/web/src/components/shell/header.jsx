@@ -79,15 +79,17 @@ const HUB_SLOT_LABEL_OVERRIDES = {
 /**
  * Slots that stay registered in a hub's `pages` map (so the route still
  * resolves — e.g. the wordmark link keeps working, direct URLs still
- * work) but shouldn't clutter that hub's nav bar. Admin-only: its
- * "Overview" dashboard and "Hubs" (hub-config) tab are redundant in the
- * nav for admins, per product direction — QA also has a "dashboard"
- * slot labeled "Overview" and must keep its nav entry, so this is keyed
- * per-hub rather than per-slot.
+ * work) but shouldn't clutter that hub's nav bar.
+ *
+ * Empty on purpose. Admin used to hide its own "Overview" and "Hubs"
+ * entries, which left hub configuration reachable only from a page that
+ * was itself unreachable from the nav. The admin portal now draws its
+ * own section rail (`hubs/admin/admin-shell.jsx`), and the top nav lists
+ * the same sections, so the two agree. Keyed per-hub rather than
+ * per-slot because QA has a "dashboard" slot of its own that must keep
+ * its entry.
  */
-const HUB_HIDDEN_NAV_SLOTS = {
-  admin: ["dashboard", "hub-config"],
-};
+const HUB_HIDDEN_NAV_SLOTS = {};
 
 function labelFor(slot, hubId) {
   const hubOverride = HUB_SLOT_LABEL_OVERRIDES[hubId];
