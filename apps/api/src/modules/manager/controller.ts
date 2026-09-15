@@ -149,6 +149,14 @@ interface GoalRow {
     source: "ai" | "manager";
     gradedByName: string | null;
   } | null;
+  /**
+   * The AI's tier, ALWAYS — `tier` above collapses to the manager
+   * verdict once one exists, which makes the two impossible to compare.
+   * The manager board's consistency table grades a person's goals
+   * against each other by the delta between these two, so the AI's rung
+   * has to survive being overridden.
+   */
+  aiTier: string | null;
 }
 
 interface GoalGroup {
@@ -332,6 +340,7 @@ async function computeGoalHealth(orgId: ObjectId, target: User) {
           reading: readingMap.get(l2.id) ?? null,
           readingAsOf: readingMap.has(l2.id) ? readingAsOf : null,
           tier: tierOut,
+          aiTier: aiv ? aiv.verdict.tier : null,
         };
       }),
     }));
@@ -950,7 +959,18 @@ interface DelegatedItem {
   goal: { id: string; title: string; category: string };
   kindLabel: string | null;
   note: string;
-  verdict: { tier: string; gradedAt: string; gradedByName: string } | null;
+  /** When the goal was classified as yours to judge — the queue shows
+   *  how long each item has been waiting, which a bare list can't. */
+  since: string | null;
+  /** `note` is the rationale the manager wrote WITH the grade. The queue
+   *  shows it, and re-opening the drawer edits it — without it the drawer
+   *  re-opened empty and saved that emptiness over the real note. */
+  verdict: {
+    tier: string;
+    gradedAt: string;
+    gradedByName: string;
+    note: string;
+  } | null;
 }
 
 export async function listDelegatedQueueHandler(
@@ -1029,11 +1049,13 @@ export async function listDelegatedQueueHandler(
         goal: { id: s.goalId, title: meta.title, category: meta.category },
         kindLabel: specKindLabel(s.spec),
         note: typeof dnote === "string" ? dnote : "",
+        since: s.generatedAt ? s.generatedAt.toISOString() : null,
         verdict: v
           ? {
               tier: v.tier,
               gradedAt: v.gradedAt.toISOString(),
               gradedByName: v.gradedByName,
+              note: v.note,
             }
           : null,
       });
