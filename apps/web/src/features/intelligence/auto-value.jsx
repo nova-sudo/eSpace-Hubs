@@ -40,7 +40,13 @@ const METRIC_HEADLINE = {
   }),
 };
 
-export function AutoGoalValue({ spec }) {
+/**
+ * @param {{ spec: object, compact?: boolean }} props
+ *        `compact` renders the bare value for a dense row (the objective
+ *        bands' value column) — no target clause, no fallback prose, just a
+ *        dash when there's nothing to show.
+ */
+export function AutoGoalValue({ spec, compact = false }) {
   const source = spec?.source || null;
   // Hook must run every render — useDataSource short-circuits to
   // { data: null } when source/metric is missing, so calling it with a
@@ -48,14 +54,21 @@ export function AutoGoalValue({ spec }) {
   const { data, isLoading } = useDataSource(source);
 
   const mapper = source?.metric ? METRIC_HEADLINE[source.metric] : null;
-  if (!mapper) return <GenericNote />;
+  if (!mapper) return compact ? <Dash /> : <GenericNote />;
 
   if (isLoading) {
-    return <div className="text-[12px] text-muted-fg">Reading your activity…</div>;
+    return compact ? <Dash /> : <div className="text-[12px] text-muted-fg">Reading your activity…</div>;
   }
 
   const { value, unit } = mapper(data);
-  if (value == null || Number.isNaN(Number(value))) return <GenericNote />;
+  if (value == null || Number.isNaN(Number(value))) return compact ? <Dash /> : <GenericNote />;
+
+  if (compact) {
+    // Only symbol-ish units survive the narrow column; a word ("merged")
+    // goes to the tooltip so the number itself never truncates.
+    const short = unit && unit.length <= 2 ? `${value}${unit}` : String(value);
+    return <span title={`${value} ${unit}`.trim()}>{short}</span>;
+  }
 
   const target = source.target || null;
   const met = evalMet(Number(value), target);
@@ -78,6 +91,10 @@ export function AutoGoalValue({ spec }) {
       )}
     </div>
   );
+}
+
+function Dash() {
+  return <span className="text-dim-fg">—</span>;
 }
 
 function GenericNote() {

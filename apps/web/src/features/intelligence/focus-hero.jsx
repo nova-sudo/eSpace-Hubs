@@ -1,29 +1,29 @@
 "use client";
 
 /**
- * Focus hero — the one goal in the carousel, big and decisive. Renders a card
- * from useGoalHealth (tier-ranked, worst first): a status badge, the primary
- * signal, the cadence fill strip, then EITHER the grader's reasoning (for a
- * Not-achieved goal) or a fill nudge, and a primary action that opens the
- * goal's widget in a MODAL — the ContextCollector for a needs-setup goal, or
- * the widget body + cadence stepper to fill/backfill missing periods — so
- * the user acts without leaving the page.
+ * Focus hero — the ONE goal the page leads with, big and decisive. Renders
+ * queue[0] from useGoalHealth (severity-sorted, worst first): a status badge,
+ * the primary signal, the cadence fill strip, then EITHER the grader's
+ * reasoning (for a Not-achieved goal) or a fill nudge, and a primary action
+ * that opens the goal's widget in a MODAL — the ContextCollector for a
+ * needs-setup goal, or the widget body + cadence stepper to fill/backfill
+ * missing periods — so the user acts without leaving the page.
  *
- * The carousel's prev/next pager renders here (bottom-right of the action
- * row) via the optional `pager` prop; FocusCarousel still owns the index
- * state, this component just renders the two buttons.
+ * There is no pager any more: the rest of the queue sits underneath as
+ * one-line rows, which beats stepping through heroes one at a time to find
+ * out what else is waiting.
  *
  * Presentation only — data comes pre-derived on the card.
  */
 
 import { useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Badge, Button, Card, FillStrip, IconButton, InsightRow, Label } from "@/components/ui";
+import { Badge, Button, Card, FillStrip, InsightRow, Label } from "@/components/ui";
 import { SPEC_KIND_META, specCadence } from "@/features/goal-specs";
 import { cadenceWindowLabel } from "@/features/goal-inputs";
 import { readinessLabel, GoalWidgetModal } from "@/features/goal-widgets";
 import { currentWindowKey } from "@/features/goal-locks";
 import { skipWindow } from "./skip-window";
+import { cadenceCells } from "./progress";
 import { HEALTH } from "./status";
 
 function capitalize(s) {
@@ -65,7 +65,7 @@ function statusChip(health) {
   }
 }
 
-export function FocusHero({ card, pager }) {
+export function FocusHero({ card }) {
   const [modalOpen, setModalOpen] = useState(false);
   const { goal, spec, health, l1, tier, tierReasoning } = card;
   const needsSetup = health?.status === HEALTH.NEEDS_SETUP;
@@ -91,19 +91,9 @@ export function FocusHero({ card, pager }) {
 
   // Fill strip — cycle windows from deriveGoalHealth (oldest→newest objects),
   // capped to the 8 windows ENDING at the current one. total===0 = a
-  // single-record/pip kind → no strip. Centre on currentIndex (not the array
-  // tail): buildCycleWindows enumerates the whole calendar year, so the tail is
-  // unstarted FUTURE windows.
+  // single-record/pip kind → no strip.
   const fill = health?.fill;
-  const STRIP_CAP = 8;
-  const stripWindows = (() => {
-    if (!fill || !fill.total || !Array.isArray(fill.windows)) return [];
-    const idx = Number.isInteger(fill.currentIndex)
-      ? fill.currentIndex
-      : fill.windows.length - 1;
-    return fill.windows.slice(Math.max(0, idx - STRIP_CAP + 1), idx + 1);
-  })();
-  const stripCells = stripWindows.map((w) => ({ key: w?.key, label: w?.label, state: w?.state || "future" }));
+  const stripCells = cadenceCells(fill, { cap: 8, endAtCurrent: true });
   const noun = cadenceWindowLabel(cadence)[1];
 
   let insight;
@@ -158,8 +148,8 @@ export function FocusHero({ card, pager }) {
               </div>
               <FillStrip cells={stripCells} size="md" />
               <div className="flex items-center justify-between text-[11.5px] text-dim-fg">
-                <span>{stripWindows[0]?.label}</span>
-                <span>{stripWindows[stripWindows.length - 1]?.label}</span>
+                <span>{stripCells[0]?.label}</span>
+                <span>{stripCells[stripCells.length - 1]?.label}</span>
               </div>
             </div>
           ) : null}
@@ -183,32 +173,6 @@ export function FocusHero({ card, pager }) {
             >
               Skip for now
             </Button>
-          ) : null}
-
-          {pager && pager.count > 1 ? (
-            <div className="ml-auto flex items-center gap-2">
-              <IconButton
-                label="Higher priority"
-                size="sm"
-                onCard
-                disabled={pager.index === 0}
-                onClick={pager.onPrev}
-              >
-                <ChevronLeft size={15} />
-              </IconButton>
-              <span className="text-[12.5px] tabular-nums text-dim-fg">
-                {pager.index + 1} / {pager.count}
-              </span>
-              <IconButton
-                label="Next priority"
-                size="sm"
-                onCard
-                disabled={pager.index === pager.count - 1}
-                onClick={pager.onNext}
-              >
-                <ChevronRight size={15} />
-              </IconButton>
-            </div>
           ) : null}
         </div>
       </Card>
