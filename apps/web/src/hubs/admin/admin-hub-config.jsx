@@ -1,54 +1,89 @@
 "use client";
 
 /**
- * Admin Hub — hub-config editor. UI on top of the M10.5 endpoints:
- *   GET    /api/v1/hub-configs           list overrides
+ * Admin hub — hubs & pages. A4.
+ *
+ *   GET    /api/v1/hub-configs           the org's override rows
  *   PUT    /api/v1/hub-configs/:hubId    upsert
- *   DELETE /api/v1/hub-configs/:hubId    revert to defaults
+ *   DELETE /api/v1/hub-configs/:hubId    revert to registry defaults
  *
- * Renders one expandable row per registry hub. Per row the admin can:
- *   - Toggle `enabled` (hide the hub from the entire org)
- *   - Toggle individual `allowedIntegrations`
- *   - Toggle individual page slots (null = remove from effective map)
+ * One boolean matrix, read two ways. Retool's View by Object / View by
+ * Role: "what does this hub expose" and "which hubs expose Evidence"
+ * are the same table transposed, and an admin asks both.
  *
- * Optimistic UI:
- *   - PUT requests fire on every change
- *   - The local state updates immediately
- *   - On failure we toast + revert
+ * Two behaviours this page had to fix.
  *
- * Loading state: shows "Loading…" until both /hubs/me and /hub-configs
- * resolve. /hubs/me gives us the registry view (post-merge); /hub-configs
- * gives the raw override rows we display alongside.
+ *   1. Every destructive toggle now confirms. Hiding a page, disabling
+ *      a hub, dropping an integration and reverting a hub all write
+ *      org-wide for every member; the previous UI hid a page on a
+ *      single click of a small × with no confirmation at all.
+ *   2. A failed save reverts the local state. The old code's comment
+ *      claimed "On failure we toast + revert" but it only toasted, so a
+ *      rejected write left the UI showing a change the server never
+ *      accepted.
+ *
+ * Why the registry and not /hubs/me. /hubs/me returns hubs already
+ * merged AND already filtered by the caller's capabilities and by
+ * `enabled` — so a hub an admin had just disabled vanished from the
+ * page that disables it, with no way back. This page reads the shared
+ * registry for defaults and the raw override rows for the deltas, and
+ * applies the same merge rules the server does (admin-lib.js). A
+ * disabled hub therefore stays on screen, greyed, with its switch
+ * intact.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { apiDelete, apiGet, apiPut } from "@/lib/api-client";
 import { useSession } from "@/features/auth";
-import { Badge, Label, PageHeader } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Checkbox,
+  Label,
+  Loading,
+  PageHeader,
+  SegmentedControl,
+} from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { CAPABILITIES } from "@espace-devhub/shared/capabilities";
-import { ALL_PROVIDERS } from "@espace-devhub/shared/hubs";
+import {
+  ALL_PROVIDERS,
+  HUBS,
+  HUB_ORDER,
+  PAGE_SLOTS,
+} from "@espace-devhub/shared/hubs";
+import { AdminNotAuthorised, AdminShell } from "./admin-shell";
+import {
+  availableSlots,
+  effectiveIntegrations,
+  effectivePages,
+  hubEnabled,
+  pageLabel,
+} from "./admin-lib";
+import { TogglePill, useConfirm } from "./admin-ui";
 
-// Source the integration list from the shared registry so adding
-// a new provider (e.g. PR A's `jenkins`, the imminent `zephyr`,
-// future zoho/etc.) automatically appears as a togglable pill in
-// the admin hub-config UI. Hardcoding here was the bug that hid
-// jenkins from QA hub config after PR A merged.
+// Sourced from the shared registry so a new provider (jenkins, the
+// imminent zephyr, …) shows up here automatically. Hard-coding this
+// list is what once hid jenkins from QA hub config.
 const ALL_INTEGRATIONS = [...ALL_PROVIDERS];
+
+const LENSES = [
+  { value: "hub", label: "By hub" },
+  { value: "page", label: "By page" },
+];
 
 export function AdminHubConfig() {
   const { user } = useSession();
-  const [registryHubs, setRegistryHubs] = useState([]); // post-merge view from /hubs/me
-  const [configsByHub, setConfigsByHub] = useState({}); // raw override rows by hubId
-  const [loading, setLoading] = useState(true);
-  const [openHubId, setOpenHubId] = useState(null);
-  const [savingHubId, setSavingHubId] = useState(null);
+  const confirm = useConfirm();
 
-  // Gate the entire page on the capability — server-side enforcement
-  // already happens, but rendering this UI to a user who can't use
-  // it would be confusing.
+  const [configsByHub, setConfigsByHub] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [savingHubId, setSavingHubId] = useState(null);
+  const [lens, setLens] = useState("hub");
+
+  // Server-side enforcement already exists; rendering the editor to
+  // someone who can't use it would just be confusing.
   const canConfigure = user?.capabilities?.includes(
     CAPABILITIES.ADMIN_HUBS_CONFIGURE,
   );
@@ -56,21 +91,16 @@ export function AdminHubConfig() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [hubsR, configsR] = await Promise.all([
-        apiGet("/hubs/me"),
-        apiGet("/hub-configs"),
-      ]);
+      const r = await apiGet("/hub-configs");
       if (cancelled) return;
-      if (hubsR.ok) {
-        setRegistryHubs(hubsR.data?.hubs ?? []);
+      if (!r.ok) {
+        toast.error(r.error?.message || "Couldn't load hub overrides.");
+        setLoading(false);
+        return;
       }
-      if (configsR.ok) {
-        const map = {};
-        for (const c of configsR.data?.configs ?? []) {
-          map[c.hubId] = c;
-        }
-        setConfigsByHub(map);
-      }
+      const map = {};
+      for (const c of r.data?.configs ?? []) map[c.hubId] = c;
+      setConfigsByHub(map);
       setLoading(false);
     })();
     return () => {
@@ -78,217 +108,493 @@ export function AdminHubConfig() {
     };
   }, []);
 
-  async function saveOverride(hubId, patch) {
+  /**
+   * Apply locally, write, and put the previous state back if the write
+   * is rejected. `optimistic` is the whole next override row for this
+   * hub (or null to drop it) — the server replaces `pages` and
+   * `allowedIntegrations` wholesale, so every caller computes a full
+   * value rather than a delta.
+   */
+  async function save(hubId, patch, optimistic, successMessage) {
+    const snapshot = configsByHub;
+    setConfigsByHub((prev) => ({ ...prev, [hubId]: optimistic }));
     setSavingHubId(hubId);
     const r = await apiPut(`/hub-configs/${hubId}`, patch);
     setSavingHubId(null);
     if (!r.ok) {
-      toast.error(r.error?.message || "Couldn't save override.");
-      return null;
-    }
-    setConfigsByHub((prev) => ({ ...prev, [hubId]: r.data?.config ?? null }));
-    toast.success(`Saved override for ${hubId}.`);
-    return r.data?.config;
-  }
-
-  async function revertOverride(hubId) {
-    setSavingHubId(hubId);
-    const r = await apiDelete(`/hub-configs/${hubId}`);
-    setSavingHubId(null);
-    if (!r.ok) {
-      toast.error(r.error?.message || "Couldn't revert override.");
+      setConfigsByHub(snapshot); // the revert the old code only claimed
+      toast.error(r.error?.message || "Couldn't save the override.");
       return;
     }
+    setConfigsByHub((prev) => ({ ...prev, [hubId]: r.data?.config ?? null }));
+    toast.success(successMessage);
+  }
+
+  async function revert(hubId) {
+    const snapshot = configsByHub;
     setConfigsByHub((prev) => {
       const next = { ...prev };
       delete next[hubId];
       return next;
     });
-    toast.success(`Reverted ${hubId} to registry defaults.`);
+    setSavingHubId(hubId);
+    const r = await apiDelete(`/hub-configs/${hubId}`);
+    setSavingHubId(null);
+    if (!r.ok) {
+      setConfigsByHub(snapshot);
+      toast.error(r.error?.message || "Couldn't revert the override.");
+      return;
+    }
+    toast.success(`${HUBS[hubId]?.label ?? hubId} is back on registry defaults.`);
+  }
+
+  /** Every hub in the registry, with its override merged in. */
+  const hubs = useMemo(
+    () =>
+      HUB_ORDER.map((id) => {
+        const registry = HUBS[id];
+        const override = configsByHub[id] ?? null;
+        return {
+          id,
+          label: registry?.label ?? id,
+          enabled: hubEnabled(override),
+          hasOverride: !!override,
+          override,
+          pages: effectivePages(registry?.pages, override?.pages),
+          slots: availableSlots(registry?.pages, override?.pages),
+          integrations: effectiveIntegrations(
+            registry?.allowedIntegrations,
+            override,
+          ),
+        };
+      }),
+    [configsByHub],
+  );
+
+  /** Slot ids any hub could expose, in registry order first. */
+  const slots = useMemo(() => {
+    const seen = new Set();
+    for (const hub of hubs) for (const s of hub.slots) seen.add(s);
+    const ordered = PAGE_SLOTS.filter((s) => seen.has(s));
+    const extras = [...seen].filter((s) => !PAGE_SLOTS.includes(s)).sort();
+    return [...ordered, ...extras];
+  }, [hubs]);
+
+  function togglePage(hub, slot, nextOn) {
+    const nextPages = { ...(hub.override?.pages ?? {}) };
+    if (nextOn) {
+      // Dropping the key restores the registry default for the slot —
+      // the merge treats an absent key as "pass through".
+      delete nextPages[slot];
+    } else {
+      nextPages[slot] = null;
+    }
+    const optimistic = { ...(hub.override ?? { hubId: hub.id }), pages: nextPages };
+    const run = () =>
+      save(
+        hub.id,
+        { pages: nextPages },
+        optimistic,
+        nextOn
+          ? `${pageLabel(slot)} is back on ${hub.label}.`
+          : `${pageLabel(slot)} is hidden on ${hub.label}.`,
+      );
+
+    if (nextOn) {
+      void run();
+      return;
+    }
+    confirm({
+      title: `Hide ${pageLabel(slot)} from ${hub.label}?`,
+      body: `Everyone in this org loses that page in the ${hub.label} hub on their next page load. Links to it stop resolving. You can turn it back on here.`,
+      confirmLabel: "Hide the page",
+      onConfirm: run,
+    });
+  }
+
+  function toggleHubEnabled(hub, nextOn) {
+    const optimistic = { ...(hub.override ?? { hubId: hub.id }), enabled: nextOn };
+    const run = () =>
+      save(
+        hub.id,
+        { enabled: nextOn },
+        optimistic,
+        nextOn
+          ? `${hub.label} is visible to the org again.`
+          : `${hub.label} is hidden from the org.`,
+      );
+    if (nextOn) {
+      void run();
+      return;
+    }
+    confirm({
+      title: `Hide ${hub.label} from the whole org?`,
+      body: "Every member loses the hub — its nav entry, its pages, and its place in the hub switcher. Anyone whose primary hub this is gets bounced to another one. Nothing is deleted, and you can turn it back on here.",
+      confirmLabel: "Hide the hub",
+      onConfirm: run,
+    });
+  }
+
+  function toggleIntegration(hub, provider, nextOn) {
+    const next = nextOn
+      ? [...hub.integrations, provider]
+      : hub.integrations.filter((p) => p !== provider);
+    const optimistic = {
+      ...(hub.override ?? { hubId: hub.id }),
+      allowedIntegrations: next,
+    };
+    const run = () =>
+      save(
+        hub.id,
+        { allowedIntegrations: next },
+        optimistic,
+        nextOn
+          ? `${provider} allowed on ${hub.label}.`
+          : `${provider} removed from ${hub.label}.`,
+      );
+    if (nextOn) {
+      void run();
+      return;
+    }
+    confirm({
+      title: `Remove ${provider} from ${hub.label}?`,
+      body: `Widgets in the ${hub.label} hub that read from ${provider} stop resolving for every member of the org. Stored credentials are not deleted.`,
+      confirmLabel: `Remove ${provider}`,
+      onConfirm: run,
+    });
+  }
+
+  function askRevert(hub) {
+    confirm({
+      title: `Revert ${hub.label} to registry defaults?`,
+      body: "Every override on this hub — visibility, hidden pages, integrations — is dropped at once and the shipped configuration takes over.",
+      confirmLabel: "Revert",
+      onConfirm: () => revert(hub.id),
+    });
   }
 
   if (!canConfigure) {
     return (
-      <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
-        <PageHeader
-          crumb="Admin · hub configuration"
-          title="Not authorised."
-          subtitle={`This view requires the ${CAPABILITIES.ADMIN_HUBS_CONFIGURE} capability. Ask your org admin to extend your roles.`}
-        />
-      </main>
+      <AdminNotAuthorised
+        active="hub-config"
+        crumb="Admin · hubs & pages"
+        capability={CAPABILITIES.ADMIN_HUBS_CONFIGURE}
+      />
     );
   }
 
+  const customCount = hubs.filter((h) => h.hasOverride).length;
+
   return (
-    <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
+    <AdminShell active="hub-config">
       <PageHeader
-        crumb="Admin · hub configuration"
-        title="Per-hub overrides."
-        subtitle={
-          <>
-            Toggle integrations and pages per hub for this org. Overrides merge
-            on top of registry defaults; an empty override means &quot;use
-            defaults&quot;. Changes take effect on the next /hubs/me round-trip
-            (~one page load for each user).
-          </>
+        crumb="Admin · hubs & pages"
+        title="What each hub exposes."
+        subtitle="A checkbox per hub and page. Overrides merge on top of the shipped defaults, so an unchecked box means this org hid the page — not that it never existed. Changes land on each member's next page load."
+        right={
+          <SegmentedControl
+            size="sm"
+            options={LENSES}
+            value={lens}
+            onChange={setLens}
+          />
         }
       />
 
       {loading ? (
-        <div className="text-[12px] text-muted-fg">Loading…</div>
+        <Loading label="Loading hub configuration" />
       ) : (
-        <div className="flex flex-col gap-3">
-          {registryHubs.map((hub) => (
-            <HubRow
-              key={hub.id}
-              hub={hub}
-              override={configsByHub[hub.id] ?? null}
-              expanded={openHubId === hub.id}
-              onExpand={() => setOpenHubId(openHubId === hub.id ? null : hub.id)}
-              onSave={(patch) => saveOverride(hub.id, patch)}
-              onRevert={() => revertOverride(hub.id)}
-              saving={savingHubId === hub.id}
-            />
-          ))}
-        </div>
-      )}
-    </main>
-  );
-}
-
-function HubRow({ hub, override, expanded, onExpand, onSave, onRevert, saving }) {
-  // Effective values — registry default with override applied. The
-  // /hubs/me response is already merged, so reading from `hub`
-  // directly gives us the post-merge view.
-  const enabled = override?.enabled === false ? false : true;
-  const hasOverride = !!override;
-
-  return (
-    <div className="rounded-[var(--radius-xl)] bg-card" style={{ boxShadow: "var(--shadow-card)" }}>
-      <button
-        type="button"
-        onClick={onExpand}
-        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-card-alt"
-      >
-        <div className="flex items-center gap-3">
-          <span className={cn("block h-2 w-2 rounded-full", enabled ? "bg-mint-ink" : "bg-dim-fg")} />
-          <div>
-            <div className="text-[15px] font-bold">{hub.label}</div>
-            <Label className="mt-1 block">
-              {hub.id} · {Object.keys(hub.pages).length} pages ·{" "}
-              {hub.allowedIntegrations.length} integrations
+        <>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <Label>
+              {hubs.length} hubs ·{" "}
+              {customCount === 0
+                ? "all on registry defaults"
+                : `${customCount} with overrides`}
             </Label>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {hasOverride ? <Badge tone="lav">Custom</Badge> : null}
-          {expanded ? <ChevronDown size={16} className="text-dim-fg" /> : <ChevronRight size={16} className="text-dim-fg" />}
-        </div>
-      </button>
 
-      {expanded ? (
-        <div className="border-t border-line px-5 py-4">
-          <ToggleRow
-            label="Visible to this org"
-            value={enabled}
-            disabled={saving}
-            onChange={(v) => onSave({ enabled: v })}
-          />
-
-          <FieldRow label="Integrations">
-            <div className="flex flex-wrap gap-1.5">
-              {ALL_INTEGRATIONS.map((p) => {
-                const on = hub.allowedIntegrations.includes(p);
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    disabled={saving}
-                    onClick={() => {
-                      const next = on
-                        ? hub.allowedIntegrations.filter((x) => x !== p)
-                        : [...hub.allowedIntegrations, p];
-                      onSave({ allowedIntegrations: next });
-                    }}
-                    className={cn(
-                      "rounded-[var(--radius-pill)] px-2.5 py-1 text-[11px] font-semibold transition-colors",
-                      on ? "bg-ink text-ink-on" : "bg-card-alt text-muted-fg",
-                      saving && "opacity-50",
-                    )}
-                  >
-                    {p}
-                  </button>
-                );
-              })}
+          <div
+            className="overflow-hidden rounded-[var(--radius-xl)] bg-card"
+            style={{ boxShadow: "var(--shadow-card)" }}
+          >
+            <div className="overflow-x-auto">
+              {lens === "hub" ? (
+                <ByHubMatrix
+                  hubs={hubs}
+                  slots={slots}
+                  savingHubId={savingHubId}
+                  onTogglePage={togglePage}
+                  onToggleHub={toggleHubEnabled}
+                />
+              ) : (
+                <ByPageMatrix
+                  hubs={hubs}
+                  slots={slots}
+                  savingHubId={savingHubId}
+                  onTogglePage={togglePage}
+                  onToggleHub={toggleHubEnabled}
+                />
+              )}
             </div>
-          </FieldRow>
+          </div>
 
-          <FieldRow label="Page slots">
-            <div className="flex flex-wrap gap-1.5">
-              {Object.keys(hub.pages).map((slot) => (
-                <button
-                  key={slot}
-                  type="button"
-                  disabled={saving}
-                  onClick={() => {
-                    // Null out the slot in the override to remove it.
-                    onSave({ pages: { ...(override?.pages ?? {}), [slot]: null } });
-                  }}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] bg-card-alt px-2.5 py-1 text-[11px] text-muted-fg transition-colors hover:bg-peach hover:text-peach-ink",
-                    saving && "opacity-50",
-                  )}
-                  title={`Click to hide /${hub.id}/${slot} for this org`}
-                >
-                  {slot} <X size={11} />
-                </button>
-              ))}
-            </div>
-          </FieldRow>
+          <h2 className="mb-3.5 mt-8 text-[18px] font-bold tracking-[-0.01em] text-fg">
+            Integrations per hub
+          </h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            {hubs.map((hub) => (
+              <IntegrationsCard
+                key={hub.id}
+                hub={hub}
+                saving={savingHubId === hub.id}
+                onToggle={(provider, nextOn) =>
+                  toggleIntegration(hub, provider, nextOn)
+                }
+                onRevert={() => askRevert(hub)}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
-          {hasOverride ? (
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={onRevert}
-                disabled={saving}
-                className="text-[11px] font-bold text-fg hover:underline disabled:opacity-50"
-              >
-                Revert to defaults
-              </button>
+      {confirm.dialog}
+    </AdminShell>
+  );
+}
+
+/* ══════════════════════════ the two lenses ══════════════════════════ */
+
+/** Pages down the side, hubs across the top. */
+function ByHubMatrix({ hubs, slots, savingHubId, onTogglePage, onToggleHub }) {
+  const cols = `grid items-center gap-3`;
+  const style = {
+    gridTemplateColumns: `minmax(180px,1fr) repeat(${hubs.length}, 104px)`,
+  };
+  return (
+    <div className="min-w-[640px] px-5">
+      <div className={cn(cols, "border-b border-line py-3")} style={style}>
+        <Label>Page</Label>
+        {hubs.map((hub) => (
+          <div key={hub.id} className="text-center">
+            <div
+              className={cn(
+                "text-[12.5px] font-bold text-fg",
+                !hub.enabled && "opacity-55",
+              )}
+            >
+              {hub.label}
             </div>
-          ) : null}
+            <div className="mt-1.5">
+              <HubSwitch
+                hub={hub}
+                saving={savingHubId === hub.id}
+                onToggle={onToggleHub}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {slots.map((slot) => (
+        <div
+          key={slot}
+          className={cn(cols, "border-b border-line py-2.5 last:border-b-0")}
+          style={style}
+        >
+          <span className="truncate text-[13px] font-semibold text-fg">
+            {pageLabel(slot)}
+          </span>
+          {hubs.map((hub) => (
+            <div key={hub.id} className="flex justify-center">
+              <MatrixCell
+                hub={hub}
+                slot={slot}
+                saving={savingHubId === hub.id}
+                onToggle={onTogglePage}
+              />
+            </div>
+          ))}
         </div>
-      ) : null}
+      ))}
     </div>
   );
 }
 
-function ToggleRow({ label, value, disabled, onChange }) {
+/** The same table transposed: hubs down the side, pages across the top. */
+function ByPageMatrix({ hubs, slots, savingHubId, onTogglePage, onToggleHub }) {
+  const cols = `grid items-center gap-3`;
+  const style = {
+    gridTemplateColumns: `minmax(170px,1fr) repeat(${slots.length}, 92px)`,
+  };
   return (
-    <div className="flex items-center justify-between border-b border-line py-2.5 last:border-b-0">
-      <div className="text-[13px]">{label}</div>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => onChange(!value)}
-        className={cn(
-          "rounded-[var(--radius-pill)] px-3 py-1 text-[11px] font-bold transition-colors",
-          value ? "bg-mint text-mint-ink" : "bg-card-alt text-muted-fg",
-          disabled && "opacity-50",
-        )}
+    <div style={{ minWidth: 190 + slots.length * 104 }} className="px-5">
+      <div className={cn(cols, "border-b border-line py-3")} style={style}>
+        <Label>Hub</Label>
+        {slots.map((slot) => (
+          <div
+            key={slot}
+            className="text-center text-[11.5px] font-bold leading-[1.25] text-muted-fg"
+          >
+            {pageLabel(slot)}
+          </div>
+        ))}
+      </div>
+
+      {hubs.map((hub) => (
+        <div
+          key={hub.id}
+          className={cn(cols, "border-b border-line py-2.5 last:border-b-0")}
+          style={style}
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <span
+              className={cn(
+                "truncate text-[13px] font-bold text-fg",
+                !hub.enabled && "opacity-55",
+              )}
+            >
+              {hub.label}
+            </span>
+            <HubSwitch
+              hub={hub}
+              saving={savingHubId === hub.id}
+              onToggle={onToggleHub}
+            />
+          </div>
+          {slots.map((slot) => (
+            <div key={slot} className="flex justify-center">
+              <MatrixCell
+                hub={hub}
+                slot={slot}
+                saving={savingHubId === hub.id}
+                onToggle={onTogglePage}
+              />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * One intersection. A slot the hub never ships shows a dash rather than
+ * an empty box, because ticking it would have nothing to point at — the
+ * registry, not this org, decides which hub owns which page.
+ */
+function MatrixCell({ hub, slot, saving, onToggle }) {
+  const available = hub.slots.has(slot);
+  if (!available) {
+    return (
+      <span
+        className="text-[13px] text-dim-fg"
+        title={`${hub.label} doesn't ship ${pageLabel(slot)}.`}
+        aria-label={`${pageLabel(slot)} is not part of ${hub.label}`}
       >
-        {value ? "On" : "Off"}
-      </button>
-    </div>
+        —
+      </span>
+    );
+  }
+  const on = Boolean(hub.pages[slot]);
+  return (
+    <span
+      title={
+        on
+          ? `Hide ${pageLabel(slot)} from ${hub.label}`
+          : `Show ${pageLabel(slot)} on ${hub.label} again`
+      }
+      className={cn(
+        "inline-flex",
+        saving && "pointer-events-none opacity-50",
+        !hub.enabled && "opacity-55",
+      )}
+    >
+      <Checkbox
+        checked={on}
+        onChange={() => {
+          if (!saving) onToggle(hub, slot, !on);
+        }}
+        label={`${pageLabel(slot)} on ${hub.label}`}
+      />
+    </span>
   );
 }
 
-function FieldRow({ label, children }) {
+/** The org-wide visibility switch for one hub. */
+function HubSwitch({ hub, saving, onToggle }) {
   return (
-    <div className="border-b border-line py-3 last:border-b-0">
-      <Label className="mb-2 block">{label}</Label>
-      {children}
+    <button
+      type="button"
+      role="switch"
+      aria-checked={hub.enabled}
+      aria-label={`${hub.label} visible to the org`}
+      title={
+        hub.enabled
+          ? `Hide ${hub.label} from the whole org`
+          : `Show ${hub.label} to the org again`
+      }
+      disabled={saving}
+      onClick={() => onToggle(hub, !hub.enabled)}
+      className="disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <Badge tone={hub.enabled ? "mint" : "neutral"} dot>
+        {hub.enabled ? "Visible" : "Hidden"}
+      </Badge>
+    </button>
+  );
+}
+
+/* ══════════════════════════ integrations ══════════════════════════ */
+
+function IntegrationsCard({ hub, saving, onToggle, onRevert }) {
+  return (
+    <div
+      className="rounded-[var(--radius-xl)] bg-card p-5"
+      style={{ boxShadow: "var(--shadow-card)" }}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[15px] font-bold text-fg">{hub.label}</span>
+        {hub.hasOverride ? <Badge tone="lav">Custom</Badge> : null}
+        {!hub.enabled ? <Badge tone="peach">Hidden</Badge> : null}
+        <span className="flex-1" />
+        {hub.hasOverride ? (
+          <Button
+            type="button"
+            variant="soft"
+            size="sm"
+            onClick={onRevert}
+            disabled={saving}
+          >
+            Revert to defaults
+          </Button>
+        ) : null}
+      </div>
+      <p className="mt-1.5 text-[12.5px] leading-[1.5] text-muted-fg">
+        {hub.integrations.length === 0
+          ? "No providers — this hub surfaces no integration data."
+          : `Providers this hub may read: ${hub.integrations.join(", ")}.`}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {ALL_INTEGRATIONS.map((p) => {
+          const on = hub.integrations.includes(p);
+          return (
+            <TogglePill
+              key={p}
+              checked={on}
+              disabled={saving}
+              onClick={() => onToggle(p, !on)}
+              title={
+                on
+                  ? `Remove ${p} from ${hub.label}`
+                  : `Allow ${p} on ${hub.label}`
+              }
+            >
+              {p}
+            </TogglePill>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -1,216 +1,781 @@
 "use client";
 
 /**
- * Admin Hub — user management. UI on top of:
- *   GET   /api/v1/admin/users         list every member of the org
- *   PATCH /api/v1/admin/users/:id     edit roles/status/hubs/displayName
+ * Admin hub — members. Two views over one roster:
  *
- * Renders one expandable row per user (mirroring admin-hub-config's
- * shape — same "click row → inline editor" pattern so admins navigate
- * both surfaces with the same muscle memory).
+ *   "Table"  (A1) the flat list. Everyone appears exactly once, because
+ *                 status is a FILTER rather than a section — the old page
+ *                 rendered a "Pending approvals" block above the roster
+ *                 and then the roster, so a pending person showed twice.
+ *                 Search, multi-select with a bulk bar that exists only
+ *                 while rows are selected, and a per-row overflow menu.
+ *   "Detail" (A2) the same list beside a non-modal side panel for the
+ *                 selected account, tabbed Details / Access / Activity.
  *
- * The row shows the at-a-glance fields the table needs (email,
- * roles, status, primary hub, last-login). Expanding reveals an
- * inline editor that PATCHes on save; the API is single-endpoint
- * (no per-field PATCH calls) so the editor batches every change
- * into one round-trip.
+ * The choice persists to localStorage and broadcasts a change event, so
+ * a second tab follows along (admin-users-view-store.js).
  *
- * Optimistic UI:
- *   - Save fires → button shows "Saving…"
- *   - Server returns the canonical row → we replace the local copy
- *   - Failure toasts + leaves the row's local edit state intact so
- *     the admin can adjust + retry without re-typing
- *
- * Self-protection: an admin editing their OWN row sees the
- * `admin` checkbox + `status=disabled` option disabled with a hint,
- * mirroring the server-side self-lockout guard. Surfacing the rule
- * locally avoids the round-trip-just-to-be-told-no UX.
+ * API surface, unchanged:
+ *   GET    /admin/users                     the roster
+ *   PATCH  /admin/users/:id                 roles / status / hubs / name / …
+ *   POST   /admin/users/:id/totp/reset      clear an authenticator
+ *   DELETE /admin/users/:id/personal-data   wipe dashboard data
+ *   GET    /admin/signup-codes  · POST · PATCH   self-serve signup codes
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight } from "lucide-react";
-import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api-client";
+import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import { apiGet, apiPatch, apiPost } from "@/lib/api-client";
 import { useSession } from "@/features/auth";
 import {
+  Avatar,
   Badge,
   Button,
+  Checkbox,
   Field as UiField,
   Input,
   Label,
+  Loading,
   PageHeader,
+  SegmentedControl,
   Select,
 } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { CAPABILITIES } from "@espace-devhub/shared/capabilities";
-import { HUB_ORDER } from "@espace-devhub/shared/hubs";
+import { AdminNotAuthorised, AdminShell } from "./admin-shell";
+import {
+  ALL_ROLES,
+  STATUS_FILTERS,
+  formatDate,
+  formatRelative,
+  matchesQuery,
+} from "./admin-lib";
+import { patchUser, resetTotp, wipeDashboardData } from "./admin-user-actions";
+import {
+  EmptyState,
+  FilterPill,
+  OverflowMenu,
+  StatusBadge,
+  useConfirm,
+} from "./admin-ui";
+import { InviteDialog } from "./admin-invite-dialog";
+import { UserPanel } from "./admin-user-panel";
+import { useUsersView } from "./admin-users-view-store";
 
-// Pulled from db/types.ts ALL_USER_ROLES. Hard-coded here rather than
-// imported because the shared package doesn't re-export them yet and
-// the list is small + stable.
-const ALL_ROLES = ["admin", "dev", "qa", "manager", "hr", "po", "member"];
-const ALL_STATUSES = ["invited", "pending_admin", "active", "disabled"];
+const VIEW_OPTIONS = [
+  { value: "table", label: "Table" },
+  { value: "detail", label: "Detail" },
+];
 
 export function AdminUsers() {
   const { user: sessionUser } = useSession();
+  const [view, setView] = useUsersView();
+  const confirm = useConfirm();
+
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [openUserId, setOpenUserId] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [activeUserId, setActiveUserId] = useState(null);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   const canManage = sessionUser?.capabilities?.includes(
     CAPABILITIES.ADMIN_USERS_MANAGE,
   );
 
-  async function reloadUsers() {
+  /**
+   * Re-read the roster. `initial` also drives the page-level loading and
+   * error states; a background refresh (after an invite, say) leaves the
+   * list on screen and only toasts if it fails.
+   */
+  async function loadUsers({ initial = false } = {}) {
     const r = await apiGet("/admin/users");
     if (!r.ok) {
-      toast.error(r.error?.message || "Couldn't load users.");
-      return;
+      const message = r.error?.message || "Couldn't load users.";
+      toast.error(message);
+      if (initial) {
+        setLoadError(message);
+        setLoading(false);
+      }
+      return null;
     }
-    setUsers(r.data?.users ?? []);
+    const next = r.data?.users ?? [];
+    setUsers(next);
+    setLoadError(null);
+    if (initial) setLoading(false);
+    return next;
   }
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const r = await apiGet("/admin/users");
-      if (cancelled) return;
-      if (!r.ok) {
-        toast.error(r.error?.message || "Couldn't load users.");
-        setLoading(false);
-        return;
-      }
-      setUsers(r.data?.users ?? []);
-      setLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
+    void loadUsers({ initial: true });
+    // Fires once on mount; loadUsers closes over setters only, all stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function applyUpdate(updatedUser) {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)),
+  const usersById = useMemo(() => {
+    const map = new Map();
+    for (const u of users) map.set(u.id, u);
+    return map;
+  }, [users]);
+
+  const counts = useMemo(() => {
+    const out = { all: users.length };
+    for (const u of users) out[u.status] = (out[u.status] ?? 0) + 1;
+    return out;
+  }, [users]);
+
+  const visible = useMemo(
+    () =>
+      users.filter(
+        (u) =>
+          (statusFilter === "all" || u.status === statusFilter) &&
+          matchesQuery(u, query),
+      ),
+    [users, statusFilter, query],
+  );
+
+  // Never act on a row the admin can't see: whenever the filter or the
+  // search narrows the list, drop anything that fell out of it.
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const allowed = new Set(visible.map((u) => u.id));
+      const next = new Set([...prev].filter((id) => allowed.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [visible]);
+
+  function applyUpdate(updated) {
+    if (!updated) return;
+    setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+  }
+
+  function toggleSelected(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function openUser(id) {
+    setActiveUserId(id);
+    setView("detail");
+  }
+
+  const selected = useMemo(
+    () => [...selectedIds].map((id) => usersById.get(id)).filter(Boolean),
+    [selectedIds, usersById],
+  );
+
+  /* ── bulk actions ──────────────────────────────────────────── */
+
+  async function runBulk(targets, fn, summary) {
+    if (targets.length === 0) return;
+    setBusy(true);
+    let changed = 0;
+    for (const target of targets) {
+      const updated = await fn(target);
+      if (updated) {
+        applyUpdate(updated);
+        changed += 1;
+      }
+    }
+    setBusy(false);
+    setSelectedIds(new Set());
+    if (changed > 0) toast.success(summary(changed));
+  }
+
+  function bulkSetStatus(status) {
+    // Disabling yourself is refused server-side; drop self from the batch
+    // rather than sending a request that is guaranteed to fail.
+    const targets = selected.filter(
+      (u) => u.status !== status && !(status === "disabled" && u.id === sessionUser?.id),
+    );
+    if (targets.length === 0) {
+      toast.info("Nothing to change in that selection.");
+      return;
+    }
+    const run = () =>
+      runBulk(
+        targets,
+        (u) => patchUser(u, { status }, { silent: true }),
+        (n) =>
+          status === "disabled"
+            ? `Disabled ${n} member${n === 1 ? "" : "s"}.`
+            : `Activated ${n} member${n === 1 ? "" : "s"}.`,
+      );
+
+    if (status === "disabled") {
+      confirm({
+        title: `Disable ${targets.length} member${targets.length === 1 ? "" : "s"}?`,
+        body: "They are signed out of the app and can't sign back in until an admin re-activates them. Their data is untouched.",
+        confirmLabel: "Disable",
+        onConfirm: run,
+      });
+      return;
+    }
+    void run();
+  }
+
+  function bulkAddRole(role) {
+    const targets = selected.filter((u) => !u.roles.includes(role));
+    if (targets.length === 0) {
+      toast.info(`Everyone selected already holds "${role}".`);
+      return;
+    }
+    void runBulk(
+      targets,
+      (u) => patchUser(u, { roles: [...u.roles, role] }, { silent: true }),
+      (n) => `Added "${role}" to ${n} member${n === 1 ? "" : "s"}.`,
     );
   }
 
-  function handleInviteSuccess() {
-    setInviteOpen(false);
-    void reloadUsers();
+  function bulkResetTotp() {
+    const targets = selected.filter((u) => u.hasTotp && u.id !== sessionUser?.id);
+    if (targets.length === 0) {
+      toast.info("Nobody in that selection has an authenticator to reset.");
+      return;
+    }
+    confirm({
+      title: `Reset two-factor for ${targets.length} member${targets.length === 1 ? "" : "s"}?`,
+      body: "Their authenticator apps stop working immediately and they re-enrol at next sign-in. Confirm out-of-band that each request is genuine.",
+      confirmLabel: "Reset two-factor",
+      onConfirm: () =>
+        runBulk(
+          targets,
+          (u) => resetTotp(u, { silent: true }),
+          (n) => `Two-factor reset for ${n} member${n === 1 ? "" : "s"}.`,
+        ),
+    });
+  }
+
+  /* ── per-row actions ───────────────────────────────────────── */
+
+  function rowMenuItems(u) {
+    const isSelf = u.id === sessionUser?.id;
+    return [
+      { label: "Edit access", onSelect: () => openUser(u.id) },
+      u.status === "pending_admin"
+        ? {
+            label: "Approve",
+            onSelect: async () => {
+              const updated = await patchUser(u, { status: "active" });
+              applyUpdate(updated);
+            },
+          }
+        : null,
+      u.hasTotp && !isSelf
+        ? {
+            label: "Reset two-factor",
+            danger: true,
+            onSelect: () =>
+              confirm({
+                title: `Reset two-factor for ${u.displayName}?`,
+                body: "Their authenticator app stops working immediately and they re-enrol at next sign-in. Confirm out-of-band that the request really came from them.",
+                confirmLabel: "Reset two-factor",
+                onConfirm: async () => applyUpdate(await resetTotp(u)),
+              }),
+          }
+        : null,
+      {
+        label: "Wipe dashboard data",
+        danger: true,
+        onSelect: () =>
+          confirm({
+            title: `Wipe all dashboard data for ${u.displayName}?`,
+            body: "Deletes their goals, snapshots, AI verdicts and goal specs, context and inputs. The account, its integrations and its sessions are left alone. This cannot be undone.",
+            confirmLabel: "Wipe dashboard data",
+            onConfirm: () => wipeDashboardData(u),
+          }),
+      },
+      u.status === "disabled"
+        ? {
+            label: "Re-activate",
+            onSelect: async () => applyUpdate(await patchUser(u, { status: "active" })),
+          }
+        : {
+            label: "Disable account",
+            danger: true,
+            disabled: isSelf,
+            onSelect: () =>
+              confirm({
+                title: `Disable ${u.displayName}?`,
+                body: "They are signed out and can't sign back in until an admin re-activates them. Their data is untouched.",
+                confirmLabel: "Disable",
+                onConfirm: async () =>
+                  applyUpdate(await patchUser(u, { status: "disabled" })),
+              }),
+          },
+    ];
   }
 
   if (!canManage) {
     return (
-      <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
-        <PageHeader
-          crumb="Admin · user management"
-          title="Not authorised."
-          subtitle={`This view requires the ${CAPABILITIES.ADMIN_USERS_MANAGE} capability. Ask your org admin to extend your roles.`}
-        />
-      </main>
+      <AdminNotAuthorised
+        active="users"
+        crumb="Admin · members"
+        capability={CAPABILITIES.ADMIN_USERS_MANAGE}
+      />
     );
   }
 
+  const activeUser = activeUserId ? usersById.get(activeUserId) : null;
+
   return (
-    <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
+    <AdminShell active="users">
       <PageHeader
-        crumb="Admin · user management"
+        crumb="Admin · members"
         title="Members of your org."
-        subtitle={
-          <>
-            Click a row to edit roles, status, hub access, and who they report
-            to. Changes take effect on the user&apos;s next request — they
-            don&apos;t need to log out. Self-edits can&apos;t strip your own
-            admin role or disable your own account.
-          </>
-        }
+        subtitle="Everyone with an account here, once. Status is a filter, so a person waiting for approval shows up in the same list as everybody else."
         right={
-          <Button type="button" variant="ink" size="sm" onClick={() => setInviteOpen(true)}>
-            + Invite user
-          </Button>
+          <div className="flex items-center gap-2">
+            <SegmentedControl
+              size="sm"
+              options={VIEW_OPTIONS}
+              value={view}
+              onChange={setView}
+            />
+            <Button
+              type="button"
+              variant="ink"
+              size="sm"
+              onClick={() => setInviteOpen(true)}
+            >
+              Invite
+            </Button>
+          </div>
         }
       />
 
       {inviteOpen ? (
         <InviteDialog
+          users={users}
           onClose={() => setInviteOpen(false)}
-          onSuccess={handleInviteSuccess}
+          onSuccess={(opts) => {
+            if (!opts?.keepOpen) setInviteOpen(false);
+            void loadUsers();
+          }}
         />
       ) : null}
 
-      {/* Self-serve signup configuration. Codes admins distribute
-          out-of-band to people who should be able to /signup against
-          this org. */}
-      <SignupCodesPanel />
-
-      {loading ? (
-        <div className="text-[12px] text-muted-fg">Loading…</div>
-      ) : users.length === 0 ? (
-        <div className="text-[12px] text-muted-fg">No users found for this org.</div>
-      ) : (
-        <>
-          {/* Pending-approval queue surfaced at the top so self-sign-ups
-              don't get lost in the main roster. Empty when there are
-              no pending users — the section header hides itself. */}
-          <PendingApprovalsSection
-            users={users}
-            openUserId={openUserId}
-            onExpand={(id) => setOpenUserId(openUserId === id ? null : id)}
-            onUpdate={applyUpdate}
-            sessionUserId={sessionUser?.id}
-          />
-          <div className="flex flex-col gap-2">
-            <h2 className="mt-6 mb-2 text-[18px] font-bold tracking-[-0.01em]">Members</h2>
-            {users.map((u) => (
-              <UserRow
-                key={u.id}
-                user={u}
-                isSelf={sessionUser?.id === u.id}
-                expanded={openUserId === u.id}
-                onExpand={() =>
-                  setOpenUserId(openUserId === u.id ? null : u.id)
-                }
-                onUpdate={applyUpdate}
-                allUsers={users}
-              />
-            ))}
-          </div>
-        </>
-      )}
-    </main>
-  );
-}
-
-/* ─────────────────────── Pending approvals ─────────────────────── */
-
-function PendingApprovalsSection({ users, openUserId, onExpand, onUpdate, sessionUserId }) {
-  const pending = users.filter((u) => u.status === "pending_admin");
-  if (pending.length === 0) return null;
-  return (
-    <section className="mt-2">
-      <div className="mb-2 flex items-baseline gap-2">
-        <Badge tone="lemon">Pending approvals · {pending.length}</Badge>
-        <Label>self-sign-ups awaiting role + hub</Label>
-      </div>
-      <div className="flex flex-col gap-2">
-        {pending.map((u) => (
-          <UserRow
-            key={u.id}
-            user={u}
-            isSelf={sessionUserId === u.id}
-            expanded={openUserId === u.id}
-            onExpand={() => onExpand(u.id)}
-            onUpdate={onUpdate}
-            allUsers={users}
+      {/* Status as a filter, plus a name/email search — at any org size
+          above a screenful, the old page had neither. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {STATUS_FILTERS.map((f) => (
+          <FilterPill
+            key={f.value}
+            label={f.label}
+            count={f.value === "all" ? counts.all : (counts[f.value] ?? 0)}
+            active={statusFilter === f.value}
+            onClick={() => setStatusFilter(f.value)}
           />
         ))}
+        <div className="relative ml-auto min-w-[200px] flex-1 sm:max-w-[280px] sm:flex-none">
+          <Search
+            size={15}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-dim-fg"
+          />
+          <Input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search members by name or email"
+            placeholder="Search name or email"
+            className="h-9 bg-card pl-9 text-[13px]"
+          />
+        </div>
       </div>
-    </section>
+
+      {loading ? (
+        <Loading label="Loading members" />
+      ) : loadError ? (
+        <div
+          className="rounded-[var(--radius-xl)] bg-card p-5"
+          style={{ boxShadow: "var(--shadow-card)" }}
+        >
+          <EmptyState
+            title="Couldn't load the roster."
+            body={loadError}
+            action={
+              <Button
+                type="button"
+                variant="soft"
+                size="sm"
+                onClick={() => {
+                  setLoading(true);
+                  void loadUsers({ initial: true });
+                }}
+              >
+                Try again
+              </Button>
+            }
+          />
+        </div>
+      ) : users.length === 0 ? (
+        <div
+          className="rounded-[var(--radius-xl)] bg-card p-5"
+          style={{ boxShadow: "var(--shadow-card)" }}
+        >
+          <EmptyState
+            title="No members yet."
+            body="Invite the first person, or mint a signup code below so they can join themselves."
+            action={
+              <Button
+                type="button"
+                variant="ink"
+                size="sm"
+                onClick={() => setInviteOpen(true)}
+              >
+                Invite
+              </Button>
+            }
+          />
+        </div>
+      ) : view === "detail" ? (
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+          <CompactList
+            users={visible}
+            activeUserId={activeUserId}
+            sessionUserId={sessionUser?.id}
+            onPick={setActiveUserId}
+          />
+          <div className="xl:sticky xl:top-[88px]">
+            {activeUser ? (
+              <UserPanel
+                key={activeUser.id}
+                user={activeUser}
+                isSelf={activeUser.id === sessionUser?.id}
+                allUsers={users}
+                usersById={usersById}
+                onUpdate={applyUpdate}
+                onClose={() => setActiveUserId(null)}
+                confirm={confirm}
+              />
+            ) : (
+              <div
+                className="rounded-[var(--radius-xl)] bg-card p-5"
+                style={{ boxShadow: "var(--shadow-card)" }}
+              >
+                <EmptyState
+                  title="Pick a member."
+                  body="Their details, access and full activity history open here — the list stays readable while you edit."
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <MembersTable
+          users={visible}
+          total={users.length}
+          sessionUserId={sessionUser?.id}
+          usersById={usersById}
+          selectedIds={selectedIds}
+          onToggleSelected={toggleSelected}
+          onSelectAll={(checked) =>
+            setSelectedIds(checked ? new Set(visible.map((u) => u.id)) : new Set())
+          }
+          onOpen={openUser}
+          rowMenuItems={rowMenuItems}
+          busy={busy}
+          onBulkStatus={bulkSetStatus}
+          onBulkAddRole={bulkAddRole}
+          onBulkResetTotp={bulkResetTotp}
+          onClearSelection={() => setSelectedIds(new Set())}
+        />
+      )}
+
+      {/* Self-serve signup configuration. Codes an admin distributes
+          out-of-band to people who should be able to /signup into this
+          org without an individual invite. */}
+      <SignupCodesPanel />
+
+      {confirm.dialog}
+    </AdminShell>
   );
 }
 
-/* ─────────────────────── Signup codes panel ─────────────────────── */
+/* ══════════════════════════ A1 — the table ══════════════════════════ */
+
+const COLS =
+  "grid grid-cols-[28px_minmax(0,1.7fr)_158px_minmax(0,0.9fr)_128px_92px_40px] items-center gap-3";
+
+function MembersTable({
+  users,
+  total,
+  sessionUserId,
+  usersById,
+  selectedIds,
+  onToggleSelected,
+  onSelectAll,
+  onOpen,
+  rowMenuItems,
+  busy,
+  onBulkStatus,
+  onBulkAddRole,
+  onBulkResetTotp,
+  onClearSelection,
+}) {
+  const allSelected = users.length > 0 && users.every((u) => selectedIds.has(u.id));
+  const anySelected = selectedIds.size > 0;
+
+  return (
+    <div
+      className="overflow-hidden rounded-[var(--radius-xl)] bg-card"
+      style={{ boxShadow: "var(--shadow-card)" }}
+    >
+      {/* The bulk bar exists only while rows are selected — it is not a
+          permanently-disabled toolbar taking up a row of chrome. */}
+      {anySelected ? (
+        <BulkBar
+          count={selectedIds.size}
+          busy={busy}
+          onStatus={onBulkStatus}
+          onAddRole={onBulkAddRole}
+          onResetTotp={onBulkResetTotp}
+          onClear={onClearSelection}
+        />
+      ) : null}
+
+      <div className="overflow-x-auto">
+        <div className="min-w-[860px] px-5">
+          <div className={cn(COLS, "border-b border-line py-3")}>
+            <span onClick={(e) => e.stopPropagation()}>
+              <Checkbox
+                checked={allSelected}
+                onChange={() => onSelectAll(!allSelected)}
+                label={allSelected ? "Clear selection" : "Select every visible member"}
+              />
+            </span>
+            <Label>Member</Label>
+            <Label>Status</Label>
+            <Label>Roles</Label>
+            <Label>Manager</Label>
+            <Label>Last seen</Label>
+            <span />
+          </div>
+
+          {users.length === 0 ? (
+            <EmptyState
+              title="Nobody matches."
+              body={`None of the ${total} member${total === 1 ? "" : "s"} in this org matches the current filter and search.`}
+            />
+          ) : (
+            users.map((u) => (
+              <MemberRow
+                key={u.id}
+                user={u}
+                isSelf={u.id === sessionUserId}
+                selected={selectedIds.has(u.id)}
+                managerName={
+                  u.managerId ? (usersById.get(u.managerId)?.displayName ?? "—") : "—"
+                }
+                onToggleSelected={() => onToggleSelected(u.id)}
+                onOpen={() => onOpen(u.id)}
+                menuItems={rowMenuItems(u)}
+              />
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BulkBar({ count, busy, onStatus, onAddRole, onResetTotp, onClear }) {
+  const [role, setRole] = useState("");
+  return (
+    <div className="flex flex-wrap items-center gap-2 bg-ink px-5 py-2.5">
+      <span className="text-[12.5px] font-bold text-ink-on">
+        {count} selected
+      </span>
+      <span className="flex-1" />
+      <Select
+        value={role}
+        size="sm"
+        aria-label="Add a role to every selected member"
+        onChange={(e) => {
+          const next = e.target.value;
+          setRole("");
+          if (next) onAddRole(next);
+        }}
+        disabled={busy}
+        className="min-w-[132px]"
+      >
+        <option value="">Add role…</option>
+        {ALL_ROLES.map((r) => (
+          <option key={r} value={r}>
+            {r}
+          </option>
+        ))}
+      </Select>
+      <Button
+        type="button"
+        variant="soft"
+        size="sm"
+        disabled={busy}
+        onClick={onResetTotp}
+      >
+        Reset two-factor
+      </Button>
+      <Button
+        type="button"
+        variant="soft"
+        size="sm"
+        disabled={busy}
+        onClick={() => onStatus("active")}
+      >
+        Activate
+      </Button>
+      <Button
+        type="button"
+        variant="soft"
+        size="sm"
+        disabled={busy}
+        onClick={() => onStatus("disabled")}
+      >
+        Disable
+      </Button>
+      <Button type="button" variant="soft" size="sm" onClick={onClear}>
+        Clear
+      </Button>
+    </div>
+  );
+}
+
+function MemberRow({
+  user,
+  isSelf,
+  selected,
+  managerName,
+  onToggleSelected,
+  onOpen,
+  menuItems,
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${user.displayName}`}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className={cn(
+        COLS,
+        "cursor-pointer border-b border-line py-2.5 transition-colors last:border-b-0 hover:bg-card-alt",
+        selected && "bg-card-alt",
+        user.status === "disabled" && "opacity-60",
+      )}
+    >
+      {/* The row is itself activatable, so the two controls inside it have
+          to keep their clicks and keystrokes to themselves. */}
+      <span
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
+        <Checkbox
+          checked={selected}
+          onChange={onToggleSelected}
+          label={`Select ${user.displayName}`}
+        />
+      </span>
+
+      <div className="flex min-w-0 items-center gap-2.5">
+        <Avatar name={user.displayName} size={28} tone={isSelf ? "sky" : "lav"} />
+        <div className="min-w-0">
+          <div className="truncate text-[13px] font-bold text-fg">
+            {user.displayName}
+            {isSelf ? <span className="text-muted-fg"> (you)</span> : null}
+          </div>
+          <div className="truncate text-[11.5px] text-muted-fg">{user.email}</div>
+        </div>
+      </div>
+
+      <span>
+        <StatusBadge status={user.status} />
+      </span>
+
+      <span className="truncate text-[12px] text-muted-fg">
+        {user.roles.join(" · ")}
+      </span>
+      <span className="truncate text-[12px] text-muted-fg">{managerName}</span>
+      <span className="text-[12px] text-dim-fg">
+        {formatRelative(user.lastLoginAt)}
+      </span>
+
+      <span
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+        className="justify-self-end"
+      >
+        <OverflowMenu items={menuItems} label={`Actions for ${user.displayName}`} />
+      </span>
+    </div>
+  );
+}
+
+/* ══════════════════════ A2 — the list beside the panel ══════════════════════ */
+
+function CompactList({ users, activeUserId, sessionUserId, onPick }) {
+  return (
+    <div
+      className="rounded-[var(--radius-xl)] bg-card px-5"
+      style={{ boxShadow: "var(--shadow-card)" }}
+    >
+      {users.length === 0 ? (
+        <EmptyState
+          title="Nobody matches."
+          body="Clear the search or pick another status filter."
+        />
+      ) : (
+        users.map((u, i) => {
+          const active = u.id === activeUserId;
+          return (
+            <button
+              key={u.id}
+              type="button"
+              onClick={() => onPick(u.id)}
+              aria-current={active ? "true" : undefined}
+              className={cn(
+                "flex w-full items-center gap-2.5 py-2.5 text-left transition-colors",
+                i > 0 && "border-t border-line",
+                active && "bg-card-alt",
+                u.status === "disabled" && "opacity-60",
+              )}
+            >
+              <Avatar
+                name={u.displayName}
+                size={28}
+                tone={u.id === sessionUserId ? "sky" : "lav"}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] font-bold text-fg">
+                  {u.displayName}
+                </div>
+                <div className="truncate text-[11.5px] text-muted-fg">{u.email}</div>
+              </div>
+              <StatusBadge status={u.status} />
+              <ChevronRight size={15} className="shrink-0 text-dim-fg" />
+            </button>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════ signup codes ══════════════════════════ */
 
 function SignupCodesPanel() {
   const [codes, setCodes] = useState([]);
@@ -220,20 +785,22 @@ function SignupCodesPanel() {
   const [newExpires, setNewExpires] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  async function reload() {
-    const r = await apiGet("/admin/signup-codes");
-    if (!r.ok) {
-      toast.error(r.error?.message || "Couldn't load signup codes.");
-      setLoading(false);
-      return;
-    }
-    setCodes(r.data?.codes ?? []);
-    setLoading(false);
-  }
-
   useEffect(() => {
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let cancelled = false;
+    (async () => {
+      const r = await apiGet("/admin/signup-codes");
+      if (cancelled) return;
+      if (!r.ok) {
+        toast.error(r.error?.message || "Couldn't load signup codes.");
+        setLoading(false);
+        return;
+      }
+      setCodes(r.data?.codes ?? []);
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function handleMint(e) {
@@ -242,8 +809,8 @@ function SignupCodesPanel() {
     setSubmitting(true);
     const body = { code: newCode.trim() };
     if (newExpires) {
-      // datetime-local sends a tz-less string; assume the admin meant
-      // their local timezone and convert to ISO with offset.
+      // datetime-local gives a tz-less string; read it as the admin's own
+      // timezone and send an offset-bearing ISO stamp.
       body.expiresAt = new Date(newExpires).toISOString();
     }
     const r = await apiPost("/admin/signup-codes", body);
@@ -260,45 +827,57 @@ function SignupCodesPanel() {
 
   async function handleToggle(code) {
     const target = code.disabledAt ? false : true;
-    const r = await apiPatch(`/admin/signup-codes/${encodeURIComponent(code.code)}`, {
-      disabled: target,
-    });
+    const r = await apiPatch(
+      `/admin/signup-codes/${encodeURIComponent(code.code)}`,
+      { disabled: target },
+    );
     if (!r.ok) {
       toast.error(r.error?.message || "Couldn't update code.");
       return;
     }
-    setCodes((prev) =>
-      prev.map((c) => (c.code === code.code ? r.data.code : c)),
+    setCodes((prev) => prev.map((c) => (c.code === code.code ? r.data.code : c)));
+    toast.success(
+      target ? `Code "${code.code}" disabled.` : `Code "${code.code}" re-enabled.`,
     );
-    toast.success(target ? `Code "${code.code}" disabled.` : `Code "${code.code}" re-enabled.`);
   }
 
   return (
-    <section className="mb-6 rounded-[var(--radius-xl)] bg-card" style={{ boxShadow: "var(--shadow-card)" }}>
+    <section
+      className="mt-4 overflow-hidden rounded-[var(--radius-xl)] bg-card"
+      style={{ boxShadow: "var(--shadow-card)" }}
+    >
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
         className="flex w-full items-center justify-between gap-4 px-5 py-3.5 text-left transition-colors hover:bg-card-alt"
       >
         <div className="flex items-baseline gap-3">
-          <span className="text-[14.5px] font-bold">Signup codes</span>
-          <span className="text-[11px] text-muted-fg">
-            {loading ? "loading…" : `${codes.filter((c) => !c.disabledAt).length} active · ${codes.length} total`}
+          <span className="text-[14.5px] font-bold text-fg">Signup codes</span>
+          <span className="text-[12px] text-muted-fg">
+            {loading
+              ? "loading…"
+              : `${codes.filter((c) => !c.disabledAt).length} active · ${codes.length} total`}
           </span>
         </div>
-        {expanded ? <ChevronDown size={15} className="text-dim-fg" /> : <ChevronRight size={15} className="text-dim-fg" />}
+        {expanded ? (
+          <ChevronDown size={15} className="text-dim-fg" />
+        ) : (
+          <ChevronRight size={15} className="text-dim-fg" />
+        )}
       </button>
+
       {expanded ? (
         <div className="border-t border-line px-5 py-4">
-          <p className="mb-3 text-[12.5px] leading-[1.55] text-muted-fg">
-            Distribute these codes out-of-band to people who should be
-            able to create accounts via <code className="font-mono">/signup</code>. Each
-            signup attempt validates the code; disabled / expired codes
-            are rejected.
+          <p className="mb-3.5 text-[12.5px] leading-[1.55] text-muted-fg">
+            Distribute these out-of-band to people who should be able to create
+            an account at <span className="font-mono">/signup</span>. Every
+            signup attempt validates the code; disabled and expired codes are
+            rejected.
           </p>
 
           <form className="mb-4 flex flex-wrap items-end gap-2" onSubmit={handleMint}>
-            <UiField label="Code" className="flex-1 min-w-[180px]">
+            <UiField label="Code" className="min-w-[180px] flex-1">
               <Input
                 value={newCode}
                 onChange={(e) => setNewCode(e.target.value)}
@@ -307,7 +886,7 @@ function SignupCodesPanel() {
                 className="font-mono tracking-[0.05em]"
               />
             </UiField>
-            <UiField label="Expires (optional)" className="flex-1 min-w-[180px]">
+            <UiField label="Expires (optional)" className="min-w-[180px] flex-1">
               <Input
                 type="datetime-local"
                 value={newExpires}
@@ -315,19 +894,28 @@ function SignupCodesPanel() {
                 disabled={submitting}
               />
             </UiField>
-            <Button type="submit" variant="ink" size="sm" disabled={!newCode.trim() || submitting}>
-              {submitting ? "Minting…" : "+ Mint code"}
+            <Button
+              type="submit"
+              variant="ink"
+              size="sm"
+              disabled={!newCode.trim() || submitting}
+            >
+              {submitting ? "Minting…" : "Mint code"}
             </Button>
           </form>
 
           {codes.length === 0 ? (
-            <div className="text-[11px] text-muted-fg">
+            <div className="text-[12.5px] text-muted-fg">
               No codes yet. Mint one above to enable self-serve signup.
             </div>
           ) : (
             <ul className="flex flex-col gap-1.5">
               {codes.map((c) => (
-                <SignupCodeRow key={c.code} code={c} onToggle={() => handleToggle(c)} />
+                <SignupCodeRow
+                  key={c.code}
+                  code={c}
+                  onToggle={() => handleToggle(c)}
+                />
               ))}
             </ul>
           )}
@@ -339,16 +927,17 @@ function SignupCodesPanel() {
 
 function SignupCodeRow({ code, onToggle }) {
   const isDisabled = !!code.disabledAt;
-  const isExpired = code.expiresAt && new Date(code.expiresAt).getTime() <= Date.now();
+  const isExpired =
+    code.expiresAt && new Date(code.expiresAt).getTime() <= Date.now();
   const dim = isDisabled || isExpired;
   return (
     <li
       className={cn(
-        "flex flex-wrap items-baseline justify-between gap-2 rounded-[var(--radius-lg)] bg-card-alt px-3 py-2.5",
+        "flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-2.5",
         dim && "opacity-55",
       )}
     >
-      <div className="flex items-baseline gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <code className="font-mono text-[13px] font-bold tracking-[0.04em] text-fg">
           {code.code}
         </code>
@@ -356,607 +945,12 @@ function SignupCodeRow({ code, onToggle }) {
         {isExpired ? <Badge tone="peach">Expired</Badge> : null}
         {isDisabled ? <Badge>Disabled</Badge> : null}
         {code.expiresAt && !isExpired ? (
-          <Label>expires {new Date(code.expiresAt).toLocaleDateString()}</Label>
+          <Label>expires {formatDate(code.expiresAt)}</Label>
         ) : null}
       </div>
-      <Button type="button" variant="ghost" size="sm" onClick={onToggle}>
+      <Button type="button" variant="soft" size="sm" onClick={onToggle}>
         {isDisabled ? "Enable" : "Disable"}
       </Button>
     </li>
   );
-}
-
-function UserRow({ user, isSelf, expanded, onExpand, onUpdate, allUsers }) {
-  return (
-    <div className="rounded-[var(--radius-xl)] bg-card" style={{ boxShadow: "var(--shadow-card)" }}>
-      <button
-        type="button"
-        onClick={onExpand}
-        className="flex w-full items-center justify-between gap-4 px-5 py-3.5 text-left transition-colors hover:bg-card-alt"
-      >
-        <div className="flex flex-1 flex-wrap items-baseline gap-3">
-          <span className="text-[14.5px] font-bold text-fg">{user.displayName}</span>
-          <span className="truncate text-[11px] text-muted-fg">{user.email}</span>
-          {isSelf ? <Badge tone="lav">You</Badge> : null}
-        </div>
-        <StatusBadge status={user.status} />
-        <span className="text-[11px] text-muted-fg">{user.roles.join(" · ")}</span>
-        {expanded ? <ChevronDown size={15} className="ml-3 text-dim-fg" /> : <ChevronRight size={15} className="ml-3 text-dim-fg" />}
-      </button>
-
-      {expanded ? (
-        <UserEditor
-          user={user}
-          isSelf={isSelf}
-          onUpdate={onUpdate}
-          allUsers={allUsers}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function UserEditor({ user, isSelf, onUpdate, allUsers }) {
-  // Local edit state — initialised from the canonical user. Saves
-  // produce a NEW canonical object via the PATCH response, at which
-  // point we lift it up via onUpdate(); the editor stays mounted so
-  // the admin can keep editing without re-expanding.
-  const [displayName, setDisplayName] = useState(user.displayName);
-  const [roles, setRoles] = useState(user.roles);
-  const [status, setStatus] = useState(user.status);
-  const [allowedHubs, setAllowedHubs] = useState(
-    user.allowedHubs.length > 0 ? user.allowedHubs : [],
-  );
-  const [primaryHub, setPrimaryHub] = useState(user.primaryHub);
-  const [engagement, setEngagement] = useState(user.engagement || "espace");
-  const [managerId, setManagerId] = useState(user.managerId ?? null);
-  const [saving, setSaving] = useState(false);
-
-  // Re-init when the canonical user updates (after a successful save
-  // OR when a sibling row's save triggers an unrelated re-render).
-  useEffect(() => {
-    setDisplayName(user.displayName);
-    setRoles(user.roles);
-    setStatus(user.status);
-    setAllowedHubs(user.allowedHubs);
-    setPrimaryHub(user.primaryHub);
-    setEngagement(user.engagement || "espace");
-    setManagerId(user.managerId ?? null);
-  }, [user]);
-
-  const dirty = useMemo(() => {
-    if (displayName !== user.displayName) return true;
-    if (!sameArray(roles, user.roles)) return true;
-    if (status !== user.status) return true;
-    if (!sameArray(allowedHubs, user.allowedHubs)) return true;
-    if (primaryHub !== user.primaryHub) return true;
-    if (engagement !== (user.engagement || "espace")) return true;
-    if ((managerId ?? null) !== (user.managerId ?? null)) return true;
-    return false;
-  }, [
-    displayName,
-    roles,
-    status,
-    allowedHubs,
-    primaryHub,
-    engagement,
-    managerId,
-    user.displayName,
-    user.roles,
-    user.status,
-    user.allowedHubs,
-    user.primaryHub,
-    user.engagement,
-    user.managerId,
-  ]);
-
-  function toggleRole(roleId) {
-    setRoles((prev) => {
-      const has = prev.includes(roleId);
-      if (has) {
-        // Disallow removing the last role (UI guard; server also
-        // rejects empty roles).
-        if (prev.length === 1) return prev;
-        return prev.filter((r) => r !== roleId);
-      }
-      return [...prev, roleId];
-    });
-  }
-
-  function toggleHub(hubId) {
-    setAllowedHubs((prev) => {
-      const has = prev.includes(hubId);
-      const next = has ? prev.filter((h) => h !== hubId) : [...prev, hubId];
-      // Keep primaryHub valid — if we just removed the current
-      // primary, drop it to null so the admin notices + re-picks.
-      if (!next.includes(primaryHub ?? "")) {
-        setPrimaryHub(next[0] ?? null);
-      }
-      return next;
-    });
-  }
-
-  async function handleSave() {
-    setSaving(true);
-    // Build a minimal patch — only fields that actually changed.
-    // Server is a no-op on empty patches, but trimming here keeps
-    // the audit log cleaner and is friendlier to debug.
-    const patch = {};
-    if (displayName !== user.displayName) patch.displayName = displayName;
-    if (!sameArray(roles, user.roles)) patch.roles = roles;
-    if (status !== user.status) patch.status = status;
-    if (!sameArray(allowedHubs, user.allowedHubs)) patch.allowedHubs = allowedHubs;
-    if (primaryHub !== user.primaryHub) patch.primaryHub = primaryHub;
-    if (engagement !== (user.engagement || "espace")) patch.engagement = engagement;
-    if ((managerId ?? null) !== (user.managerId ?? null)) patch.managerId = managerId;
-
-    const r = await apiPatch(`/admin/users/${user.id}`, patch);
-    setSaving(false);
-    if (!r.ok) {
-      toast.error(r.error?.message || "Couldn't save user.");
-      return;
-    }
-    onUpdate(r.data?.user);
-    toast.success(`Saved ${r.data?.user?.displayName || "user"}.`);
-  }
-
-  // Admin-side TOTP reset. Only relevant when the target user has
-  // TOTP enrolled (otherwise the operation is a no-op and the button
-  // is hidden). Forbidden on self — the server rejects too, but we
-  // hide the button to make that clear without round-tripping.
-  async function handleResetTotp() {
-    if (
-      !window.confirm(
-        `Reset TOTP for ${user.displayName}?\n\nTheir authenticator app will stop working. On their next sign-in they'll be walked through enrolment again. Confirm out-of-band (in person, video call) that this is really them.`,
-      )
-    ) {
-      return;
-    }
-    setSaving(true);
-    const r = await apiPost(`/admin/users/${user.id}/totp/reset`, {});
-    setSaving(false);
-    if (!r.ok) {
-      toast.error(r.error?.message || "Couldn't reset TOTP.");
-      return;
-    }
-    onUpdate(r.data?.user);
-    if (r.data?.reset === false) {
-      toast.info(`${user.displayName} already had no TOTP enrolled.`);
-    } else {
-      toast.success(`TOTP reset for ${user.displayName}.`);
-    }
-  }
-
-  // Wipe the user's dashboard data (goals, snapshots, grading verdicts,
-  // goal specs/context/inputs). Useful when the pre-#117 localStorage-
-  // mirror bug uploaded another user's data under this user's account
-  // and you want to start them with a clean slate.
-  async function handleResetPersonalData() {
-    if (
-      !window.confirm(
-        `Wipe all dashboard data for ${user.displayName}?\n\nDeletes their goals, snapshots, AI verdicts, goal specs/context/inputs. Does NOT touch their account, integrations, or sessions. Use this to clean up data left over from the cross-user mirror bug. Irreversible.`,
-      )
-    ) {
-      return;
-    }
-    setSaving(true);
-    const r = await apiDelete(`/admin/users/${user.id}/personal-data`);
-    setSaving(false);
-    if (!r.ok) {
-      toast.error(r.error?.message || "Couldn't reset personal data.");
-      return;
-    }
-    const d = r.data?.deleted || {};
-    const total =
-      (d.goals || 0) +
-      (d.snapshots || 0) +
-      (d.gradingVerdicts || 0) +
-      (d.goalSpecs || 0) +
-      (d.goalContext || 0) +
-      (d.goalInputs || 0);
-    if (total === 0) {
-      toast.info(`${user.displayName} had nothing to clean up.`);
-    } else {
-      toast.success(
-        `Wiped ${total} row${total === 1 ? "" : "s"} for ${user.displayName} ` +
-          `(goals:${d.goals || 0} · snapshots:${d.snapshots || 0} · verdicts:${
-            d.gradingVerdicts || 0
-          } · specs:${d.goalSpecs || 0} · context:${d.goalContext || 0} · inputs:${
-            d.goalInputs || 0
-          }).`,
-      );
-    }
-  }
-
-  return (
-    <div className="border-t border-line px-5 py-5">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-        <UiField label="Display name">
-          <Input
-            type="text"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            disabled={saving}
-          />
-        </UiField>
-        <UiField label="Status">
-          <Select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            disabled={saving}
-            className="w-full"
-          >
-            {ALL_STATUSES.map((s) => (
-              <option key={s} value={s} disabled={isSelf && s === "disabled"}>
-                {s}
-                {isSelf && s === "disabled" ? " (can't disable yourself)" : ""}
-              </option>
-            ))}
-          </Select>
-        </UiField>
-      </div>
-
-      <div className="mt-5">
-        <Label>Roles</Label>
-        <p className="mt-1 text-[11.5px] leading-[1.5] text-muted-fg">
-          A user can hold multiple roles. Their effective capabilities
-          are the union across all of them. {isSelf ? "You can't remove your own admin role." : null}
-        </p>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {ALL_ROLES.map((r) => {
-            const checked = roles.includes(r);
-            const disabled =
-              saving ||
-              (isSelf && r === "admin" && checked) || // self can't drop admin
-              (roles.length === 1 && checked); // can't drop the last
-            return (
-              <TogglePill key={r} checked={checked} disabled={disabled} onClick={() => toggleRole(r)}>
-                {r}
-              </TogglePill>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-5">
-        <div>
-          <Label>Allowed hubs</Label>
-          <p className="mt-1 text-[11.5px] leading-[1.5] text-muted-fg">
-            Hubs this user can switch into. Hub access is also gated
-            by capabilities — granting an unsupported hub here just
-            hides it server-side at /hubs/me time.
-          </p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {HUB_ORDER.map((h) => (
-              <TogglePill key={h} checked={allowedHubs.includes(h)} disabled={saving} onClick={() => toggleHub(h)}>
-                {h}
-              </TogglePill>
-            ))}
-          </div>
-        </div>
-
-        <UiField label="Primary hub">
-          <Select
-            value={primaryHub ?? ""}
-            onChange={(e) => setPrimaryHub(e.target.value || null)}
-            disabled={saving}
-            className="w-full"
-          >
-            <option value="">(not set)</option>
-            {allowedHubs.map((h) => (
-              <option key={h} value={h}>
-                {h}
-              </option>
-            ))}
-          </Select>
-        </UiField>
-
-        {/* Engagement — which client/project this user belongs to.
-            Drives which env-prefixed integration config the API
-            resolves for their data fetches (eSpace's Jira vs.
-            Crealogix's Jira, etc.). Add a new value here in lockstep
-            with the API's ALL_ENGAGEMENTS enum. */}
-        <UiField label="Engagement">
-          <Select
-            value={engagement}
-            onChange={(e) => setEngagement(e.target.value)}
-            disabled={saving}
-            className="w-full"
-          >
-            <option value="espace">eSpace</option>
-            <option value="crealogix">Crealogix</option>
-          </Select>
-        </UiField>
-
-        {/* Manager assignment (P5). Sets users.managerId — the report edge
-            the Manager hub reads. Until Zoho populates it, this is how a
-            manager gets a team. Candidates are everyone else in the org;
-            those already holding the manager role are tagged. */}
-        <UiField label="Manager">
-          <Select
-            value={managerId ?? ""}
-            onChange={(e) => setManagerId(e.target.value || null)}
-            disabled={saving}
-            className="w-full"
-          >
-            <option value="">(no manager)</option>
-            {(allUsers ?? [])
-              .filter((c) => c.id !== user.id)
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.displayName}
-                  {c.roles?.includes("manager") ? " · manager" : ""}
-                </option>
-              ))}
-          </Select>
-        </UiField>
-      </div>
-
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
-        <UserMeta user={user} />
-        <div className="flex items-center gap-2">
-          {/* Reset-TOTP — only shown when the user actually has TOTP
-              enrolled (no point offering a no-op) and never on self
-              (server-side guarded too). */}
-          {user.hasTotp && !isSelf ? (
-            <Button
-              type="button"
-              variant="danger"
-              size="sm"
-              onClick={handleResetTotp}
-              disabled={saving}
-              title="Clears the user's TOTP secret. They'll re-enrol on next sign-in."
-            >
-              Reset TOTP
-            </Button>
-          ) : null}
-          {/* Wipe accumulated dashboard data — useful for cleaning up
-              pre-#117 mirror-bug pollution. Always available (idempotent
-              if there's nothing to delete). */}
-          <Button
-            type="button"
-            variant="danger"
-            size="sm"
-            onClick={handleResetPersonalData}
-            disabled={saving}
-            title="Wipes goals/snapshots/verdicts/specs/context/inputs. Does NOT touch the account itself, integrations, or sessions."
-          >
-            Wipe dashboard data
-          </Button>
-          <Button
-            type="button"
-            variant="ink"
-            size="sm"
-            onClick={handleSave}
-            disabled={!dirty || saving}
-          >
-            {saving ? "Saving…" : dirty ? "Save changes" : "No changes"}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function UserMeta({ user }) {
-  const items = [
-    user.lastLoginAt
-      ? `last login ${formatDate(user.lastLoginAt)}`
-      : "never signed in",
-    user.hasTotp ? "TOTP enrolled" : "no TOTP",
-    user.hasPassword ? "password set" : "no password",
-    user.onboardingCompletedAt ? "onboarded" : "onboarding pending",
-  ];
-  return <div className="text-[11px] text-muted-fg">{items.join(" · ")}</div>;
-}
-
-function TogglePill({ checked, disabled, onClick, children }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "rounded-[var(--radius-pill)] px-2.5 py-1 text-[11px] font-semibold transition-colors",
-        checked ? "bg-ink text-ink-on" : "bg-card-alt text-muted-fg",
-        disabled && "cursor-not-allowed opacity-55",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-function StatusBadge({ status }) {
-  // pending_admin is the self-sign-up "awaiting approval" state —
-  // lemon so admins can spot the queue at a glance in the user list.
-  const tone =
-    status === "active"
-      ? "mint"
-      : status === "invited"
-        ? "sky"
-        : status === "pending_admin"
-          ? "lemon"
-          : "peach";
-  return (
-    <Badge tone={tone} dot>
-      {status === "pending_admin" ? "pending" : status}
-    </Badge>
-  );
-}
-
-/**
- * Invite-user dialog. Lightweight modal — backdrop blocks pointer
- * events on the underlying list so an accidental click outside the
- * dialog is treated as "cancel". Form posts to /api/v1/auth/invite
- * (the same endpoint admin-invite-from-CLI uses; admin-side UI just
- * wires a friendlier surface to it).
- *
- * Server enforces:
- *   - email uniqueness within the org (409 user_already_active if
- *     the address already maps to an active/disabled user; re-invites
- *     of `invited`-status users are allowed and re-mint the token)
- *   - admin role on the caller (guarded by the route's requireRole)
- *
- * The form mirrors the inviteSchema on the server: email + displayName
- * required, multi-select roles, defaults to one role checked ("dev")
- * because every invitee needs at least one role.
- */
-function InviteDialog({ onClose, onSuccess }) {
-  const [email, setEmail] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [roles, setRoles] = useState(["dev"]);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
-
-  function toggleRole(roleId) {
-    setRoles((prev) => {
-      const has = prev.includes(roleId);
-      if (has) {
-        if (prev.length === 1) return prev; // can't drop the last
-        return prev.filter((r) => r !== roleId);
-      }
-      return [...prev, roleId];
-    });
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setError(null);
-    if (!email.trim() || !displayName.trim() || roles.length === 0) {
-      setError("Email, name, and at least one role are required.");
-      return;
-    }
-    setSubmitting(true);
-    // The inviteSchema accepts both legacy `role` + new `roles`. Send
-    // both: server keeps `role` (= roles[0]) in lockstep until the
-    // singular column is removed.
-    const r = await apiPost("/auth/invite", {
-      email: email.trim().toLowerCase(),
-      role: roles[0],
-      roles,
-      displayName: displayName.trim(),
-    });
-    setSubmitting(false);
-    if (!r.ok) {
-      setError(humaniseInviteError(r.error));
-      return;
-    }
-    toast.success(`Invite sent to ${email.trim().toLowerCase()}.`);
-    onSuccess();
-  }
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-fg/40"
-      onClick={(e) => {
-        // Click outside the inner card → close. Don't close when the
-        // form itself bubbles a click up to the backdrop.
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <form
-        onSubmit={handleSubmit}
-        className="w-[460px] max-w-[92vw] rounded-[var(--radius-xl)] bg-card p-6"
-        style={{ boxShadow: "var(--shadow-float)" }}
-      >
-        <Label>Invite new user</Label>
-        <h2 className="mb-4 mt-2 text-[18px] font-bold tracking-[-0.01em]">
-          One-time setup link.
-        </h2>
-
-        <div className="flex flex-col gap-4">
-          <UiField label="Email">
-            <Input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={submitting}
-              autoFocus
-              required
-              placeholder="name@example.com"
-            />
-          </UiField>
-          <UiField label="Display name">
-            <Input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              disabled={submitting}
-              required
-              placeholder="Full name as they should appear"
-            />
-          </UiField>
-          <div>
-            <Label>Roles</Label>
-            <p className="mt-1 text-[11.5px] leading-[1.5] text-muted-fg">
-              They can hold multiple. Capabilities are the union across
-              roles. Adjust later from the row editor.
-            </p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {ALL_ROLES.map((r) => {
-                const checked = roles.includes(r);
-                const disabled = submitting || (roles.length === 1 && checked);
-                return (
-                  <TogglePill key={r} checked={checked} disabled={disabled} onClick={() => toggleRole(r)}>
-                    {r}
-                  </TogglePill>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {error ? (
-          <div className="mt-4 rounded-[var(--radius-lg)] bg-peach px-3.5 py-2.5 text-[11.5px] text-peach-ink">
-            {error}
-          </div>
-        ) : null}
-
-        <div className="mt-6 flex justify-end gap-2">
-          <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="ink" size="sm" disabled={submitting}>
-            {submitting ? "Sending…" : "Send invite"}
-          </Button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function humaniseInviteError(err) {
-  if (!err) return "Something went wrong. Try again.";
-  if (err.code === "user_already_active")
-    return "An active or disabled user with that email already exists. Edit them from the list instead.";
-  if (err.code === "validation_error")
-    return err.message || "Check the fields and try again.";
-  if (err.code === "rate_limited")
-    return "Too many invites from this network. Wait a moment and retry.";
-  if (err.code === "network_error")
-    return "Couldn't reach the server. Check your connection and try again.";
-  return err.message || "Something went wrong. Try again.";
-}
-
-function sameArray(a, b) {
-  if (!Array.isArray(a) || !Array.isArray(b)) return a === b;
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
-}
-
-function formatDate(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
 }
