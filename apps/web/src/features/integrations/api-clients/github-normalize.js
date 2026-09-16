@@ -43,6 +43,17 @@ export function normalizeGithubMergedSearch(resp) {
         source: "github",
         // Raw number kept for GitHub-specific rendering:
         number: it.number,
+        // Label names, lower-cased. GitLab MRs carry `labels` as a plain
+        // string array already, so both providers land on the same shape and
+        // the metrics layer never has to branch. Assistant tooling marks its
+        // own pull requests here, which is what makes adoption measurable
+        // without adding a single new integration.
+        labels: Array.isArray(it.labels)
+          ? it.labels
+              .map((l) => (typeof l === "string" ? l : l?.name))
+              .filter((n) => typeof n === "string" && n)
+              .map((n) => n.toLowerCase())
+          : [],
       };
     })
     .filter(Boolean);

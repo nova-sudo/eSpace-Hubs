@@ -279,6 +279,45 @@ export function useDataSource(source) {
     };
   }
 
+  if (metric === SOURCE_METRICS.ASSISTED_SHARE) {
+    // Reads the SAME merged-MR list every other PR metric reads, and looks at
+    // the labels that were already riding along on it. That is the whole
+    // integration: coding assistants label their own pull requests, so the
+    // adoption number is a filter over data this app has fetched since day
+    // one — no new provider, token, scope or consent conversation.
+    //
+    // Labels are per-spec so a goal can count one tool rather than any, and
+    // so a team that renamed the label does not silently read 0%.
+    const mrs = windowedMerged || [];
+    const labels = Array.isArray(source.assistedLabels) && source.assistedLabels.length
+      ? source.assistedLabels
+      : DEFAULT_ASSISTED_LABELS;
+    const value = mrs.length > 0 ? assistedSharePct(mrs, labels) : null;
+    return {
+      data: { ...(value || {}), watchedLabels: labels, rawMrs: mrs },
+      isLoading: merged.isLoading,
+      error: merged.error,
+      windowDays: days,
+      windowLabel,
+      provenance: provenanceFor({
+        sample: windowedMerged ? mrs.length : null,
+        unit: "MRs",
+        window: windowLabel,
+        fetchedAt: merged.fetchedAt,
+        // A label only exists where the provider supports one AND the
+        // tooling applied it. An unlabelled merge is indistinguishable from
+        // an unassisted one, so the number is a FLOOR, never a census — and
+        // the grader is told exactly that rather than left to assume.
+        truncated: true,
+        note:
+          "counts merged PRs carrying " +
+          labels.join(" / ") +
+          "; an assisted merge that was never labelled cannot be seen, so this is a lower bound",
+        error: merged.error,
+      }),
+    };
+  }
+
   if (metric === SOURCE_METRICS.DEPLOY_FREQUENCY) {
     // BuildEvent[] from Jenkins (per-job) OR GitHub Actions (per-repo).
     // The hook returns `needsScope: true` until the user picks the

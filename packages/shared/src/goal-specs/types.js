@@ -26,6 +26,7 @@ export const SPEC_KINDS = Object.freeze({
   // REVIEW_ROUNDS (which averages noise per PR) — this one is the
   // PR-level "% that didn't ping-pong" rate.
   FIRST_PASS_RATE: "FIRST_PASS_RATE",
+  ASSISTED_SHARE: "ASSISTED_SHARE",
   // Phase D3: CI/CD delivery widgets. Each is an AUTO widget that
   // reads from a single Jenkins job (`source.filter.job`) OR a
   // single GitHub Actions repo (`source.filter.repo`). Driven by
@@ -140,6 +141,7 @@ export const SOURCE_METRICS = Object.freeze({
   LINKAGE_PCT: "linkage_pct",
   TICKET_CYCLE_TIME: "ticket_cycle_time",
   FIRST_PASS_RATE: "first_pass_rate",
+  ASSISTED_SHARE: "assisted_share",
   DEPLOY_FREQUENCY: "deploy_frequency",
   LEAD_TIME: "lead_time",
   BUILD_PASS_RATE: "build_pass_rate",
@@ -463,6 +465,10 @@ export const SPEC_KIND_META = Object.freeze({
   [SPEC_KINDS.TICKET_CYCLE]: { label: "Ticket cycle", variant: SPEC_VARIANTS.AUTO },
   [SPEC_KINDS.FIRST_PASS_RATE]: {
     label: "First-pass rate",
+    variant: SPEC_VARIANTS.AUTO,
+  },
+  [SPEC_KINDS.ASSISTED_SHARE]: {
+    label: "Assisted share",
     variant: SPEC_VARIANTS.AUTO,
   },
   [SPEC_KINDS.DEPLOY_FREQUENCY]: {
