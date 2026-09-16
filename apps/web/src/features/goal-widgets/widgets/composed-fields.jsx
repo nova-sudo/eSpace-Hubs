@@ -138,7 +138,7 @@ function sourceSentence(field, resolved) {
   }
 }
 
-export function ComposedFields({ goalId, fields, periodKey = null, writeTs = null, variant: _variant = "light", showHeadline = true }) {
+export function ComposedFields({ goalId, fields, periodKey = null, periodPath = null, writeTs = null, variant: _variant = "light", showHeadline = true }) {
   const { entries, append } = useGoalInputs(goalId);
   const list = Array.isArray(fields) ? fields : [];
 
@@ -450,7 +450,15 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
       {list.length === 0 ? <div className="text-[13px] text-muted-fg">No fields defined for this widget yet.</div> : null}
       {list.map((f) =>
         isAutoField(f) ? (
-          <AutoField key={f.id} goalId={goalId} field={f} periodKey={periodKey} stored={auto[f.id]} onResolved={recordAuto} />
+          <AutoField
+            key={f.id}
+            goalId={goalId}
+            field={f}
+            periodKey={periodKey}
+            periodPath={periodPath}
+            stored={auto[f.id]}
+            onResolved={recordAuto}
+          />
         ) : (
           <FieldBlock
             key={f.id}
@@ -490,7 +498,7 @@ export function ComposedFields({ goalId, fields, periodKey = null, writeTs = nul
  * justify what they entered, and nothing on this field was entered. The repo
  * is the evidence, so the proof half names the query instead.
  */
-function AutoField({ goalId, field, periodKey, stored, onResolved }) {
+function AutoField({ goalId, field, periodKey, periodPath, stored, onResolved }) {
   const [state, setState] = useState(() =>
     stored ? { status: "resolved", reading: stored } : { status: "loading" },
   );
@@ -520,14 +528,19 @@ function AutoField({ goalId, field, periodKey, stored, onResolved }) {
     // the spec, picks the template, and builds the URL. Sending the source from
     // here would hand the browser a say in which URL gets called with the
     // user's token, which is the whole thing this design refuses to do.
-    // periodKey matters: per-period content can REDEFINE fields, so the same
-    // field id may carry a different source in week 9 than in week 1. Without
-    // it the server matches the first definition it finds and silently runs the
-    // wrong period's query.
+    //
+    // periodPath is WHICH form this field belongs to, positionally — [3] is
+    // window 3 of the cadence, [0, 2] week 2 inside quarter 0, ["management",
+    // 1] the management plan's window 1. It matters twice over: a field
+    // defined only on a period (or a nested block) isn't in `spec.fields` at
+    // all, and the same id can carry a different source in week 9 than in
+    // week 1. periodKey — the calendar storage key — can address neither,
+    // which is why it rides along for logging rather than for lookup.
     apiPost("/integrations/query-field", {
       goalId,
       fieldId: field.id,
       ...(periodKey != null ? { periodKey } : {}),
+      ...(Array.isArray(periodPath) && periodPath.length > 0 ? { periodPath } : {}),
     }).then((r) => {
       if (cancelled) return;
       if (!r.ok) {

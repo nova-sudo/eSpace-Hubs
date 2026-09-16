@@ -30,6 +30,11 @@ import {
 import rateLimit, { type Options } from "express-rate-limit";
 import { z } from "zod";
 import {
+  MANAGEMENT_PATH_SEGMENT,
+  resolveContentAtPath,
+  type WindowPathSegment,
+} from "@espace-devhub/shared/goal-specs";
+import {
   getGoalContextCollection,
   getGoalSpecsCollection,
   getUsersCollection,
@@ -65,16 +70,33 @@ const queryFieldLimiterOptions: Partial<Options> = {
 const queryFieldLimiter = rateLimit(queryFieldLimiterOptions);
 
 /**
- * `periodKey` is accepted (the client always sends its current window key)
- * but not yet used to resolve the field's source — see `findFieldSource`.
- * Kept in the accepted shape so the client doesn't need to change once
- * period-specific auto-field overrides are wired up server-side.
+ * `periodPath` is how the client says WHICH form the field belongs to —
+ * `[3]` is window 3 of the top-level cadence, `[0, 2]` is week 2 inside
+ * quarter 0, `["management", 1]` is window 1 of the management plan. It
+ * carries positions, never a source, so it can't widen what the browser is
+ * allowed to ask for: the worst a forged path can do is resolve a different
+ * period of the caller's OWN spec, every part of which the server was already
+ * willing to run for them.
+ *
+ * `periodKey` is the storage key for the same window ("2026-Q3",
+ * "2026-Q1::2026-W3"). It stays accepted — and stays unused for resolution —
+ * because it is a CALENDAR key, unrelated to the positional period list; see
+ * the note on `findFieldSource`.
  */
 const queryFieldSchema = z
   .object({
     goalId: z.string().min(1).max(200),
     fieldId: z.string().min(1).max(200),
     periodKey: z.string().min(1).max(200).optional(),
+    periodPath: z
+      .array(
+        z.union([
+          z.number().int().min(-1).max(1000),
+          z.literal(MANAGEMENT_PATH_SEGMENT),
+        ]),
+      )
+      .max(12)
+      .optional(),
   })
   .strict();
 
@@ -89,33 +111,42 @@ function fieldList(container: unknown): FieldLike[] {
 }
 
 /**
- * Find the field's query source on the widget-level `spec.fields` — the
- * field's default definition, which is what every period reads unless a
- * period explicitly redefines that field's own `fields` array (see
- * `resolvePeriodContent` in packages/shared/src/goal-specs/types.js).
+ * Find the query source for ONE field of a COMPOSED spec.
  *
- * `periodKey` deliberately plays no part in this lookup. It names a stored
- * ENTRY's cadence window — a calendar-derived key like "2026-Q3", produced
- * by apps/web's cadence-windows.js — while `composed.periods[].key` is an
- * unrelated author-chosen slug the compose AI invents ("w1", "m2"; see the
- * prompt in modules/ai/controller.ts). The two are different namespaces and
- * essentially never coincide, so matching periods by key here always came up
- * empty — and because the OLD code searched only the (empty) period match
- * whenever a periodKey was present, it never fell back to the widget-level
- * fields either. That's what turned "field isn't auto-filled" into the
- * default outcome for every cadenced query-backed field, since ComposedWidget
- * always sends a periodKey once a cadence is set.
+ * `periodPath` is what makes this answerable. A spec's fields are not all in
+ * `spec.fields`: a period can redefine them, a nested cadence carries its own
+ * set, and the management half is a second tree — and ids are only unique
+ * within one of those lists (`f1` is handed out per list). So the client sends
+ * the positional address of the form it is rendering and the server resolves
+ * the SAME window content the client did, out of the stored spec. Searching
+ * the tree for an id instead would eventually run a different period's query
+ * under this period's label, which is the failure you never notice.
  *
- * Resolving "which period is window N" requires the same positional
- * windowIndex math the client uses (buildCycleWindows), which isn't ported to
- * the server. Until it is, a period's field override is not consulted here at
- * all rather than guessed at by key — a wrong guess would silently run a
- * different period's query, which is worse than always using the field's
- * base definition (correct for the — currently universal — case where a
- * period doesn't redefine this specific field's source).
+ * `periodKey` deliberately plays no part. It names a stored ENTRY's cadence
+ * window — a calendar-derived key like "2026-Q3", produced by apps/web's
+ * cadence-windows.js — while `composed.periods[].key` is an unrelated
+ * author-chosen slug the compose AI invents ("w1", "m2"). The two are
+ * different namespaces and essentially never coincide; matching periods by
+ * key is what turned "field isn't auto-filled" into the default outcome for
+ * every cadenced tracker once (see query-routes.test.ts).
+ *
+ * Without a path — a browser still running a bundle from before this shipped
+ * — the lookup falls back to the widget-level `spec.fields`, which is exactly
+ * the behaviour those clients already had.
  */
-export function findFieldSource(spec: Record<string, unknown>, fieldId: string): unknown {
-  for (const field of fieldList(spec)) {
+export function findFieldSource(
+  spec: Record<string, unknown>,
+  fieldId: string,
+  periodPath?: WindowPathSegment[],
+): unknown {
+  const scoped = periodPath?.length
+    ? resolveContentAtPath(spec, periodPath)
+    : null;
+  // A path that resolved is the ONLY list consulted: if this window's `f1` is
+  // a typed field, the widget-level `f1` is a different question, not a
+  // fallback answer.
+  const fields = periodPath?.length ? (scoped?.fields ?? []) : fieldList(spec);
+  for (const field of fields as FieldLike[]) {
     if (field?.id === fieldId && field.source != null) return field.source;
   }
   return null;
@@ -131,7 +162,7 @@ export async function queryFieldHandler(
     if (!session) {
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
-    const { goalId, fieldId } = queryFieldSchema.parse(req.body);
+    const { goalId, fieldId, periodPath } = queryFieldSchema.parse(req.body);
 
     // Org-scoped AND user-scoped: a spec belongs to the dev who owns the
     // goal, and the token we are about to spend is theirs too.
@@ -145,7 +176,7 @@ export async function queryFieldHandler(
       throw new HttpError(404, "spec_not_found", "This tracker no longer exists.");
     }
 
-    const source = findFieldSource(specDoc.spec, fieldId);
+    const source = findFieldSource(specDoc.spec, fieldId, periodPath);
     if (!source) {
       throw new HttpError(
         400,
