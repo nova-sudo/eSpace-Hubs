@@ -230,3 +230,48 @@ test("an untruncated metric states its basis without the sample warning", () => 
   assert.match(out, /computed from 41 MRs/);
   assert.doesNotMatch(out, /PARTIAL/);
 });
+
+// ── Timeliness reaches the grader as arithmetic ───────────────────────────
+
+test("the grader is given write-up latency, not asked to infer it from prose", () => {
+  const spec = {
+    widget: SPEC_KINDS.INCIDENT_LOG,
+    manual: { unit: "defects", writeUpWithinHours: 48 },
+  };
+  const iso = (s) => new Date(s).toISOString();
+  const entries = [
+    entry(
+      {
+        severity: "P2",
+        rca: "pool exhaustion",
+        resolvedAt: iso("2026-03-01T00:00:00Z"),
+        writeUpAt: iso("2026-03-01T12:00:00Z"),
+      },
+      Date.now(),
+    ),
+  ];
+
+  const out = buildCurrentData(spec, entries, null, null);
+
+  assert.match(out, /write-up timeliness/);
+  assert.match(out, /1\/1 published within 48h/);
+});
+
+test("an incident with no timestamps is called unmeasured, never late", () => {
+  const spec = {
+    widget: SPEC_KINDS.INCIDENT_LOG,
+    manual: { unit: "defects", writeUpWithinHours: 48 },
+  };
+  const entries = [entry({ severity: "P3", rca: "cache key collision" }, Date.now())];
+
+  const out = buildCurrentData(spec, entries, null, null);
+
+  assert.match(out, /NOT MEASURABLE/);
+  assert.match(out, /Do not infer lateness/);
+});
+
+test("a goal with no write-up ceiling is not told about timeliness at all", () => {
+  const spec = { widget: SPEC_KINDS.INCIDENT_LOG, manual: { unit: "defects" } };
+  const out = buildCurrentData(spec, [entry({ severity: "P3" }, Date.now())], null, null);
+  assert.doesNotMatch(out, /write-up timeliness/);
+});

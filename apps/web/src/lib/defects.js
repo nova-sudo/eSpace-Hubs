@@ -209,3 +209,127 @@ export function defectRatePct(defectCount, deliverables) {
   if (!Number.isFinite(n) || n <= 0) return null;
   return Math.round((defectCount / n) * 1000) / 10;
 }
+
+/**
+ * ── Timeliness ────────────────────────────────────────────────────────────
+ *
+ * Two goals that look like document goals are not. "Post-incident write-up
+ * within 48 hours" and "restore service within 2 hours" are subtractions
+ * between two timestamps. Nothing needs to be uploaded, read, or judged:
+ * either the second instant is within the ceiling of the first or it isn't.
+ *
+ * Restoration was half-measurable already, because `downtime` is the
+ * restoration duration — but only against a SUMMED budget ("≤43 minutes a
+ * quarter"), which is a different question from a PER-INCIDENT ceiling
+ * ("each one restored within two hours"). A quarter can sit inside its budget
+ * with one incident that ran for a day.
+ *
+ * Write-up latency was not measurable at all, because the moment the write-up
+ * was published was never captured. A tier asking for one within 48 hours had
+ * nothing to read, so it fell back to judging whether prose existed.
+ *
+ * Both ceilings live on the spec (`manual.restoreWithinMinutes`,
+ * `manual.writeUpWithinHours`) and both timestamps are optional on the entry,
+ * so nothing here breaks a log that predates them. An incident missing a
+ * timestamp is reported as UNMEASURED, never as a breach — the same rule the
+ * goal roll-up follows, because absent is not the same as failed.
+ *
+ * A connector fills exactly these fields. Every incident vendor returns a
+ * resolved instant and a published instant; this is the shape they normalise
+ * onto, which is why the arithmetic is worth having before the adapter.
+ */
+
+/** Epoch ms from an ISO string or a number, or null when unusable. */
+function instant(v) {
+  if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
+  if (typeof v !== "string" || !v.trim()) return null;
+  const t = new Date(v).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+/**
+ * Hours between an incident being resolved and its write-up being published.
+ * Null when either instant is missing. Negative elapses clamp to 0 — a
+ * write-up stamped before the resolution is a data-entry slip, and reporting
+ * "-6 hours" as comfortably inside the ceiling would be worse than rounding.
+ */
+export function writeUpLatencyHours(value) {
+  const resolved = instant(value?.resolvedAt);
+  const published = instant(value?.writeUpAt);
+  if (resolved == null || published == null) return null;
+  return Math.max(0, (published - resolved) / 3_600_000);
+}
+
+/** Minutes to restore: the explicit downtime, which is what it measures. */
+export function restorationMinutes(value) {
+  const d = Number(value?.downtime);
+  return Number.isFinite(d) && d >= 0 ? d : null;
+}
+
+/**
+ * Per-incident timeliness across a list of defect entries.
+ *
+ * Every bucket separates MEASURED from BREACHED, so a goal is never marked
+ * failed for want of a timestamp. `unmeasured` is the number the UI should
+ * nag about: it is the only one the person can fix by typing.
+ */
+export function summarizeTimeliness(defects, { writeUpWithinHours, restoreWithinMinutes } = {}) {
+  const list = Array.isArray(defects) ? defects : [];
+  const writeUpCeiling = Number(writeUpWithinHours);
+  const restoreCeiling = Number(restoreWithinMinutes);
+  const hasWriteUpCeiling = Number.isFinite(writeUpCeiling) && writeUpCeiling > 0;
+  const hasRestoreCeiling = Number.isFinite(restoreCeiling) && restoreCeiling > 0;
+
+  const latencies = [];
+  let writeUpMeasured = 0;
+  let writeUpWithin = 0;
+  let restoreMeasured = 0;
+  let restoreWithin = 0;
+  let slowest = null;
+
+  for (const e of list) {
+    const v = e?.value || {};
+
+    const hours = writeUpLatencyHours(v);
+    if (hours != null) {
+      writeUpMeasured += 1;
+      latencies.push(hours);
+      if (!hasWriteUpCeiling || hours <= writeUpCeiling) writeUpWithin += 1;
+      if (slowest == null || hours > slowest.hours) {
+        slowest = { hours, severity: v.severity || null };
+      }
+    }
+
+    const mins = restorationMinutes(v);
+    if (mins != null) {
+      restoreMeasured += 1;
+      if (!hasRestoreCeiling || mins <= restoreCeiling) restoreWithin += 1;
+    }
+  }
+
+  latencies.sort((a, b) => a - b);
+  const median =
+    latencies.length === 0
+      ? null
+      : latencies.length % 2 === 1
+        ? latencies[(latencies.length - 1) / 2]
+        : (latencies[latencies.length / 2 - 1] + latencies[latencies.length / 2]) / 2;
+
+  return {
+    count: list.length,
+    hasWriteUpCeiling,
+    hasRestoreCeiling,
+    writeUpCeiling: hasWriteUpCeiling ? writeUpCeiling : null,
+    restoreCeiling: hasRestoreCeiling ? restoreCeiling : null,
+    writeUpMeasured,
+    writeUpWithin,
+    writeUpBreached: writeUpMeasured - writeUpWithin,
+    writeUpUnmeasured: list.length - writeUpMeasured,
+    medianWriteUpHours: median == null ? null : Math.round(median * 10) / 10,
+    slowestWriteUp: slowest,
+    restoreMeasured,
+    restoreWithin,
+    restoreBreached: restoreMeasured - restoreWithin,
+    restoreUnmeasured: list.length - restoreMeasured,
+  };
+}
