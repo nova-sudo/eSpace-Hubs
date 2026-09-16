@@ -32,7 +32,23 @@ COPY apps/web/package.json apps/web/
 COPY apps/api/package.json apps/api/
 COPY packages/shared/package.json packages/shared/
 
-RUN npm ci
+# Install the web + api + shared tree. Unlike the api image, this one CANNOT
+# drop a workspace to shrink the install: `apps/web`'s build script compiles
+# the api TypeScript before `next build`, so tsc needs api's dependencies
+# present to resolve types. The tree is ~958 packages either way — `--omit=dev`
+# saves nothing here (measured), because the root and apps/web declare no dev
+# dependencies at all and api's two are leaves.
+#
+# So peak MEMORY is the only lever left, and it matters: the api Dockerfile
+# already carries a note that installing the full monorepo tree "spikes memory
+# enough to OOM small build hosts (e.g. a modest Coolify server)". This layer
+# is normally served from cache, which is why that has stayed invisible on the
+# web image — any manifest edit busts the cache and runs the install for real.
+#
+#   --maxsockets 4  caps concurrent fetch/extract, which is where the spike is
+#   --no-audit      skips a second full-tree pass over 958 packages
+#   --no-fund       no output worth the lines
+RUN npm ci --no-audit --no-fund --maxsockets 4
 
 # Sources. The web build (see apps/web/package.json "build") first compiles
 # the api TS, then runs `next build`, so we need all three workspaces.
