@@ -669,6 +669,109 @@ export function SpecSetupEditor({ spec, onChange }) {
           }
         />
       ) : null}
+      {spec.widget === "INCIDENT_LOG" ? (
+        <TimelinessEditor spec={spec} onChange={onChange} />
+      ) : null}
+      <EvidenceRequirementEditor spec={spec} onChange={onChange} />
+    </div>
+  );
+}
+
+/**
+ * Per-incident timing ceilings.
+ *
+ * Without these two numbers the timing arithmetic has nothing to compare
+ * against, so "write-up within 48 hours" stays a judgement about whether
+ * prose exists rather than a subtraction between two instants. Setting the
+ * write-up ceiling is also what makes the widget ask for the resolved and
+ * published timestamps at all — no ceiling, no fields, no noise.
+ *
+ * Blank means "don't grade on this", which is the default and leaves every
+ * existing incident log exactly as it was.
+ */
+function TimelinessEditor({ spec, onChange }) {
+  const manual = spec.manual || {};
+
+  function patch(key, raw) {
+    const n = raw === "" ? undefined : Number(raw);
+    const next = { ...manual };
+    if (n == null || !Number.isFinite(n) || n <= 0) delete next[key];
+    else next[key] = n;
+    onChange({ ...spec, manual: next });
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-3">
+      <Label>Timing ceilings (optional)</Label>
+      <div className="flex min-w-0 flex-wrap items-center gap-2 text-[13px] text-muted-fg">
+        <span>Write-up due within</span>
+        <Input
+          type="number"
+          min={1}
+          size="sm"
+          className="w-20 min-w-0"
+          value={manual.writeUpWithinHours ?? ""}
+          onChange={(e) => patch("writeUpWithinHours", e.target.value)}
+          aria-label="Write-up due within hours"
+          placeholder="48"
+        />
+        <span>hours of resolution</span>
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-2 text-[13px] text-muted-fg">
+        <span>Restore each incident within</span>
+        <Input
+          type="number"
+          min={1}
+          size="sm"
+          className="w-20 min-w-0"
+          value={manual.restoreWithinMinutes ?? ""}
+          onChange={(e) => patch("restoreWithinMinutes", e.target.value)}
+          aria-label="Restore within minutes"
+          placeholder="120"
+        />
+        <span>minutes</span>
+      </div>
+      <p className="text-[11.5px] leading-snug text-dim-fg">
+        A per-incident ceiling, not a summed budget. Leave blank to skip. An
+        incident with no timestamps is reported as unmeasured, never as late.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Does this goal expect proof for each period?
+ *
+ * Off by default and deliberately so: turning it on is what makes a period
+ * with no attachment visible as a nagging state instead of a silent hole
+ * discovered at review time.
+ */
+function EvidenceRequirementEditor({ spec, onChange }) {
+  const on = spec.evidence?.requiredPerPeriod === true;
+
+  return (
+    <div className="flex items-start gap-2.5 rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-3">
+      <span className="mt-0.5 shrink-0">
+        <Checkbox
+          checked={on}
+          label="Expect evidence each period"
+          onChange={() =>
+            onChange({
+              ...spec,
+              evidence: { ...(spec.evidence || {}), requiredPerPeriod: !on },
+            })
+          }
+        />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[13px] font-semibold text-fg">
+          Expect evidence each period
+        </span>
+        <span className="mt-0.5 block text-[11.5px] leading-snug text-dim-fg">
+          Tracks each period as evidenced, carried over, or missing. A period
+          still running is never marked missing.
+        </span>
+      </span>
     </div>
   );
 }
