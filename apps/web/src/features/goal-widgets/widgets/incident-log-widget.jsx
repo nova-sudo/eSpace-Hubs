@@ -57,6 +57,12 @@ export function IncidentLogWidget({
   const [rca, setRca] = useState("");
   const [action, setAction] = useState("");
   const [preventiveClosed, setPreventiveClosed] = useState(false);
+  // The two instants that make "write-up within N hours" arithmetic instead of
+  // a judgement about whether prose exists. Both optional: a log that predates
+  // them stays valid, and a missing instant is reported as unmeasured rather
+  // than as a missed deadline.
+  const [resolvedAt, setResolvedAt] = useState("");
+  const [writeUpAt, setWriteUpAt] = useState("");
 
   const target = spec.manual?.target;
   const period = target?.period || spec.manual?.cadence;
@@ -89,6 +95,10 @@ export function IncidentLogWidget({
   // Count mode sums entries; duration mode sums downtime minutes.
   const headlineValue = isCountMode ? totals.count : totals.totalDowntime;
 
+  // A goal only asks for the resolution/publication instants when it grades
+  // on how fast the write-up landed.
+  const tracksWriteUp = Number(spec?.manual?.writeUpWithinHours) > 0;
+
   // Numeric downtime — required in duration mode, optional in count mode.
   const trimmedDowntime = downtime.trim();
   const minutesValue = trimmedDowntime === "" ? null : Number(trimmedDowntime);
@@ -111,11 +121,15 @@ export function IncidentLogWidget({
       ...(isCountMode
         ? { preventive: preventiveClosed ? "closed" : "open" }
         : {}),
+      ...(resolvedAt ? { resolvedAt: new Date(resolvedAt).toISOString() } : {}),
+      ...(writeUpAt ? { writeUpAt: new Date(writeUpAt).toISOString() } : {}),
     });
     setDowntime("");
     setRca("");
     setAction("");
     setPreventiveClosed(false);
+    setResolvedAt("");
+    setWriteUpAt("");
   }
 
   const shellLabel = isCountMode
@@ -193,6 +207,30 @@ export function IncidentLogWidget({
             className="min-w-0 flex-1"
             aria-label={isCountMode ? "Root-cause analysis" : "Post-mortem link"}
           />
+          {/* Only shown when the goal actually sets a write-up ceiling.
+              Asking every incident log for two timestamps it will never use
+              would be noise; a goal graded on promptness genuinely needs
+              them, and without them that tier cannot be judged at all. */}
+          {tracksWriteUp ? (
+            <>
+              <Input
+                type="datetime-local"
+                value={resolvedAt}
+                onChange={(e) => setResolvedAt(e.target.value)}
+                className="w-[190px] min-w-0"
+                aria-label="Resolved at"
+                title="When service was restored"
+              />
+              <Input
+                type="datetime-local"
+                value={writeUpAt}
+                onChange={(e) => setWriteUpAt(e.target.value)}
+                className="w-[190px] min-w-0"
+                aria-label="Write-up published at"
+                title="When the post-incident write-up was published"
+              />
+            </>
+          ) : null}
           {isCountMode ? (
             <>
               <Input

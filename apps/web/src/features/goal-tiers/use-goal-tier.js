@@ -73,6 +73,7 @@ import {
   summarizeDefects,
   defectRatePct,
   incidentHasCurrentData,
+  summarizeTimeliness,
 } from "@/lib/defects";
 
 /** Shown when there's no usable reading yet — deferred, not "not achieved". */
@@ -459,6 +460,43 @@ function currentDataBody(spec, entries, reading, liveReading) {
           ? `preventive actions: ${s.preventiveClosed} closed, ${s.preventiveOpen} still open`
           : "preventive actions: none needed",
       );
+      // Timeliness. "Write-up within 48 hours" and "restored within 2 hours"
+      // are timestamp subtractions, not judgements about prose, so give the
+      // grader the arithmetic rather than asking it to infer promptness from
+      // whether a root cause exists. Unmeasured is stated separately from
+      // breached, so a missing timestamp never reads as a missed deadline.
+      const t = summarizeTimeliness(defects, {
+        writeUpWithinHours: spec.manual?.writeUpWithinHours,
+        restoreWithinMinutes: spec.manual?.restoreWithinMinutes,
+      });
+      if (t.hasWriteUpCeiling && defects.length > 0) {
+        lines.push(
+          t.writeUpMeasured > 0
+            ? `write-up timeliness: ${t.writeUpWithin}/${t.writeUpMeasured} published within ` +
+              `${t.writeUpCeiling}h of resolution (median ${t.medianWriteUpHours}h` +
+              (t.slowestWriteUp ? `, slowest ${Math.round(t.slowestWriteUp.hours)}h` : "") +
+              `)${
+                t.writeUpUnmeasured > 0
+                  ? `; ${t.writeUpUnmeasured} incident(s) UNMEASURED — no resolved/published ` +
+                    `timestamp was recorded, so treat those as unknown, NOT as late`
+                  : ""
+              }`
+            : `write-up timeliness: NOT MEASURABLE — none of the ${defects.length} incident(s) ` +
+              `carry both a resolved and a published timestamp. Do not infer lateness from this`,
+        );
+      }
+      if (t.hasRestoreCeiling && defects.length > 0) {
+        lines.push(
+          t.restoreMeasured > 0
+            ? `restoration: ${t.restoreWithin}/${t.restoreMeasured} restored within ` +
+              `${t.restoreCeiling} min${
+                t.restoreUnmeasured > 0
+                  ? `; ${t.restoreUnmeasured} incident(s) have no duration recorded, so are unknown rather than late`
+                  : ""
+              }`
+            : `restoration: NOT MEASURABLE — no incident carries a duration`,
+        );
+      }
       const CAP = 10;
       const detail = defects
         .slice(-CAP)
