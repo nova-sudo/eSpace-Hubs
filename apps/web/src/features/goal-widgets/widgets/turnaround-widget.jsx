@@ -26,6 +26,7 @@ export function TurnaroundWidget({ spec, goal, variant = "light", className, onR
           unit: "d",
           statusTone: meets === true ? "ok" : meets === false ? "warn" : "accent",
           statusLabel: meets === true ? "on target" : meets === false ? "below target" : "tracked",
+          provenance,
         }
       : null,
   );

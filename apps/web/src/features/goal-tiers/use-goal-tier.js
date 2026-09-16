@@ -25,6 +25,7 @@ import {
 import { useGoalContext, useIsContextComplete } from "@/features/goal-context";
 import { SPEC_KINDS, specCadence, isSingleRecordWidget } from "@/features/goal-specs";
 import { fieldsForPeriodKey } from "./composed-field-resolution.js";
+import { useEvidenceManifest, evidenceManifestToText } from "./use-evidence-manifest.js";
 import { readLocks, useGoalLocks } from "@/features/goal-locks";
 import { getAiProvider } from "@/features/analyst";
 import {
@@ -625,7 +626,36 @@ function liveReadingToText(live) {
     typeof live.statusLabel === "string" && live.statusLabel.trim()
       ? ` — ${live.statusLabel.trim()}`
       : "";
-  return `current reading: ${live.value.trim()}${status}`;
+  const head = `current reading: ${live.value.trim()}${status}`;
+  const how = provenanceToText(live.provenance);
+  return how ? `${head}\n${how}` : head;
+}
+
+/**
+ * How the number was arrived at, in the grader's own terms.
+ *
+ * The widget has always shown this as a chip; the grader never saw it. An
+ * AUTO metric computed from a capped sample was being graded as though it
+ * were a census, which is the difference between "your median cycle time is
+ * 18 days" and "the 50 most recently updated tickets have an 18-day median,
+ * and anything resolved over 90 days ago was excluded".
+ */
+function provenanceToText(p) {
+  if (!p || typeof p !== "object") return "";
+  const bits = [];
+  if (Number.isFinite(p.sample)) {
+    bits.push(`computed from ${p.sample} ${p.unit || "row(s)"}`);
+  }
+  if (p.window) bits.push(`covering ${p.window}`);
+  if (p.truncated) {
+    bits.push(
+      `PARTIAL — a fetch cap was hit, so this is a sample rather than the full population${
+        p.note ? ` (${proseLine(p.note, 160)})` : ""
+      }. Judge it as a sample: do not treat a shortfall as proven`,
+    );
+  }
+  if (bits.length === 0) return "";
+  return `how this number was measured: ${bits.join("; ")}.`;
 }
 
 /**
@@ -953,14 +983,26 @@ export function useGoalTier(goalId, spec) {
   const contextComplete = useIsContextComplete(spec);
   const needsSetup = specNeedsSetup(spec, contextComplete);
 
+  // The files attached to this goal. Uploaded evidence was stored faithfully
+  // and shown to nobody who mattered: not the grader, not the export, not the
+  // frozen packet. `files === null` means the fetch has not resolved, which is
+  // deliberately distinct from an empty list — a goal must not be graded as
+  // unevidenced merely because a request is still in flight.
+  const { files: evidenceFiles } = useEvidenceManifest(goalId);
+
   // Prose summary the AI grader sees (qualitative fallback path only).
   const currentData = useMemo(() => {
     const base = buildCurrentData(spec, entries, snapReading, liveReading);
+    const manifest = evidenceManifestToText(evidenceFiles);
     const ctx = contextToText(spec, contextAnswers);
-    return ctx
-      ? `${base}\n\nUser's definitions (authoritative):\n${ctx}`
-      : base;
-  }, [spec, entries, snapReading, liveReading, contextAnswers]);
+    return [
+      base,
+      manifest || null,
+      ctx ? `User's definitions (authoritative):\n${ctx}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  }, [spec, entries, snapReading, liveReading, contextAnswers, evidenceFiles]);
 
   // Cache key busts ONLY when what the verdict depends on changes: tiers, the
   // graded prose, the numeric ladder, and the numeric value. Deliberately NOT

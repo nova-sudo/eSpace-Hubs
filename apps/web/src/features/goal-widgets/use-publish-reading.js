@@ -4,6 +4,32 @@ import { useEffect } from "react";
 import { publishGoalLiveReading } from "@/features/goal-tiers";
 
 /**
+ * The part of a provenance record that is worth carrying, and safe to.
+ *
+ * `useDataSource` computes provenance for every AUTO metric — how many rows
+ * the number is made of, the window it really covers, whether a fetch cap
+ * truncated it — and the widget renders it as a chip. It stopped there. The
+ * grader saw "18 days median cycle" with no hint that it was a 50-ticket
+ * sample with anything resolved over 90 days ago excluded, and graded the
+ * number as though it were the whole population.
+ *
+ * `fetchedAt` and `error` are deliberately dropped. They move on every
+ * refetch, and this digest is part of the grader's cache key, so carrying
+ * them would re-grade the goal on a timer and churn exactly the way the
+ * `hold` option below exists to prevent.
+ */
+function provenanceDigest(p) {
+  if (!p || typeof p !== "object") return undefined;
+  const digest = {};
+  if (Number.isFinite(p.sample)) digest.sample = p.sample;
+  if (typeof p.unit === "string" && p.unit) digest.unit = p.unit;
+  if (typeof p.window === "string" && p.window) digest.window = p.window;
+  if (p.truncated) digest.truncated = true;
+  if (typeof p.note === "string" && p.note.trim()) digest.note = p.note.trim();
+  return Object.keys(digest).length > 0 ? digest : undefined;
+}
+
+/**
  * Publish a widget's computed headline reading to the shared goal-tiers
  * live-readings store, so surfaces that DON'T mount the widget (the Evidence
  * board / review) can show the exact same value instead of a "tracked on
@@ -30,7 +56,14 @@ export function usePublishGoalReading(goalId, widget, reading, options) {
   const hold = options?.hold === true;
   // Serialize so the effect only fires on a real value change, not on each
   // render's fresh object identity.
-  const json = reading && reading.value != null ? JSON.stringify({ widget, ...reading }) : null;
+  const json =
+    reading && reading.value != null
+      ? JSON.stringify({
+          widget,
+          ...reading,
+          provenance: provenanceDigest(reading.provenance),
+        })
+      : null;
   useEffect(() => {
     // Still resolving — don't touch the store. A previously-published reading
     // survives the load window instead of being cleared and re-published.

@@ -42,6 +42,7 @@ export function DeployFrequencyWidget({
           value: `${count} deploy${count === 1 ? "" : "s"} · ${windowLabel}`,
           statusTone: hit === true ? "ok" : hit === false ? "warn" : "accent",
           statusLabel: hit === true ? "on target" : hit === false ? "below target" : "tracked",
+          provenance,
         }
       : null,
   );
