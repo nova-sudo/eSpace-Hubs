@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { resolvePeriodContent, resolveNestedPeriodContent } from "./types.js";
+import {
+  MANAGEMENT_PATH_SEGMENT,
+  resolveContentAtPath,
+  resolvePeriodContent,
+  resolveNestedPeriodContent,
+} from "./types.js";
 import { buildSpec } from "./validator.js";
 
 /**
@@ -406,4 +411,78 @@ test("periodCount needs a cadence and a sane integer, and never fails the spec",
     assert.ok(built.ok, JSON.stringify(built.errors));
     assert.equal(built.spec.composed.periodCount, undefined, JSON.stringify(composed));
   }
+});
+
+// ─── window paths ────────────────────────────────────────────────────
+
+/**
+ * `resolveContentAtPath` is how a caller that is NOT rendering the tree —
+ * the API's query-field route — reaches the same form the widget is showing.
+ * It exists because field ids are unique per field list, not per spec, so
+ * "field f1 of goal g1" is not an address; "field f1 of window [0, 2]" is.
+ */
+
+const AUTO = {
+  id: "agents",
+  kind: "checkbox",
+  label: "AGENTS.md exists",
+  source: {
+    provider: "github",
+    query: "repo_file_exists",
+    params: { repo: "espace/devhub", path: "AGENTS.md" },
+  },
+};
+
+test("a window path resolves the same content the positional lookup does", () => {
+  const { spec } = composedSpec({
+    composed: {
+      cadence: "monthly",
+      periods: [
+        { key: "m1", label: "Month 1" },
+        { key: "m2", label: "Month 2", fields: [AUTO] },
+      ],
+    },
+  });
+  assert.deepEqual(resolveContentAtPath(spec, [1]), resolvePeriodContent(spec, 1));
+  assert.equal(resolveContentAtPath(spec, [1]).fields[0].id, "agents");
+  // Window 0 doesn't redefine the field set, so it still sees the spec's own.
+  assert.deepEqual(resolveContentAtPath(spec, [0]).fields, spec.fields);
+});
+
+test("a window path walks into a nested cadence", () => {
+  const { spec } = composedSpec({
+    composed: {
+      cadence: "quarterly",
+      periods: [
+        { key: "q1", label: "Q1", nested: { cadence: "weekly", fields: [AUTO] } },
+      ],
+    },
+  });
+  assert.equal(resolveContentAtPath(spec, [0, 4]).fields[0].id, "agents");
+  // One level up is the quarter's own form, which defines no such field.
+  assert.deepEqual(resolveContentAtPath(spec, [0]).fields, spec.fields);
+});
+
+test("a window path reaches the management half, which no index can address", () => {
+  const { spec } = composedSpec({
+    composed: {
+      cadence: "quarterly",
+      management: { cadence: "monthly", fields: [AUTO] },
+    },
+  });
+  assert.equal(
+    resolveContentAtPath(spec, [MANAGEMENT_PATH_SEGMENT, 0]).fields[0].id,
+    "agents",
+  );
+});
+
+test("a path the spec cannot honour resolves to nothing, not to a neighbour", () => {
+  const { spec } = composedSpec({
+    composed: { cadence: "monthly", periods: [{ key: "m1", label: "Month 1" }] },
+  });
+  assert.equal(resolveContentAtPath(spec, [0, 1]), null, "nothing is nested here");
+  assert.equal(resolveContentAtPath(spec, [MANAGEMENT_PATH_SEGMENT, 0]), null);
+  assert.equal(resolveContentAtPath(spec, ["m1"]), null, "keys are not addresses");
+  assert.equal(resolveContentAtPath(spec, []), null);
+  assert.equal(resolveContentAtPath(spec, null), null);
 });

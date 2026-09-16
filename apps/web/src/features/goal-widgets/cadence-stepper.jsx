@@ -222,6 +222,10 @@ function NestedStepperLevel({
   entries,
   composedBlock,
   periodKeyPrefix,
+  /* The positional address of this block, minus the window the user picks
+     below — an auto field defined only here is invisible to the server
+     without it (see resolveContentAtPath). */
+  periodPathPrefix,
   fallbackStart,
   fallbackEnd,
   fillable,
@@ -257,6 +261,7 @@ function NestedStepperLevel({
     ? resolveNestedPeriodContent(composedBlock, selectedIndex)
     : null;
   const fullSelectedKey = selected ? `${periodKeyPrefix}::${selected.key}` : null;
+  const fullSelectedPath = selected ? [...(periodPathPrefix || []), selectedIndex] : null;
 
   const editorPanel = selected ? (
     <div className="mt-3 flex flex-col gap-2.5 border-t border-line pt-3">
@@ -293,6 +298,7 @@ function NestedStepperLevel({
           goalId={goalId}
           fields={selectedPeriod.fields}
           periodKey={fullSelectedKey}
+          periodPath={fullSelectedPath}
           writeTs={Math.floor((selected.start + selected.end) / 2)}
         />
       ) : null}
@@ -303,6 +309,7 @@ function NestedStepperLevel({
           entries={entries}
           composedBlock={selectedPeriod.nested}
           periodKeyPrefix={fullSelectedKey}
+          periodPathPrefix={fullSelectedPath}
           fallbackStart={selected.start}
           fallbackEnd={selected.end}
           fillable={fillable}
@@ -543,6 +550,7 @@ export function CadenceStepper({ spec, onEditingWindowChange }) {
             goalId={goalId}
             fields={selectedPeriod?.fields ?? spec.fields}
             periodKey={selected.key}
+            periodPath={[selectedIndex]}
             writeTs={Math.floor((selected.start + selected.end) / 2)}
           />
           <EvidenceAttachments goalId={goalId} periodKey={selected.key} />
@@ -552,6 +560,7 @@ export function CadenceStepper({ spec, onEditingWindowChange }) {
               entries={entries}
               composedBlock={selectedPeriod.nested}
               periodKeyPrefix={selected.key}
+              periodPathPrefix={[selectedIndex]}
               fallbackStart={selected.start}
               fallbackEnd={selected.end}
               fillable={fillable}

@@ -56,7 +56,12 @@ import {
   deriveCycleEndIso,
   toIsoDay,
 } from "@/features/goal-inputs";
-import { resolvePeriodContent, resolveNestedPeriodContent, saveSpec } from "@/features/goal-specs";
+import {
+  MANAGEMENT_PATH_SEGMENT,
+  resolvePeriodContent,
+  resolveNestedPeriodContent,
+  saveSpec,
+} from "@/features/goal-specs";
 import { dueStatus } from "@/lib/date";
 import { ComposedFields } from "./composed-fields.jsx";
 import { PeriodDetail, NotesAffordance } from "../period-detail.jsx";
@@ -127,6 +132,10 @@ function NestedCadenceLevel({
   goalId,
   composedBlock,
   periodKeyPrefix,
+  /* This level's positional address, minus its own window — see
+     resolveContentAtPath in @espace-devhub/shared/goal-specs. The server needs
+     it to find a field that exists ONLY on this block. */
+  periodPathPrefix,
   fallbackStart,
   fallbackEnd,
   variant,
@@ -154,6 +163,7 @@ function NestedCadenceLevel({
   if (!cadence || !key || depth > MAX_NEST_DEPTH) return null;
 
   const fullKey = periodKeyPrefix ? `${periodKeyPrefix}::${key}` : key;
+  const fullPath = [...(periodPathPrefix || []), windowIndex];
   const fields = period.fields;
   const autoCount = autoFieldCount(fields);
 
@@ -175,13 +185,21 @@ function NestedCadenceLevel({
           nested week reads like a week rather than a bare label. */}
       <PeriodDetail detail={period.detail} notes={period.notes} variant={variant} />
       {fields.length > 0 ? (
-        <ComposedFields goalId={goalId} fields={fields} periodKey={fullKey} variant={variant} showHeadline={false} />
+        <ComposedFields
+          goalId={goalId}
+          fields={fields}
+          periodKey={fullKey}
+          periodPath={fullPath}
+          variant={variant}
+          showHeadline={false}
+        />
       ) : null}
       {period.nested ? (
         <NestedCadenceLevel
           goalId={goalId}
           composedBlock={period.nested}
           periodKeyPrefix={fullKey}
+          periodPathPrefix={fullPath}
           fallbackStart={windowStart}
           fallbackEnd={windowEnd}
           variant={variant}
@@ -318,7 +336,13 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
             the tracker rather than to any one window. */}
         <NotesAffordance notes={spec.composed?.notes} variant={variant} />
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <ComposedFields goalId={goal?.id} fields={fields} periodKey={currentKey} variant={variant} />
+          <ComposedFields
+            goalId={goal?.id}
+            fields={fields}
+            periodKey={currentKey}
+            periodPath={[windowIndex]}
+            variant={variant}
+          />
           {/* The artifact itself, pinned to this window — for deliverables
               that have no URL to paste into a link field. */}
           <EvidenceAttachments goalId={goal?.id} periodKey={currentKey} variant={variant} className="mt-2" />
@@ -327,6 +351,7 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
               goalId={goal?.id}
               composedBlock={period.nested}
               periodKeyPrefix={currentKey}
+              periodPathPrefix={[windowIndex]}
               fallbackStart={windowStart}
               fallbackEnd={windowEnd}
               variant={variant}
@@ -346,6 +371,7 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
                 goalId={goal?.id}
                 composedBlock={spec.composed.management}
                 periodKeyPrefix="mgmt"
+                periodPathPrefix={[MANAGEMENT_PATH_SEGMENT]}
                 fallbackStart={windowStart}
                 fallbackEnd={windowEnd}
                 variant={variant}

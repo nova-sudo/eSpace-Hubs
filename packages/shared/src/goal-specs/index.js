@@ -33,6 +33,8 @@ export {
   specCadence,
   resolvePeriodContent,
   resolveNestedPeriodContent,
+  resolveContentAtPath,
+  MANAGEMENT_PATH_SEGMENT,
   TARGET_OPS,
 } from "./types.js";
 

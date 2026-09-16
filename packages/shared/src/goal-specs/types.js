@@ -365,6 +365,63 @@ export function resolveNestedPeriodContent(nestedComposed, windowIndex) {
   return resolveWindowContent(baseFields, nestedComposed, windowIndex);
 }
 
+/**
+ * The path segment that names the MANAGEMENT half of a plan. It is a string
+ * because that half is not a window of the top-level cadence at all — it's a
+ * second composed block hanging off `composed.management`, so there is no
+ * index that could address it.
+ */
+export const MANAGEMENT_PATH_SEGMENT = "management";
+
+/**
+ * Resolve the content at a WINDOW PATH — the address of the exact form a
+ * client is rendering, top level down.
+ *
+ * Why an address at all: a spec's fields don't all live in `spec.fields`. A
+ * period can redefine them (`composed.periods[i].fields`), a nested cadence
+ * has its own set, and the management half has a whole second tree. Field ids
+ * are only unique WITHIN one of those lists — `validateField` hands out `f1`,
+ * `f2` … per list — so "find field f1 in this spec" has no single answer, and
+ * anything that searches the tree by id alone is picking one at random.
+ *
+ * The path is positional, which is the same rule the rest of the system
+ * already uses: window i is period i (see `resolvePeriodContent`). A segment
+ * is a window index at that level, except a leading "management", which steps
+ * into the management block before its own index. So:
+ *
+ *   [3]                       → window 3 of the top-level cadence
+ *   [0, 2]                    → week 2 inside quarter 0
+ *   ["management", 1]         → window 1 of the management plan
+ *
+ * Returns null for a path the spec can't honour (a nested step where nothing
+ * is nested, a non-integer segment) rather than falling back to a neighbour:
+ * the caller asked about a specific form, and the wrong form's answer is
+ * worse than no answer.
+ */
+export function resolveContentAtPath(spec, path) {
+  if (!Array.isArray(path) || path.length === 0) return null;
+
+  let index = 0;
+  let content;
+  if (path[0] === MANAGEMENT_PATH_SEGMENT) {
+    const management = spec?.composed?.management;
+    if (!management) return null;
+    if (!Number.isInteger(path[1])) return null;
+    content = resolveNestedPeriodContent(management, path[1]);
+    index = 2;
+  } else {
+    if (!Number.isInteger(path[0])) return null;
+    content = resolvePeriodContent(spec, path[0]);
+    index = 1;
+  }
+
+  for (; index < path.length; index += 1) {
+    if (!content?.nested || !Number.isInteger(path[index])) return null;
+    content = resolveNestedPeriodContent(content.nested, path[index]);
+  }
+  return content;
+}
+
 export const TARGET_OPS = Object.freeze(["<=", ">=", "="]);
 
 export const CONTEXT_QUESTION_KINDS = Object.freeze([

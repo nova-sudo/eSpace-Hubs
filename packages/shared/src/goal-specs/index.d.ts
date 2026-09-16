@@ -30,6 +30,8 @@ export {
   NOTES_MAX,
   resolvePeriodContent,
   resolveNestedPeriodContent,
+  resolveContentAtPath,
+  MANAGEMENT_PATH_SEGMENT,
 } from "./types.js";
 
 export type {
@@ -44,6 +46,7 @@ export type {
   SpecNoteKind,
   SpecNoteLevel,
   ResolvedPeriodContent,
+  WindowPathSegment,
   SourceMetric,
   SpecVariant,
   SourceProvider,

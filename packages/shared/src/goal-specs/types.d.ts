@@ -436,6 +436,23 @@ export function resolveNestedPeriodContent(
   windowIndex: number,
 ): ResolvedPeriodContent;
 
+/** The leading path segment that addresses a plan's management half. */
+export const MANAGEMENT_PATH_SEGMENT: "management";
+
+/** One step of a window path: a window index, or the management block. */
+export type WindowPathSegment = number | "management";
+
+/**
+ * Resolve the content at a positional WINDOW PATH — `[3]` is window 3 of the
+ * top-level cadence, `[0, 2]` is week 2 inside quarter 0, `["management", 1]`
+ * is window 1 of the management plan. Null when the spec can't honour the
+ * path.
+ */
+export function resolveContentAtPath(
+  spec: unknown,
+  path: readonly WindowPathSegment[] | null | undefined,
+): ResolvedPeriodContent | null;
+
 export interface SpecApproval {
   status: "pending" | "approved" | "rejected";
   submittedAt?: number;
