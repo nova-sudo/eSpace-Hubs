@@ -38,6 +38,7 @@ import {
   avgReviewerComments,
   filterMrsByRepo,
   firstPassRatePct,
+  assistedSharePct,
   linkagePct,
   medianTurnaroundDays,
 } from "@/features/integrations";
@@ -132,6 +133,8 @@ function readGoal(spec, goal, ctx) {
       return readTicketCycle(spec, ctx);
     case SPEC_KINDS.FIRST_PASS_RATE:
       return readFirstPass(spec, ctx);
+    case SPEC_KINDS.ASSISTED_SHARE:
+      return readAssistedShare(spec, ctx);
     case SPEC_KINDS.CODE_RUBRIC:
       // Rubric grading is decoupled (PRs graded asynchronously). We
       // record the count of merged PRs in this window for context;
@@ -246,6 +249,27 @@ function readRubric(spec, ctx) {
     weekContribution: inWindow.length,
     cumulative: inWindow.length,
     windowMet: null, // Grading verdicts live in their own store
+  });
+}
+
+/**
+ * Assisted share. Reads the same windowed merged-MR list every other PR
+ * metric reads and looks at the labels already on it, so the snapshot needs
+ * no extra fetch — which is the whole reason this metric is cheap.
+ */
+function readAssistedShare(spec, ctx) {
+  const inWindow = mrsInWindow(specMrs(spec, ctx), ctx.weekStart, ctx.weekEnd);
+  const labels =
+    Array.isArray(spec.source?.assistedLabels) && spec.source.assistedLabels.length
+      ? spec.source.assistedLabels
+      : undefined;
+  const result = assistedSharePct(inWindow, labels);
+  const pct = result?.pct ?? null;
+  const target = spec.source?.target;
+  return baseReading(spec, ctx, {
+    weekContribution: pct,
+    cumulative: pct,
+    windowMet: evalMet(pct, target, "recompute"),
   });
 }
 

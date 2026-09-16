@@ -20,6 +20,8 @@ export {
   avgReviewerComments,
   linkagePct,
   firstPassRatePct,
+  assistedSharePct,
+  DEFAULT_ASSISTED_LABELS,
   medianTurnaroundDays,
   mergedWithin,
   mergedTrend,

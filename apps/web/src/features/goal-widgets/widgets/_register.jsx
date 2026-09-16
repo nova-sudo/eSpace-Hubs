@@ -23,6 +23,7 @@ import { TurnaroundWidget } from "./turnaround-widget";
 import { LinkageWidget } from "./linkage-widget";
 import { TicketCycleWidget } from "./ticket-cycle-widget";
 import { FirstPassRateWidget } from "./first-pass-rate-widget";
+import { AssistedShareWidget } from "./assisted-share-widget";
 import { DeployFrequencyWidget } from "./deploy-frequency-widget";
 import { LeadTimeWidget } from "./lead-time-widget";
 import { BuildPassRateWidget } from "./build-pass-rate-widget";
@@ -71,6 +72,12 @@ registerWidget(SPEC_KINDS.FIRST_PASS_RATE, {
   Component: FirstPassRateWidget,
   description:
     "% of merged PRs that pass first review cleanly (≤1 reviewer comment).",
+});
+registerWidget(SPEC_KINDS.ASSISTED_SHARE, {
+  variant: SPEC_VARIANTS.AUTO,
+  Component: AssistedShareWidget,
+  description:
+    "% of merged PRs carrying an assistant label (claude-code-assisted and friends). A lower bound — unlabelled assisted work can't be seen.",
 });
 registerWidget(SPEC_KINDS.DEPLOY_FREQUENCY, {
   variant: SPEC_VARIANTS.AUTO,

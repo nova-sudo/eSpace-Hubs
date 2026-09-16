@@ -15,6 +15,7 @@ export const SPEC_KINDS: Readonly<{
   readonly LINKAGE: "LINKAGE";
   readonly TICKET_CYCLE: "TICKET_CYCLE";
   readonly FIRST_PASS_RATE: "FIRST_PASS_RATE";
+  readonly ASSISTED_SHARE: "ASSISTED_SHARE";
   readonly DEPLOY_FREQUENCY: "DEPLOY_FREQUENCY";
   readonly LEAD_TIME: "LEAD_TIME";
   readonly BUILD_PASS_RATE: "BUILD_PASS_RATE";
@@ -53,6 +54,7 @@ export const SOURCE_METRICS: Readonly<{
   readonly LINKAGE_PCT: "linkage_pct";
   readonly TICKET_CYCLE_TIME: "ticket_cycle_time";
   readonly FIRST_PASS_RATE: "first_pass_rate";
+  readonly ASSISTED_SHARE: "assisted_share";
   readonly DEPLOY_FREQUENCY: "deploy_frequency";
   readonly LEAD_TIME: "lead_time";
   readonly BUILD_PASS_RATE: "build_pass_rate";
