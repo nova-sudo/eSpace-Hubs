@@ -151,7 +151,19 @@ function readingToText(reading) {
  * recurring-milestone / incident / scorecard widgets). AUTO widgets fall
  * back to the snapshot reading (captureGoalReadings populates those).
  */
-function buildCurrentData(spec, entries, reading, liveReading) {
+export function buildCurrentData(spec, entries, reading, liveReading) {
+  const body = currentDataBody(spec, entries, reading, liveReading);
+  const notes = noteLines(entries);
+  if (notes.length === 0) return body;
+  // Appended rather than woven into each branch: every widget kind stores its
+  // note in the same place on the entry, so one seam carries all of them and
+  // no future widget can forget to pass it on.
+  return [body, `notes written alongside these readings:`, ...notes.map((n) => `• ${n}`)].join(
+    "\n",
+  );
+}
+
+function currentDataBody(spec, entries, reading, liveReading) {
   const widget = spec?.widget;
   const list = Array.isArray(entries) ? entries : [];
   const latest = list.length ? list[list.length - 1] : null;
@@ -353,8 +365,35 @@ function buildCurrentData(spec, entries, reading, liveReading) {
           : null;
       return v == null ? readingToText(reading) : `latest rating: ${v} of 5`;
     }
-    case SPEC_KINDS.DATE_LOG:
-      return `${list.length} entries logged`;
+    // A date log is a list of dates. Reporting only how many there were left
+    // the grader unable to judge any tier that talks about WHEN — "within 48
+    // hours", "every month", "before the quarter closed" — which is most of
+    // the reason a date gets logged at all.
+    case SPEC_KINDS.DATE_LOG: {
+      if (list.length === 0) return "no dates logged";
+      const CAP = 12;
+      const dates = list
+        .slice(-CAP)
+        .reverse()
+        .map((e) => {
+          // The widget appends an ISO string; older/other writers may have
+          // left an epoch or an object. Render the calendar day in every case,
+          // since that is the unit every date-shaped tier is written in.
+          const raw = e?.value;
+          let stamp = "?";
+          if (typeof raw === "string") stamp = raw.slice(0, 10);
+          else if (Number.isFinite(Number(raw)) && raw !== null && raw !== "")
+            stamp = new Date(Number(raw)).toISOString().slice(0, 10);
+          else if (raw && typeof raw === "object")
+            stamp = proseLine(raw.date, 10) || proseLine(raw.label, 40) || "?";
+          const label = raw && typeof raw === "object" ? proseLine(raw.label, 80) : "";
+          return `• ${stamp}${label && label !== stamp ? ` — ${label}` : ""}`;
+        });
+      return [
+        `${list.length} date(s) logged${list.length > CAP ? `; showing the ${CAP} most recent` : ""}:`,
+        ...dates,
+      ].join("\n");
+    }
     case SPEC_KINDS.INCIDENT_LOG: {
       const unit = spec.manual?.unit || "minutes";
       const target = spec.manual?.target;
@@ -425,8 +464,19 @@ function buildCurrentData(spec, entries, reading, liveReading) {
         .reverse()
         .map((e) => {
           const v = e.value || {};
-          const rcaText = v.rca || v.link;
-          return `• ${v.severity || "?"}${Number.isFinite(v.downtime) ? ` ${v.downtime}m` : ""} — root cause: ${rcaText ? "yes" : "no"}, action: ${v.action ? "yes" : "no"}, preventive: ${v.preventive || "—"}`;
+          // The written root cause and corrective action USED to collapse to
+          // "root cause: yes/no" here. A tier that asks for a *documented*
+          // root cause is asking about the writing, not about the flag, so
+          // the grader was being asked to judge prose it could not see.
+          const rca = proseLine(v.rca) || (proseLine(v.link) ? `see ${proseLine(v.link, 120)}` : "");
+          const action = proseLine(v.action);
+          const head = `${v.severity || "?"}${Number.isFinite(v.downtime) ? ` ${v.downtime}m` : ""}`;
+          const parts = [
+            rca ? `root cause: ${rca}` : "root cause: NOT DOCUMENTED",
+            action ? `corrective action: ${action}` : "corrective action: NOT DOCUMENTED",
+            `preventive: ${v.preventive || "—"}`,
+          ];
+          return `• ${head} — ${parts.join("; ")}`;
         });
       if (detail.length) {
         lines.push("per-defect:", ...detail);
@@ -439,8 +489,32 @@ function buildCurrentData(spec, entries, reading, liveReading) {
       if (!Number.isFinite(b) && !Number.isFinite(c)) return readingToText(reading);
       return `baseline ${Number.isFinite(b) ? b : "?"} → current ${Number.isFinite(c) ? c : "?"}`;
     }
-    case SPEC_KINDS.FREE_TEXT:
-      return `${list.length} reflection note(s) logged`;
+    // The reflection widget stores prose and nothing else, so counting the
+    // entries and discarding the text handed the grader a goal with, by
+    // construction, zero gradeable content. It then graded the count.
+    case SPEC_KINDS.FREE_TEXT: {
+      if (list.length === 0) return "no reflections logged";
+      const CAP = 6;
+      const reflections = list
+        .slice(-CAP)
+        .reverse()
+        .map((e) => {
+          const raw = e?.value;
+          const text = proseLine(typeof raw === "string" ? raw : raw?.text, 600);
+          const ts = Number(e?.ts);
+          const when =
+            Number.isFinite(ts) && ts > 0 ? new Date(ts).toISOString().slice(0, 10) : null;
+          return text ? `• ${when ? `${when} — ` : ""}${text}` : null;
+        })
+        .filter(Boolean);
+      if (reflections.length === 0) return `${list.length} reflection(s) logged, all empty`;
+      return [
+        `${list.length} reflection(s) logged${
+          list.length > CAP ? `; showing the ${CAP} most recent` : ""
+        }:`,
+        ...reflections,
+      ].join("\n");
+    }
     default:
       // AUTO widgets (merged/turnaround/linkage/first-pass/…) + CODE_RUBRIC:
       // prefer the value the MOUNTED widget just published (fresh, and present
@@ -596,9 +670,49 @@ function evidenceLines(items) {
   if (!Array.isArray(items)) return "";
   return items
     .filter((it) => it && typeof it.evidence === "string" && it.evidence.trim())
-    .map((it) => `${it.label}: ${String(it.evidence).trim()}`)
+    .map((it) => `${it.label}: ${proseLine(it.evidence)}`)
     .slice(0, 8)
     .join("; ");
+}
+
+/**
+ * One line of somebody's prose, whitespace-collapsed and capped.
+ *
+ * Every piece of written evidence below goes through here, because the prompt
+ * has a budget and a single pasted post-mortem would otherwise crowd out the
+ * numbers. Capped rather than dropped: a truncated root cause still tells the
+ * grader a root cause was written, which "no" did not.
+ */
+function proseLine(s, cap = 240) {
+  const t = typeof s === "string" ? s.trim().replace(/\s+/g, " ") : "";
+  if (!t) return "";
+  return t.length > cap ? `${t.slice(0, cap - 1)}…` : t;
+}
+
+/**
+ * The notes people type alongside their readings.
+ *
+ * These were captured, stored, and rendered into the markdown/PDF export —
+ * and never reached the grader, which judged the bare number. A note is
+ * routinely the only place the WHY is recorded ("missed the window because
+ * the vendor SDK regressed; refiled as INFRA-812"), so withholding it from
+ * the grader while showing it to the manager had the two reading the same
+ * goal off different facts.
+ *
+ * Newest first, because if the cap bites, recent context is the context
+ * worth keeping.
+ */
+function noteLines(entries, cap = 6) {
+  const list = Array.isArray(entries) ? entries : [];
+  const out = [];
+  for (let i = list.length - 1; i >= 0 && out.length < cap; i -= 1) {
+    const text = proseLine(list[i]?.note);
+    if (!text) continue;
+    const ts = Number(list[i]?.ts);
+    const when = Number.isFinite(ts) && ts > 0 ? new Date(ts).toISOString().slice(0, 10) : null;
+    out.push(when ? `${when} — ${text}` : text);
+  }
+  return out;
 }
 
 /**
