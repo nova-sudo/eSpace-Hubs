@@ -22,6 +22,16 @@ export {
   toIsoDay,
 } from "./cadence-windows";
 export {
+  EVIDENCE_STATE,
+  EVIDENCE_META,
+  EVIDENCE_SEVERITY,
+  isActionable as isEvidenceActionable,
+  requiresEvidence,
+  windowEvidenceState,
+  cycleEvidence,
+  cycleEvidenceToText,
+} from "./evidence-freshness";
+export {
   GOAL_STATUS,
   STATUS_META,
   SEVERITY,

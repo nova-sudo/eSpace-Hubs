@@ -21,6 +21,9 @@ import {
   buildCycleWindows,
   cadenceConsistency,
   composedCycleBounds,
+  requiresEvidence,
+  cycleEvidence,
+  cycleEvidenceToText,
 } from "@/features/goal-inputs";
 import { useGoalContext, useIsContextComplete } from "@/features/goal-context";
 import { SPEC_KINDS, specCadence, isSingleRecordWidget } from "@/features/goal-specs";
@@ -1028,6 +1031,22 @@ export function useGoalTier(goalId, spec) {
   // unevidenced merely because a request is still in flight.
   const { files: evidenceFiles } = useEvidenceManifest(goalId);
 
+  // Evidence freshness per period. Opt-in, so a goal that never asked for
+  // evidence is completely unaffected. Where it IS asked for, a period with
+  // no proof behind it used to be silent: the strip read complete, the number
+  // was there, and the hole only surfaced as a verdict months later.
+  const evidenceSummary = useMemo(() => {
+    if (!requiresEvidence(spec)) return null;
+    const now = Date.now();
+    const cycle = buildCycleWindows({
+      entries,
+      cadence: specCadence(spec),
+      now,
+      ...composedCycleBounds(spec),
+    });
+    return cycleEvidence(cycle, { spec, files: evidenceFiles, now });
+  }, [spec, entries, evidenceFiles]);
+
   // Prose summary the AI grader sees (qualitative fallback path only).
   const currentData = useMemo(() => {
     const base = buildCurrentData(spec, entries, snapReading, liveReading);
@@ -1036,11 +1055,12 @@ export function useGoalTier(goalId, spec) {
     return [
       base,
       manifest || null,
+      cycleEvidenceToText(evidenceSummary) || null,
       ctx ? `User's definitions (authoritative):\n${ctx}` : null,
     ]
       .filter(Boolean)
       .join("\n\n");
-  }, [spec, entries, snapReading, liveReading, contextAnswers, evidenceFiles]);
+  }, [spec, entries, snapReading, liveReading, contextAnswers, evidenceFiles, evidenceSummary]);
 
   // Cache key busts ONLY when what the verdict depends on changes: tiers, the
   // graded prose, the numeric ladder, and the numeric value. Deliberately NOT
