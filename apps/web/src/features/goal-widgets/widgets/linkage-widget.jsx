@@ -26,6 +26,7 @@ export function LinkageWidget({ spec, goal, variant = "light", className, onRetr
           unit: "%",
           statusTone: meets === true ? "ok" : meets === false ? "warn" : "accent",
           statusLabel: meets === true ? "on target" : meets === false ? "below target" : "tracked",
+          provenance,
         }
       : null,
   );

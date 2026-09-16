@@ -28,6 +28,7 @@ export function MergedCountWidget({ spec, goal, variant = "light", className, on
           unit: "",
           statusTone: hit === true ? "ok" : hit === false ? "warn" : "accent",
           statusLabel: hit === true ? "on target" : hit === false ? "below target" : "tracked",
+          provenance,
         }
       : null,
   );

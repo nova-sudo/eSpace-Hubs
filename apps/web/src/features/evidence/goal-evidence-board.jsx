@@ -99,12 +99,17 @@ function L1Card({ group, goalsHref }) {
 
 function GoalRow({ row }) {
   const { goal, spec, evidence, checkinDays } = row;
-  const hasFiles = evidence.length > 0;
+  // These are TEXT snippets — entry notes, checklist evidence strings,
+  // per-field evidence on a composed widget — collected by `goal-evidence.js`.
+  // They are not files and never were; the column called them "3 files" /
+  // "No files", so a goal with three written references read as having three
+  // uploads, and a goal with real uploads and no notes read as having none.
+  const hasEvidence = evidence.length > 0;
 
   return (
     <div className="flex items-center gap-4 border-t border-line py-3.5">
       <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-card-alt">
-        <StarGlyph on={hasFiles} />
+        <StarGlyph on={hasEvidence} />
       </span>
       <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-fg" title={goal.title}>
         {goal.title}
@@ -113,12 +118,14 @@ function GoalRow({ row }) {
       <span className="w-[90px] shrink-0 text-[12.5px] text-muted-fg">
         {checkinDays || 0} reading{checkinDays === 1 ? "" : "s"}
       </span>
-      {hasFiles ? (
-        <span className="w-[56px] shrink-0 text-[12.5px] text-muted-fg">
-          {evidence.length} file{evidence.length === 1 ? "" : "s"}
+      {hasEvidence ? (
+        <span className="w-[72px] shrink-0 text-[12.5px] text-muted-fg">
+          {evidence.length} noted
         </span>
       ) : (
-        <span className="w-[56px] shrink-0 text-[12.5px] font-bold text-peach-ink">No files</span>
+        <span className="w-[72px] shrink-0 text-[12.5px] font-bold text-peach-ink">
+          None noted
+        </span>
       )}
       <ChevronRight size={16} className="shrink-0 text-muted-fg" aria-hidden="true" />
     </div>

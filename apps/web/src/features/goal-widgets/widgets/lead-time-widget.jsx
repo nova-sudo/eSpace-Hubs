@@ -51,6 +51,7 @@ export function LeadTimeWidget({
           value: `${formatMin(medianMin)} median · n=${n}`,
           statusTone: hit === true ? "ok" : hit === false ? "warn" : "accent",
           statusLabel: hit === true ? "on target" : hit === false ? "above target" : "tracked",
+          provenance,
         }
       : null,
   );

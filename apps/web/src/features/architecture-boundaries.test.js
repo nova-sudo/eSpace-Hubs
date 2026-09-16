@@ -32,6 +32,14 @@ const allowedDeepImports = new Set([
   // Already internal to integrations — the barrel re-exports the clients,
   // not the fetch primitive, by design.
   "integrations/api-clients/proxy-fetch",
+
+  // goal-widgets/evidence-files: a pure data-layer module (api-client only,
+  // no React) that goal-tiers needs so the grader can see attached evidence.
+  // The barrel is not an option here: goal-widgets/use-publish-reading
+  // imports @/features/goal-tiers, so a barrel import would close a cycle
+  // between the two features. The long-term fix is to lift the evidence-file
+  // data layer out of goal-widgets, which owns none of it.
+  "goal-widgets/evidence-files",
 ]);
 
 function walk(dir) {

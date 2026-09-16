@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { buildCurrentData } from "./use-goal-tier.js";
+import { evidenceManifestToText } from "./use-evidence-manifest.js";
 import { SPEC_KINDS } from "@/features/goal-specs";
 
 /**
@@ -151,4 +152,81 @@ test("prose is capped rather than dropped, so a long write-up still counts", () 
   assert.ok(out.length < 1500, "one pasted post-mortem cannot dominate the prompt");
   assert.doesNotMatch(out, /root cause: NOT DOCUMENTED/);
   assert.match(out, /…/, "truncation is visible rather than silent");
+});
+
+// ── The manifest and the provenance caveat ────────────────────────────────
+// Both were computed and then discarded before grading: evidence files were
+// visible only to one component, and a sampled metric was handed over as
+// though it were a census.
+
+test("attached files reach the grader as a manifest, not as contents", () => {
+  const out = evidenceManifestToText([
+    {
+      id: "a",
+      name: "retry-storm-postmortem.pdf",
+      size: 240_000,
+      periodKey: "2026-Q1",
+      uploadedAt: "2026-03-04T09:00:00.000Z",
+    },
+  ]);
+
+  assert.match(out, /retry-storm-postmortem\.pdf/);
+  assert.match(out, /2026-Q1/);
+  assert.match(out, /2026-03-04/);
+  assert.match(out, /MANIFEST, not the contents/, "the grader is told not to infer content");
+});
+
+test("no attachments renders nothing rather than an empty heading", () => {
+  assert.equal(evidenceManifestToText([]), "");
+  assert.equal(evidenceManifestToText(null), "");
+});
+
+test("the manifest is capped so a heavily-documented goal cannot flood the prompt", () => {
+  const files = Array.from({ length: 40 }, (_, i) => ({
+    id: String(i),
+    name: `artifact-${i}.pdf`,
+    size: 1000,
+    periodKey: null,
+    uploadedAt: "2026-03-04T09:00:00.000Z",
+  }));
+
+  const out = evidenceManifestToText(files);
+
+  assert.match(out, /40 evidence file\(s\)/, "the true count is still stated");
+  assert.equal(out.match(/artifact-/g).length, 12);
+});
+
+test("a truncated metric tells the grader it is a sample, not a shortfall", () => {
+  const spec = { widget: "MERGED_COUNT" };
+  const live = {
+    value: "18 d median cycle",
+    statusLabel: "below target",
+    provenance: {
+      sample: 50,
+      unit: "tickets",
+      window: "2026 YTD",
+      truncated: true,
+      note: "50 most recently updated; resolved over 90 days ago excluded",
+    },
+  };
+
+  const out = buildCurrentData(spec, [], null, live);
+
+  assert.match(out, /computed from 50 tickets/);
+  assert.match(out, /2026 YTD/);
+  assert.match(out, /do not treat a shortfall as proven/);
+});
+
+test("an untruncated metric states its basis without the sample warning", () => {
+  const spec = { widget: "MERGED_COUNT" };
+  const live = {
+    value: "41 merged",
+    statusLabel: "on target",
+    provenance: { sample: 41, unit: "MRs", window: "2026 YTD" },
+  };
+
+  const out = buildCurrentData(spec, [], null, live);
+
+  assert.match(out, /computed from 41 MRs/);
+  assert.doesNotMatch(out, /PARTIAL/);
 });
