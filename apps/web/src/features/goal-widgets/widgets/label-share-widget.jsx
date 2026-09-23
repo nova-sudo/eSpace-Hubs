@@ -8,6 +8,8 @@ import { evalTarget } from "./merged-count-widget";
 import { ComplianceLine } from "../compliance-line";
 import { usePublishGoalReading } from "../use-publish-reading";
 import { useGoalContext } from "@/features/goal-context";
+import { useProviderLinks, githubMergedPrsUrl, gitlabMergedMrsUrl } from "@/features/integrations";
+import { SourceLinks } from "../source-links";
 
 /**
  * Labelled pull requests — merged PRs carrying one of the watched labels.
@@ -48,6 +50,7 @@ export function LabelShareWidget({
   }, [spec, answers]);
 
   const { data, isLoading, error, windowLabel, provenance } = useDataSource(source);
+  const hosts = useProviderLinks();
   const mode = data?.mode === "count" ? "count" : "share";
   const pct = data?.pct ?? null;
   const hits = data?.assisted ?? 0;
@@ -65,6 +68,20 @@ export function LabelShareWidget({
   // Saying "0" alone would pick the first reading silently.
   const noneMatched = headline === 0 && total > 0;
   const noun = assisted ? "assisted" : "labelled";
+
+  // The same search on the provider's own site — scoped exactly like the
+  // number (author, this year, these labels, this repo) so a reader can
+  // check the count without trusting the tile.
+  const provider = source?.provider || "combined";
+  const repoScope = source?.filter?.repo || null;
+  const checkLinks = [
+    (provider === "github" || provider === "combined") && hosts.github.connected && watched.length
+      ? { label: "Check on GitHub", href: githubMergedPrsUrl({ repo: repoScope, author: hosts.github.username, labels: watched }) }
+      : null,
+    (provider === "gitlab" || provider === "combined") && hosts.gitlab.connected && watched.length
+      ? { label: "Check on GitLab", href: gitlabMergedMrsUrl({ baseUrl: hosts.gitlab.baseUrl, repo: repoScope, author: hosts.gitlab.username, labels: watched }) }
+      : null,
+  ];
 
   usePublishGoalReading(
     goal?.id,
@@ -96,6 +113,7 @@ export function LabelShareWidget({
       rightChip={<TargetChip target={target} unit={unit} variant={variant} />}
       onRetry={onRetry}
       className={className}
+      footer={<SourceLinks links={checkLinks} />}
     >
       <div className="flex h-full flex-col justify-between gap-2">
         <div className="flex items-baseline gap-2">

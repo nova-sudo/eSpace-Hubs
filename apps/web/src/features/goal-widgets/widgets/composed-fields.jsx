@@ -79,6 +79,9 @@ import { apiPost } from "@/lib/api-client";
 // prefer the server's and fall back to the registry, so neither side is a hard
 // dependency of the other.
 import * as sharedGoalSpecs from "@espace-devhub/shared/goal-specs";
+import { useGoalContext } from "@/features/goal-context";
+import { useProviderLinks } from "@/features/integrations";
+import { ExternalLink } from "lucide-react";
 
 /** Re-read a stored reading after this long even if nothing changed. */
 const AUTO_REFRESH_MS = 6 * 60 * 60 * 1000;
@@ -583,6 +586,27 @@ function AutoField({ goalId, field, periodKey, periodPath, stored, onResolved })
   const providerLabel = reading?.provider || (field.source?.provider !== "ask" ? field.source?.provider : null);
   const resolved = state.status === "resolved";
 
+  // The page that shows what this query looked at — the same template's web
+  // binding, with the user's own answers filled in. A courtesy, never a
+  // requirement: no link when a param is unresolved or the host is unknown.
+  const { answers } = useGoalContext(goalId);
+  const hosts = useProviderLinks();
+  const checkHref = useMemo(() => {
+    const provider = providerLabel === "gitlab" ? "gitlab" : providerLabel === "github" ? "github" : null;
+    if (!provider || !field?.source) return null;
+    try {
+      return (
+        sharedGoalSpecs.queryWebLink?.(field.source, provider, {
+          answers,
+          author: provider === "github" ? hosts.github.username || "@me" : hosts.gitlab.username,
+          gitlabBaseUrl: hosts.gitlab.baseUrl,
+        }) || null
+      );
+    } catch {
+      return null;
+    }
+  }, [field?.source, providerLabel, answers, hosts]);
+
   /**
    * An auto field is the layout's best case rather than its exception: the
    * repo reading IS a claim, and the query behind it IS the proof. So it uses
@@ -629,6 +653,17 @@ function AutoField({ goalId, field, periodKey, periodPath, stored, onResolved })
         <div className="flex min-h-[44px] min-w-0 flex-col justify-center gap-0.5">
           {sentence ? (
             <span className="text-[12px] leading-[1.4] text-muted-fg">{sentence}</span>
+          ) : null}
+          {checkHref ? (
+            <a
+              href={checkHref}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="inline-flex w-fit items-center gap-1 text-[12px] font-semibold text-fg"
+            >
+              Check on {providerLabel === "gitlab" ? "GitLab" : "GitHub"}
+              <ExternalLink size={11} className="text-muted-fg" />
+            </a>
           ) : null}
           {resolved && reading?.fetchedAt ? (
             <span className="text-[11.5px] text-muted-fg">{fetchedLabel(reading.fetchedAt)}</span>

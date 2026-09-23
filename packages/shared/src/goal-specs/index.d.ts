@@ -97,6 +97,7 @@ export {
   QUERY_SOURCE_PROVIDERS,
   QUERY_TEMPLATES,
   QueryTemplateError,
+  queryWebLink,
   validateQuerySource,
 } from "./query-templates.js";
 
