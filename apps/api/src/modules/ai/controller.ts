@@ -58,6 +58,7 @@ import {
   normalizeCadence,
   COMPOSED_FIELD_KINDS,
   CONTEXT_QUESTION_KINDS,
+  isAssignedGoalId,
   listQueryTemplates,
   validateQuerySource,
 } from "@espace-devhub/shared/goal-specs";
@@ -1312,15 +1313,43 @@ async function connectedRepoHosts(
   );
 }
 
-/** The repo hosts this user has actually connected, as one prompt line. */
-function describeConnectedHosts(hosts: string[]): string {
+/**
+ * Which repo hosts ANYONE in the org has connected.
+ *
+ * For a SHARED goal the composer is a manager, but the tracker is filled by
+ * its assignees, each with their own token (query-routes resolves a shared
+ * goal's field with the assignee's integration, never the creator's). Judging
+ * "can a field read itself" by the manager's integrations was therefore
+ * answering the wrong question: a manager with no GitHub row was told "no
+ * hosts, every field is typed", and a plan that said "check the file exists
+ * in the PR" came back as a checkbox for the assignee to tick on their honour.
+ * The org-wide set is the honest upper bound — an assignee without that host
+ * sees the field as unavailable, which the widget already handles.
+ */
+async function connectedRepoHostsForOrg(orgId: ObjectId): Promise<string[]> {
+  const col = await getIntegrationsCollection();
+  const ids = await col.distinct("providerId", {
+    orgId,
+    providerId: { $in: ["github", "gitlab"] },
+  });
+  return ["github", "gitlab"].filter((p) => ids.includes(p));
+}
+
+/** The repo hosts in play, as one prompt line. `shared` = a manager composing for assignees. */
+function describeConnectedHosts(hosts: string[], shared = false): string {
+  const who = shared
+    ? "Connected repo hosts across the people this will be shared with"
+    : "Connected repo hosts";
   if (hosts.length === 0) {
-    return "Connected repo hosts: none. Do NOT use `source` on any field — an automatic field would never resolve. Every field is typed.";
+    return `${who}: none. Do NOT use \`source\` on any field — an automatic field would never resolve. Every field is typed.`;
   }
+  const lead = shared
+    ? " Each assignee's fields read from THEIR OWN account, so a source is the right choice whenever the description asks to check a repo, a file or a pull request — never a checkbox asking them to confirm it by hand."
+    : "";
   if (hosts.length === 1) {
-    return `Connected repo hosts: ${hosts[0]} only. Pin every \`source.provider\` to "${hosts[0]}" and do NOT ask which host.`;
+    return `${who}: ${hosts[0]} only. Pin every \`source.provider\` to "${hosts[0]}" and do NOT ask which host.${lead}`;
   }
-  return `Connected repo hosts: ${hosts.join(" and ")}. Both are connected, so do not guess — use provider "ask" with a select question.`;
+  return `${who}: ${hosts.join(" and ")}. Both are connected, so do not guess — use provider "ask" with a select question.${lead}`;
 }
 
 function buildComposeUserPrompt(
@@ -1328,6 +1357,7 @@ function buildComposeUserPrompt(
   description: string,
   attachment?: ComposeAttachment | null,
   connectedHosts: string[] = [],
+  shared = false,
 ): string {
   const parts = [
     `Goal: ${goalTitle || "(untitled)"}`,
@@ -1339,7 +1369,7 @@ function buildComposeUserPrompt(
     // also the ONLY thing that decides whether the model may pin a provider or
     // has to ask: with one host connected an "ask" question is pure friction,
     // and with none, an automatic field could never resolve at all.
-    describeConnectedHosts(connectedHosts),
+    describeConnectedHosts(connectedHosts, shared),
   ];
   const attachedText = attachment?.text?.trim() ?? "";
   if (attachedText) {
@@ -2265,15 +2295,18 @@ export async function composeWidgetHandler(
     if (payload.attachment?.text) {
       await assertDocumentEgressAllowed(session.userId);
     }
-    const connectedHosts = await connectedRepoHosts(
-      session.orgId,
-      session.userId,
-    );
+    // A shared goal (asg_… ids, including the editor's draft id) is filled by
+    // its assignees with their own tokens — see connectedRepoHostsForOrg.
+    const shared = isAssignedGoalId(payload.goalId);
+    const connectedHosts = shared
+      ? await connectedRepoHostsForOrg(session.orgId)
+      : await connectedRepoHosts(session.orgId, session.userId);
     const userPrompt = buildComposeUserPrompt(
       payload.goalTitle,
       payload.description,
       payload.attachment ?? null,
       connectedHosts,
+      shared,
     );
 
     let content: string;

@@ -36,8 +36,12 @@ export function AssignedGoalProgress({ goalId, actions = null }) {
   }
 
   const { goal, windows, rows, totals } = progress;
+  // min-w-0: this sits in a `1fr` grid track on the manager page, and the
+  // people × periods table below has a real min-content width. Without it
+  // the track grows to fit the table and the whole page scrolls sideways —
+  // the inner overflow-x-auto never gets a chance to do its job.
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-4">
       <Card padding={24}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
