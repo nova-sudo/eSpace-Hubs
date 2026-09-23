@@ -29,6 +29,12 @@ export {
   buildPassRate,
 } from "./build-events";
 export { mrRepo, filterMrsByRepo, listReposFromMrs } from "./repo-filter";
+export {
+  ticketTypeSharePct,
+  parseTicketTypes,
+  mrJiraKeys,
+  DEFAULT_TICKET_TYPES,
+} from "./ticket-type";
 export { countMrComments } from "./reviews";
 export { dailyActivity, totalEvents, peakPerDay } from "./activity";
 export { deriveAttention } from "./attention";

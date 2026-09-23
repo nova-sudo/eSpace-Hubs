@@ -17,6 +17,7 @@ export const SPEC_KINDS: Readonly<{
   readonly FIRST_PASS_RATE: "FIRST_PASS_RATE";
   readonly ASSISTED_SHARE: "ASSISTED_SHARE";
   readonly LABEL_SHARE: "LABEL_SHARE";
+  readonly TICKET_TYPE_SHARE: "TICKET_TYPE_SHARE";
   readonly DEPLOY_FREQUENCY: "DEPLOY_FREQUENCY";
   readonly LEAD_TIME: "LEAD_TIME";
   readonly BUILD_PASS_RATE: "BUILD_PASS_RATE";
@@ -57,6 +58,7 @@ export const SOURCE_METRICS: Readonly<{
   readonly FIRST_PASS_RATE: "first_pass_rate";
   readonly ASSISTED_SHARE: "assisted_share";
   readonly LABEL_SHARE: "label_share";
+  readonly TICKET_TYPE_SHARE: "ticket_type_share";
   readonly DEPLOY_FREQUENCY: "deploy_frequency";
   readonly LEAD_TIME: "lead_time";
   readonly BUILD_PASS_RATE: "build_pass_rate";
@@ -165,6 +167,10 @@ export interface SpecSource {
   filter?: {
     label?: string;
     branch?: string;
+    /**
+     * Jira issue type(s) a TICKET_TYPE_SHARE source counts, comma-
+     * separated ("Bug", "Bug, Defect"). Defaults to Bug when absent.
+     */
     ticketType?: string;
     /**
      * GitHub/GitLab repo slug ("owner/name" or "group/project").
@@ -186,7 +192,7 @@ export interface SpecSource {
    * LABEL_SHARE means "read the spec's label_select answer".
    */
   labels?: string[];
-  /** share (%) or count — defaults to share. */
+  /** share (%) or count — defaults to share. Read by LABEL_SHARE, ASSISTED_SHARE and TICKET_TYPE_SHARE. */
   labelMode?: LabelMode;
   target?: SpecTarget;
 }

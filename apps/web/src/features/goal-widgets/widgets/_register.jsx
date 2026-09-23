@@ -25,6 +25,7 @@ import { TicketCycleWidget } from "./ticket-cycle-widget";
 import { FirstPassRateWidget } from "./first-pass-rate-widget";
 import { AssistedShareWidget } from "./assisted-share-widget";
 import { LabelShareWidget } from "./label-share-widget";
+import { TicketTypeShareWidget } from "./ticket-type-share-widget";
 import { DeployFrequencyWidget } from "./deploy-frequency-widget";
 import { LeadTimeWidget } from "./lead-time-widget";
 import { BuildPassRateWidget } from "./build-pass-rate-widget";
@@ -85,6 +86,12 @@ registerWidget(SPEC_KINDS.LABEL_SHARE, {
   Component: LabelShareWidget,
   description:
     "% (or count) of merged PRs carrying a chosen label — bug, hotfix, tech-debt, anything the team applies. Picked from labels seen on your PRs. A lower bound — unlabelled work can't be seen.",
+});
+registerWidget(SPEC_KINDS.TICKET_TYPE_SHARE, {
+  variant: SPEC_VARIANTS.AUTO,
+  Component: TicketTypeShareWidget,
+  description:
+    "% (or count) of merged PRs whose linked Jira ticket is a Bug (or another type). Needs Jira; unlinked PRs are reported as unresolved, so this is a floor.",
 });
 registerWidget(SPEC_KINDS.DEPLOY_FREQUENCY, {
   variant: SPEC_VARIANTS.AUTO,

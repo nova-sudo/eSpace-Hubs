@@ -33,6 +33,12 @@ export const SPEC_KINDS = Object.freeze({
   // actually seen on the user's pull requests. ASSISTED_SHARE is this
   // widget with the assistant labels pre-filled.
   LABEL_SHARE: "LABEL_SHARE",
+  // The ticket route to the same question: merged PRs whose referenced
+  // Jira key resolves to a given issue type (Bug by default). For teams
+  // that don't label PRs but do link tickets — which is most of them.
+  // `source.filter.ticketType` names the type(s); the widget hydrates
+  // issue types from Jira for the keys it finds in PR titles/branches.
+  TICKET_TYPE_SHARE: "TICKET_TYPE_SHARE",
   // Phase D3: CI/CD delivery widgets. Each is an AUTO widget that
   // reads from a single Jenkins job (`source.filter.job`) OR a
   // single GitHub Actions repo (`source.filter.repo`). Driven by
@@ -149,6 +155,7 @@ export const SOURCE_METRICS = Object.freeze({
   FIRST_PASS_RATE: "first_pass_rate",
   ASSISTED_SHARE: "assisted_share",
   LABEL_SHARE: "label_share",
+  TICKET_TYPE_SHARE: "ticket_type_share",
   DEPLOY_FREQUENCY: "deploy_frequency",
   LEAD_TIME: "lead_time",
   BUILD_PASS_RATE: "build_pass_rate",
@@ -496,6 +503,10 @@ export const SPEC_KIND_META = Object.freeze({
   },
   [SPEC_KINDS.LABEL_SHARE]: {
     label: "Labelled PRs",
+    variant: SPEC_VARIANTS.AUTO,
+  },
+  [SPEC_KINDS.TICKET_TYPE_SHARE]: {
+    label: "Ticket-type PRs",
     variant: SPEC_VARIANTS.AUTO,
   },
   [SPEC_KINDS.DEPLOY_FREQUENCY]: {

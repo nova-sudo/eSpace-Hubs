@@ -34,4 +34,33 @@ export const jiraApi = {
         maxResults: 50,
       }),
     }),
+
+  /**
+   * Issue type per key, for keys found in PR titles / branches. One JQL
+   * `key in (...)` search per batch instead of one GET per issue — 50 keys
+   * is one request. Keys the user can't see (other project, no permission)
+   * simply don't come back; the caller treats them as unresolved, never as
+   * "not a bug". Returns `{ KEY: "bug" }`, types lower-cased.
+   */
+  issueTypesForKeys: async (keys) => {
+    const clean = (Array.isArray(keys) ? keys : []).filter(
+      (k) => typeof k === "string" && /^[A-Z][A-Z0-9]+-\d+$/.test(k),
+    );
+    if (clean.length === 0) return {};
+    const res = await proxyFetch("jira", "search/jql", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jql: `key in (${clean.join(",")})`,
+        fields: ["issuetype"],
+        maxResults: Math.min(100, clean.length),
+      }),
+    });
+    const out = {};
+    for (const issue of Array.isArray(res?.issues) ? res.issues : []) {
+      const name = issue?.fields?.issuetype?.name;
+      if (issue?.key && typeof name === "string") out[issue.key] = name.trim().toLowerCase();
+    }
+    return out;
+  },
 };

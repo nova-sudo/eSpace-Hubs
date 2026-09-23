@@ -48,6 +48,8 @@ import {
   LabelsPicker,
   isLabelWidget,
   patchLabels,
+  TicketTypePicker,
+  useTicketTypeOptions,
 } from "./spec-editors";
 
 // Map each widget to the kind(s) that are valid for it. The validator
@@ -146,6 +148,7 @@ export function ReviewPane({
   // hook returns an empty array — the picker falls back to free-text.
   const { jobs: jenkinsJobs } = useJenkinsJobs();
   const { options: labelOptions } = useLabelOptions();
+  const ticketTypeOptions = useTicketTypeOptions();
   const jobOptions = useMemo(
     () =>
       (jenkinsJobs || [])
@@ -199,6 +202,7 @@ export function ReviewPane({
             repoOptions={repoOptions}
             jobOptions={jobOptions}
             labelOptions={labelOptions}
+            ticketTypeOptions={ticketTypeOptions}
             onSave={() => {
               const result = commitSpec(goalId);
               if (!result.ok) {
@@ -278,6 +282,11 @@ export function ReviewPane({
                 source: patchLabels(spec.source, labels, mode),
               });
             }}
+            onChangeTicketType={(ticketType) => {
+              updatePendingSpec(goalId, {
+                source: patchFilter(spec.source, "ticketType", ticketType),
+              });
+            }}
             onChangeScorecard={(nextScorecard) => {
               // Patch the whole scorecard block. Also derives the
               // outer `kind` from the components (auto if all-AUTO,
@@ -346,6 +355,7 @@ function PendingCard({
   repoOptions = [],
   jobOptions = [],
   labelOptions = [],
+  ticketTypeOptions = [],
   onSave,
   onSkip,
   onChangeWidget,
@@ -354,6 +364,7 @@ function PendingCard({
   onChangeRepo,
   onChangeJob,
   onChangeLabels,
+  onChangeTicketType,
   onChangeScorecard,
 }) {
   const kindsOk = validKindsFor(spec.widget);
@@ -383,6 +394,9 @@ function PendingCard({
   const showLabelsPicker =
     !isUntrackable && !isScorecard && Boolean(spec.source) && isLabelWidget(spec.widget);
   const currentLabels = Array.isArray(spec.source?.labels) ? spec.source.labels : [];
+  const showTicketTypePicker =
+    !isUntrackable && !isScorecard && Boolean(spec.source) && spec.widget === "TICKET_TYPE_SHARE";
+  const currentTicketType = spec.source?.filter?.ticketType || "";
   const kindMismatch =
     !isUntrackable &&
     widgetMeta?.variant !== spec.kind &&
@@ -440,6 +454,7 @@ function PendingCard({
         {currentRepo ? <Badge tone="lav">Repo · {currentRepo}</Badge> : null}
         {currentJob ? <Badge>Job · {currentJob}</Badge> : null}
         {currentLabels.length ? <Badge tone="lav">Labels · {currentLabels.join(", ")}</Badge> : null}
+        {currentTicketType ? <Badge tone="lav">Ticket · {currentTicketType}</Badge> : null}
         {kindMismatch ? <Badge tone="peach">Kind/variant mismatch</Badge> : null}
       </div>
 
@@ -471,6 +486,18 @@ function PendingCard({
           options={labelOptions}
           assisted={spec.widget === "ASSISTED_SHARE"}
           onChange={(labels) => onChangeLabels(labels, undefined)}
+          onChangeMode={(mode) => onChangeLabels(undefined, mode)}
+        />
+      ) : null}
+
+      {/* Ticket-type picker — TICKET_TYPE_SHARE only. Options are the
+          issue types on the user's own Jira queue. */}
+      {showTicketTypePicker ? (
+        <TicketTypePicker
+          value={currentTicketType || null}
+          mode={spec.source?.labelMode}
+          options={ticketTypeOptions}
+          onChange={onChangeTicketType}
           onChangeMode={(mode) => onChangeLabels(undefined, mode)}
         />
       ) : null}

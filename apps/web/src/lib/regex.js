@@ -32,11 +32,22 @@ const NON_ISSUE_PREFIXES = new Set([
  * this (not the raw regex) wherever the answer feeds a metric.
  */
 export function hasJiraKey(text) {
-  if (typeof text !== "string" || !text) return false;
-  const re = /\b([A-Z][A-Z0-9]+)-\d+\b/g;
+  return extractJiraKeys(text).length > 0;
+}
+
+/**
+ * Every Jira issue key in `text`, in order of first appearance, de-duped,
+ * with the same denylist `hasJiraKey` applies. `[]` for non-strings.
+ */
+export function extractJiraKeys(text) {
+  if (typeof text !== "string" || !text) return [];
+  const re = /\b([A-Z][A-Z0-9]+)-(\d+)\b/g;
+  const out = [];
   let m;
   while ((m = re.exec(text)) !== null) {
-    if (!NON_ISSUE_PREFIXES.has(m[1])) return true;
+    if (NON_ISSUE_PREFIXES.has(m[1])) continue;
+    const key = `${m[1]}-${m[2]}`;
+    if (!out.includes(key)) out.push(key);
   }
-  return false;
+  return out;
 }

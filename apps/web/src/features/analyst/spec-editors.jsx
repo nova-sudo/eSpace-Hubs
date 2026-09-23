@@ -30,6 +30,8 @@ import {
   useJenkinsJobs,
   useLabelOptions,
   DEFAULT_ASSISTED_LABELS,
+  useJiraTickets,
+  parseTicketTypes,
 } from "@/features/integrations";
 import { isoDaysAgo } from "@/lib/date";
 
@@ -195,6 +197,84 @@ export function LabelsPicker({ value, mode, options, assisted, onChange, onChang
       </div>
     </div>
   );
+}
+
+/**
+ * Which Jira issue type(s) a TICKET_TYPE_SHARE source counts, plus share vs
+ * count. Options are the issue types on the user's own Jira queue (so the
+ * names match their instance — "Bug", "Defect", "Incident"…); free text
+ * covers a type not in the sample. Stored as `filter.ticketType`, comma-
+ * separated; empty means Bug.
+ */
+export function TicketTypePicker({ value, mode, options, onChange, onChangeMode }) {
+  const current = parseTicketTypes(value);
+  const known = useMemo(() => {
+    const out = [...options];
+    for (const t of current) if (!out.includes(t)) out.push(t);
+    return out;
+  }, [options, current]);
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-2.5">
+      <Label>Ticket type</Label>
+      {known.map((t) => {
+        const on = current.includes(t);
+        return (
+          <button
+            key={t}
+            type="button"
+            onClick={() => {
+              const next = on ? current.filter((x) => x !== t) : [...current, t];
+              onChange(next.length > 0 ? next.join(", ") : null);
+            }}
+            className={`rounded-[var(--radius-pill)] px-2 py-0.5 text-[12px] font-semibold ${
+              on ? "bg-lav text-lav-ink" : "bg-card text-fg"
+            }`}
+          >
+            {t}
+          </button>
+        );
+      })}
+      <Input
+        type="text"
+        placeholder="other type, Enter"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            const t = e.currentTarget.value.trim().toLowerCase();
+            if (t && !current.includes(t)) onChange([...current, t].join(", "));
+            e.currentTarget.value = "";
+          }
+        }}
+        className="h-8 max-w-[160px]"
+      />
+      {onChangeMode ? (
+        <Select
+          tone="default"
+          size="sm"
+          value={mode === "count" ? "count" : "share"}
+          onChange={(e) => onChangeMode(e.target.value)}
+          className="ml-auto"
+          aria-label="Read as"
+        >
+          <option value="share">% of merged</option>
+          <option value="count">count</option>
+        </Select>
+      ) : null}
+    </div>
+  );
+}
+
+/** Issue-type names seen on the user's Jira queue, lower-cased, for the picker. */
+export function useTicketTypeOptions() {
+  const jira = useJiraTickets();
+  return useMemo(() => {
+    const set = new Set();
+    for (const issue of Array.isArray(jira.data?.issues) ? jira.data.issues : []) {
+      const name = issue?.fields?.issuetype?.name;
+      if (typeof name === "string" && name.trim()) set.add(name.trim().toLowerCase());
+    }
+    return [...set].sort();
+  }, [jira.data]);
 }
 
 /** True for the two widgets whose source watches PR labels. */
@@ -699,6 +779,7 @@ export function TargetEditor({ spec, onChange }) {
 export function SpecSetupEditor({ spec, onChange }) {
   const merged90 = useCombinedMergedSince(isoDaysAgo(90));
   const { options: labelOptions } = useLabelOptions();
+  const ticketTypeOptions = useTicketTypeOptions();
   const repoOptions = useMemo(
     () => listReposFromMrs(merged90.data || []),
     [merged90.data],
@@ -746,6 +827,8 @@ export function SpecSetupEditor({ spec, onChange }) {
       provider === "github_actions");
   const showJob = spec.kind !== "manual" && provider === "jenkins";
   const showLabels = spec.kind !== "manual" && Boolean(spec.source) && isLabelWidget(spec.widget);
+  const showTicketType =
+    spec.kind !== "manual" && Boolean(spec.source) && spec.widget === "TICKET_TYPE_SHARE";
   const hasTargetSlot = Boolean(spec.source || spec.manual);
 
   if (!hasTargetSlot) {
@@ -787,6 +870,19 @@ export function SpecSetupEditor({ spec, onChange }) {
           assisted={spec.widget === "ASSISTED_SHARE"}
           onChange={(labels) =>
             onChange({ ...spec, source: patchLabels(spec.source, labels) })
+          }
+          onChangeMode={(mode) =>
+            onChange({ ...spec, source: patchLabels(spec.source, undefined, mode) })
+          }
+        />
+      ) : null}
+      {showTicketType ? (
+        <TicketTypePicker
+          value={spec.source?.filter?.ticketType || null}
+          mode={spec.source?.labelMode}
+          options={ticketTypeOptions}
+          onChange={(ticketType) =>
+            onChange({ ...spec, source: patchFilter(spec.source, "ticketType", ticketType) })
           }
           onChangeMode={(mode) =>
             onChange({ ...spec, source: patchLabels(spec.source, undefined, mode) })

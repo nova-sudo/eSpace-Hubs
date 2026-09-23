@@ -144,9 +144,11 @@ function readGoal(spec, goal, ctx) {
       // record the count of merged PRs in this window for context;
       // compliance-from-snapshots aggregates it.
       return readRubric(spec, ctx);
-    // CI/CD + SCORECARD readings only exist while their widget is
-    // mounted (they aggregate SWR sources this pure module can't
-    // re-fetch) — freeze whatever the widget last published.
+    // CI/CD + SCORECARD + TICKET_TYPE_SHARE readings only exist while
+    // their widget is mounted (they aggregate SWR sources this pure module
+    // can't re-fetch — the last needs Jira issue types) — freeze whatever
+    // the widget last published.
+    case SPEC_KINDS.TICKET_TYPE_SHARE:
     case SPEC_KINDS.DEPLOY_FREQUENCY:
     case SPEC_KINDS.LEAD_TIME:
     case SPEC_KINDS.BUILD_PASS_RATE:

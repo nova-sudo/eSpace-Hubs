@@ -31,6 +31,9 @@ import {
   firstPassRatePct,
   labelSharePct,
   resolveWatchedLabels,
+  ticketTypeSharePct,
+  parseTicketTypes,
+  useJiraIssueTypes,
   medianTurnaroundDays,
   mergedWithin,
   mergedTrend,
@@ -151,6 +154,12 @@ export function useDataSource(source) {
     metric === SOURCE_METRICS.FIRST_PASS_RATE;
   const reviewCounts = useGithubReviewCounts(
     needsNotes ? windowedMerged : null,
+  );
+
+  // TICKET_TYPE_SHARE asks Jira what kind of issue each referenced key is
+  // (batched, capped — see hook). Skipped for every other metric.
+  const issueTypes = useJiraIssueTypes(
+    metric === SOURCE_METRICS.TICKET_TYPE_SHARE ? windowedMerged : null,
   );
 
   if (!source || !metric) {
@@ -330,6 +339,55 @@ export function useDataSource(source) {
               labels.join(" / ") +
               "; a qualifying merge that was never labelled cannot be seen, so this is a lower bound",
         error: merged.error,
+      }),
+    };
+  }
+
+  if (metric === SOURCE_METRICS.TICKET_TYPE_SHARE) {
+    // The ticket route to "how much of my work was X": a merged PR counts
+    // when a Jira key it references resolves to a watched issue type. Same
+    // merged list, same window, same repo scope as every other PR metric;
+    // the only extra fetch is the batched issue-type lookup.
+    const mode = source.labelMode === "count" ? "count" : "share";
+    const mrs = issueTypes.data || [];
+    const types = parseTicketTypes(source.filter?.ticketType);
+    const value = mrs.length > 0 ? ticketTypeSharePct(mrs, types) : null;
+    const unresolved = value?.unresolved ?? 0;
+    const capNote =
+      issueTypes.beyondCap > 0
+        ? `issue types resolved for the first 200 Jira keys; ${issueTypes.beyondCap} more left unresolved`
+        : null;
+    const jiraNote = !issueTypes.connected ? "Jira is not connected, so no key can be typed" : null;
+    return {
+      data: {
+        ...(value || {}),
+        mode,
+        watchedTypes: types,
+        jiraConnected: issueTypes.connected,
+        rawMrs: mrs,
+      },
+      isLoading: merged.isLoading || issueTypes.isLoading,
+      error: merged.error || issueTypes.error,
+      windowDays: days,
+      windowLabel,
+      provenance: provenanceFor({
+        sample: windowedMerged ? mrs.length : null,
+        unit: "MRs",
+        window: windowLabel,
+        fetchedAt: issueTypes.fetchedAt || merged.fetchedAt,
+        // A PR with no key, or a key Jira didn't return, cannot be typed —
+        // it is counted in the denominator and reported as unresolved, so
+        // the share is a floor over linked work, never a census.
+        truncated: true,
+        note: [
+          `counts merged PRs whose Jira ticket is ${types.join(" / ")}`,
+          unresolved > 0 ? `${unresolved} merged PR${unresolved === 1 ? "" : "s"} reference no resolvable key` : null,
+          capNote,
+          jiraNote,
+        ]
+          .filter(Boolean)
+          .join("; "),
+        error: merged.error || issueTypes.error,
       }),
     };
   }

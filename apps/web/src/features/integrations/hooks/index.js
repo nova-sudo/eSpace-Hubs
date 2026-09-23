@@ -17,6 +17,7 @@ export { useGithubMergedSince } from "./use-github-merged";
 export { useGithubReviewCounts } from "./use-github-review-counts";
 export { useRepoOptions } from "./use-repo-options";
 export { useLabelOptions } from "./use-label-options";
+export { useJiraIssueTypes } from "./use-jira-issue-types";
 export { useGithubEventsSince } from "./use-github-events";
 export { useGithubPrEventsSince } from "./use-github-pr-events";
 export {

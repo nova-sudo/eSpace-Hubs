@@ -71,6 +71,7 @@ export const SPEC_RESPONSE_SCHEMA = {
           "FIRST_PASS_RATE",
           "ASSISTED_SHARE",
           "LABEL_SHARE",
+          "TICKET_TYPE_SHARE",
           "DEPLOY_FREQUENCY",
           "LEAD_TIME",
           "BUILD_PASS_RATE",
@@ -119,6 +120,7 @@ export const SPEC_RESPONSE_SCHEMA = {
               "first_pass_rate",
               "assisted_share",
               "label_share",
+              "ticket_type_share",
               "deploy_frequency",
               "lead_time",
               "build_pass_rate",
@@ -161,7 +163,7 @@ export const SPEC_RESPONSE_SCHEMA = {
           filter: {
             type: ["object", "null"],
             additionalProperties: false,
-            required: ["repo", "job"],
+            required: ["repo", "job", "ticketType"],
             properties: {
               repo: {
                 type: ["string", "null"],
@@ -180,6 +182,13 @@ export const SPEC_RESPONSE_SCHEMA = {
                   "(Jenkins has no cross-job feed). Leave null for any " +
                   "other provider — the user picks the job in the " +
                   "Review pane after classification.",
+              },
+              ticketType: {
+                type: ["string", "null"],
+                description:
+                  "Jira issue type(s) a `ticket_type_share` source counts, " +
+                  "comma-separated and lower-case (\"bug\", \"bug, defect\"). " +
+                  "Null means Bug. Null for every other metric.",
               },
             },
           },
@@ -361,6 +370,7 @@ export const SPEC_RESPONSE_SCHEMA = {
                     "FIRST_PASS_RATE",
                     "ASSISTED_SHARE",
                     "LABEL_SHARE",
+                    "TICKET_TYPE_SHARE",
                     "DEPLOY_FREQUENCY",
                     "LEAD_TIME",
                     "BUILD_PASS_RATE",
