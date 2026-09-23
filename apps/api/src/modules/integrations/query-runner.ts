@@ -793,6 +793,10 @@ async function executeOne(
     built = registry.buildProviderRequest(revalidated, provider, {
       engagement: ctx.engagement,
       githubOrg: getEngagementConfig(ctx.engagement).githubOrg ?? null,
+      // Personal PR counts are calendar-year scoped (cycle = calendar
+      // year, #227). Decided here, once, so every template that takes a
+      // window agrees on where the year starts.
+      sinceDay: `${new Date().getUTCFullYear()}-01-01`,
     });
   } catch (err) {
     if (err instanceof HttpError) throw err;

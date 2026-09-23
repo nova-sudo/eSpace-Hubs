@@ -330,6 +330,21 @@ function assertSafePath(path) {
  */
 const GITLAB_COUNT_PAGE = 100;
 
+/**
+ * The first day of the window a personal PR count covers, as YYYY-MM-DD.
+ *
+ * A goal is a calendar-year thing here (cycle = calendar year everywhere,
+ * #227), so a count that ignores the year answers a different question than
+ * the one the goal asks — "how many bug PRs did you merge" is about THIS
+ * year's work, not the repo's history. The runner passes `ctx.sinceDay`; a
+ * caller that doesn't gets the current year's 1 January, never "all time".
+ */
+function sinceDay(ctx) {
+  const given = ctx?.sinceDay;
+  if (typeof given === "string" && /^\d{4}-\d{2}-\d{2}$/.test(given)) return given;
+  return `${new Date().getUTCFullYear()}-01-01`;
+}
+
 export const QUERY_TEMPLATES = Object.freeze({
   repo_file_exists: Object.freeze({
     id: "repo_file_exists",
@@ -370,42 +385,65 @@ export const QUERY_TEMPLATES = Object.freeze({
       `Reads when ${path} was last changed in ${repo}`,
   }),
 
+  // ── Personal PR counts ──────────────────────────────────────────────
+  //
+  // Both templates below count the USER'S OWN pull requests, THIS YEAR.
+  // They used to count every PR in the repository, all time — so a goal
+  // reading "fix 10 bug PRs" graded a person on the whole team's backlog
+  // since the repo was created. Scoping needs no username: GitHub search
+  // honours `author:@me` for the token's owner and GitLab's list API has
+  // `scope=created_by_me`, so an integration row without a stored handle
+  // still reads correctly.
+  //
+  // GitLab has no merged-date filter on the list endpoint, so the year
+  // boundary is `created_after` there and `merged:>=` on GitHub — a PR
+  // opened in December and merged in January lands on different sides on
+  // the two hosts. Noted here rather than papered over.
+
   pr_search_count: Object.freeze({
     id: "pr_search_count",
     label: "Matching pull requests",
     description:
-      "How many pull/merge requests in one repository match a bounded search phrase.",
+      "How many of your pull/merge requests in one repository, opened this year, match a bounded search phrase.",
     params: Object.freeze({ repo: "repo_slug", search_query: "search_query" }),
     extracts: Object.freeze(["count"]),
-    github: ({ repo, search_query: q }) => ({
-      path: `search/issues?q=${enc(`repo:${repo} is:pr ${q}`)}&per_page=1`,
+    github: ({ repo, search_query: q }, ctx) => ({
+      path: `search/issues?q=${enc(
+        `repo:${repo} is:pr author:@me created:>=${sinceDay(ctx)} ${q}`,
+      )}&per_page=1`,
     }),
-    gitlab: ({ repo, search_query: q }) => ({
+    gitlab: ({ repo, search_query: q }, ctx) => ({
       path: `projects/${gitlabProject(
         repo,
-      )}/merge_requests?scope=all&state=all&search=${enc(q)}&per_page=${GITLAB_COUNT_PAGE}`,
+      )}/merge_requests?scope=created_by_me&state=all&created_after=${enc(
+        sinceDay(ctx),
+      )}&search=${enc(q)}&per_page=${GITLAB_COUNT_PAGE}`,
     }),
     describe: ({ repo, search_query: q }) =>
-      `Counts pull requests in ${repo} matching “${q}”`,
+      `Counts your pull requests in ${repo} this year matching “${q}”`,
   }),
 
   pr_label_count: Object.freeze({
     id: "pr_label_count",
     label: "Labelled pull requests",
     description:
-      "How many pull/merge requests in one repository carry a given label.",
+      "How many of your pull/merge requests in one repository, merged this year, carry a given label.",
     params: Object.freeze({ repo: "repo_slug", label: "label" }),
     extracts: Object.freeze(["count"]),
-    github: ({ repo, label }) => ({
-      path: `search/issues?q=${enc(`repo:${repo} is:pr label:"${label}"`)}&per_page=1`,
+    github: ({ repo, label }, ctx) => ({
+      path: `search/issues?q=${enc(
+        `repo:${repo} is:pr is:merged author:@me merged:>=${sinceDay(ctx)} label:"${label}"`,
+      )}&per_page=1`,
     }),
-    gitlab: ({ repo, label }) => ({
+    gitlab: ({ repo, label }, ctx) => ({
       path: `projects/${gitlabProject(
         repo,
-      )}/merge_requests?scope=all&state=all&labels=${enc(label)}&per_page=${GITLAB_COUNT_PAGE}`,
+      )}/merge_requests?scope=created_by_me&state=merged&created_after=${enc(
+        sinceDay(ctx),
+      )}&labels=${enc(label)}&per_page=${GITLAB_COUNT_PAGE}`,
     }),
     describe: ({ repo, label }) =>
-      `Counts pull requests in ${repo} labelled “${label}”`,
+      `Counts your merged pull requests in ${repo} this year labelled “${label}”`,
   }),
 
   open_pr_count: Object.freeze({
