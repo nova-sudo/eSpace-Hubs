@@ -104,3 +104,67 @@ export function assistedSharePct(mrs = [], labels) {
     matched: [...matched].sort(),
   };
 }
+
+/**
+ * The general form: the same split over ANY label list. `assistedSharePct`
+ * is this with the assistant defaults; a LABEL_SHARE spec names its own
+ * (`bug`, `hotfix`, `tech-debt`…). Returns null when no labels are given —
+ * "0% of merges carried nothing in particular" is not a reading.
+ */
+export function labelSharePct(mrs = [], labels) {
+  const want = (Array.isArray(labels) ? labels : [])
+    .map((l) => (typeof l === "string" ? l.trim().toLowerCase() : null))
+    .filter(Boolean);
+  if (want.length === 0) return null;
+  return assistedSharePct(mrs, want);
+}
+
+/**
+ * Which labels a spec's source actually watches, so the widget, the
+ * snapshot and the grader all agree.
+ *
+ *   source.labels        — the spec's own list (validated, lower-cased)
+ *   source.filter.label  — the older single-label filter, honoured as a
+ *                          one-item list so nothing that saved it reads 0
+ *   ctxLabels            — a `label_select` context answer, for a spec that
+ *                          asked the user instead of naming labels itself
+ *   assistant defaults   — ASSISTED_SHARE only; LABEL_SHARE with nothing
+ *                          to watch returns [] and the widget says so
+ */
+export function resolveWatchedLabels(source, { assisted = false, ctxLabels } = {}) {
+  const own = Array.isArray(source?.labels) ? source.labels : [];
+  if (own.length > 0) return own;
+  const single = source?.filter?.label;
+  if (typeof single === "string" && single.trim()) return [single.trim().toLowerCase()];
+  const fromCtx = (Array.isArray(ctxLabels) ? ctxLabels : [])
+    .map((l) => (typeof l === "string" ? l.trim().toLowerCase() : null))
+    .filter(Boolean);
+  if (fromCtx.length > 0) return fromCtx;
+  return assisted ? [...DEFAULT_ASSISTED_LABELS] : [];
+}
+
+/**
+ * Every label seen on a merged-MR list, most frequent first — the option
+ * list for the label picker. Reading it off the feed the app already holds
+ * means "what can I track with a label?" costs no request at all, and the
+ * answer is grounded in the user's own pull requests rather than a repo's
+ * full label catalogue (most of which nobody has ever applied).
+ *
+ * Returns `[{ label, count }]`, labels lower-cased.
+ */
+export function listLabelsFromMrs(mrs = []) {
+  const counts = new Map();
+  for (const mr of Array.isArray(mrs) ? mrs : []) {
+    const have = Array.isArray(mr?.labels) ? mr.labels : [];
+    const seenOnThisMr = new Set();
+    for (const name of have) {
+      const n = typeof name === "string" ? name.trim().toLowerCase() : null;
+      if (!n || seenOnThisMr.has(n)) continue;
+      seenOnThisMr.add(n);
+      counts.set(n, (counts.get(n) || 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}

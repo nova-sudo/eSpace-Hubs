@@ -27,6 +27,12 @@ export const SPEC_KINDS = Object.freeze({
   // PR-level "% that didn't ping-pong" rate.
   FIRST_PASS_RATE: "FIRST_PASS_RATE",
   ASSISTED_SHARE: "ASSISTED_SHARE",
+  // Any label, not just an assistant's. "% of my merged PRs labelled
+  // `bug`" / "how many carried `hotfix`" — the label is the whole
+  // integration, chosen per spec (`source.labels`) from the labels
+  // actually seen on the user's pull requests. ASSISTED_SHARE is this
+  // widget with the assistant labels pre-filled.
+  LABEL_SHARE: "LABEL_SHARE",
   // Phase D3: CI/CD delivery widgets. Each is an AUTO widget that
   // reads from a single Jenkins job (`source.filter.job`) OR a
   // single GitHub Actions repo (`source.filter.repo`). Driven by
@@ -142,6 +148,7 @@ export const SOURCE_METRICS = Object.freeze({
   TICKET_CYCLE_TIME: "ticket_cycle_time",
   FIRST_PASS_RATE: "first_pass_rate",
   ASSISTED_SHARE: "assisted_share",
+  LABEL_SHARE: "label_share",
   DEPLOY_FREQUENCY: "deploy_frequency",
   LEAD_TIME: "lead_time",
   BUILD_PASS_RATE: "build_pass_rate",
@@ -174,6 +181,16 @@ export const SOURCE_PROVIDERS = Object.freeze({
 export const ALL_SOURCE_PROVIDERS = Object.freeze(Object.values(SOURCE_PROVIDERS));
 
 export const SOURCE_WINDOWS = Object.freeze(["30d", "90d", "quarter"]);
+
+/**
+ * How a label-based source reads its matches.
+ *   share — % of merged PRs in the window carrying any watched label
+ *   count — how many merged PRs carried one (the number, not the ratio)
+ */
+export const LABEL_MODES = Object.freeze(["share", "count"]);
+
+/** Cap on `source.labels` — a spec watching more than this is a search, not a goal. */
+export const MAX_SOURCE_LABELS = 10;
 
 export const MANUAL_CADENCES = Object.freeze([
   "daily",
@@ -441,6 +458,12 @@ export const CONTEXT_QUESTION_KINDS = Object.freeze([
   // repo-parameterised source out across every selected repo and
   // aggregates (count → sum, exists → any, latest_date → max).
   "repo_select",
+  // Label picker: one or more PR/MR label names chosen from the labels
+  // actually seen on the user's merged pull requests (multi-select,
+  // free-text fallback). Stored + serialised like "list" (lower-cased
+  // string array). A LABEL_SHARE / ASSISTED_SHARE widget whose
+  // `source.labels` is empty reads the first label_select answer.
+  "label_select",
 ]);
 
 export const DELEGATED_JUDGES = Object.freeze(["manager", "senior", "peer"]);
@@ -469,6 +492,10 @@ export const SPEC_KIND_META = Object.freeze({
   },
   [SPEC_KINDS.ASSISTED_SHARE]: {
     label: "Assisted share",
+    variant: SPEC_VARIANTS.AUTO,
+  },
+  [SPEC_KINDS.LABEL_SHARE]: {
+    label: "Labelled PRs",
     variant: SPEC_VARIANTS.AUTO,
   },
   [SPEC_KINDS.DEPLOY_FREQUENCY]: {

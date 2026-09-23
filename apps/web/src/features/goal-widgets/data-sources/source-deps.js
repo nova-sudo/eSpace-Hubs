@@ -22,6 +22,8 @@ export {
   firstPassRatePct,
   assistedSharePct,
   DEFAULT_ASSISTED_LABELS,
+  labelSharePct,
+  resolveWatchedLabels,
   medianTurnaroundDays,
   mergedWithin,
   mergedTrend,

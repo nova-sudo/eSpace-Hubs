@@ -114,3 +114,48 @@ test("a PR with no labels field normalises to an empty list, not undefined", () 
   assert.deepEqual(rows[0].labels, []);
   assert.equal(assistedSharePct(rows).pct, 0);
 });
+
+// ── label_share: the general form ────────────────────────────────────
+
+import { labelSharePct, listLabelsFromMrs, resolveWatchedLabels } from "./assisted.js";
+
+test("labelSharePct counts any label the spec names, not just assistant ones", () => {
+  const out = labelSharePct(
+    [merged(["bug"], 0), merged(["Bug", "hotfix"], 1), merged(["feature"], 2), merged([], 3)],
+    ["bug"],
+  );
+  assert.equal(out.assisted, 2);
+  assert.equal(out.total, 4);
+  assert.equal(out.pct, 50);
+  assert.deepEqual(out.matched, ["bug"]);
+});
+
+test("labelSharePct returns null with no labels — nothing was measured", () => {
+  assert.equal(labelSharePct([merged(["bug"], 0)], []), null);
+  assert.equal(labelSharePct([merged(["bug"], 0)], undefined), null);
+});
+
+test("resolveWatchedLabels: own list → legacy filter.label → context answer → assistant defaults", () => {
+  assert.deepEqual(resolveWatchedLabels({ labels: ["bug"] }, { assisted: true }), ["bug"]);
+  assert.deepEqual(resolveWatchedLabels({ filter: { label: " Hotfix " } }), ["hotfix"]);
+  assert.deepEqual(resolveWatchedLabels({}, { ctxLabels: ["Tech-Debt", ""] }), ["tech-debt"]);
+  assert.deepEqual(resolveWatchedLabels({}, { assisted: true }), [...DEFAULT_ASSISTED_LABELS]);
+  // LABEL_SHARE with nothing to watch is empty, not the assistant defaults.
+  assert.deepEqual(resolveWatchedLabels({}, { assisted: false }), []);
+  assert.deepEqual(resolveWatchedLabels(null), []);
+});
+
+test("listLabelsFromMrs: every label seen, most frequent first, once per PR", () => {
+  const out = listLabelsFromMrs([
+    merged(["bug", "BUG"], 0), // duplicate on one PR counts once
+    merged(["bug", "hotfix"], 1),
+    merged(["docs"], 2),
+    { merged_at: null, labels: ["open-too"] }, // listing is not gated on merge state
+  ]);
+  assert.deepEqual(out, [
+    { label: "bug", count: 2 },
+    { label: "docs", count: 1 },
+    { label: "hotfix", count: 1 },
+    { label: "open-too", count: 1 },
+  ]);
+});

@@ -34,11 +34,13 @@
  */
 
 import { SPEC_KINDS } from "@/features/goal-specs";
+import { readContextFor } from "@/features/goal-context";
 import {
   avgReviewerComments,
   filterMrsByRepo,
   firstPassRatePct,
-  assistedSharePct,
+  labelSharePct,
+  resolveWatchedLabels,
   linkagePct,
   medianTurnaroundDays,
 } from "@/features/integrations";
@@ -134,7 +136,9 @@ function readGoal(spec, goal, ctx) {
     case SPEC_KINDS.FIRST_PASS_RATE:
       return readFirstPass(spec, ctx);
     case SPEC_KINDS.ASSISTED_SHARE:
-      return readAssistedShare(spec, ctx);
+      return readLabelShare(spec, ctx, { assisted: true });
+    case SPEC_KINDS.LABEL_SHARE:
+      return readLabelShare(spec, ctx, { assisted: false });
     case SPEC_KINDS.CODE_RUBRIC:
       // Rubric grading is decoupled (PRs graded asynchronously). We
       // record the count of merged PRs in this window for context;
@@ -253,24 +257,52 @@ function readRubric(spec, ctx) {
 }
 
 /**
- * Assisted share. Reads the same windowed merged-MR list every other PR
- * metric reads and looks at the labels already on it, so the snapshot needs
- * no extra fetch — which is the whole reason this metric is cheap.
+ * Labelled share (ASSISTED_SHARE preset + LABEL_SHARE). Reads the same
+ * windowed merged-MR list every other PR metric reads and looks at the
+ * labels already on it, so the snapshot needs no extra fetch — which is the
+ * whole reason this metric is cheap.
+ *
+ * Labels resolve exactly as the widget resolves them: the spec's own list,
+ * else the legacy single filter, else the user's `label_select` answer,
+ * else (assisted only) the assistant defaults. A LABEL_SHARE spec with
+ * nothing to watch freezes null, not 0 — nothing was measured.
  */
-function readAssistedShare(spec, ctx) {
+function readLabelShare(spec, ctx, { assisted }) {
   const inWindow = mrsInWindow(specMrs(spec, ctx), ctx.weekStart, ctx.weekEnd);
-  const labels =
-    Array.isArray(spec.source?.assistedLabels) && spec.source.assistedLabels.length
-      ? spec.source.assistedLabels
-      : undefined;
-  const result = assistedSharePct(inWindow, labels);
-  const pct = result?.pct ?? null;
+  const labels = resolveWatchedLabels(spec.source, {
+    assisted,
+    ctxLabels: labelSelectAnswers(spec),
+  });
+  const result = labels.length > 0 ? labelSharePct(inWindow, labels) : null;
+  const value =
+    spec.source?.labelMode === "count"
+      ? result
+        ? result.assisted
+        : null
+      : (result?.pct ?? null);
   const target = spec.source?.target;
   return baseReading(spec, ctx, {
-    weekContribution: pct,
-    cumulative: pct,
-    windowMet: evalMet(pct, target, "recompute"),
+    weekContribution: value,
+    cumulative: value,
+    windowMet: evalMet(value, target, "recompute"),
   });
+}
+
+/** The spec's `label_select` context answers, flattened and lower-cased. */
+function labelSelectAnswers(spec) {
+  const questions = Array.isArray(spec?.context?.questions) ? spec.context.questions : [];
+  if (!questions.some((q) => q?.kind === "label_select")) return [];
+  const answers = readContextFor(spec.goalId) || {};
+  const out = [];
+  for (const q of questions) {
+    if (q?.kind !== "label_select") continue;
+    const list = Array.isArray(answers[q.id]) ? answers[q.id] : [];
+    for (const item of list) {
+      const name = typeof item === "string" ? item.trim().toLowerCase() : "";
+      if (name && !out.includes(name)) out.push(name);
+    }
+  }
+  return out;
 }
 
 function readFirstPass(spec, ctx) {

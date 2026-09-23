@@ -24,6 +24,7 @@ import { LinkageWidget } from "./linkage-widget";
 import { TicketCycleWidget } from "./ticket-cycle-widget";
 import { FirstPassRateWidget } from "./first-pass-rate-widget";
 import { AssistedShareWidget } from "./assisted-share-widget";
+import { LabelShareWidget } from "./label-share-widget";
 import { DeployFrequencyWidget } from "./deploy-frequency-widget";
 import { LeadTimeWidget } from "./lead-time-widget";
 import { BuildPassRateWidget } from "./build-pass-rate-widget";
@@ -78,6 +79,12 @@ registerWidget(SPEC_KINDS.ASSISTED_SHARE, {
   Component: AssistedShareWidget,
   description:
     "% of merged PRs carrying an assistant label (claude-code-assisted and friends). A lower bound — unlabelled assisted work can't be seen.",
+});
+registerWidget(SPEC_KINDS.LABEL_SHARE, {
+  variant: SPEC_VARIANTS.AUTO,
+  Component: LabelShareWidget,
+  description:
+    "% (or count) of merged PRs carrying a chosen label — bug, hotfix, tech-debt, anything the team applies. Picked from labels seen on your PRs. A lower bound — unlabelled work can't be seen.",
 });
 registerWidget(SPEC_KINDS.DEPLOY_FREQUENCY, {
   variant: SPEC_VARIANTS.AUTO,

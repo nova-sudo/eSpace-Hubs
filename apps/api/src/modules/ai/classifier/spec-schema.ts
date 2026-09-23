@@ -69,6 +69,8 @@ export const SPEC_RESPONSE_SCHEMA = {
           "LINKAGE",
           "TICKET_CYCLE",
           "FIRST_PASS_RATE",
+          "ASSISTED_SHARE",
+          "LABEL_SHARE",
           "DEPLOY_FREQUENCY",
           "LEAD_TIME",
           "BUILD_PASS_RATE",
@@ -93,7 +95,7 @@ export const SPEC_RESPONSE_SCHEMA = {
       source: {
         type: ["object", "null"],
         additionalProperties: false,
-        required: ["provider", "metric", "window", "target", "filter"],
+        required: ["provider", "metric", "window", "target", "filter", "labels", "labelMode"],
         properties: {
           provider: {
             type: "string",
@@ -115,6 +117,8 @@ export const SPEC_RESPONSE_SCHEMA = {
               "linkage_pct",
               "ticket_cycle_time",
               "first_pass_rate",
+              "assisted_share",
+              "label_share",
               "deploy_frequency",
               "lead_time",
               "build_pass_rate",
@@ -123,6 +127,27 @@ export const SPEC_RESPONSE_SCHEMA = {
           window: {
             type: "string",
             enum: ["30d", "90d", "quarter"],
+          },
+          labels: {
+            type: ["array", "null"],
+            items: { type: "string" },
+            description:
+              "PR/MR label names a `label_share` / `assisted_share` " +
+              "source counts (lower-case). Set ONLY when the goal text " +
+              "names the label(s) — e.g. \"PRs tagged bug\" → [\"bug\"]. " +
+              "Otherwise null, and ask with a `label_select` context " +
+              "question so the user picks from labels on their own PRs. " +
+              "For `assisted_share` null means the assistant defaults. " +
+              "Null for every other metric.",
+          },
+          labelMode: {
+            type: ["string", "null"],
+            enum: ["share", "count", null],
+            description:
+              "How a label source reads: \"share\" (% of merged PRs, the " +
+              "default) or \"count\" (how many). Use \"count\" when the " +
+              "goal says \"fix N bugs\" / \"ship N hotfixes\"; \"share\" " +
+              "when it says \"X% of my PRs\". Null for other metrics.",
           },
           target: {
             type: ["object", "null"],
@@ -220,7 +245,15 @@ export const SPEC_RESPONSE_SCHEMA = {
                 prompt: { type: "string" },
                 kind: {
                   type: "string",
-                  enum: ["text", "list", "number", "select"],
+                  enum: [
+                    "text",
+                    "list",
+                    "number",
+                    "select",
+                    "resource_link",
+                    "repo_select",
+                    "label_select",
+                  ],
                 },
                 placeholder: { type: ["string", "null"] },
                 options: {
@@ -326,6 +359,8 @@ export const SPEC_RESPONSE_SCHEMA = {
                     "LINKAGE",
                     "TICKET_CYCLE",
                     "FIRST_PASS_RATE",
+                    "ASSISTED_SHARE",
+                    "LABEL_SHARE",
                     "DEPLOY_FREQUENCY",
                     "LEAD_TIME",
                     "BUILD_PASS_RATE",

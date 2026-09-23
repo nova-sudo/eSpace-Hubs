@@ -14,6 +14,9 @@ export function validateSpec(obj: unknown): ValidationResult;
 
 export function isSpec(value: unknown): boolean;
 
+/** Trim, lower-case, de-duplicate and cap a `source.labels` list. */
+export function normalizeSourceLabels(raw: unknown): string[];
+
 export interface BuildSpecInput {
   goalId: string;
   title: string;

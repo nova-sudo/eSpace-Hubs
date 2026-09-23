@@ -13,6 +13,8 @@ export {
   SOURCE_PROVIDERS,
   ALL_SOURCE_PROVIDERS,
   SOURCE_WINDOWS,
+  LABEL_MODES,
+  MAX_SOURCE_LABELS,
   MANUAL_CADENCES,
   normalizeCadence,
   specCadence,
@@ -35,6 +37,7 @@ export {
 } from "./types.js";
 
 export type {
+  LabelMode,
   SpecKind,
   ComposedFieldKind,
   SpecField,
@@ -65,7 +68,13 @@ export type {
   ValidatedSpec,
 } from "./types.js";
 
-export { buildSpec, COMPOSED_MAX_PERIODS, isSpec, validateSpec } from "./validator.js";
+export {
+  buildSpec,
+  COMPOSED_MAX_PERIODS,
+  isSpec,
+  normalizeSourceLabels,
+  validateSpec,
+} from "./validator.js";
 export {
   CYCLE_MAX_WINDOWS,
   cycleEndForCount,
@@ -103,3 +112,33 @@ export type {
   QueryTemplate,
   QueryTemplateSummary,
 } from "./query-templates.js";
+
+export {
+  buildCycleWindows,
+  cadenceConsistency,
+  composedCycleBounds,
+  currentPeriodKey,
+  deriveCycleEndIso,
+  enumerateWindows,
+  toIsoDay,
+} from "./windows.js";
+export type { CycleWindow } from "./windows.js";
+
+export {
+  ASSIGNED_GOAL_PREFIX,
+  ASSIGNED_ROOT_ID,
+  assignedGoalId,
+  isAssignedGoalId,
+  parseAssignedGoalId,
+} from "./assigned.js";
+export {
+  assignedWindows,
+  periodStatuses,
+  summarizeStatuses,
+} from "./assigned-status.js";
+export type {
+  AssignedPeriodStatus,
+  AssignedWindow,
+  AssignedPeriodCell,
+  AssignedStatusSummary,
+} from "./assigned-status.js";

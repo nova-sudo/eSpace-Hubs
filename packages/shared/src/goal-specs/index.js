@@ -21,6 +21,8 @@ export {
   SOURCE_METRICS,
   SOURCE_PROVIDERS,
   SOURCE_WINDOWS,
+  LABEL_MODES,
+  MAX_SOURCE_LABELS,
   isSingleRecordWidget,
   SINGLE_RECORD_WIDGET_KINDS,
   NOTES_MAX,
@@ -38,7 +40,13 @@ export {
   TARGET_OPS,
 } from "./types.js";
 
-export { buildSpec, COMPOSED_MAX_PERIODS, isSpec, validateSpec } from "./validator.js";
+export {
+  buildSpec,
+  COMPOSED_MAX_PERIODS,
+  isSpec,
+  normalizeSourceLabels,
+  validateSpec,
+} from "./validator.js";
 
 // Cycle-length arithmetic (plan length ↔ inclusive end day). Shared so the
 // composer stamps `composed.cycleEnd` server-side with the same math the web
@@ -70,3 +78,29 @@ export {
   QueryTemplateError,
   validateQuerySource,
 } from "./query-templates.js";
+
+// Cycle-anchored cadence windows — moved from the web app so the API can
+// compute the same period grid for shared-goal analytics.
+export {
+  buildCycleWindows,
+  cadenceConsistency,
+  composedCycleBounds,
+  currentPeriodKey,
+  deriveCycleEndIso,
+  enumerateWindows,
+  toIsoDay,
+} from "./windows.js";
+
+// Assigned ("shared") goals: the synthetic id scheme + per-period status.
+export {
+  ASSIGNED_GOAL_PREFIX,
+  ASSIGNED_ROOT_ID,
+  assignedGoalId,
+  isAssignedGoalId,
+  parseAssignedGoalId,
+} from "./assigned.js";
+export {
+  assignedWindows,
+  periodStatuses,
+  summarizeStatuses,
+} from "./assigned-status.js";

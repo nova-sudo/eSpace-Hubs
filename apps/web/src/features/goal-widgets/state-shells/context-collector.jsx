@@ -5,6 +5,7 @@ import { Button, Label, Select } from "@/components/ui";
 import { WidgetShell } from "../widget-shell";
 import { useGoalContext } from "@/features/goal-context";
 import { RepoMultiPicker, isRepoQuestion } from "./repo-multi-picker";
+import { LabelMultiPicker, isLabelQuestion } from "./label-multi-picker";
 
 /**
  * Renders in place of a widget when `spec.context.required` and not all
@@ -221,9 +222,19 @@ function buildAnswerPairs(questions, normalizedAnswers) {
   return out;
 }
 
+/** Question kinds whose answer is a string array. */
+function isListKind(kind) {
+  return (
+    kind === "list" ||
+    kind === "resource_link" ||
+    kind === "repo_select" ||
+    kind === "label_select"
+  );
+}
+
 function serializeAnswer(value, kind) {
   if (value == null) return "";
-  if (kind === "list" || kind === "resource_link" || kind === "repo_select") {
+  if (isListKind(kind)) {
     return Array.isArray(value)
       ? value.map((s) => String(s).trim()).filter(Boolean).join("\n")
       : "";
@@ -243,7 +254,9 @@ function QuestionField({ question: q, value, onChange, onBlur }) {
   return (
     <label className="flex flex-col gap-1.5">
       <Label>{q.prompt}</Label>
-      {isRepoQuestion(q) ? (
+      {isLabelQuestion(q) ? (
+        <LabelMultiPicker value={value} onChange={onChange} onBlur={onBlur} />
+      ) : isRepoQuestion(q) ? (
         // Repo questions get the multi-select picker — including legacy
         // resource_link questions with the "owner/name" placeholder, so
         // specs composed before `repo_select` existed pick it up too.
@@ -327,7 +340,7 @@ function normalizeAnswers(questions, draft) {
   const out = {};
   for (const q of questions) {
     const raw = draft[q.id];
-    if (q.kind === "list" || q.kind === "resource_link" || q.kind === "repo_select") {
+    if (isListKind(q.kind)) {
       // Accept either the stored array or a textarea string.
       const items = Array.isArray(raw)
         ? raw

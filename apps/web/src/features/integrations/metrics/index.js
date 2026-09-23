@@ -13,7 +13,14 @@ export {
 export { avgReviewerComments } from "./rounds";
 export { linkagePct } from "./linkage";
 export { firstPassRatePct } from "./first-pass-rate";
-export { assistedSharePct, isAssisted, DEFAULT_ASSISTED_LABELS } from "./assisted";
+export {
+  assistedSharePct,
+  isAssisted,
+  DEFAULT_ASSISTED_LABELS,
+  labelSharePct,
+  listLabelsFromMrs,
+  resolveWatchedLabels,
+} from "./assisted";
 export {
   normalizeJenkinsBuild,
   normalizeGithubActionsRun,

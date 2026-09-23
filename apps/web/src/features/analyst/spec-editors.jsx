@@ -28,6 +28,8 @@ import {
   useCombinedMergedSince,
   listReposFromMrs,
   useJenkinsJobs,
+  useLabelOptions,
+  DEFAULT_ASSISTED_LABELS,
 } from "@/features/integrations";
 import { isoDaysAgo } from "@/lib/date";
 
@@ -105,6 +107,112 @@ export function RepoPicker({ value, options, onChange }) {
       ) : null}
     </div>
   );
+}
+
+/**
+ * Which PR labels a LABEL_SHARE / ASSISTED_SHARE source watches, plus
+ * whether it reads a share (%) or a count. Options are the labels seen on
+ * the user's merged PRs this year with a count each, so the picker doubles
+ * as "what could I track?". Free text covers a label the team is about to
+ * adopt. Empty on ASSISTED_SHARE means the assistant defaults; empty on
+ * LABEL_SHARE means the widget waits for a `label_select` answer.
+ */
+export function LabelsPicker({ value, mode, options, assisted, onChange, onChangeMode }) {
+  const selected = Array.isArray(value) ? value : [];
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const unselected = useMemo(
+    () => options.filter((o) => !selectedSet.has(o.label)).slice(0, 30),
+    [options, selectedSet],
+  );
+
+  function add(label) {
+    const name = String(label || "").trim().toLowerCase();
+    if (!name || selectedSet.has(name) || selected.length >= 10) return;
+    onChange([...selected, name]);
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <Label>Labels</Label>
+        {selected.length > 0 ? (
+          selected.map((label) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => onChange(selected.filter((s) => s !== label))}
+              className="rounded-[var(--radius-pill)] bg-lav px-2 py-0.5 text-[12px] font-semibold text-lav-ink"
+              title={`Stop counting ${label}`}
+            >
+              {label} ×
+            </button>
+          ))
+        ) : (
+          <span className="text-[12px] text-muted-fg">
+            {assisted
+              ? `Assistant defaults — ${DEFAULT_ASSISTED_LABELS.join(", ")}`
+              : "None yet — pick from your PRs or type one."}
+          </span>
+        )}
+        {onChangeMode ? (
+          <Select
+            tone="default"
+            size="sm"
+            value={mode === "count" ? "count" : "share"}
+            onChange={(e) => onChangeMode(e.target.value)}
+            className="ml-auto"
+            aria-label="Read as"
+          >
+            <option value="share">% of merged</option>
+            <option value="count">count</option>
+          </Select>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {unselected.map(({ label, count }) => (
+          <button
+            key={label}
+            type="button"
+            onClick={() => add(label)}
+            className="rounded-[var(--radius-pill)] bg-card px-2 py-0.5 text-[12px] text-fg"
+            title={`${count} merged PR${count === 1 ? "" : "s"} this year`}
+          >
+            {label} <span className="text-dim-fg">{count}</span>
+          </button>
+        ))}
+        <Input
+          type="text"
+          placeholder="type a label, press Enter"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              add(e.currentTarget.value);
+              e.currentTarget.value = "";
+            }
+          }}
+          className="h-8 max-w-[200px]"
+        />
+      </div>
+    </div>
+  );
+}
+
+/** True for the two widgets whose source watches PR labels. */
+export function isLabelWidget(widget) {
+  return widget === "LABEL_SHARE" || widget === "ASSISTED_SHARE";
+}
+
+/** Apply a labels / mode change to a spec.source; empty list drops the key. */
+export function patchLabels(source, labels, mode) {
+  if (!source) return null;
+  const next = { ...source };
+  const list = Array.isArray(labels) ? labels : source.labels;
+  if (Array.isArray(list) && list.length > 0) next.labels = list;
+  else delete next.labels;
+  const m = mode === undefined ? source.labelMode : mode;
+  if (m === "count") next.labelMode = "count";
+  else delete next.labelMode;
+  return next;
 }
 
 /**
@@ -590,6 +698,7 @@ export function TargetEditor({ spec, onChange }) {
  */
 export function SpecSetupEditor({ spec, onChange }) {
   const merged90 = useCombinedMergedSince(isoDaysAgo(90));
+  const { options: labelOptions } = useLabelOptions();
   const repoOptions = useMemo(
     () => listReposFromMrs(merged90.data || []),
     [merged90.data],
@@ -636,6 +745,7 @@ export function SpecSetupEditor({ spec, onChange }) {
       provider === "combined" ||
       provider === "github_actions");
   const showJob = spec.kind !== "manual" && provider === "jenkins";
+  const showLabels = spec.kind !== "manual" && Boolean(spec.source) && isLabelWidget(spec.widget);
   const hasTargetSlot = Boolean(spec.source || spec.manual);
 
   if (!hasTargetSlot) {
@@ -666,6 +776,20 @@ export function SpecSetupEditor({ spec, onChange }) {
           options={jobOptions}
           onChange={(job) =>
             onChange({ ...spec, source: patchFilter(spec.source, "job", job) })
+          }
+        />
+      ) : null}
+      {showLabels ? (
+        <LabelsPicker
+          value={spec.source?.labels || []}
+          mode={spec.source?.labelMode}
+          options={labelOptions}
+          assisted={spec.widget === "ASSISTED_SHARE"}
+          onChange={(labels) =>
+            onChange({ ...spec, source: patchLabels(spec.source, labels) })
+          }
+          onChangeMode={(mode) =>
+            onChange({ ...spec, source: patchLabels(spec.source, undefined, mode) })
           }
         />
       ) : null}

@@ -24,6 +24,8 @@ import {
   normalizeCadence,
   NOTES_MAX,
   SOURCE_WINDOWS,
+  LABEL_MODES,
+  MAX_SOURCE_LABELS,
   SPEC_NOTE_KINDS,
   SPEC_NOTE_LEVELS,
   SPEC_KIND_META,
@@ -114,9 +116,40 @@ function validateSource(source, errors) {
       filter.job = source.filter.job.trim();
     if (Object.keys(filter).length > 0) out.filter = filter;
   }
+  // Labels a LABEL_SHARE / ASSISTED_SHARE source watches. Lower-cased and
+  // de-duplicated here so the runtime match (`isAssisted`) is a plain Set
+  // lookup; capped so a spec can't become a label search. An empty list is
+  // dropped rather than kept — absence is what tells ASSISTED_SHARE to use
+  // its assistant defaults and LABEL_SHARE to read its label_select answer.
+  const labels = normalizeSourceLabels(source.labels);
+  if (labels.length > 0) out.labels = labels;
+  if (LABEL_MODES.includes(source.labelMode) && source.labelMode !== "share") {
+    out.labelMode = source.labelMode;
+  }
   const target = validateTarget(source.target, "source", errors);
   if (target) out.target = target;
   return out;
+}
+
+/**
+ * Trim, lower-case, de-duplicate and cap a label list. Accepts a string
+ * array or a legacy comma/newline-joined string; anything else → [].
+ */
+export function normalizeSourceLabels(raw) {
+  const list = Array.isArray(raw)
+    ? raw
+    : typeof raw === "string"
+      ? raw.split(/[,\n]/)
+      : [];
+  const seen = new Set();
+  for (const item of list) {
+    if (typeof item !== "string") continue;
+    const name = item.trim().toLowerCase();
+    if (!name || name.length > 100) continue;
+    seen.add(name);
+    if (seen.size >= MAX_SOURCE_LABELS) break;
+  }
+  return [...seen];
 }
 
 function validateContext(context, errors) {

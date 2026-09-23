@@ -29,6 +29,8 @@ import {
   avgReviewerComments,
   linkagePct,
   firstPassRatePct,
+  labelSharePct,
+  resolveWatchedLabels,
   medianTurnaroundDays,
   mergedWithin,
   mergedTrend,
@@ -279,22 +281,34 @@ export function useDataSource(source) {
     };
   }
 
-  if (metric === SOURCE_METRICS.ASSISTED_SHARE) {
+  if (
+    metric === SOURCE_METRICS.ASSISTED_SHARE ||
+    metric === SOURCE_METRICS.LABEL_SHARE
+  ) {
     // Reads the SAME merged-MR list every other PR metric reads, and looks at
     // the labels that were already riding along on it. That is the whole
-    // integration: coding assistants label their own pull requests, so the
-    // adoption number is a filter over data this app has fetched since day
-    // one — no new provider, token, scope or consent conversation.
+    // integration: a label is a claim someone made ON the pull request —
+    // assistant tooling stamping its own work, a triage bot marking a bug, a
+    // human tagging a hotfix — so any goal phrased "% / how many of my merges
+    // were X" is a filter over data this app has fetched since day one. No
+    // new provider, token, scope or consent conversation.
     //
-    // Labels are per-spec so a goal can count one tool rather than any, and
-    // so a team that renamed the label does not silently read 0%.
+    // ASSISTED_SHARE is the assistant preset; LABEL_SHARE watches whatever
+    // the spec names (`source.labels`) or the user picked (`label_select`,
+    // resolved into `source.labels` by the widget before it gets here).
+    const assisted = metric === SOURCE_METRICS.ASSISTED_SHARE;
+    const mode = source.labelMode === "count" ? "count" : "share";
     const mrs = windowedMerged || [];
-    const labels = Array.isArray(source.assistedLabels) && source.assistedLabels.length
-      ? source.assistedLabels
-      : DEFAULT_ASSISTED_LABELS;
-    const value = mrs.length > 0 ? assistedSharePct(mrs, labels) : null;
+    const labels = resolveWatchedLabels(source, { assisted });
+    const value = mrs.length > 0 && labels.length > 0 ? labelSharePct(mrs, labels) : null;
     return {
-      data: { ...(value || {}), watchedLabels: labels, rawMrs: mrs },
+      data: {
+        ...(value || {}),
+        mode,
+        watchedLabels: labels,
+        needsLabels: labels.length === 0,
+        rawMrs: mrs,
+      },
       isLoading: merged.isLoading,
       error: merged.error,
       windowDays: days,
@@ -304,15 +318,17 @@ export function useDataSource(source) {
         unit: "MRs",
         window: windowLabel,
         fetchedAt: merged.fetchedAt,
-        // A label only exists where the provider supports one AND the
-        // tooling applied it. An unlabelled merge is indistinguishable from
-        // an unassisted one, so the number is a FLOOR, never a census — and
-        // the grader is told exactly that rather than left to assume.
+        // A label only exists where the provider supports one AND someone
+        // applied it. An unlabelled merge is indistinguishable from one that
+        // didn't qualify, so the number is a FLOOR, never a census — and the
+        // grader is told exactly that rather than left to assume.
         truncated: true,
         note:
-          "counts merged PRs carrying " +
-          labels.join(" / ") +
-          "; an assisted merge that was never labelled cannot be seen, so this is a lower bound",
+          labels.length === 0
+            ? "no labels chosen yet — nothing is being counted"
+            : "counts merged PRs carrying " +
+              labels.join(" / ") +
+              "; a qualifying merge that was never labelled cannot be seen, so this is a lower bound",
         error: merged.error,
       }),
     };

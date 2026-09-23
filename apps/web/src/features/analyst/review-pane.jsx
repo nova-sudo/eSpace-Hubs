@@ -36,6 +36,7 @@ import {
   useCombinedMergedSince,
   listReposFromMrs,
   useJenkinsJobs,
+  useLabelOptions,
 } from "@/features/integrations";
 import { isoDaysAgo } from "@/lib/date";
 import { ANALYSIS } from "./ai/analysis-events";
@@ -44,6 +45,9 @@ import {
   RepoPicker,
   JobPicker,
   patchFilter,
+  LabelsPicker,
+  isLabelWidget,
+  patchLabels,
 } from "./spec-editors";
 
 // Map each widget to the kind(s) that are valid for it. The validator
@@ -141,6 +145,7 @@ export function ReviewPane({
   // dashboard reuses the response. When Jenkins isn't connected the
   // hook returns an empty array — the picker falls back to free-text.
   const { jobs: jenkinsJobs } = useJenkinsJobs();
+  const { options: labelOptions } = useLabelOptions();
   const jobOptions = useMemo(
     () =>
       (jenkinsJobs || [])
@@ -193,6 +198,7 @@ export function ReviewPane({
             meta={goalsById.get(goalId)}
             repoOptions={repoOptions}
             jobOptions={jobOptions}
+            labelOptions={labelOptions}
             onSave={() => {
               const result = commitSpec(goalId);
               if (!result.ok) {
@@ -267,6 +273,11 @@ export function ReviewPane({
                 source: patchFilter(spec.source, "job", job),
               });
             }}
+            onChangeLabels={(labels, mode) => {
+              updatePendingSpec(goalId, {
+                source: patchLabels(spec.source, labels, mode),
+              });
+            }}
             onChangeScorecard={(nextScorecard) => {
               // Patch the whole scorecard block. Also derives the
               // outer `kind` from the components (auto if all-AUTO,
@@ -334,6 +345,7 @@ function PendingCard({
   meta,
   repoOptions = [],
   jobOptions = [],
+  labelOptions = [],
   onSave,
   onSkip,
   onChangeWidget,
@@ -341,6 +353,7 @@ function PendingCard({
   onSetUntrackable,
   onChangeRepo,
   onChangeJob,
+  onChangeLabels,
   onChangeScorecard,
 }) {
   const kindsOk = validKindsFor(spec.widget);
@@ -367,6 +380,9 @@ function PendingCard({
     !isUntrackable && !isScorecard && sourceProvider === "jenkins";
   const currentRepo = spec.source?.filter?.repo || "";
   const currentJob = spec.source?.filter?.job || "";
+  const showLabelsPicker =
+    !isUntrackable && !isScorecard && Boolean(spec.source) && isLabelWidget(spec.widget);
+  const currentLabels = Array.isArray(spec.source?.labels) ? spec.source.labels : [];
   const kindMismatch =
     !isUntrackable &&
     widgetMeta?.variant !== spec.kind &&
@@ -423,6 +439,7 @@ function PendingCard({
         {isUntrackable ? <Badge tone="lemon">Untrackable</Badge> : null}
         {currentRepo ? <Badge tone="lav">Repo · {currentRepo}</Badge> : null}
         {currentJob ? <Badge>Job · {currentJob}</Badge> : null}
+        {currentLabels.length ? <Badge tone="lav">Labels · {currentLabels.join(", ")}</Badge> : null}
         {kindMismatch ? <Badge tone="peach">Kind/variant mismatch</Badge> : null}
       </div>
 
@@ -442,6 +459,20 @@ function PendingCard({
           permissions, or just empty controller). */}
       {showJobPicker ? (
         <JobPicker value={currentJob} options={jobOptions} onChange={onChangeJob} />
+      ) : null}
+
+      {/* Label picker — LABEL_SHARE / ASSISTED_SHARE only. Options are the
+          labels seen on the user's merged PRs this year, so the list is
+          also the answer to "what could I track with a label?". */}
+      {showLabelsPicker ? (
+        <LabelsPicker
+          value={currentLabels}
+          mode={spec.source?.labelMode}
+          options={labelOptions}
+          assisted={spec.widget === "ASSISTED_SHARE"}
+          onChange={(labels) => onChangeLabels(labels, undefined)}
+          onChangeMode={(mode) => onChangeLabels(undefined, mode)}
+        />
       ) : null}
 
       {/* SCORECARD sub-editor — surfaces each component with its own

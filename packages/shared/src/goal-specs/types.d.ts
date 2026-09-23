@@ -16,6 +16,7 @@ export const SPEC_KINDS: Readonly<{
   readonly TICKET_CYCLE: "TICKET_CYCLE";
   readonly FIRST_PASS_RATE: "FIRST_PASS_RATE";
   readonly ASSISTED_SHARE: "ASSISTED_SHARE";
+  readonly LABEL_SHARE: "LABEL_SHARE";
   readonly DEPLOY_FREQUENCY: "DEPLOY_FREQUENCY";
   readonly LEAD_TIME: "LEAD_TIME";
   readonly BUILD_PASS_RATE: "BUILD_PASS_RATE";
@@ -55,6 +56,7 @@ export const SOURCE_METRICS: Readonly<{
   readonly TICKET_CYCLE_TIME: "ticket_cycle_time";
   readonly FIRST_PASS_RATE: "first_pass_rate";
   readonly ASSISTED_SHARE: "assisted_share";
+  readonly LABEL_SHARE: "label_share";
   readonly DEPLOY_FREQUENCY: "deploy_frequency";
   readonly LEAD_TIME: "lead_time";
   readonly BUILD_PASS_RATE: "build_pass_rate";
@@ -86,6 +88,11 @@ export const ALL_SOURCE_PROVIDERS: readonly SourceProvider[];
 
 export const SOURCE_WINDOWS: readonly ["30d", "90d", "quarter"];
 export type SourceWindow = (typeof SOURCE_WINDOWS)[number];
+
+/** How a label-based source reads its matches: a percentage or a count. */
+export const LABEL_MODES: readonly ["share", "count"];
+export type LabelMode = (typeof LABEL_MODES)[number];
+export const MAX_SOURCE_LABELS: 10;
 
 export const MANUAL_CADENCES: readonly [
   "daily",
@@ -120,6 +127,9 @@ export const CONTEXT_QUESTION_KINDS: readonly [
   // providers. Answer is a string array; repo-parameterised sources fan
   // out across every selected repo (see query-runner).
   "repo_select",
+  // One or more PR/MR label names picked from the labels seen on the
+  // user's merged pull requests. Answer is a lower-cased string array.
+  "label_select",
 ];
 export type ContextQuestionKind = (typeof CONTEXT_QUESTION_KINDS)[number];
 
@@ -170,6 +180,14 @@ export interface SpecSource {
      */
     job?: string;
   };
+  /**
+   * Labels a LABEL_SHARE / ASSISTED_SHARE source watches, lower-cased.
+   * Empty on ASSISTED_SHARE means the assistant defaults; empty on
+   * LABEL_SHARE means "read the spec's label_select answer".
+   */
+  labels?: string[];
+  /** share (%) or count — defaults to share. */
+  labelMode?: LabelMode;
   target?: SpecTarget;
 }
 
