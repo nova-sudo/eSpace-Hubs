@@ -14,6 +14,7 @@
 import { useMemo } from "react";
 import { useGoals } from "@/features/goals";
 import { useGoalSpecs } from "@/features/goal-specs";
+import { isAssignedGoalId } from "@espace-devhub/shared/goal-specs";
 
 function flattenGoals(tree) {
   const out = [];
@@ -30,7 +31,8 @@ function flattenGoals(tree) {
 
 export function useGoalWidgetItems() {
   const {
-    goals,
+    // Own goals + shared goals assigned to this user (read-only plans).
+    allGoals: goals,
     fetched: goalsFetched,
     error: goalsError,
     retry: retryGoals,
@@ -106,7 +108,11 @@ export function useGoalWidgetItems() {
     // The analyst classifies L2s only; the dashboard renders L1s as
     // section headers above their L2 children. Filtering them out
     // here keeps the toolbar's "N goals unclassified" count honest.
-    return flat.filter((g) => g.kind !== "L1" && !specs.has(g.id));
+    // A shared goal always has a spec (server-injected); if one briefly
+    // doesn't, it's still not the user's to classify.
+    return flat.filter(
+      (g) => g.kind !== "L1" && !specs.has(g.id) && !isAssignedGoalId(g.id),
+    );
   }, [goals, specs]);
 
   const hasGoals = (goals?.l1s?.length || 0) > 0;

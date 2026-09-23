@@ -27,6 +27,7 @@ import {
 import { useGoals } from "./use-goals";
 import { GoalsImport } from "./goals-import";
 import { PastCycles } from "./past-cycles";
+import { ArchivedSharedGoals } from "@/features/assigned-goals";
 
 /**
  * L1 / L2 goal tree editor.
@@ -121,6 +122,7 @@ export function GoalsEditor() {
       {/* Archived prior trees (F2 v1) — replace imports freeze the
           outgoing tree here instead of destroying it. */}
       <PastCycles />
+      <ArchivedSharedGoals />
     </div>
   );
 }

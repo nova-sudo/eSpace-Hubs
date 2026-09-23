@@ -50,6 +50,8 @@ export const goalInputsValidator: Document = {
       },
       note: { bsonType: ["string", "null"], maxLength: 2000 },
       source: { enum: [...ALL_GOAL_INPUT_SOURCES] },
+      // Server write time (the true "submitted at"); absent on older rows.
+      createdAt: { bsonType: "date" },
     },
   },
 };

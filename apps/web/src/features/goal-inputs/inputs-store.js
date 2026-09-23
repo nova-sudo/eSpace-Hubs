@@ -33,6 +33,7 @@
 
 import { validateInput } from "./schema";
 import { apiDelete, apiGet, apiPost } from "@/lib/api-client";
+import { isAssignedGoalId } from "@espace-devhub/shared/goal-specs";
 
 const CHANGE_EVENT = "goal-inputs:change";
 
@@ -240,7 +241,9 @@ async function appendEntryRemote(optimistic) {
  * failure. A 404 means the server already lacks it — keep the removal.
  */
 export function removeEntry(goalId, ts) {
-  if (!goalId) return;
+  // Shared goals: entries can be superseded, never deleted (the server
+  // 403s) — the first save is the manager's "submitted at".
+  if (!goalId || isAssignedGoalId(goalId)) return;
   const list = state.byGoal[goalId] || [];
   const target = list.find((e) => e.ts === ts);
   if (!target) return;
@@ -310,7 +313,7 @@ function reinsertEntry(goalId, entry, error) {
  * individual delete failures are absorbed). Rare, user-initiated.
  */
 export function clearGoalEntries(goalId) {
-  if (!goalId || !state.byGoal[goalId]) return;
+  if (!goalId || !state.byGoal[goalId] || isAssignedGoalId(goalId)) return;
   const removed = state.byGoal[goalId];
   const nextByGoal = { ...state.byGoal };
   delete nextByGoal[goalId];
@@ -350,7 +353,7 @@ async function clearGoalRemote(goalId, removed) {
  * local replace, then a background delete-all-then-post-all for the goal.
  */
 export function replaceGoalEntries(goalId, entries) {
-  if (!goalId) return { saved: 0, skipped: [] };
+  if (!goalId || isAssignedGoalId(goalId)) return { saved: 0, skipped: [] };
   const saved = [];
   const skipped = [];
   for (const entry of entries || []) {
@@ -423,5 +426,7 @@ function toLocalEntry(s) {
     ts: ms,
     value: s.value,
     note: s.note ?? undefined,
+    // Server write time — the "submitted at" shared-goal lateness keys on.
+    ...(typeof s.createdAt === "string" ? { createdAt: Date.parse(s.createdAt) } : {}),
   };
 }

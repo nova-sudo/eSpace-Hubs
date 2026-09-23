@@ -39,6 +39,7 @@ import { effectiveRoles } from "../lib/user-roles.js";
 import { sendEmail } from "../lib/email.js";
 import { logger } from "../lib/logger.js";
 import { ObjectId as OID } from "mongodb";
+import { assignedPeriodsOwed } from "./assigned-goals-job.js";
 
 const DAY_MS = 86_400_000;
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -51,7 +52,7 @@ const DONE_TIERS = new Set(["achieved", "over_achieved", "role_model"]);
  * (or the ledger is unreachable, in which case we DON'T act: silence
  * beats a duplicate nudge on every tick of a flaky deploy).
  */
-async function claimStamp(key: string): Promise<boolean> {
+export async function claimStamp(key: string): Promise<boolean> {
   try {
     const col = await getSchedulerStampsCollection();
     await col.insertOne({ _id: new OID(), key, at: new Date() });
@@ -499,7 +500,9 @@ export async function sendWeeklyDigests(now: Date): Promise<void> {
           })
         : 0;
 
-      if (dueSoon.length + overdue.length + unread + pendingApprovals === 0) continue;
+      const sharedOwed = await assignedPeriodsOwed(user.orgId, user._id, now);
+
+      if (dueSoon.length + overdue.length + unread + pendingApprovals + sharedOwed === 0) continue;
 
       const lines = [
         `Your week at eSpace Dev Hub (${week})`,
@@ -517,6 +520,9 @@ export async function sendWeeklyDigests(now: Date): Promise<void> {
               ...dueSoon.slice(0, 10).map((d) => `  - ${d.title} — due ${d.dueDate}`),
               "",
             ]
+          : []),
+        ...(sharedOwed
+          ? [`SHARED GOALS OWED: ${sharedOwed} period${sharedOwed === 1 ? "" : "s"} open or missing`, ""]
           : []),
         ...(pendingApprovals
           ? [`APPROVALS WAITING ON YOU: ${pendingApprovals}`, ""]

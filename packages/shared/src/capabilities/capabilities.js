@@ -43,6 +43,12 @@ export const CAPABILITIES = Object.freeze({
   // Real UI lands in a follow-up; capability shipped now so the
   // role definition is complete.
   MANAGER_TEAM_VIEW: "manager.team.view",
+
+  // ─── Shared goals ───────────────────────────────────────────────
+  // Author a goal, assign it to people across the org and share its
+  // analytics. Separate from team view: sharing reaches beyond your
+  // direct reports.
+  ASSIGNED_GOALS_MANAGE: "assigned_goals.manage",
 });
 
 /**

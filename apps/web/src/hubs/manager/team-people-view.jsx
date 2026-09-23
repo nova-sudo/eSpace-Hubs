@@ -84,7 +84,7 @@ export function TeamPeopleView({ reports, perReport, link, toolCounts }) {
           {[
             { href: "/delegated", label: "Delegated", count: toolCounts.delegated },
             { href: "/approvals", label: "Approvals", count: toolCounts.approvals },
-            { href: "/tier-policies", label: "Tier policies", count: null },
+            { href: "/tier-policies", label: "Goals & policies", count: null },
           ].map((tool) => (
             <Link
               key={tool.href}

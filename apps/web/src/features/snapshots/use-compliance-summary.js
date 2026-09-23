@@ -125,7 +125,7 @@ function liveStanding(spec, entries, snapshots, goalId) {
 
 export function useComplianceSummary() {
   const { snapshots } = useSnapshots();
-  const { goals, fetched: goalsFetched } = useGoals();
+  const { allGoals: goals, fetched: goalsFetched } = useGoals(); // incl. shared goals
   const { specs, fetched: specsFetched } = useGoalSpecs();
   // Subscribe to the inputs store tick so the summary recomputes when the
   // user logs/ticks anything (and so the one-shot hydration fires).

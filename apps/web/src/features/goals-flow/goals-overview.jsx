@@ -20,6 +20,7 @@
 import { Badge, Card, Label, PacedBar, ProgressRing, yearElapsedPercent } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { tierDotColor } from "./goal-status";
+import { ASSIGNED_ROOT_ID } from "@espace-devhub/shared/goal-specs";
 
 const MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -73,7 +74,9 @@ export function ObjectiveTiles({ rows, selectedId, onSelect, collapsedIds }) {
       {rows.map((row) => {
         const selected = selectedId === row.l1.id;
         const collapsed = collapsedIds.has(row.l1.id);
-        const weight = row.l1.weightage;
+        // Shared goals weigh nothing in the owner's cycle — show no weight.
+        const shared = row.l1.id === ASSIGNED_ROOT_ID;
+        const weight = shared ? null : row.l1.weightage;
         const title = row.l1.title || "(untitled)";
         return (
           <button
@@ -103,7 +106,10 @@ export function ObjectiveTiles({ rows, selectedId, onSelect, collapsedIds }) {
                 >
                   {row.rollup.pct}
                 </ProgressRing>
-                <Badge tone={row.rollup.tone}>{row.rollup.label}</Badge>
+                <span className="flex flex-col items-end gap-1">
+                  <Badge tone={row.rollup.tone}>{row.rollup.label}</Badge>
+                  {shared ? <Badge tone="sky">Shared</Badge> : null}
+                </span>
               </div>
 
               <div

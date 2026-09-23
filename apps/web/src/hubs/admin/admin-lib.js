@@ -78,7 +78,8 @@ const PAGE_LABELS = {
   employees: "Employees",
   delegated: "Delegated",
   approvals: "Approvals",
-  tierpolicies: "Tier policies",
+  tierpolicies: "Goals & policies",
+  sharedgoals: "Shared with me",
 };
 
 export function pageLabel(slot) {

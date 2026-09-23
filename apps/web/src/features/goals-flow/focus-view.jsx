@@ -21,6 +21,7 @@ import { cn } from "@/lib/cn";
 import { humanizeKind } from "./flow-row-meta";
 import { tierDotColor } from "./goal-status";
 import { WindowStrip } from "./window-strip";
+import { ASSIGNED_ROOT_ID } from "@espace-devhub/shared/goal-specs";
 
 export function FocusView({
   rows,
@@ -51,6 +52,7 @@ export function FocusView({
                 <Label caps className="min-w-0 flex-1 truncate">
                   {row.l1.title || "Untitled objective"}
                 </Label>
+                {row.l1.id === ASSIGNED_ROOT_ID ? <Badge tone="sky">Shared</Badge> : null}
                 <ChevronDown
                   size={13}
                   className={cn(

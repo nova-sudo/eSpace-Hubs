@@ -30,6 +30,7 @@ import { useIsContextComplete } from "@/features/goal-context";
 import { CadenceStepper } from "./cadence-stepper";
 import { isGoalReady } from "./readiness";
 import { ProvenanceChip } from "./provenance-chip";
+import { AssignedStatusChip } from "./assigned-status-chip";
 
 export function WidgetShell({
   spec,
@@ -51,8 +52,16 @@ export function WidgetShell({
   // Optional user-controls injected by <GoalWidget>. Null handlers skip
   // rendering — widgets rendered outside the resolver (e.g. tests) still
   // work unchanged.
-  const { onMarkDelegated, onEditContext, onReanalyze, onComposeOwn, onEditSetup, onEditPlan } =
-    useWidgetControls();
+  const {
+    onMarkDelegated,
+    onEditContext,
+    onReanalyze,
+    onComposeOwn,
+    onEditSetup,
+    onEditPlan,
+    // Set only for a SHARED goal — renders the "Shared by X · due …" strip.
+    assigned,
+  } = useWidgetControls();
   // Readiness gate for the cadence stepper. The state shells (ContextCollector
   // / Delegated / Untrackable) also render through WidgetShell, so gating the
   // stepper on widget-variant alone leaked it into the "define before tracking"
@@ -96,6 +105,8 @@ export function WidgetShell({
           {rightChip ? <span className="shrink-0">{rightChip}</span> : null}
         </div>
       ) : null}
+
+      {assigned ? <AssignedStatusChip spec={spec} assigned={assigned} /> : null}
 
       {title ? (
         <div

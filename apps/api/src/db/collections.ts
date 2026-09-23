@@ -17,6 +17,7 @@ import type { Collection } from "mongodb";
 import { getDb } from "./client.js";
 import { logger } from "../lib/logger.js";
 import type {
+  AssignedGoal,
   AuditLogEntry,
   AuthToken,
   CompanionDevice,
@@ -191,6 +192,13 @@ export async function getManagerGoalVerdictsCollection(): Promise<
 > {
   const db = await getDb();
   return db.collection<ManagerGoalVerdict>("manager_goal_verdicts");
+}
+
+export async function getAssignedGoalsCollection(): Promise<
+  Collection<AssignedGoal>
+> {
+  const db = await getDb();
+  return db.collection<AssignedGoal>("assigned_goals");
 }
 
 export async function getGoalTierPoliciesCollection(): Promise<
@@ -671,8 +679,18 @@ async function ensureIndexes(): Promise<void> {
     },
   ]);
 
+  const assignedGoals = await getAssignedGoalsCollection();
+  await assignedGoals.createIndexes([
+    // "What's assigned to me" — merged into every GET /goals + /goal-specs.
+    { key: { orgId: 1, assigneeIds: 1, status: 1 }, name: "assigned_goals_org_assignee_status" },
+    // "Shared with me" (viewers).
+    { key: { orgId: 1, viewerIds: 1, status: 1 }, name: "assigned_goals_org_viewer_status" },
+    // A creator's own list, newest first.
+    { key: { orgId: 1, createdBy: 1, createdAt: -1 }, name: "assigned_goals_org_creator_created" },
+  ]);
+
   logger.debug(
-    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs, snapshots, grading_verdicts, integrations, hub_configs, companion_devices, companion_pairings, notifications, manager_goal_verdicts, goal_tier_policies",
+    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs, snapshots, grading_verdicts, integrations, hub_configs, companion_devices, companion_pairings, notifications, manager_goal_verdicts, goal_tier_policies, assigned_goals",
   );
 }
 

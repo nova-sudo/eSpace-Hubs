@@ -39,6 +39,8 @@ import {
   getGoalSpecsCollection,
   getUsersCollection,
 } from "../../db/collections.js";
+import { assignedSpecRecordFor } from "../../lib/assigned-goals.js";
+import { isAssignedGoalId } from "@espace-devhub/shared/goal-specs";
 import { DEFAULT_ENGAGEMENT, type Engagement } from "../../db/types.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import { requireAuth } from "../../middleware/require-auth.js";
@@ -166,12 +168,16 @@ export async function queryFieldHandler(
 
     // Org-scoped AND user-scoped: a spec belongs to the dev who owns the
     // goal, and the token we are about to spend is theirs too.
-    const specs = await getGoalSpecsCollection();
-    const specDoc = await specs.findOne({
-      orgId: session.orgId,
-      userId: session.userId,
-      goalId,
-    });
+    // A shared goal's spec isn't stored per user — it's the assigned goal's
+    // plan, readable only by its assignees. The query still spends the
+    // assignee's own token against their own repos.
+    const specDoc = isAssignedGoalId(goalId)
+      ? await assignedSpecRecordFor(session.orgId, session.userId, goalId)
+      : await (await getGoalSpecsCollection()).findOne({
+          orgId: session.orgId,
+          userId: session.userId,
+          goalId,
+        });
     if (!specDoc?.spec) {
       throw new HttpError(404, "spec_not_found", "This tracker no longer exists.");
     }

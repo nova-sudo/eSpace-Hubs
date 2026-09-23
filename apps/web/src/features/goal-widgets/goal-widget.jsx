@@ -38,6 +38,7 @@ import { useIsContextComplete, readContextFor } from "@/features/goal-context";
 import { saveSpec } from "@/features/goal-specs";
 import { clearGoalEntries } from "@/features/goal-inputs";
 import { clearGoalLocks } from "@/features/goal-locks";
+import { isAssignedGoalId } from "@espace-devhub/shared/goal-specs";
 // analyst-page.jsx pulls GoalWidgetsGrid from @/features/goal-widgets, so
 // these barrel imports close a goal-widgets ↔ analyst ES-module cycle.
 // That's fine here: every one of these bindings is referenced at render /
@@ -88,6 +89,46 @@ export function GoalWidget({
   const contextComplete = useIsContextComplete(spec);
 
   if (!spec) return null;
+
+  // A SHARED goal (assigned by a manager): the plan is theirs, so every
+  // plan-changing control is withheld — the assignee only fills it in.
+  // The server enforces the same (403 on any spec write for asg_ ids).
+  if (isAssignedGoalId(spec.goalId) || isAssignedGoalId(goal?.id)) {
+    // Repo-backed fields need THIS assignee's setup answers (which repo,
+    // which file) before they can read — answering is filling, not editing
+    // the plan, so the collector shows; re-analysis / compose don't.
+    if (spec.context?.required && (!contextComplete || forceEditContext)) {
+      return (
+        <WidgetErrorBoundary>
+          <ContextCollector
+            spec={spec}
+            goal={goal}
+            className={className}
+            onSaved={() => setForceEditContext(false)}
+          />
+        </WidgetErrorBoundary>
+      );
+    }
+    const def = resolveWidget(spec);
+    if (!def) return null;
+    const Widget = def.Component;
+    const readOnlyControls = {
+      onMarkDelegated: null,
+      onEditContext: spec.context?.questions?.length ? () => setForceEditContext(true) : null,
+      onReanalyze: null,
+      onComposeOwn: null,
+      onEditSetup: null,
+      onEditPlan: null,
+      assigned: goal?.assigned ?? { byName: null, graceHours: 0 },
+    };
+    return (
+      <WidgetErrorBoundary>
+        <WidgetControlsProvider value={readOnlyControls}>
+          <Widget spec={spec} goal={goal} variant={variant} className={className} />
+        </WidgetControlsProvider>
+      </WidgetErrorBoundary>
+    );
+  }
 
   const composeModal = (
     <ComposeWidgetModal

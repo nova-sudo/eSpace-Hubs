@@ -30,7 +30,7 @@ import {
   ManagerEmployees,
   ManagerDelegated,
   ManagerApprovals,
-  ManagerTierPolicies,
+  ManagerGoalsPolicies,
 } from "@/hubs/manager";
 
 /**
@@ -94,7 +94,8 @@ const MANAGER_SLOT_COMPONENTS = {
   employees: ManagerEmployees,
   delegated: ManagerDelegated,
   approvals: ManagerApprovals,
-  tierpolicies: ManagerTierPolicies,
+  // Goals & policies: shared goals + the tier-policy editor as tabs.
+  tierpolicies: ManagerGoalsPolicies,
 };
 
 export function getManagerSlotComponent(slot) {

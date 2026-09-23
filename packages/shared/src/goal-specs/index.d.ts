@@ -113,3 +113,33 @@ export type {
   QueryTemplateSummary,
 } from "./query-templates.js";
 
+export {
+  buildCycleWindows,
+  cadenceConsistency,
+  composedCycleBounds,
+  currentPeriodKey,
+  deriveCycleEndIso,
+  enumerateWindows,
+  toIsoDay,
+} from "./windows.js";
+export type { CycleWindow } from "./windows.js";
+
+export {
+  ASSIGNED_GOAL_PREFIX,
+  ASSIGNED_ROOT_ID,
+  assignedGoalId,
+  isAssignedGoalId,
+  parseAssignedGoalId,
+} from "./assigned.js";
+export {
+  assignedWindows,
+  localMidnight,
+  periodStatuses,
+  summarizeStatuses,
+} from "./assigned-status.js";
+export type {
+  AssignedPeriodStatus,
+  AssignedWindow,
+  AssignedPeriodCell,
+  AssignedStatusSummary,
+} from "./assigned-status.js";

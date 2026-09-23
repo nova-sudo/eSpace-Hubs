@@ -37,6 +37,7 @@ const NAV_ITEMS = [
   { slot: "delegated", subpath: "/delegated" },
   { slot: "approvals", subpath: "/approvals" },
   { slot: "tierpolicies", subpath: "/tier-policies" },
+  { slot: "sharedgoals", subpath: "/shared-goals" },
   // "checkin" retired — filling now lives on the Goals page via the per-widget
   // cadence stepper. The /checkin routes redirect to Goals for old bookmarks.
   { slot: "goals", subpath: "/goals" },
@@ -64,7 +65,8 @@ const DEFAULT_LABELS = {
   employees: "Employees",
   delegated: "Delegated",
   approvals: "Approvals",
-  tierpolicies: "Tier policies",
+  tierpolicies: "Goals & policies",
+  sharedgoals: "Shared with me",
   reviews: "Reviews",
   snapshots: "Snapshots",
 };
@@ -89,7 +91,13 @@ const HUB_SLOT_LABEL_OVERRIDES = {
  * per-slot because QA has a "dashboard" slot of its own that must keep
  * its entry.
  */
-const HUB_HIDDEN_NAV_SLOTS = {};
+const HUB_HIDDEN_NAV_SLOTS = {
+  // Engineers rarely view someone else's shared goal; the notification that
+  // shares one deep-links to /shared-goals, so the route stays reachable
+  // without a permanent nav pill on the busiest hubs.
+  dev: ["sharedgoals"],
+  qa: ["sharedgoals"],
+};
 
 function labelFor(slot, hubId) {
   const hubOverride = HUB_SLOT_LABEL_OVERRIDES[hubId];

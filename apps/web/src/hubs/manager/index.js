@@ -9,3 +9,4 @@ export { ManagerEmployeeBoard } from "./manager-employee-board.jsx";
 export { ManagerDelegated } from "./manager-delegated.jsx";
 export { ManagerApprovals } from "./manager-approvals.jsx";
 export { ManagerTierPolicies } from "./manager-tier-policies.jsx";
+export { ManagerGoalsPolicies } from "./manager-goals-policies.jsx";

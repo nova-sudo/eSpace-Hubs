@@ -17,6 +17,13 @@ import type { NextFunction, Request, Response } from "express";
 import { ObjectId } from "mongodb";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import {
+  assignedSpecRecordFor,
+  effectiveSpecDocs,
+  withAssignedTree,
+} from "../../lib/assigned-goals.js";
+import { isAssignedGoalId } from "@espace-devhub/shared/goal-specs";
+import {
+  getAssignedGoalsCollection,
   getGoalContextCollection,
   getGoalInputsCollection,
   getGoalSpecsCollection,
@@ -31,6 +38,7 @@ import type {
   TierCriteria,
   User,
   UserRole,
+  GoalSpecRecord,
 } from "../../db/types.js";
 import { WHOLE_GOAL_TIER_KEY } from "../../db/types.js";
 import {
@@ -209,8 +217,17 @@ async function computeGoalHealth(orgId: ObjectId, target: User) {
 
     const [tree, specDocs, ctxDocs, verdictDocs, activity, managerVerdictMap] =
       await Promise.all([
-        getGoalsCollection().then((c) => c.findOne(scope)),
-        getGoalSpecsCollection().then((c) => c.find(scope).toArray()),
+        // Shared goals assigned to this report ride along, so their line
+        // manager sees (and can grade) them on the board.
+        getGoalsCollection()
+          .then((c) => c.findOne(scope))
+          .then((t) => withAssignedTree(orgId, target._id, t)),
+        getGoalSpecsCollection()
+          .then((c) => c.find(scope).toArray())
+          .then(
+            async (docs) =>
+              (await effectiveSpecDocs(orgId, target._id, docs)) as typeof docs,
+          ),
         getGoalContextCollection().then((c) => c.find(scope).toArray()),
         // Whole-goal verdicts only — per-window verdicts (a single quarter
         // graded on its own) now live in this same collection, and a manager
@@ -412,8 +429,16 @@ export async function getReportGoalDetailHandler(
 
     const [tree, specDoc, aiDoc, managerVerdictMap, inputs, totalEntryCount] =
       await Promise.all([
-        getGoalsCollection().then((c) => c.findOne(scope)),
-        getGoalSpecsCollection().then((c) => c.findOne({ ...scope, goalId })),
+        getGoalsCollection()
+          .then((c) => c.findOne(scope))
+          .then((t) => withAssignedTree(session.orgId, target._id, t)),
+        isAssignedGoalId(goalId)
+          ? (assignedSpecRecordFor(
+              session.orgId,
+              target._id,
+              String(goalId),
+            ) as Promise<GoalSpecRecord | null>)
+          : getGoalSpecsCollection().then((c) => c.findOne({ ...scope, goalId })),
         // Whole-goal verdict only — see the identical guard in
         // getReportGoalHealthHandler above. Without the periodKey filter,
         // `findOne` on a collection that can now hold multiple rows per
@@ -537,8 +562,13 @@ export async function putGoalVerdictHandler(
     const note = typeof body.note === "string" ? body.note.slice(0, 4_000) : "";
 
     // The goal must exist in this report's tree — no orphan verdicts.
-    const tree = await getGoalsCollection().then((c) =>
-      c.findOne({ orgId: session.orgId, userId: target._id }),
+    // Shared goals count: the line manager grades them like any other.
+    const tree = await withAssignedTree(
+      session.orgId,
+      target._id,
+      await getGoalsCollection().then((c) =>
+        c.findOne({ orgId: session.orgId, userId: target._id }),
+      ),
     );
     const titles = goalTitleMap(tree);
     if (!titles.has(goalId)) {
@@ -767,6 +797,11 @@ export async function listGoalCodesHandler(
         }
       }
     }
+    // Shared goals: one L2 per assignee, carrying the goal's code.
+    const assigned = await getAssignedGoalsCollection();
+    for await (const g of assigned.find({ orgId: session.orgId, status: "active" })) {
+      for (const uid of g.assigneeIds) tally(g.code || "", "L2", g.title || "", String(uid));
+    }
     res.json({
       codes: [...byCode.values()]
         .sort((a, b) => a.code.localeCompare(b.code))
@@ -892,6 +927,10 @@ async function notifyGovernedEngineers(
           (l1.l2s || []).some((l2) => (l2.code || "").trim() === code),
       );
       if (carries) affected.add(String(tree.userId));
+    }
+    const assigned = await getAssignedGoalsCollection();
+    for await (const g of assigned.find({ orgId, status: "active", code })) {
+      for (const uid of g.assigneeIds) affected.add(String(uid));
     }
     for (const uid of affected) {
       if (uid === String(actorUserId)) continue;

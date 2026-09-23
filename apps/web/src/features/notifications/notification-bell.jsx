@@ -37,7 +37,20 @@ const KIND_PATH = {
   // F6 — criteria changed under one of the recipient's goals; the tier
   // ladder shows on the fill surface.
   tier_policy_updated: "/",
+  // Shared goals. Assignees fill them on their Goals page; creators and
+  // viewers read the analytics at /shared-goals/:id (exposed on every hub).
+  assigned_goal_assigned: "/goals",
+  assigned_goal_updated: "/goals",
+  assigned_goal_due_soon: "/goals",
+  assigned_goal_overdue: "/goals",
+  assigned_goal_shared: (n) => sharedGoalPath(n),
+  assigned_goal_period_report: (n) => sharedGoalPath(n),
 };
+
+function sharedGoalPath(n) {
+  const id = n?.data?.assignedGoalId;
+  return typeof id === "string" && id ? `/shared-goals/${encodeURIComponent(id)}` : "/shared-goals";
+}
 
 function ago(iso) {
   const t = Date.parse(iso);
@@ -60,7 +73,8 @@ export function NotificationBell() {
 
   const openNotification = (n) => {
     if (!n.read) markRead(n.id);
-    const path = KIND_PATH[n.kind];
+    const entry = KIND_PATH[n.kind];
+    const path = typeof entry === "function" ? entry(n) : entry;
     if (path) {
       setOpen(false);
       router.push(link(path));

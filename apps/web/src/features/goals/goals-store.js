@@ -96,6 +96,11 @@ const INITIAL_STATE = {
   error: null,
   /** The L1 tree. Empty array until the first fetch lands. */
   l1s: [],
+  /** Shared goals assigned to this user — the server's synthetic,
+   *  read-only "Shared goals" L1 (0 or 1 element). Deliberately NOT in
+   *  `l1s`: every mutation PUTs `l1s` back, and these belong to the
+   *  manager who shared them. Read both via `useGoals().allGoals`. */
+  assigned: [],
   /** Server `updatedAt` of the tree we hold (ISO string) — the
    *  optimistic-concurrency token PUT /goals echoes back. Null until
    *  the first fetch, or when the server has no tree yet. */
@@ -181,6 +186,7 @@ export async function fetchGoals() {
       attempted: true,
       error: null,
       l1s,
+      assigned: Array.isArray(r.data?.assigned) ? r.data.assigned : [],
       updatedAt: r.data?.updatedAt ?? null,
     });
     return l1s;
@@ -214,6 +220,7 @@ async function persistL1s(nextL1s, options = {}) {
       if (current && Array.isArray(current.l1s)) {
         setState({
           l1s: current.l1s,
+          ...(Array.isArray(current.assigned) ? { assigned: current.assigned } : {}),
           updatedAt: current.updatedAt ?? null,
           fetched: true,
           attempted: true,

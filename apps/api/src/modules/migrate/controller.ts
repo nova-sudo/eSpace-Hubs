@@ -50,6 +50,7 @@ import {
   type Snapshot,
 } from "../../db/types.js";
 import { encryptSecret } from "../../lib/crypto-secret.js";
+import { stripAssigned } from "../../lib/assigned-goals.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import { logger } from "../../lib/logger.js";
@@ -219,7 +220,7 @@ export async function importHandler(
             // accepts opaque payloads so old localStorage formats
             // can come through; per-row drift gets surfaced by
             // Mongo, not by the route layer.
-            l1s: payload.goals.l1s as unknown as GoalL1[],
+            l1s: stripAssigned(payload.goals.l1s as unknown as GoalL1[]),
             schemaVersion: GOALS_SCHEMA_VERSION,
             updatedAt: now,
           },

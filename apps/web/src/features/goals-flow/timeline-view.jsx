@@ -17,6 +17,7 @@ import { Badge, Card, Label, yearElapsedPercent } from "@/components/ui";
 import { GoalTierBadge } from "@/features/goal-tiers";
 import { cn } from "@/lib/cn";
 import { humanizeKind } from "./flow-row-meta";
+import { ASSIGNED_ROOT_ID } from "@espace-devhub/shared/goal-specs";
 
 const MONTH_INITIALS = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
 
@@ -98,6 +99,7 @@ export function TimelineView({
               className="flex items-center gap-2 border-t border-line pb-1.5 pt-3 text-left"
             >
               <Label className="min-w-0 truncate">{row.l1.title || "Untitled objective"}</Label>
+              {row.l1.id === ASSIGNED_ROOT_ID ? <Badge tone="sky">Shared</Badge> : null}
               <Badge tone="neutral">{row.l2s.length}</Badge>
               <ChevronDown
                 size={13}

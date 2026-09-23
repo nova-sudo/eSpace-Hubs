@@ -28,6 +28,7 @@ import { notificationsValidator } from "./notifications.schema.js";
 import { managerGoalVerdictsValidator } from "./manager-goal-verdicts.schema.js";
 import { goalTierPoliciesValidator } from "./goal-tier-policies.schema.js";
 import { schedulerStampsValidator } from "./scheduler-stamps.schema.js";
+import { assignedGoalsValidator } from "./assigned-goals.schema.js";
 import type { Document } from "mongodb";
 
 export interface CollectionDef {
@@ -60,4 +61,5 @@ export const COLLECTION_DEFS: readonly CollectionDef[] = [
   { name: "manager_goal_verdicts", validator: managerGoalVerdictsValidator },
   { name: "goal_tier_policies", validator: goalTierPoliciesValidator },
   { name: "scheduler_stamps", validator: schedulerStampsValidator },
+  { name: "assigned_goals", validator: assignedGoalsValidator },
 ] as const;

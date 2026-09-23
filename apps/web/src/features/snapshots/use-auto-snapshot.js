@@ -132,7 +132,7 @@ export function useAutoSnapshot() {
   // but it's noise). The `snapshots` array is used as an
   // effect dep so this hook re-evaluates once hydration lands.
   const { snapshots: snapshotsTick } = useSnapshots();
-  const { goals } = useGoals();
+  const { allGoals: goals } = useGoals(); // incl. shared goals
   const { specs } = useGoalSpecs();
   // Subscribe to the inputs store so this hook re-evaluates once that
   // store hydrates — the capture reads readInputs() and would otherwise

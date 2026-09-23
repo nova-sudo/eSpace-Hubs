@@ -26,11 +26,13 @@ import type { NextFunction, Request, Response } from "express";
 import type { ObjectId } from "mongodb";
 import { z } from "zod";
 import {
+  getAssignedGoalsCollection,
   getGoalInputsCollection,
   getGoalSpecsCollection,
   getGoalsCollection,
   getUsersCollection,
 } from "../../db/collections.js";
+import { assignedGoalId } from "@espace-devhub/shared/goal-specs";
 import { HttpError } from "../../middleware/error-handler.js";
 
 /**
@@ -195,6 +197,17 @@ export async function listReportFillsHandler(
           if (typeof l2.id === "string") titles.set(l2.id, String(l2.title ?? ""));
         }
       }
+    }
+
+    // Shared goals assigned to any of these reports: title + plan come from
+    // the assigned goal itself (never stored in the report's own tree/specs).
+    const assignedDocs = await (await getAssignedGoalsCollection())
+      .find({ orgId: session.orgId, assigneeIds: { $in: ids }, status: "active" })
+      .toArray();
+    for (const g of assignedDocs) {
+      const gid = assignedGoalId(g._id.toHexString());
+      titles.set(gid, g.title);
+      (specDocs as Array<Record<string, unknown>>).push({ goalId: gid, spec: g.spec });
     }
 
     const cadenceOf = new Map<string, string | null>();

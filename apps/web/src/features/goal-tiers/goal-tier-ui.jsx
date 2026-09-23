@@ -12,6 +12,7 @@ import { Check } from "lucide-react";
 import { Badge, InsightRow, Label, Button } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { updateSpecTiers } from "@/features/goal-specs";
+import { isAssignedGoalId } from "@espace-devhub/shared/goal-specs";
 import { useGoalTier, TIER_ORDER, TIER_LABELS, TIER_FIELD } from "./use-goal-tier";
 import { tierTone } from "./tier-colors";
 import { TierDeltaBadge } from "./tier-move";
@@ -107,11 +108,18 @@ export function GoalTierLadder({ spec, variant: _variant = "light" }) {
         style={{ boxShadow: "var(--shadow-card)" }}
       >
         <Label>Achievement levels</Label>
-        <p className="text-[13px] leading-[1.5] text-muted-fg">
-          This goal has no levels to grade against, so it can&apos;t be scored. That
-          happens when it was classified before levels were part of a tracker.
-          Re-analyzing the goal writes them from its rubric.
-        </p>
+        {isAssignedGoalId(spec?.goalId) ? (
+          <p className="text-[13px] leading-[1.5] text-muted-fg">
+            This shared goal has no levels of its own. The person who shared it
+            (or your line manager) grades it, or a tier policy for its code does.
+          </p>
+        ) : (
+          <p className="text-[13px] leading-[1.5] text-muted-fg">
+            This goal has no levels to grade against, so it can&apos;t be scored. That
+            happens when it was classified before levels were part of a tracker.
+            Re-analyzing the goal writes them from its rubric.
+          </p>
+        )}
       </div>
     );
   }
@@ -165,7 +173,7 @@ export function GoalTierLadder({ spec, variant: _variant = "light" }) {
               locks them so re-analysis won't overwrite. Hidden when a manager
               tier policy governs this goal — the criteria aren't the dev's to
               edit in that case; a manager changes them from the Manager Hub. */}
-          {!tierGoverned ? (
+          {!tierGoverned && !isAssignedGoalId(spec?.goalId) ? (
             <button
               type="button"
               onClick={() => setEditing(true)}

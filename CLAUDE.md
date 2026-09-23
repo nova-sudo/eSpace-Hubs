@@ -68,7 +68,7 @@ check-in slice are gone; `/[hub]/checkin` only redirects old bookmarks.
 
 `auth` · `hubs` · `integrations` · `goal-specs` · `goal-inputs` · `goal-context`
 · `goal-tiers` · `goal-locks` · `goal-widgets` · `goal-editors` · `snapshots`
-· `grading` · `notifications` · `date-range`
+· `grading` · `notifications` · `date-range` · `assigned-goals`
 
 **Platform utilities** — infrastructure helpers with no page of their own:
 
@@ -242,6 +242,7 @@ npm run dev                  # http://localhost:3000
 | Evidence FILES per period | ✅ | GridFS (`goal_evidence` bucket) via `/api/v1/goal-evidence`; 10 MB, allow-listed types, always served as a download |
 | Management plan half | ✅ | `composed.management` — a second composed block for a lead's team-facing track, plus a roster read from `/api/v1/my-reports` |
 | Tier grading | ✅ | AI verdicts (`goal_tier_verdicts`) · manager verdicts outrank · manager tier POLICIES by Goal Code, scoped per year |
+| Shared (assigned) goals | ✅ | `assigned_goals` + `/api/v1/assigned-goals`. A manager authors one COMPOSED goal on Goals & policies (`/[hub]/tier-policies`), assigns it org-wide and shares analytics with viewers (`/[hub]/shared-goals`). Merged into each assignee's tree at READ time as a read-only `asg_<id>` L2 under `asg__root` (weight 0) via `lib/assigned-goals.ts` — never stored in their `goals`/`goal_specs`. Lateness = first `goal_inputs.createdAt` vs end of due day in the goal's time zone + grace (`periodStatuses` in shared). |
 | Snapshots | ✅ server-persisted | Captured on dashboard visit + "Snapshot now"; the API scheduler freezes unvisited weeks (manual trackers only, `partial: true`) |
 | Scheduler | ✅ | `apps/api/src/scheduler/` — hourly: due/overdue/stale nudges, approval waits, Monday digest email, weekly snapshots |
 | Notifications | ✅ | Inbox rows + 90s bell poll + email (Resend, log-mode without a key); rows deep-link |

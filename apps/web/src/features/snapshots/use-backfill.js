@@ -77,7 +77,7 @@ const EVENTS_HORIZON_DAYS = 90;
  * }}
  */
 export function useBackfill() {
-  const { goals } = useGoals();
+  const { allGoals: goals } = useGoals(); // incl. shared goals
   const { specs } = useGoalSpecs();
   const { data: mrs } = useCombinedMergedSince(isoDaysAgo(365));
   const { data: events } = useCombinedEventsSince(isoDaysAgo(EVENTS_HORIZON_DAYS));

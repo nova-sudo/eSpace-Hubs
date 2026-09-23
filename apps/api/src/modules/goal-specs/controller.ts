@@ -18,8 +18,9 @@ import {
 } from "../../db/collections.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { createNotification } from "../../lib/notifications.js";
+import { effectiveSpecDocs } from "../../lib/assigned-goals.js";
 import { HttpError } from "../../middleware/error-handler.js";
-import { validateSpec } from "@espace-devhub/shared/goal-specs";
+import { isAssignedGoalId, validateSpec } from "@espace-devhub/shared/goal-specs";
 import type { ValidatedSpec } from "@espace-devhub/shared/goal-specs";
 
 const goalIdParam = (req: Request): string => {
@@ -32,6 +33,17 @@ const goalIdParam = (req: Request): string => {
   }
   return goalId;
 };
+
+/** A shared goal's plan belongs to its creator — assignees can't change it. */
+function assertNotAssigned(goalId: string): void {
+  if (isAssignedGoalId(goalId)) {
+    throw new HttpError(
+      403,
+      "assigned_goal_readonly",
+      "This goal was shared with you; its plan can only be changed by the person who shared it.",
+    );
+  }
+}
 
 /**
  * POST /:goalId/submit-approval — a dev submits their just-composed
@@ -56,6 +68,7 @@ export async function submitApprovalHandler(
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
     const goalId = goalIdParam(req);
+    assertNotAssigned(goalId);
 
     const users = await getUsersCollection();
     const me = await users.findOne({
@@ -126,18 +139,26 @@ export async function listGoalSpecsHandler(
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
     const col = await getGoalSpecsCollection();
-    const records = await col
+    const own = await col
       .find({ orgId: session.orgId, userId: session.userId })
       .toArray();
+    // Shared goals ride along (merged at read, never stored per user) —
+    // `assignedGoalIds` lets the client treat them as read-only.
+    const records = await effectiveSpecDocs(session.orgId, session.userId, own);
 
     const specs: Record<string, unknown> = {};
+    const assignedGoalIds: string[] = [];
     let lastAnalyzedAt = 0;
     for (const r of records) {
       specs[r.goalId] = r.spec;
+      if (isAssignedGoalId(r.goalId)) {
+        assignedGoalIds.push(r.goalId);
+        continue;
+      }
       const ts = r.generatedAt.getTime();
       if (ts > lastAnalyzedAt) lastAnalyzedAt = ts;
     }
-    res.json({ specs, lastAnalyzedAt });
+    res.json({ specs, assignedGoalIds, lastAnalyzedAt });
   } catch (err) {
     next(err);
   }
@@ -156,6 +177,7 @@ export async function putGoalSpecHandler(
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
     const goalId = goalIdParam(req);
+    assertNotAssigned(goalId);
 
     // The body must contain the spec object. We validate via
     // validateSpec — same code path the classifier uses, so we can't
@@ -245,6 +267,7 @@ export async function deleteGoalSpecHandler(
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
     const goalId = goalIdParam(req);
+    assertNotAssigned(goalId);
     const col = await getGoalSpecsCollection();
     const result = await col.deleteOne({
       orgId: session.orgId,

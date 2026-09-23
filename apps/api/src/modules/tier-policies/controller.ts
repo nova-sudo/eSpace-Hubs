@@ -23,6 +23,7 @@
 
 import type { NextFunction, Request, Response } from "express";
 import { getGoalsCollection } from "../../db/collections.js";
+import { withAssignedTree } from "../../lib/assigned-goals.js";
 import { getTierPoliciesForCodes } from "../../lib/goal-tier-policies.js";
 import type { GoalTierPolicy, TierCriteria } from "../../db/types.js";
 import { HttpError } from "../../middleware/error-handler.js";
@@ -38,8 +39,13 @@ export async function listMyTierPoliciesHandler(
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
 
-    const tree = await getGoalsCollection().then((c) =>
-      c.findOne({ orgId: session.orgId, userId: session.userId }),
+    // Shared goals carry a code too — a policy governs them the same way.
+    const tree = await withAssignedTree(
+      session.orgId,
+      session.userId,
+      await getGoalsCollection().then((c) =>
+        c.findOne({ orgId: session.orgId, userId: session.userId }),
+      ),
     );
     const l1s = tree?.l1s ?? [];
 

@@ -75,6 +75,8 @@ export const PAGE_SLOTS = Object.freeze([
   "delegated",
   "approvals",
   "tierpolicies",
+  // Every hub: shared goals whose analytics were shared with you (viewers).
+  "sharedgoals",
 ]);
 
 // ─── hub definitions ─────────────────────────────────────────────────
@@ -98,6 +100,7 @@ const ADMIN_HUB = Object.freeze({
     users: "admin:users",
     audit: "admin:audit",
     settings: "admin:settings",
+    sharedgoals: "admin:shared-goals",
   }),
   widgets: Object.freeze([
     // Admin widgets land alongside the UI in PR 2.
@@ -130,6 +133,7 @@ const DEV_HUB = Object.freeze({
     reviews: "dev:reviews",
     settings: "dev:settings",
     analyst: "dev:analyst",
+    sharedgoals: "dev:shared-goals",
   }),
   widgets: Object.freeze([
     "pr-rounds",
@@ -167,6 +171,7 @@ const QA_HUB = Object.freeze({
     goals: "qa:goals",
     evidence: "qa:evidence",
     settings: "qa:settings",
+    sharedgoals: "qa:shared-goals",
   }),
   widgets: Object.freeze([
     "defect-leakage",
@@ -207,6 +212,7 @@ const MANAGER_HUB = Object.freeze({
     approvals: "manager:approvals",
     tierpolicies: "manager:tier-policies",
     settings: "manager:settings",
+    sharedgoals: "manager:shared-goals",
   }),
   widgets: Object.freeze([
     "team-overview",

@@ -106,7 +106,7 @@ const TONES = Object.freeze({
  * (A trailing `days` arg from legacy call sites is accepted and ignored.)
  */
 export function useGoalReadings() {
-  const { goals } = useGoals();
+  const { allGoals: goals } = useGoals(); // incl. shared goals
   const { specs } = useGoalSpecs();
   const since = startOfYearIso();
   const { data: merged } = useCombinedMergedSince(since);

@@ -80,7 +80,7 @@ function policyKey(p) {
   return `${p.code}::${p.cycleKey ?? "legacy"}`;
 }
 
-export function ManagerTierPolicies() {
+export function ManagerTierPolicies({ embedded = false }) {
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
   // Up to two codes open side by side — the whole point of the layout.
@@ -183,8 +183,8 @@ export function ManagerTierPolicies() {
     .filter(Boolean);
 
   return (
-    <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-7 sm:px-10">
-      <PageHeader
+    <Wrapper embedded={embedded}>
+      {embedded ? null : <PageHeader
         crumb="Manager · achievement-tier governance"
         title="Set tiers by Goal Code."
         subtitle={
@@ -199,7 +199,7 @@ export function ManagerTierPolicies() {
             year&apos;s goals — and affected engineers are notified on save.
           </>
         }
-      />
+      />}
 
       <form className="flex flex-wrap items-end gap-2" onSubmit={handleAdd}>
         <Field
@@ -329,7 +329,7 @@ export function ManagerTierPolicies() {
           </div>
         )}
       </div>
-    </main>
+    </Wrapper>
   );
 }
 
@@ -482,4 +482,13 @@ function Ladder({ title, hint, ladder, onChange, disabled }) {
       </div>
     </div>
   );
+}
+
+/**
+ * Standalone: the page's own <main>. Embedded (the "Tier policies" tab of
+ * Goals & policies): the host page owns <main> and the header.
+ */
+function Wrapper({ embedded, children }) {
+  if (embedded) return <div>{children}</div>;
+  return <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-7 sm:px-10">{children}</main>;
 }

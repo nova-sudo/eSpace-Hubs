@@ -22,6 +22,8 @@ import type {
 } from "../../db/types.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { HttpError } from "../../middleware/error-handler.js";
+import { requireActiveAssignee } from "../../lib/assigned-goals.js";
+import { isAssignedGoalId } from "@espace-devhub/shared/goal-specs";
 
 // Polymorphic value. Each manual widget stores its own shape:
 //   Counter / Scale → number, Free-text → string, Counter-bool → boolean,
@@ -91,6 +93,7 @@ interface PublicEntry {
   value: GoalInputValue;
   note: string | null;
   source: GoalInputSource;
+  createdAt: string | null;
 }
 
 function toPublic(e: GoalInputEntry): PublicEntry {
@@ -101,6 +104,7 @@ function toPublic(e: GoalInputEntry): PublicEntry {
     value: e.value,
     note: e.note,
     source: e.source,
+    createdAt: e.createdAt ? e.createdAt.toISOString() : null,
   };
 }
 
@@ -168,7 +172,13 @@ export async function appendGoalInputHandler(
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
     const payload = appendInputSchema.parse(req.body);
-    const ts = payload.ts ? new Date(payload.ts) : new Date();
+    // A shared goal only accepts entries from its current assignees.
+    // Late writes are fine — the analytics grid marks them late.
+    if (isAssignedGoalId(payload.goalId)) {
+      await requireActiveAssignee(session.orgId, session.userId, payload.goalId);
+    }
+    const now = new Date();
+    const ts = payload.ts ? new Date(payload.ts) : now;
 
     const doc = {
       orgId: session.orgId,
@@ -178,6 +188,7 @@ export async function appendGoalInputHandler(
       value: payload.value as GoalInputValue,
       note: payload.note ?? null,
       source: payload.source,
+      createdAt: now,
     } as Omit<GoalInputEntry, "_id">;
 
     const col = await getGoalInputsCollection();
@@ -220,6 +231,20 @@ export async function deleteGoalInputHandler(
     }
     const _id = new ObjectId(entryId);
     const col = await getGoalInputsCollection();
+    // Entries on a shared goal can be superseded (edit = a newer entry) but
+    // never deleted: the first save is the submission time the manager's
+    // lateness analytics rely on.
+    const existing = await col.findOne(
+      { _id, orgId: session.orgId, userId: session.userId },
+      { projection: { goalId: 1 } },
+    );
+    if (existing && isAssignedGoalId(existing.goalId)) {
+      throw new HttpError(
+        403,
+        "assigned_goal_entry_locked",
+        "Entries on a shared goal can be edited but not deleted.",
+      );
+    }
     const result = await col.deleteOne({
       _id,
       orgId: session.orgId,

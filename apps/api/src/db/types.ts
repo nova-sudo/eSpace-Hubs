@@ -590,6 +590,13 @@ export interface GoalInputEntry {
   value: GoalInputValue;
   note: string | null;
   source: GoalInputSource;
+  /**
+   * Server time the row was written. `ts` is the time the entry is FOR (a
+   * back-fill sets it to the window midpoint), so this is the only honest
+   * "when was it submitted" — shared-goal analytics key lateness on it.
+   * Absent on rows written before it existed.
+   */
+  createdAt?: Date;
 }
 
 // ─── snapshots (weekly frozen metrics + per-goal readings) ───────────
@@ -750,7 +757,14 @@ export type NotificationKind =
   // F6 — a manager changed the grading criteria governing one of the
   // recipient's goals. The affected engineer must not discover new
   // criteria at grading time.
-  | "tier_policy_updated";
+  | "tier_policy_updated"
+  // Shared (assigned) goals — see modules/assigned-goals.
+  | "assigned_goal_assigned"
+  | "assigned_goal_shared"
+  | "assigned_goal_updated"
+  | "assigned_goal_due_soon"
+  | "assigned_goal_overdue"
+  | "assigned_goal_period_report";
 
 export const ALL_NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "manager_graded",
@@ -764,7 +778,50 @@ export const ALL_NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "goal_stale",
   "approval_waiting",
   "tier_policy_updated",
+  "assigned_goal_assigned",
+  "assigned_goal_shared",
+  "assigned_goal_updated",
+  "assigned_goal_due_soon",
+  "assigned_goal_overdue",
+  "assigned_goal_period_report",
 ] as const;
+
+// ─── assigned (shared) goals ─────────────────────────────────────────
+
+export type AssignedGoalStatus = "active" | "archived";
+
+/**
+ * A goal a manager authors once and shares: ASSIGNEES fill it (it shows in
+ * their own goal tree as a read-only `asg_<id>` L2, merged in at read time —
+ * never written into their `goals` doc), VIEWERS only read the analytics.
+ * Assignees' entries live in their own `goal_inputs` under that id.
+ */
+export interface AssignedGoal {
+  _id: ObjectId;
+  orgId: ObjectId;
+  createdBy: ObjectId;
+  createdByName: string;
+  code: string;
+  title: string;
+  description: string;
+  /** A validated COMPOSED spec, stored without goalId (injected per read). */
+  spec: Record<string, unknown>;
+  assigneeIds: ObjectId[];
+  viewerIds: ObjectId[];
+  /** Hours after a period's deadline before a submission counts as late. */
+  graceHours: number;
+  /**
+   * IANA zone deadlines are read in ("end of the due day" is local
+   * midnight here, not UTC). Absent on early rows → "Africa/Cairo".
+   */
+  timeZone?: string;
+  status: AssignedGoalStatus;
+  archivedAt: Date | null;
+  /** Bumped on a structural plan change (cadence / cycle / period count). */
+  specRevision: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 // ─── scheduler stamps (job dedupe) ───────────────────────────────────
 

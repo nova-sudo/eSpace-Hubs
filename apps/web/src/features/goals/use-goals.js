@@ -32,6 +32,7 @@ const SERVER_SNAPSHOT_KEY = JSON.stringify({
   attempted: false,
   error: null,
   l1s: [],
+  assigned: [],
   updatedAt: null,
 });
 
@@ -71,6 +72,15 @@ export function useGoals() {
     schemaVersion: GOALS_SCHEMA_VERSION,
     l1s: stateSnapshot.l1s,
   };
+  // Own tree + the read-only "Shared goals" L1. Surfaces that RENDER and
+  // FILL goals use this; anything that edits, weights, imports or
+  // re-analyzes the tree keeps using `goals` (own only) — so a consumer
+  // that's missed simply doesn't show shared goals, the safe way to fail.
+  const assigned = Array.isArray(stateSnapshot.assigned) ? stateSnapshot.assigned : [];
+  const allGoals = {
+    schemaVersion: GOALS_SCHEMA_VERSION,
+    l1s: assigned.length ? [...stateSnapshot.l1s, ...assigned] : stateSnapshot.l1s,
+  };
 
   const totalL1 = goals.l1s.length;
   const totalL2 = goals.l1s.reduce((sum, l1) => sum + l1.l2s.length, 0);
@@ -81,6 +91,8 @@ export function useGoals() {
 
   return {
     goals,
+    assigned,
+    allGoals,
     total: { l1s: totalL1, l2s: totalL2 },
     weights: { total: weightSum, remaining: Math.max(0, 100 - weightSum) },
     loading: stateSnapshot.loading,

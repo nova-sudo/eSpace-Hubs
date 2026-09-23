@@ -26,7 +26,13 @@
  *   DELETE      /:goalId
  */
 
-import { validateSpec } from "@espace-devhub/shared/goal-specs";
+import { isAssignedGoalId, validateSpec } from "@espace-devhub/shared/goal-specs";
+
+/** A shared goal's plan is its creator's — the server 403s any write. */
+const READONLY = Object.freeze({
+  ok: false,
+  errors: ["This goal was shared with you; only the person who shared it can change its plan."],
+});
 import { apiDelete, apiGet, apiPut } from "@/lib/api-client";
 
 const CHANGE_EVENT = "goal-specs:change";
@@ -182,6 +188,7 @@ export async function fetchSpecs() {
  * different widget kind would attach criteria the user never approved.
  */
 export function saveSpec(spec, { replace = false } = {}) {
+  if (isAssignedGoalId(spec?.goalId)) return READONLY;
   // Locked tiers are the user's contract — a re-analysis (or any external
   // save) must NOT overwrite them. When the stored spec is locked, carry its
   // tiers/ladder + the lock flag onto the incoming spec before validating.
@@ -213,6 +220,7 @@ export function saveSpec(spec, { replace = false } = {}) {
  * saveSpec's preserve guard because this IS the explicit user edit.
  */
 export function updateSpecTiers(goalId, tiers, locked) {
+  if (isAssignedGoalId(goalId)) return READONLY;
   const existing = goalId ? state.specs[goalId] : null;
   if (!existing) return { ok: false, errors: ["no spec for goal"] };
   const res = validateSpec({ ...existing, tiers, tiersLocked: locked === true });
@@ -260,7 +268,7 @@ async function putSpecRemote(goalId, spec, prior) {
 
 /** Remove a single spec by goalId. No-op when absent. */
 export function removeSpec(goalId) {
-  if (!goalId || !state.specs[goalId]) return;
+  if (!goalId || !state.specs[goalId] || isAssignedGoalId(goalId)) return;
   const removed = state.specs[goalId];
   const next = { ...state.specs };
   delete next[goalId];
@@ -295,8 +303,12 @@ async function removeSpecRemote(goalId, removed) {
  * so a refresh doesn't re-hydrate the old specs from the server.
  */
 export function clearSpecs() {
-  const ids = Object.keys(state.specs);
-  setState({ specs: {}, lastAnalyzedAt: 0, error: null });
+  // Shared goals' specs aren't the user's to wipe — keep them in place.
+  const kept = Object.fromEntries(
+    Object.entries(state.specs).filter(([id]) => isAssignedGoalId(id)),
+  );
+  const ids = Object.keys(state.specs).filter((id) => !isAssignedGoalId(id));
+  setState({ specs: kept, lastAnalyzedAt: 0, error: null });
   if (ids.length === 0) return;
   void Promise.all(
     ids.map((id) =>
@@ -327,11 +339,15 @@ export function replaceSpecs(map) {
   const specs = {};
   const skipped = [];
   for (const [goalId, value] of entries) {
+    if (isAssignedGoalId(goalId)) continue;
     const res = validateSpec({ ...value, goalId });
     if (res.ok) specs[goalId] = res.spec;
     else skipped.push({ goalId, errors: res.errors });
   }
-  setState({ specs, lastAnalyzedAt: Date.now(), error: null });
+  const shared = Object.fromEntries(
+    Object.entries(state.specs).filter(([id]) => isAssignedGoalId(id)),
+  );
+  setState({ specs: { ...specs, ...shared }, lastAnalyzedAt: Date.now(), error: null });
   void Promise.all(
     Object.entries(specs).map(([goalId, spec]) =>
       apiPut(`/goal-specs/${encodeURIComponent(goalId)}`, spec).catch(

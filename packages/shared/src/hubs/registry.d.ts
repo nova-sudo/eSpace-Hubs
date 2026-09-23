@@ -31,7 +31,9 @@ export type HubPageSlot =
   | "employees"
   | "delegated"
   | "approvals"
-  | "tierpolicies";
+  | "tierpolicies"
+  // Every hub
+  | "sharedgoals";
 
 export interface HubDefinition {
   id: string;

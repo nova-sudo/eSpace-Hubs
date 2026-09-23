@@ -112,7 +112,20 @@ const PHASE_ANNOUNCEMENT = {
 
 const ACCEPTED_EXTENSIONS = ATTACHMENT_ACCEPT.split(",");
 
-export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
+export function ComposeWidgetModal({
+  open,
+  onClose,
+  spec,
+  goal,
+  onSaved,
+  // AUTHOR MODE (shared goals): a manager designs a plan for OTHER people.
+  // When set, "use" hands the finished spec to this async callback instead
+  // of saving it onto a goal — no saveSpec, no history wipe, no approval
+  // round-trip, no setup-questions gate. It may throw to surface an error.
+  onSubmitSpec = null,
+  submitLabel = null,
+}) {
+  const authorMode = typeof onSubmitSpec === "function";
   const [description, setDescription] = useState("");
   const [phase, setPhase] = useState(PHASE.INPUT);
   const [error, setError] = useState(null);
@@ -189,7 +202,7 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
   // modal or a spec with no questions costs nothing.
   const contextComplete = useIsContextComplete(preview?.spec || null);
   const needsContext =
-    Boolean(preview?.spec?.context?.required) && !contextComplete;
+    !authorMode && Boolean(preview?.spec?.context?.required) && !contextComplete;
 
   // The cycle the plan step resolves — computed here (not only inside the
   // step) because the PREVIEW summary shows it too: "13 weeks · 1 Sep – 30
@@ -376,6 +389,18 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
     const block = planDraft || previewSpec.composed;
     const bounds = resolvePlanBounds(block, { goal });
     const composed = bounds ? stampBounds(block, bounds) : block;
+    if (authorMode) {
+      try {
+        await onSubmitSpec({ ...previewSpec, composed });
+        setSaving(false);
+        onSaved?.();
+        onClose?.();
+      } catch (err) {
+        setSaving(false);
+        setError(err?.message || String(err));
+      }
+      return;
+    }
     const pendingSpec = {
       ...previewSpec,
       composed,
@@ -626,7 +651,7 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
                 }
                 disabled={saving}
               >
-                {saving ? "Submitting…" : needsContext ? "Set up auto-fill" : "Submit for approval"}
+                {saving ? "Submitting…" : needsContext ? "Set up auto-fill" : submitLabel || "Submit for approval"}
               </Button>
             </>
           ) : phase === PHASE.PREVIEW ? (
@@ -672,7 +697,7 @@ export function ComposeWidgetModal({ open, onClose, spec, goal, onSaved }) {
                     ? "Check the plan"
                     : needsContext
                       ? "Set up auto-fill"
-                      : "Submit for approval"}
+                      : submitLabel || "Submit for approval"}
               </Button>
             </>
           ) : phase === PHASE.EXTRACTING ? (

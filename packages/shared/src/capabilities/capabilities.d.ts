@@ -14,6 +14,7 @@ export const CAPABILITIES: Readonly<{
   readonly ADMIN_HUBS_CONFIGURE: "admin.hubs.configure";
   readonly ADMIN_AUDIT_VIEW: "admin.audit.view";
   readonly MANAGER_TEAM_VIEW: "manager.team.view";
+  readonly ASSIGNED_GOALS_MANAGE: "assigned_goals.manage";
 }>;
 
 export type Capability = (typeof CAPABILITIES)[keyof typeof CAPABILITIES];

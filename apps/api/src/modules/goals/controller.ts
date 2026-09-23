@@ -29,31 +29,51 @@ import {
   type GoalTree,
 } from "../../db/types.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
+import {
+  stripAssigned,
+  syntheticAssignedL1,
+  listActiveAssignedFor,
+} from "../../lib/assigned-goals.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import { goalsUpsertSchema } from "./schemas.js";
 
 interface PublicGoalTree {
   schemaVersion: typeof GOALS_SCHEMA_VERSION;
   l1s: GoalL1[];
+  /**
+   * Shared goals assigned to this user — the synthetic, read-only
+   * "Shared goals" L1 (or empty). Kept OUT of `l1s` on purpose: the client
+   * PUTs `l1s` straight back after every edit, and `updatedAt` stays the
+   * own-tree concurrency token. See lib/assigned-goals.ts.
+   */
+  assigned: GoalL1[];
   cycleId: string | null;
   updatedAt: string | null;
 }
 
-function toPublic(tree: GoalTree | null): PublicGoalTree {
+function toPublic(tree: GoalTree | null, assigned: GoalL1[] = []): PublicGoalTree {
   if (!tree) {
     return {
       schemaVersion: GOALS_SCHEMA_VERSION,
       l1s: [],
+      assigned,
       cycleId: null,
       updatedAt: null,
     };
   }
   return {
     schemaVersion: GOALS_SCHEMA_VERSION,
-    l1s: tree.l1s,
+    l1s: stripAssigned(tree.l1s),
+    assigned,
     cycleId: tree.cycleId ? tree.cycleId.toHexString() : null,
     updatedAt: tree.updatedAt.toISOString(),
   };
+}
+
+/** The caller's shared-goals L1, as a 0/1-element list. */
+async function assignedFor(orgId: ObjectId, userId: ObjectId): Promise<GoalL1[]> {
+  const root = syntheticAssignedL1(await listActiveAssignedFor(orgId, userId));
+  return root ? [root] : [];
 }
 
 export async function getGoalsHandler(
@@ -71,7 +91,7 @@ export async function getGoalsHandler(
       orgId: session.orgId,
       userId: session.userId,
     });
-    res.json(toPublic(tree));
+    res.json(toPublic(tree, await assignedFor(session.orgId, session.userId)));
   } catch (err) {
     next(err);
   }
@@ -88,6 +108,9 @@ export async function putGoalsHandler(
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
     const payload = goalsUpsertSchema.parse(req.body);
+    // Shared goals are merged in at read time and never belong to the own
+    // tree — drop any a client echoed back.
+    payload.l1s = stripAssigned(payload.l1s);
     const goals = await getGoalsCollection();
     const now = new Date();
 
@@ -113,7 +136,7 @@ export async function putGoalsHandler(
         userId: session.userId,
       });
       if (current && Array.isArray(current.l1s) && current.l1s.length > 0) {
-        archiveSource = { l1s: current.l1s };
+        archiveSource = { l1s: stripAssigned(current.l1s) };
       }
     }
 
@@ -146,7 +169,12 @@ export async function putGoalsHandler(
         409,
         "goals_conflict",
         "Your goals changed in another tab or on another device. Refresh before saving again.",
-        { current: toPublic(current) },
+        {
+          current: toPublic(
+            current,
+            await assignedFor(session.orgId, session.userId),
+          ),
+        },
       );
     };
 
@@ -243,7 +271,7 @@ export async function putGoalsHandler(
       ...networkMeta(req),
     });
 
-    res.json(toPublic(result));
+    res.json(toPublic(result, await assignedFor(session.orgId, session.userId)));
   } catch (err) {
     next(err);
   }

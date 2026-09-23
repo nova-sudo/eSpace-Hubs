@@ -28,6 +28,7 @@ import {
   notifyWaitingApprovals,
   sendWeeklyDigests,
 } from "./jobs.js";
+import { notifyAssignedGoalWindows } from "./assigned-goals-job.js";
 
 const FIRST_TICK_DELAY_MS = 30_000; // let Mongo bootstrap settle
 const TICK_INTERVAL_MS = 3_600_000; // hourly
@@ -43,6 +44,7 @@ async function tick(): Promise<void> {
     ["deadlines", notifyGoalDeadlines],
     ["stale", notifyStaleGoals],
     ["approvals", notifyWaitingApprovals],
+    ["shared-goals", notifyAssignedGoalWindows],
     ["digest", sendWeeklyDigests],
     // Snapshots BEFORE digest would be nicer (the digest could mention
     // them), but order here is freshness cosmetics — every job is

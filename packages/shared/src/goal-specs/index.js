@@ -79,3 +79,29 @@ export {
   validateQuerySource,
 } from "./query-templates.js";
 
+// Cycle-anchored cadence windows — moved from the web app so the API can
+// compute the same period grid for shared-goal analytics.
+export {
+  buildCycleWindows,
+  cadenceConsistency,
+  composedCycleBounds,
+  currentPeriodKey,
+  deriveCycleEndIso,
+  enumerateWindows,
+  toIsoDay,
+} from "./windows.js";
+
+// Assigned ("shared") goals: the synthetic id scheme + per-period status.
+export {
+  ASSIGNED_GOAL_PREFIX,
+  ASSIGNED_ROOT_ID,
+  assignedGoalId,
+  isAssignedGoalId,
+  parseAssignedGoalId,
+} from "./assigned.js";
+export {
+  assignedWindows,
+  localMidnight,
+  periodStatuses,
+  summarizeStatuses,
+} from "./assigned-status.js";
