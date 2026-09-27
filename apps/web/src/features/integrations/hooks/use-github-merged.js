@@ -18,7 +18,9 @@ export function useGithubMergedSince(since) {
       : typeof since === "number"
         ? isoDaysAgo(since)
         : since;
-  const swr = useSwrIf(isConnected("github"), `github:merged:${iso}`, () =>
+  // `since = null` means "not needed" (use-data-source calls every provider
+  // hook unconditionally) — without the iso guard it fired `merged:>=` and 422'd.
+  const swr = useSwrIf(isConnected("github") && Boolean(iso), `github:merged:${iso}`, () =>
     githubApi.myMergedSince(iso),
   );
   return {
