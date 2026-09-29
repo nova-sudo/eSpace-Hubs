@@ -90,11 +90,6 @@ test("never strips the tracker down to zero fields", () => {
 
 // ─── findUngradeableTiers ────────────────────────────────────────────
 
-const STATUS_ONLY_FIELDS = [
-  { id: "status", kind: "select", label: "Weekly Deliverable Status" },
-  { id: "done", kind: "checkbox", label: "Courses completed" },
-];
-
 test("flags a whole-cycle tier when no authored periods pin down each period", () => {
   const notes = findUngradeableTiers({
     achieved: "Weekly deliverable completed.",
@@ -248,7 +243,9 @@ test("keeps cycleStart on a FLAT cadenced tracker — a 13-week plan with unifor
 // weekly tracker (no periods) for a 13-week plan still had no END, so the
 // client fell back to the calendar year — "0/53 filled" for a 13-week plan.
 // The model now states a length, and the cleaner turns it into a stored
-// cycleEnd so the tracker arrives bounded.
+// cycleEnd so the tracker arrives bounded. Weekly windows are Sunday-anchored
+// work weeks (Sun→Sat, the first clipped to the start), so a weekly plan
+// ends on the Saturday closing its Nth week — not start + 7N days.
 
 test("periods win: cycleEnd is derived from their count, and periodCount is not stored beside them", () => {
   const out = cleanComposedBlock({
@@ -261,7 +258,8 @@ test("periods win: cycleEnd is derived from their count, and periodCount is not 
       { key: "w3", label: "Week 3" },
     ],
   });
-  assert.equal(out?.cycleEnd, "2026-09-21");
+  // Tue 1 Sep: Sep 1–5, 6–12, 13–19.
+  assert.equal(out?.cycleEnd, "2026-09-19");
   assert.equal(out?.periodCount, undefined);
 });
 
@@ -272,7 +270,7 @@ test("a flat tracker with a stated periodCount is bounded to exactly that many w
     periodCount: 13,
   });
   assert.equal(out?.periodCount, 13);
-  assert.equal(out?.cycleEnd, "2026-11-30");
+  assert.equal(out?.cycleEnd, "2026-11-28");
 });
 
 test("a numeric-string periodCount is tolerated", () => {
@@ -301,7 +299,7 @@ test("the model's own cycleEnd is used only when nothing counted the windows", (
     cycleEnd: "2027-08-31", // a whole year — contradicts the count
     periodCount: 13,
   });
-  assert.equal(counted?.cycleEnd, "2026-11-30");
+  assert.equal(counted?.cycleEnd, "2026-11-28");
 });
 
 test("an inverted or malformed cycleEnd, or an out-of-range count, is dropped rather than fatal", () => {
@@ -334,7 +332,8 @@ test("a nested block states its own length the same way", () => {
   });
   assert.equal(out?.cycleEnd, "2026-09-30");
   assert.equal(out?.periods?.[0]?.nested?.periodCount, 12);
-  assert.equal(out?.periods?.[0]?.nested?.cycleEnd, "2026-09-27");
+  // Mon 6 Jul opens the Sun 5 Jul work week; its 12th week closes Sat 26 Sep.
+  assert.equal(out?.periods?.[0]?.nested?.cycleEnd, "2026-09-26");
 });
 
 test("drops cycleStart when there's no cadence — periods themselves get rejected first", () => {

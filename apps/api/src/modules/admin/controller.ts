@@ -1,13 +1,16 @@
 /**
  * Admin controller — org-wide read/edit over the user roster + audit log.
  *
- *   GET    /api/v1/admin/users         list every member of the org
  *   PATCH  /api/v1/admin/users/:id     edit roles / status / hub access /
- *                                       displayName for one user
+ *                                       displayName / manager for one user
  *   GET    /api/v1/admin/audit         filterable audit-log feed
  *
- * Authorization: every route is gated by `requireRole("admin")` in
- * routes.ts. The controller assumes that gate has passed and only
+ * (The paginated roster, org chart and reassignment live in
+ * ./roster-controller.ts; the no-manager approvals queue in
+ * ./approvals-controller.ts; the CSV export in ./audit-export.ts.)
+ *
+ * Authorization: every route is gated by a granular `requireCapability`
+ * in routes.ts (hub-audit §2.1). The controller assumes that gate has passed and only
  * applies the cross-org boundary (every query is `orgId =
  * session.orgId` — an admin in org A can never see org B).
  *
@@ -46,6 +49,7 @@ import type {
 } from "../../db/types.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { logger } from "../../lib/logger.js";
+import { createNotification } from "../../lib/notifications.js";
 import { effectiveRoles, primaryRole } from "../../lib/user-roles.js";
 import { syncSessionRolesForUser } from "../auth/session.js";
 import { HttpError } from "../../middleware/error-handler.js";
@@ -55,6 +59,7 @@ import {
   updateSignupCodeSchema,
   updateUserSchema,
 } from "./schemas.js";
+import { managerAssignmentError, type RosterUser } from "./org-chart.js";
 
 // ─── public shapes ───────────────────────────────────────────────────
 
@@ -64,7 +69,7 @@ import {
  * render "TOTP enrolled? Y/N" + "has password? Y/N" without ever
  * touching the bytes.
  */
-interface PublicUser {
+export interface PublicUser {
   id: string;
   email: string;
   displayName: string;
@@ -92,7 +97,7 @@ interface PublicUser {
   updatedAt: string;
 }
 
-function toPublicUser(u: User): PublicUser {
+export function toPublicUser(u: User): PublicUser {
   return {
     id: u._id.toHexString(),
     email: u.email,
@@ -342,28 +347,80 @@ function arraysOrEqual(a: unknown, b: unknown): boolean {
   return a === b;
 }
 
-// ─── GET /api/v1/admin/users ─────────────────────────────────────────
+// GET /api/v1/admin/users (paginated) lives in ./roster-controller.ts.
 
-export async function listUsersHandler(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
+/** Whole-org roster rows for the manager-assignment checks. */
+async function loadRosterForValidation(orgId: ObjectId): Promise<RosterUser[]> {
+  const col = await getUsersCollection();
+  const rows = await col
+    .find(
+      { orgId },
+      { projection: { displayName: 1, email: 1, status: 1, role: 1, roles: 1, managerId: 1 } },
+    )
+    .toArray();
+  return rows.map((u) => ({
+    id: u._id.toHexString(),
+    displayName: u.displayName,
+    email: u.email,
+    status: u.status,
+    roles: effectiveRoles(u),
+    managerId: u.managerId ? u.managerId.toHexString() : null,
+  }));
+}
+
+/**
+ * Tell the report (and the incoming manager) that the reporting line
+ * changed (hub-audit §3.4). Best-effort, never blocks the PATCH.
+ */
+async function notifyManagerChange(input: {
+  orgId: ObjectId;
+  actorUserId: ObjectId;
+  report: User;
+  fromManagerHex: string | null;
+  toManagerHex: string | null;
+}): Promise<void> {
   try {
-    const session = req.session;
-    if (!session) {
-      throw new HttpError(401, "unauthenticated", "Login required.");
-    }
     const col = await getUsersCollection();
-    const rows = await col
-      .find({ orgId: session.orgId })
-      // Newest first by creation, but stable secondary on _id to make
-      // pagination deterministic if the UI ever adds it.
-      .sort({ createdAt: -1, _id: -1 })
-      .toArray();
-    res.json({ users: rows.map(toPublicUser) });
+    const to = input.toManagerHex
+      ? await col.findOne(
+          { _id: new ObjectId(input.toManagerHex), orgId: input.orgId },
+          { projection: { displayName: 1, email: 1 } },
+        )
+      : null;
+    const toName = to ? to.displayName || to.email : null;
+    const reportName = input.report.displayName || input.report.email;
+    const data = {
+      fromManagerId: input.fromManagerHex,
+      toManagerId: input.toManagerHex,
+      subjectUserId: input.report._id.toHexString(),
+    };
+    await createNotification({
+      orgId: input.orgId,
+      userId: input.report._id,
+      kind: "manager_changed",
+      title: toName ? `You now report to ${toName}` : "You no longer have a manager assigned",
+      body: toName
+        ? `An admin set ${toName} as your manager. New goal approvals go to them.`
+        : "An admin removed your manager. Until a new one is assigned, your goal approvals go to the org's admins.",
+      data,
+      createdBy: input.actorUserId,
+    });
+    if (to) {
+      await createNotification({
+        orgId: input.orgId,
+        userId: to._id,
+        kind: "manager_changed",
+        title: `${reportName} now reports to you`,
+        body: `An admin added ${reportName} to your team.`,
+        data,
+        createdBy: input.actorUserId,
+      });
+    }
   } catch (err) {
-    next(err);
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "[admin] manager-change notification failed",
+    );
   }
 }
 
@@ -391,26 +448,19 @@ export async function updateUserHandler(
       throw new HttpError(404, "not_found", "User not found in this org.");
     }
 
-    // P5: a manager must be a real user in the same org, and never the user
-    // themselves.
+    // P5 + hub-audit §1.4/§2.4: a manager must be an ACTIVE user in the
+    // same org who holds the manager role, never the user themselves, and
+    // the edge must not close a reporting loop (A→B→A, or deeper). The
+    // roster is loaded only when a manager is actually being set.
     if (patch.managerId) {
-      if (patch.managerId === targetId.toHexString()) {
-        throw new HttpError(
-          400,
-          "validation_error",
-          "A user can't be their own manager.",
-        );
-      }
-      const mgr = await col.findOne({
-        _id: new ObjectId(patch.managerId),
-        orgId: session.orgId,
-      });
-      if (!mgr) {
-        throw new HttpError(
-          400,
-          "validation_error",
-          "Manager not found in this org.",
-        );
+      const roster = await loadRosterForValidation(session.orgId);
+      const reason = managerAssignmentError(
+        targetId.toHexString(),
+        patch.managerId,
+        roster,
+      );
+      if (reason) {
+        throw new HttpError(400, "invalid_manager", reason);
       }
     }
 
@@ -462,6 +512,16 @@ export async function updateUserHandler(
       after: diff.after,
       ...networkMeta(req),
     });
+
+    if ("managerId" in diff.set && updated.status !== "disabled") {
+      void notifyManagerChange({
+        orgId: session.orgId,
+        actorUserId: session.userId,
+        report: updated,
+        fromManagerHex: (diff.before.managerId as string | null) ?? null,
+        toManagerHex: (diff.after.managerId as string | null) ?? null,
+      });
+    }
 
     res.json({ user: toPublicUser(updated) });
   } catch (err) {
@@ -538,6 +598,14 @@ export async function resetUserTotpHandler(
         $set: {
           totpSecret: null,
           totpEnrolledAt: null,
+          // Backup codes belong to the enrolment — a reset wipes them
+          // too, so an old printed sheet can't bypass the re-enrol.
+          totpBackupCodes: null,
+          totpBackupCodesGeneratedAt: null,
+          // A half-finished self-service device move must not survive an
+          // admin reset either — its secret would become live on confirm.
+          totpPendingSecret: null,
+          totpPendingExpiresAt: null,
           updatedAt: now,
         },
       },

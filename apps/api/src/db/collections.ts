@@ -36,7 +36,10 @@ import type {
   HubConfig,
   Integration,
   ManagerGoalVerdict,
+  ManagerGoalVerdictEvent,
+  ManagerReportNote,
   Notification,
+  NotificationPrefs,
   Org,
   SchedulerStamp,
   Session,
@@ -180,6 +183,14 @@ export async function getNotificationsCollection(): Promise<
   return db.collection<Notification>("notifications");
 }
 
+/** Per-user mute / email preferences (lib/notifications.ts). */
+export async function getNotificationPrefsCollection(): Promise<
+  Collection<NotificationPrefs>
+> {
+  const db = await getDb();
+  return db.collection<NotificationPrefs>("notification_prefs");
+}
+
 export async function getSchedulerStampsCollection(): Promise<
   Collection<SchedulerStamp>
 > {
@@ -192,6 +203,22 @@ export async function getManagerGoalVerdictsCollection(): Promise<
 > {
   const db = await getDb();
   return db.collection<ManagerGoalVerdict>("manager_goal_verdicts");
+}
+
+/** A manager's 1:1 notes about a direct report (modules/manager/report-notes.ts). */
+export async function getManagerReportNotesCollection(): Promise<
+  Collection<ManagerReportNote>
+> {
+  const db = await getDb();
+  return db.collection<ManagerReportNote>("manager_report_notes");
+}
+
+/** Append-only history behind `manager_goal_verdicts` (lib/manager-verdicts.ts). */
+export async function getManagerGoalVerdictEventsCollection(): Promise<
+  Collection<ManagerGoalVerdictEvent>
+> {
+  const db = await getDb();
+  return db.collection<ManagerGoalVerdictEvent>("manager_goal_verdict_events");
 }
 
 export async function getAssignedGoalsCollection(): Promise<
@@ -643,8 +670,9 @@ async function ensureIndexes(): Promise<void> {
   const managerVerdicts = await getManagerGoalVerdictsCollection();
   await managerVerdicts.createIndexes([
     {
-      // One current manager verdict per (org, subject, goal). Upsert on
-      // re-grade replaces it — no history bloat.
+      // One CURRENT manager verdict per (org, subject, goal). A re-grade
+      // rewrites this projection; the prior grade survives in
+      // manager_goal_verdict_events (the append-only history).
       key: { orgId: 1, subjectUserId: 1, goalId: 1 },
       unique: true,
       name: "manager_verdicts_org_subject_goal_uniq",
@@ -656,6 +684,44 @@ async function ensureIndexes(): Promise<void> {
       name: "manager_verdicts_org_subject",
     },
   ]);
+
+  const managerVerdictEvents = await getManagerGoalVerdictEventsCollection();
+  await managerVerdictEvents.createIndexes([
+    {
+      // History read + "latest per goal per period": every grade for one
+      // (subject, goal), newest first, sliceable by period.
+      key: { orgId: 1, subjectUserId: 1, goalId: 1, periodKey: 1, gradedAt: -1 },
+      name: "manager_verdict_events_subject_goal_period",
+    },
+  ]);
+  // Integrity guards for the append-only history (recordManagerVerdict
+  // retries once on the duplicate-key error these raise):
+  //   - ONE active (supersededAt: null) grade per (org, subject, goal, period)
+  //   - ONE legacy backfill event per (org, subject, goal)
+  // Created separately and non-fatally: a database that already holds a
+  // duplicate from before the guard must not take the API down on boot —
+  // it logs, and the guard lands once the duplicate is cleaned up.
+  try {
+    await managerVerdictEvents.createIndexes([
+      {
+        key: { orgId: 1, subjectUserId: 1, goalId: 1, periodKey: 1 },
+        unique: true,
+        partialFilterExpression: { supersededAt: { $type: "null" } },
+        name: "manager_verdict_events_active_uniq",
+      },
+      {
+        key: { orgId: 1, subjectUserId: 1, goalId: 1 },
+        unique: true,
+        partialFilterExpression: { legacy: true },
+        name: "manager_verdict_events_legacy_uniq",
+      },
+    ]);
+  } catch (err) {
+    logger.error(
+      { err: err instanceof Error ? err.message : String(err) },
+      "[db] manager_verdict_events unique guards not created — duplicate active/legacy grades exist; clean them up and restart",
+    );
+  }
 
   const tierPolicies = await getGoalTierPoliciesCollection();
   // F6 migration: the original unique index was (org, code) — exactly one
@@ -689,8 +755,32 @@ async function ensureIndexes(): Promise<void> {
     { key: { orgId: 1, createdBy: 1, createdAt: -1 }, name: "assigned_goals_org_creator_created" },
   ]);
 
+  const managerReportNotes = await getManagerReportNotesCollection();
+  await managerReportNotes.createIndexes([
+    {
+      // The report board's Notes tab: one manager's notes on one report,
+      // newest first.
+      key: { orgId: 1, managerId: 1, reportId: 1, createdAt: -1 },
+      name: "manager_report_notes_org_manager_report_created",
+    },
+    {
+      // The report's own read of notes shared with them.
+      key: { orgId: 1, reportId: 1, visibility: 1, createdAt: -1 },
+      name: "manager_report_notes_org_report_visibility_created",
+    },
+  ]);
+
+  const notificationPrefs = await getNotificationPrefsCollection();
+  await notificationPrefs.createIndexes([
+    {
+      key: { orgId: 1, userId: 1 },
+      unique: true,
+      name: "notification_prefs_org_user_uniq",
+    },
+  ]);
+
   logger.debug(
-    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs, snapshots, grading_verdicts, integrations, hub_configs, companion_devices, companion_pairings, notifications, manager_goal_verdicts, goal_tier_policies, assigned_goals",
+    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs, snapshots, grading_verdicts, integrations, hub_configs, companion_devices, companion_pairings, notifications, manager_goal_verdicts, manager_goal_verdict_events, goal_tier_policies, assigned_goals, notification_prefs, manager_report_notes",
   );
 }
 

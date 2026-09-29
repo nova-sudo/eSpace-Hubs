@@ -73,6 +73,9 @@ async function cellsByAssignee(
         now: nowMs,
         graceMs: doc.graceHours * HOUR_MS,
         timeZone: doc.timeZone || "Africa/Cairo",
+        // Windows that ended before the goal was assigned are optional
+        // backfill — never nudged as overdue.
+        trackingStart: doc.createdAt instanceof Date ? doc.createdAt.getTime() : null,
         entries: (byUser.get(k) ?? []).map((e) => ({
           ts: e.ts.getTime(),
           createdAt: e.createdAt ? e.createdAt.getTime() : null,

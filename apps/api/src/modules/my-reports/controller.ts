@@ -271,3 +271,41 @@ export async function listReportFillsHandler(
     next(err);
   }
 }
+
+/**
+ * GET /my-reports/manager — the caller's OWN line manager, by name.
+ *
+ * The inverse read of this module: who do I report to? The Evidence page
+ * names the recipient before the first packet is submitted ("It goes to Mona
+ * Manager.") — until now it only learned the name from a packet that already
+ * existed. Returns only id + display name, and only for the caller's own
+ * `managerId`; a disabled manager reads as none (nobody would receive it).
+ */
+export async function getMyManagerHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = requireSession(req);
+    const users = await getUsersCollection();
+    const me = await users.findOne(
+      { _id: session.userId, orgId: session.orgId },
+      { projection: { managerId: 1 } },
+    );
+    const managerId = me?.managerId ?? null;
+    const manager = managerId
+      ? await users.findOne(
+          { _id: managerId, orgId: session.orgId, status: { $ne: "disabled" } },
+          { projection: { displayName: 1, email: 1 } },
+        )
+      : null;
+    res.json({
+      manager: manager
+        ? { id: manager._id.toHexString(), displayName: manager.displayName || manager.email }
+        : null,
+    });
+  } catch (err) {
+    next(err);
+  }
+}

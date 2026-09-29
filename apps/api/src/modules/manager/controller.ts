@@ -4,13 +4,11 @@
  * inside the session's org, so a manager only ever sees the people who
  * report to them (never the whole org — that's admin's job).
  *
- *   GET /api/v1/manager/reports                      list direct reports
- *   GET /api/v1/manager/reports/:userId/goal-health  one report's board
+ * See routes.ts for the endpoint list.
  *
  * Gated by `requireCapability(manager.team.view)` in routes.ts; the
  * controllers assume that passed and apply the managerId + orgId
- * boundary. Grading, delegated verdicts, approvals, and notifications
- * land in later drops — see docs/manager-hub-plan.md.
+ * boundary (./resolve-report.ts). Every mutation writes an audit row.
  */
 
 import type { NextFunction, Request, Response } from "express";
@@ -21,12 +19,22 @@ import {
   effectiveSpecDocs,
   withAssignedTree,
 } from "../../lib/assigned-goals.js";
-import { isAssignedGoalId } from "@espace-devhub/shared/goal-specs";
+import {
+  assignedGoalId,
+  isAssignedGoalId,
+  GOAL_STATUS as SHARED_STATUS,
+  SEVERITY as SHARED_SEVERITY,
+  isMeasurable as sharedIsMeasurable,
+  isSingleRecordWidget,
+  specCadence,
+} from "@espace-devhub/shared/goal-specs";
 import {
   getAssignedGoalsCollection,
   getGoalContextCollection,
   getGoalInputsCollection,
+  getGoalLocksCollection,
   getGoalSpecsCollection,
+  getNotificationsCollection,
   getGoalTierVerdictsCollection,
   getGoalsCollection,
   getReviewPacketsCollection,
@@ -42,9 +50,14 @@ import type {
 } from "../../db/types.js";
 import { WHOLE_GOAL_TIER_KEY } from "../../db/types.js";
 import {
+  ackToJson,
+  currentVerdictToJson,
   getManagerVerdictMap,
+  isAcceptablePeriodKey,
+  PERIOD_YEAR_WINDOW,
+  listManagerVerdictHistory,
   listManagerVerdictsForSubjects,
-  upsertManagerVerdict,
+  recordManagerVerdict,
 } from "../../lib/manager-verdicts.js";
 import {
   currentCycleKey,
@@ -61,10 +74,18 @@ import {
   deriveStatus,
   goalReadiness,
   specKindLabel,
+  sharedGoalStatus,
   specVariant,
-  type GoalStatus,
+  type GoalStatusKey,
 } from "./goal-health.js";
 import { buildGoalDetail } from "./goal-detail.js";
+import { resolveReportFor } from "./resolve-report.js";
+import {
+  findGovernedGoal,
+  tierPolicyNotificationData,
+  type GovernedGoal,
+  type TierPolicyChange,
+} from "./tier-policy-notify.js";
 import * as sharedGoalSpecs from "@espace-devhub/shared/goal-specs";
 
 /**
@@ -137,7 +158,15 @@ interface GoalRow {
   code: string;
   title: string;
   category: string;
-  status: GoalStatus;
+  /** The shared status key (goal-status.js) — same word the dev sees. */
+  status: GoalStatusKey;
+  statusLabel: string;
+  statusTone: string;
+  statusReason: string | null;
+  /** Due-so-far windows: logged (or settled) vs due. Null when not windowed. */
+  logged: { done: number; due: number; owed: number } | null;
+  /** The cadence the windows bucket on ("weekly"…), for "4 of 6 weeks". */
+  cadence: string | null;
   readiness: string;
   kindLabel: string | null;
   variant: string | null;
@@ -156,6 +185,8 @@ interface GoalRow {
     gradedAt: string;
     source: "ai" | "manager";
     gradedByName: string | null;
+    /** The report's acknowledgement of a MANAGER grade; null otherwise. */
+    ack?: { at: string; disagree: boolean; note: string } | null;
   } | null;
   /**
    * The AI's tier, ALWAYS — `tier` above collapses to the manager
@@ -179,31 +210,18 @@ interface GoalGroup {
 }
 
 /**
- * Resolve the target report and enforce the manager boundary. Returns
- * the user doc, or throws 404 when the id is malformed, the user isn't
- * in this org, or they don't report to the caller. 404 (not 403) so the
+ * Resolve the target report and enforce the manager boundary — see
+ * ./resolve-report.ts (unit-tested) for the rules. 404 (not 403) so the
  * endpoint never reveals whether an arbitrary user id exists.
  */
 async function resolveReport(
   req: Request,
 ): Promise<{ session: NonNullable<Request["session"]>; target: User }> {
-  const session = req.session;
-  if (!session) {
-    throw new HttpError(401, "unauthenticated", "Login required.");
-  }
-  const rawId = req.params.userId;
-  if (!ObjectId.isValid(rawId)) {
-    throw new HttpError(404, "not_found", "That teammate isn't on your team.");
-  }
   const users = await getUsersCollection();
-  const target = await users.findOne({
-    _id: new ObjectId(rawId),
-    orgId: session.orgId,
-  });
-  if (!target || !target.managerId || !target.managerId.equals(session.userId)) {
-    throw new HttpError(404, "not_found", "That teammate isn't on your team.");
-  }
-  return { session, target };
+  const target = await resolveReportFor(req.session, req.params.userId, (q) =>
+    users.findOne(q),
+  );
+  return { session: req.session!, target };
 }
 
 /**
@@ -211,7 +229,7 @@ async function resolveReport(
  * server-side for every report in one request instead of the browser
  * fanning out N goal-health calls (#238).
  */
-async function computeGoalHealth(orgId: ObjectId, target: User) {
+async function computeGoalHealth(orgId: ObjectId, target: User, viewerId?: ObjectId) {
   {
     const scope = { orgId, userId: target._id };
 
@@ -247,13 +265,23 @@ async function computeGoalHealth(orgId: ObjectId, target: User) {
         ),
         getGoalInputsCollection().then((c) =>
           c
-            .aggregate<{ _id: string; count: number; lastTs: Date }>([
+            .aggregate<{
+              _id: string;
+              count: number;
+              lastTs: Date;
+              tss: Array<Date | number>;
+              firstId: ObjectId;
+            }>([
               { $match: scope },
               {
                 $group: {
                   _id: "$goalId",
                   count: { $sum: 1 },
                   lastTs: { $max: "$ts" },
+                  // Every entry's time — the cadence windows need them to
+                  // say which weeks were logged (the shared status model).
+                  tss: { $push: "$ts" },
+                  firstId: { $min: "$_id" },
                 },
               },
             ])
@@ -261,10 +289,64 @@ async function computeGoalHealth(orgId: ObjectId, target: User) {
         ),
         getManagerVerdictMap(orgId, target._id),
       ]);
+    // Facts the shared window model needs beyond the rows above: the
+    // report's settle locks ("nothing to report" weeks) and when each
+    // tracker started counting — the SAME rule as /goal-spec-meta (row
+    // creation, earliest entry, assignment date, approval decision).
+    const [lockDoc, assignedDocs, rawSpecRows] = await Promise.all([
+      getGoalLocksCollection().then((c) => c.findOne(scope, { projection: { keys: 1 } })),
+      getAssignedGoalsCollection().then((c) =>
+        c
+          .find({ orgId, assigneeIds: target._id }, { projection: { _id: 1, createdAt: 1 } })
+          .toArray(),
+      ),
+      getGoalSpecsCollection().then((c) =>
+        c.find(scope, { projection: { _id: 1, goalId: 1, "spec.approval": 1 } }).toArray(),
+      ),
+    ]);
+    const locksByGoal = new Map<string, Set<string>>();
+    for (const k of lockDoc?.keys ?? []) {
+      const i = k.indexOf("::");
+      if (i <= 0) continue;
+      const gid = k.slice(0, i);
+      if (!locksByGoal.has(gid)) locksByGoal.set(gid, new Set());
+      locksByGoal.get(gid)!.add(k.slice(i + 2));
+    }
+    const trackerStart = new Map<string, Date>();
+    const earliest = (id: string, at: Date) => {
+      const cur = trackerStart.get(id);
+      if (!cur || at.getTime() < cur.getTime()) trackerStart.set(id, at);
+    };
+    for (const r of rawSpecRows) earliest(r.goalId, r._id.getTimestamp());
+    for (const d of assignedDocs) {
+      earliest(
+        assignedGoalId(d._id.toHexString()),
+        d.createdAt instanceof Date ? d.createdAt : d._id.getTimestamp(),
+      );
+    }
+    for (const a of activity) {
+      if (trackerStart.has(a._id) && a.firstId) earliest(a._id, a.firstId.getTimestamp());
+    }
+    for (const r of rawSpecRows) {
+      const approval = (r.spec as { approval?: { status?: unknown; reviewedAt?: unknown } } | undefined)
+        ?.approval;
+      const ms =
+        typeof approval?.reviewedAt === "number"
+          ? approval.reviewedAt
+          : typeof approval?.reviewedAt === "string"
+            ? Date.parse(approval.reviewedAt)
+            : NaN;
+      if (approval?.status === "approved" && Number.isFinite(ms) && ms > 0) {
+        const cur = trackerStart.get(r.goalId);
+        if (!cur || ms > cur.getTime()) trackerStart.set(r.goalId, new Date(ms));
+      }
+    }
+    const hireDate = target.hireDate instanceof Date ? target.hireDate : null;
+    const now = Date.now();
     // Latest review packet: the one server-side source of a real number
     // for AUTO goals (the dev's client froze it at submit time).
     const latestPacket = await getReviewPacketsCollection().then((c) =>
-      c.findOne(scope, { sort: { submittedAt: -1 }, projection: { goals: 1, submittedAt: 1 } }),
+      c.findOne(scope, { sort: { submittedAt: -1 }, projection: { _id: 1, goals: 1, submittedAt: 1 } }),
     );
     const readingMap = new Map(
       (latestPacket?.goals ?? []).map((g) => [g.goalId, g.reading]),
@@ -281,12 +363,34 @@ async function computeGoalHealth(orgId: ObjectId, target: User) {
     const summary = {
       total: 0,
       graded: 0,
+      /** Trackers that exist but can't be logged yet (shared "Needs setup"). */
       needsSetup: 0,
+      /** Goals with no tracker at all (shared "No tracker yet"). */
+      noTracker: 0,
       delegatedToYou: 0,
       noData: 0,
       auto: 0,
       tracking: 0,
+      /** Per shared status key — the same buckets the dev's pages count. */
+      byStatus: {} as Record<string, number>,
+      /** The report's weakest measured goal, with its reason. */
+      worst: null as null | {
+        status: string;
+        label: string;
+        tone: string;
+        reason: string | null;
+        goalTitle: string;
+      },
+      /** Newest entry across every goal — "last check-in". */
+      lastEntryAt: null as string | null,
+      /** Manager grades the report has disagreed with (not yet regraded). */
+      openDisputes: 0,
       byTier: { not_achieved: 0, achieved: 0, over_achieved: 0, role_model: 0 },
+    };
+    const worstRank = (k: string) => {
+      const i = SHARED_SEVERITY.indexOf(k as (typeof SHARED_SEVERITY)[number]);
+      // Unmeasured states never outrank a measured one for "who needs you".
+      return sharedIsMeasurable(k) ? i : SHARED_SEVERITY.length + (i < 0 ? 0 : i);
     };
 
     const groups: GoalGroup[] = (tree?.l1s ?? []).map((l1) => ({
@@ -304,10 +408,23 @@ async function computeGoalHealth(orgId: ObjectId, target: User) {
         const variant = specVariant(spec);
         const act = activityMap.get(l2.id) ?? null;
         const entryCount = act?.count ?? 0;
-        const status = deriveStatus(readiness, variant, entryCount > 0);
+        const legacyStatus = deriveStatus(readiness, variant, entryCount > 0);
         const judge = delegatedJudge(spec);
         const mv = managerVerdictMap.get(l2.id) ?? null;
         const aiv = verdictMap.get(l2.id) ?? null;
+        const shared = sharedGoalStatus({
+          spec,
+          readiness,
+          entryTs: (act?.tss ?? [])
+            .map((t) => (t instanceof Date ? t.getTime() : Number(t)))
+            .filter((n) => Number.isFinite(n)),
+          lockedKeys: locksByGoal.get(l2.id) ?? new Set(),
+          createdAt: trackerStart.get(l2.id) ?? null,
+          hireDate,
+          tier: mv?.tier ?? aiv?.verdict.tier ?? null,
+          now,
+        });
+        const status = shared.status;
         // Manager verdict wins over the AI cache wherever a tier shows.
         const tierOut = mv
           ? {
@@ -317,6 +434,7 @@ async function computeGoalHealth(orgId: ObjectId, target: User) {
               gradedAt: mv.gradedAt.toISOString(),
               source: "manager" as const,
               gradedByName: mv.gradedByName,
+              ack: ackToJson(mv.ack),
             }
           : aiv
             ? {
@@ -330,13 +448,27 @@ async function computeGoalHealth(orgId: ObjectId, target: User) {
             : null;
 
         summary.total += 1;
-        if (status === "needs_setup" || status === "unclassified") {
-          summary.needsSetup += 1;
-        }
-        if (status === "auto") summary.auto += 1;
-        if (status === "no_data") summary.noData += 1;
-        if (status === "tracking") summary.tracking += 1;
+        summary.byStatus[status] = (summary.byStatus[status] ?? 0) + 1;
+        if (status === SHARED_STATUS.NEEDS_SETUP) summary.needsSetup += 1;
+        if (status === SHARED_STATUS.UNCLASSIFIED) summary.noTracker += 1;
+        if (status === SHARED_STATUS.AUTO) summary.auto += 1;
+        if (status === SHARED_STATUS.NOT_LOGGED) summary.noData += 1;
+        if (legacyStatus === "tracking") summary.tracking += 1;
         if (judge === "manager") summary.delegatedToYou += 1;
+        if (mv?.ack?.disagree) summary.openDisputes += 1;
+        if (act?.lastTs) {
+          const iso = act.lastTs.toISOString();
+          if (!summary.lastEntryAt || iso > summary.lastEntryAt) summary.lastEntryAt = iso;
+        }
+        if (!summary.worst || worstRank(status) < worstRank(summary.worst.status)) {
+          summary.worst = {
+            status,
+            label: shared.label,
+            tone: shared.tone,
+            reason: shared.reason,
+            goalTitle: l2.title,
+          };
+        }
         if (tierOut) {
           summary.graded += 1;
           summary.byTier[tierOut.tier] += 1;
@@ -348,6 +480,13 @@ async function computeGoalHealth(orgId: ObjectId, target: User) {
           title: l2.title,
           category: l2.category,
           status,
+          statusLabel: shared.label,
+          statusTone: shared.tone,
+          statusReason: shared.reason,
+          logged: shared.logged,
+          cadence: typeof spec?.widget === "string" && isSingleRecordWidget(spec.widget)
+            ? null
+            : specCadence(spec),
           readiness,
           kindLabel: specKindLabel(spec),
           variant,
@@ -362,7 +501,38 @@ async function computeGoalHealth(orgId: ObjectId, target: User) {
       }),
     }));
 
-    return { user: toReportCard(target), summary, groups };
+    // The latest packet, and whether the viewing manager has looked at it.
+    // "Seen" needs no new field: it's true once the manager read the
+    // "packet submitted" notification, or graded any of this report's goals
+    // after the packet arrived (they clearly had it open).
+    let packet: { id: string; submittedAt: string; state: "new" | "seen" } | null = null;
+    if (latestPacket) {
+      const submitted = latestPacket.submittedAt;
+      let seen = [...managerVerdictMap.values()].some(
+        (v) => v.gradedAt instanceof Date && v.gradedAt.getTime() >= submitted.getTime(),
+      );
+      if (!seen && viewerId) {
+        const note = await getNotificationsCollection().then((c) =>
+          c.findOne(
+            {
+              orgId,
+              userId: viewerId,
+              kind: "review_packet_submitted",
+              "data.packetId": latestPacket._id.toHexString(),
+            },
+            { projection: { readAt: 1 } },
+          ),
+        );
+        seen = Boolean(note?.readAt);
+      }
+      packet = {
+        id: latestPacket._id.toHexString(),
+        submittedAt: submitted.toISOString(),
+        state: seen ? "seen" : "new",
+      };
+    }
+
+    return { user: toReportCard(target), summary: { ...summary, packet }, groups };
   }
 }
 
@@ -373,7 +543,7 @@ export async function getReportGoalHealthHandler(
 ): Promise<void> {
   try {
     const { session, target } = await resolveReport(req);
-    res.json(await computeGoalHealth(session.orgId, target));
+    res.json(await computeGoalHealth(session.orgId, target, session.userId));
   } catch (err) {
     next(err);
   }
@@ -399,7 +569,7 @@ export async function getTeamSummaryHandler(
       .find({ orgId: session.orgId, managerId: session.userId, status: { $ne: "disabled" } })
       .toArray();
     const health = await Promise.all(
-      reports.map((u) => computeGoalHealth(session.orgId, u)),
+      reports.map((u) => computeGoalHealth(session.orgId, u, session.userId)),
     );
     res.json({
       reports: health.map((h) => ({ id: h.user.id, summary: h.summary })),
@@ -461,15 +631,26 @@ export async function getReportGoalDetailHandler(
           c.countDocuments({ ...scope, goalId }),
         ),
       ]);
+    // Every entry's time + value (bounded) — the drawer groups readings per
+    // cadence window instead of listing each click.
+    const allEntries = await getGoalInputsCollection().then((c) =>
+      c
+        .find({ ...scope, goalId }, { projection: { ts: 1, value: 1 } })
+        .sort({ ts: -1 })
+        .limit(2000)
+        .toArray(),
+    );
 
     // Locate the L2 goal and its parent L1 in the report's tree.
     let l2: { id: string; code: string; title: string; category: string } | null =
       null;
     let l1: { id: string; code: string; title: string; category: string } | null =
       null;
+    let rubric: string | null = null;
     for (const g1 of tree?.l1s ?? []) {
       const found = (g1.l2s ?? []).find((x) => x.id === goalId);
       if (found) {
+        rubric = (found.rubric || "").trim() || (g1.rubric || "").trim() || null;
         l2 = {
           id: found.id,
           code: found.code,
@@ -502,10 +683,13 @@ export async function getReportGoalDetailHandler(
             note: mv.note,
             gradedByName: mv.gradedByName,
             gradedAt: mv.gradedAt,
+            ack: mv.ack ?? null,
           }
         : null,
       inputs,
       totalEntryCount,
+      allEntries,
+      rubric,
     });
 
     res.json({ user: toReportCard(target), ...detail });
@@ -550,7 +734,11 @@ export async function putGoalVerdictHandler(
     const { session, target } = await resolveReport(req);
     const goalId = req.params.goalId;
 
-    const body = (req.body ?? {}) as { tier?: unknown; note?: unknown };
+    const body = (req.body ?? {}) as {
+      tier?: unknown;
+      note?: unknown;
+      periodKey?: unknown;
+    };
     if (typeof body.tier !== "string" || !TIERS.includes(body.tier as GoalTier)) {
       throw new HttpError(
         400,
@@ -560,6 +748,20 @@ export async function putGoalVerdictHandler(
     }
     const tier = body.tier as GoalTier;
     const note = typeof body.note === "string" ? body.note.slice(0, 4_000) : "";
+    // Optional grading period. Omitted → the calendar year of the grade.
+    // Only YYYY / YYYY-Qn / YYYY-Hn / YYYY-MM within ±2 years of now.
+    if (
+      body.periodKey !== undefined &&
+      body.periodKey !== null &&
+      !isAcceptablePeriodKey(body.periodKey)
+    ) {
+      throw new HttpError(
+        400,
+        "invalid_period",
+        `periodKey must look like "2026", "2026-Q1", "2026-H1" or "2026-03", within ${PERIOD_YEAR_WINDOW} years of now.`,
+      );
+    }
+    const periodKey = isAcceptablePeriodKey(body.periodKey) ? body.periodKey : null;
 
     // The goal must exist in this report's tree — no orphan verdicts.
     // Shared goals count: the line manager grades them like any other.
@@ -582,7 +784,9 @@ export async function putGoalVerdictHandler(
     );
     const managerName = manager?.displayName ?? "Your manager";
 
-    await upsertManagerVerdict({
+    // Append-only: the previous grade for this period is superseded, not
+    // overwritten (lib/manager-verdicts.ts).
+    const written = await recordManagerVerdict({
       orgId: session.orgId,
       subjectUserId: target._id,
       goalId,
@@ -590,12 +794,32 @@ export async function putGoalVerdictHandler(
       note,
       gradedBy: session.userId,
       gradedByName: managerName,
+      periodKey,
     });
 
-    // The grade of record has HR consequences — it must leave a trace.
-    // (This module wrote zero audit rows while every other privileged
-    // module audited; "my manager changed my tier and there's no
-    // record" was unanswerable.)
+    // Same tier + note as the active grade: nothing changed, so no audit
+    // row, no "changed a grade" notice, and the report's ack is kept.
+    if (written.unchanged) {
+      res.json({
+        ok: true,
+        unchanged: true,
+        verdict: {
+          goalId,
+          tier,
+          note,
+          gradedByName: written.before?.gradedByName ?? managerName,
+          source: "manager",
+          periodKey: written.periodKey,
+          changedFrom: null,
+        },
+      });
+      return;
+    }
+    const tierChanged = Boolean(written.before && written.before.tier !== tier);
+
+    // The grade of record has HR consequences — it must leave a trace,
+    // with what it replaced. The action name predates grade history and
+    // is kept so existing audit rows and saved filters still match.
     await writeAudit({
       orgId: session.orgId,
       actorUserId: session.userId,
@@ -603,10 +827,22 @@ export async function putGoalVerdictHandler(
       action: "manager.goal_verdict.set",
       targetType: "goal",
       targetId: goalId,
+      before: written.before
+        ? {
+            subjectUserId: target._id.toHexString(),
+            periodKey: written.periodKey,
+            tier: written.before.tier,
+            gradedByName: written.before.gradedByName,
+            gradedAt: written.before.gradedAt.toISOString(),
+            hasNote: written.before.note.length > 0,
+          }
+        : null,
       after: {
         subjectUserId: target._id.toHexString(),
+        periodKey: written.periodKey,
         tier,
         hasNote: note.length > 0,
+        eventId: written.eventId.toHexString(),
       },
       ...networkMeta(req),
     });
@@ -616,9 +852,25 @@ export async function putGoalVerdictHandler(
       orgId: session.orgId,
       userId: target._id,
       kind: "manager_graded",
-      title: "Your manager graded a goal",
-      body: `${managerName} set "${goalTitle}" to ${TIER_LABEL[tier]}.`,
-      data: { goalId, tier, goalTitle, gradedByName: managerName, note },
+      title: tierChanged
+        ? "Your manager changed a grade"
+        : written.before
+          ? "Your manager updated a grade note"
+          : "Your manager graded a goal",
+      // A changed grade says so — a silent downgrade was the trust gap.
+      body:
+        tierChanged && written.before
+          ? `${managerName} changed "${goalTitle}" from ${TIER_LABEL[written.before.tier]} to ${TIER_LABEL[tier]}.`
+          : `${managerName} set "${goalTitle}" to ${TIER_LABEL[tier]}.`,
+      data: {
+        goalId,
+        tier,
+        goalTitle,
+        gradedByName: managerName,
+        note,
+        periodKey: written.periodKey,
+        previousTier: written.before?.tier ?? null,
+      },
       createdBy: session.userId,
     });
 
@@ -630,8 +882,38 @@ export async function putGoalVerdictHandler(
         note,
         gradedByName: managerName,
         source: "manager",
+        periodKey: written.periodKey,
+        changedFrom: written.before?.tier ?? null,
       },
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /manager/reports/:userId/goals/:goalId/verdicts — one goal's grade
+ * history (oldest first, every grade ever set, superseded ones included)
+ * plus the current grade and the report's acknowledgement of it.
+ * Same resolveReport boundary as every other per-report read.
+ */
+export async function listGoalVerdictHistoryHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { session, target } = await resolveReport(req);
+    const goalId = String(req.params.goalId ?? "");
+    if (!goalId || goalId.length > 200) {
+      throw new HttpError(404, "not_found", "No such goal for this report.");
+    }
+    const { current, history } = await listManagerVerdictHistory(
+      session.orgId,
+      target._id,
+      goalId,
+    );
+    res.json({ current: currentVerdictToJson(current), history });
   } catch (err) {
     next(err);
   }
@@ -818,6 +1100,31 @@ export async function listGoalCodesHandler(
   }
 }
 
+/** The stored policy row for (code, cycle) — the audit's `before`. */
+async function findTierPolicyRow(
+  orgId: ObjectId,
+  code: string,
+  cycleKey: string | null,
+) {
+  const rows = await listTierPolicies(orgId);
+  return (
+    rows.find((p) => p.code === code && (p.cycleKey ?? null) === cycleKey) ??
+    null
+  );
+}
+
+/** Audit projection of a policy row — the criteria text itself. */
+function tierPolicyAuditState(
+  row: { cycleKey?: string | null; finalTiers: TierCriteria | null; cadenceTiers: TierCriteria | null } | null,
+) {
+  if (!row) return null;
+  return {
+    cycleKey: row.cycleKey ?? "legacy",
+    finalTiers: row.finalTiers ?? null,
+    cadenceTiers: row.cadenceTiers ?? null,
+  };
+}
+
 /** Set (or clear) the final and/or cadence tier criteria for a Goal Code. */
 export async function putTierPolicyHandler(
   req: Request,
@@ -858,6 +1165,7 @@ export async function putTierPolicyHandler(
       throw new HttpError(400, "invalid_cycle", 'cycleKey must be "YYYY".');
     }
 
+    const beforeRow = await findTierPolicyRow(session.orgId, code, cycleKey);
     const updated = await upsertTierPolicy({
       orgId: session.orgId,
       code,
@@ -869,9 +1177,7 @@ export async function putTierPolicyHandler(
 
     // Org-wide grading criteria, last-write-wins across managers —
     // exactly the kind of write the audit page must be able to answer
-    // "who changed this and when" for.
-    const describe = (v: TierCriteria | null | undefined) =>
-      v === undefined ? "untouched" : v === null ? "cleared" : "set";
+    // "who changed this and when, from what to what" for.
     await writeAudit({
       orgId: session.orgId,
       actorUserId: session.userId,
@@ -879,11 +1185,8 @@ export async function putTierPolicyHandler(
       action: "manager.tier_policy.set",
       targetType: "tier_policy",
       targetId: updated.code,
-      after: {
-        cycleKey,
-        finalTiers: describe(finalTiers),
-        cadenceTiers: describe(cadenceTiers),
-      },
+      before: tierPolicyAuditState(beforeRow),
+      after: tierPolicyAuditState(updated),
       ...networkMeta(req),
     });
 
@@ -908,39 +1211,57 @@ export async function putTierPolicyHandler(
 
 /**
  * Notify every engineer whose tree carries `code` that its grading
- * criteria changed. Fire-and-forget from the policy PUT — a notify
- * failure must never fail the save.
+ * criteria changed. Fire-and-forget from the policy PUT / DELETE — a
+ * notify failure must never fail the save.
+ *
+ * Each row carries `goalCode` and — per recipient — the `goalId` of THEIR
+ * goal with that code, so the bell deep-links to it rather than the bare
+ * Goals page (see ./tier-policy-notify.ts for how the goal is picked).
  */
 async function notifyGovernedEngineers(
   orgId: ObjectId,
   actorUserId: ObjectId,
   code: string,
-  cycleKey: string,
+  cycleKey: string | null,
+  change: TierPolicyChange = "set",
 ): Promise<void> {
   try {
     const goals = await getGoalsCollection();
-    const affected = new Set<string>();
+    // userId → the goal the policy governs for them (own tree first; a
+    // shared goal with the code only when the tree has no match).
+    const affected = new Map<string, GovernedGoal | null>();
     for await (const tree of goals.find({ orgId })) {
-      const carries = (tree.l1s || []).some(
-        (l1) =>
-          (l1.code || "").trim() === code ||
-          (l1.l2s || []).some((l2) => (l2.code || "").trim() === code),
-      );
-      if (carries) affected.add(String(tree.userId));
+      const goal = findGovernedGoal(tree.l1s, code);
+      if (goal) affected.set(String(tree.userId), goal);
     }
     const assigned = await getAssignedGoalsCollection();
     for await (const g of assigned.find({ orgId, status: "active", code })) {
-      for (const uid of g.assigneeIds) affected.add(String(uid));
+      const goal: GovernedGoal = {
+        goalId: assignedGoalId(g._id.toHexString()),
+        goalTitle: g.title || null,
+      };
+      for (const uid of g.assigneeIds) {
+        const key = String(uid);
+        if (!affected.get(key)) affected.set(key, goal);
+      }
     }
-    for (const uid of affected) {
+    const scope = cycleKey ? ` for ${cycleKey}` : "";
+    for (const [uid, goal] of affected) {
       if (uid === String(actorUserId)) continue;
+      const which = goal?.goalTitle ? `"${goal.goalTitle}"` : "Your matching goal";
       void createNotification({
         orgId,
         userId: new ObjectId(uid),
         kind: "tier_policy_updated",
-        title: `Grading criteria updated: ${code}`.slice(0, 200),
-        body: `Your manager changed the achievement-tier criteria governing Goal Code ${code} for ${cycleKey}. Your matching goal is now graded against the new ladder.`,
-        data: { code, cycleKey },
+        title: (change === "deleted"
+          ? `Grading criteria removed: ${code}`
+          : `Grading criteria updated: ${code}`
+        ).slice(0, 200),
+        body:
+          change === "deleted"
+            ? `Your manager removed the achievement-tier policy for Goal Code ${code}${scope}. ${which} is graded against its own ladder again.`
+            : `Your manager changed the achievement-tier criteria governing Goal Code ${code}${scope}. ${which} is now graded against the new ladder.`,
+        data: tierPolicyNotificationData({ code, cycleKey, change, goal }),
         createdBy: actorUserId,
       });
     }
@@ -967,6 +1288,7 @@ export async function deleteTierPolicyHandler(
     // touches the other.
     const rawCycle = String(req.query.cycleKey ?? "legacy").trim();
     const cycleKey = /^\d{4}$/.test(rawCycle) ? rawCycle : null;
+    const beforeRow = await findTierPolicyRow(session.orgId, code, cycleKey);
     const deleted = await deleteTierPolicy(session.orgId, code, cycleKey);
     if (deleted) {
       await writeAudit({
@@ -976,9 +1298,19 @@ export async function deleteTierPolicyHandler(
         action: "manager.tier_policy.delete",
         targetType: "tier_policy",
         targetId: code,
-        after: { cycleKey: cycleKey ?? "legacy" },
+        before: tierPolicyAuditState(beforeRow),
+        after: { cycleKey: cycleKey ?? "legacy", deleted: true },
         ...networkMeta(req),
       });
+      // The governed goals just lost their manager ladder — same trust
+      // rule as the PUT: they hear about it now, not at grading time.
+      void notifyGovernedEngineers(
+        session.orgId,
+        session.userId,
+        code,
+        cycleKey,
+        "deleted",
+      );
     }
     res.json({ ok: true, deleted });
   } catch (err) {
@@ -1009,6 +1341,7 @@ interface DelegatedItem {
     gradedAt: string;
     gradedByName: string;
     note: string;
+    ack: { at: string; disagree: boolean; note: string } | null;
   } | null;
 }
 
@@ -1095,6 +1428,7 @@ export async function listDelegatedQueueHandler(
               gradedAt: v.gradedAt.toISOString(),
               gradedByName: v.gradedByName,
               note: v.note,
+              ack: ackToJson(v.ack),
             }
           : null,
       });
@@ -1348,16 +1682,32 @@ export async function putApprovalDecisionHandler(
     const note = typeof body.note === "string" ? body.note.slice(0, 2_000) : "";
 
     const specs = await getGoalSpecsCollection();
-    const doc = await specs.findOne({
-      orgId: session.orgId,
-      userId: target._id,
-      goalId,
-    });
-    if (!doc) {
+    const [doc, tree] = await Promise.all([
+      specs.findOne({
+        orgId: session.orgId,
+        userId: target._id,
+        goalId,
+      }),
+      getGoalsCollection().then((c) =>
+        c.findOne({ orgId: session.orgId, userId: target._id }),
+      ),
+    ]);
+    // The goal must still be in the report's tree — the queue hides specs
+    // orphaned by a deleted L2, so deciding one is never legitimate.
+    const titles = goalTitleMap(tree);
+    if (!doc || typeof goalId !== "string" || !titles.has(goalId)) {
       throw new HttpError(404, "not_found", "No such goal for this report.");
     }
     const existing =
-      (doc.spec.approval as { submittedAt?: unknown } | undefined) ?? {};
+      (doc.spec.approval as
+        | { submittedAt?: unknown; status?: unknown; reviewedByName?: unknown }
+        | undefined) ?? {};
+    // Same rule as the admin twin: only a still-pending approval can be
+    // decided (a double-click or a stale queue tab must not flip a decision,
+    // nor stamp an approval block onto a spec that never had one).
+    if (existing.status !== "pending") {
+      throw new HttpError(409, "not_pending", "This goal isn't waiting for approval any more.");
+    }
 
     const manager = await getUsersCollection().then((c) =>
       c.findOne({ _id: session.userId, orgId: session.orgId }),
@@ -1375,10 +1725,18 @@ export async function putApprovalDecisionHandler(
     }
     if (note) approval.note = note;
 
-    await specs.updateOne(
-      { orgId: session.orgId, userId: target._id, goalId },
+    const upd = await specs.updateOne(
+      {
+        orgId: session.orgId,
+        userId: target._id,
+        goalId,
+        "spec.approval.status": "pending",
+      },
       { $set: { "spec.approval": approval } },
     );
+    if (upd.matchedCount === 0) {
+      throw new HttpError(409, "not_pending", "This goal isn't waiting for approval any more.");
+    }
 
     await writeAudit({
       orgId: session.orgId,
@@ -1387,18 +1745,24 @@ export async function putApprovalDecisionHandler(
       action: "manager.goal_approval.decide",
       targetType: "goal_spec",
       targetId: goalId,
+      before: {
+        subjectUserId: target._id.toHexString(),
+        status: typeof existing.status === "string" ? existing.status : null,
+        reviewedByName:
+          typeof existing.reviewedByName === "string"
+            ? existing.reviewedByName
+            : null,
+      },
       after: {
         subjectUserId: target._id.toHexString(),
         decision: body.decision,
+        status: approval.status,
         hasNote: note.length > 0,
       },
       ...networkMeta(req),
     });
 
-    const tree = await getGoalsCollection().then((c) =>
-      c.findOne({ orgId: session.orgId, userId: target._id }),
-    );
-    const goalTitle = goalTitleMap(tree).get(goalId) ?? "your goal";
+    const goalTitle = titles.get(goalId) ?? "your goal";
 
     void createNotification({
       orgId: session.orgId,

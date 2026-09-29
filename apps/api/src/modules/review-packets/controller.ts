@@ -14,6 +14,7 @@
  */
 
 import type { NextFunction, Request, Response } from "express";
+import { ObjectId } from "mongodb";
 import { z } from "zod";
 import {
   getReviewPacketsCollection,
@@ -66,6 +67,13 @@ export async function submitReviewPacketHandler(
       orgId: session.orgId,
     });
     const managerId = me?.managerId ?? null;
+    const manager = managerId
+      ? await users.findOne(
+          { _id: managerId, orgId: session.orgId },
+          { projection: { displayName: 1, email: 1 } },
+        )
+      : null;
+    const managerName = manager ? manager.displayName || manager.email : null;
 
     const col = await getReviewPacketsCollection();
     const now = new Date();
@@ -133,6 +141,7 @@ export async function submitReviewPacketHandler(
         id: inserted.insertedId.toHexString(),
         submittedAt: now.toISOString(),
         hasManager: managerId != null,
+        managerName,
       },
     });
   } catch (err) {
@@ -164,6 +173,26 @@ export async function listMyReviewPacketsHandler(
         },
       )
       .toArray();
+    // The dev's status line names who can read the packet. One lookup for
+    // the (usually single) manager across all versions.
+    const managerIds = [
+      ...new Set(
+        rows.flatMap((r) => (r.managerId ? [r.managerId.toHexString()] : [])),
+      ),
+    ].map((id) => new ObjectId(id));
+    const managerNames = new Map<string, string>();
+    if (managerIds.length > 0) {
+      const users = await getUsersCollection();
+      const managers = await users
+        .find(
+          { _id: { $in: managerIds } },
+          { projection: { displayName: 1, email: 1 } },
+        )
+        .toArray();
+      for (const m of managers) {
+        managerNames.set(m._id.toHexString(), m.displayName || m.email);
+      }
+    }
     res.json({
       packets: rows.map((r) => ({
         id: r._id.toHexString(),
@@ -173,7 +202,57 @@ export async function listMyReviewPacketsHandler(
         goalCount: r.goalCount,
         starredCount: r.starredCount,
         hasManager: r.managerId != null,
+        managerName: r.managerId
+          ? (managerNames.get(r.managerId.toHexString()) ?? null)
+          : null,
       })),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── GET /api/v1/review-packets/mine/:id ─────────────────────────────
+
+/**
+ * The frozen markdown of one of the dev's own submitted versions. Owner-
+ * scoped: the filter carries the session's userId, so another user's
+ * packet id 404s rather than 403s (no existence leak).
+ */
+export async function getMyReviewPacketHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const raw = String(req.params.id ?? "");
+    if (!ObjectId.isValid(raw)) {
+      throw new HttpError(404, "not_found", "No such packet.");
+    }
+    const col = await getReviewPacketsCollection();
+    const row = await col.findOne({
+      _id: new ObjectId(raw),
+      orgId: session.orgId,
+      userId: session.userId,
+    });
+    if (!row) {
+      throw new HttpError(404, "not_found", "No such packet.");
+    }
+    res.json({
+      packet: {
+        id: row._id.toHexString(),
+        submittedAt: row.submittedAt.toISOString(),
+        level: row.level,
+        rangeLabel: row.rangeLabel,
+        goalCount: row.goalCount,
+        starredCount: row.starredCount,
+        hasManager: row.managerId != null,
+        markdown: row.markdown,
+      },
     });
   } catch (err) {
     next(err);

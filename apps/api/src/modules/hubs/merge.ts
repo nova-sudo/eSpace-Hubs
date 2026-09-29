@@ -82,3 +82,36 @@ export function mergeHubOverride(
 
   return { hub, enabled };
 }
+
+/**
+ * The hubs a user sees, in order: every capability-allowed hub merged
+ * with its org override, minus the ones an override disabled.
+ *
+ * Fallback (hub-audit §3.2): when overrides disabled EVERY hub this user
+ * is allowed into, return the capability-allowed hubs with overrides
+ * ignored, so the app stays navigable while an admin fixes the config.
+ * The fallback never widens past the capability gate — a dev never sees
+ * the Admin hub in their switcher because an admin hid the Dev hub. A
+ * user whose roles grant no hub at all gets an empty list (the client
+ * shows its "no hub" screen) rather than an arbitrary default hub.
+ *
+ * Pure — `capAllowed` is `resolveHubsForCapabilities(caps)` output, which
+ * is already in HUB_ORDER.
+ */
+export function resolveVisibleHubs(
+  capAllowed: readonly HubDefinition[],
+  overrideByHubId: ReadonlyMap<string, HubConfig>,
+): { hubs: HubDefinition[]; fallback: boolean } {
+  const hubs: HubDefinition[] = [];
+  for (const defaults of capAllowed) {
+    const { hub, enabled } = mergeHubOverride(
+      defaults,
+      overrideByHubId.get(defaults.id) ?? null,
+    );
+    if (enabled) hubs.push(hub);
+  }
+  if (hubs.length > 0 || capAllowed.length === 0) {
+    return { hubs, fallback: false };
+  }
+  return { hubs: [...capAllowed], fallback: true };
+}

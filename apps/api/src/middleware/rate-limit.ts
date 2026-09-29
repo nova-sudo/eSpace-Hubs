@@ -25,7 +25,7 @@
  * off gracefully.
  */
 
-import rateLimit, { type Options } from "express-rate-limit";
+import rateLimit, { ipKeyGenerator, type Options } from "express-rate-limit";
 import type { Request, Response, NextFunction } from "express";
 import { HttpError } from "./error-handler.js";
 
@@ -36,6 +36,27 @@ interface LimiterConfig {
   max: number;
   /** Identifier used in the error message ("login", "totp-verify", …). */
   label: string;
+  /**
+   * Bucket key. Defaults to the client IP (the only identity before
+   * authentication). Authenticated routes pass `userKey` so a user is
+   * throttled wherever they connect from, and a shared office IP doesn't
+   * pool everyone's budget.
+   */
+  keyGenerator?: (req: Request) => string;
+}
+
+/** The client IP, IPv6 bucketed by /56 (see buildLimiter). */
+function ipKey(req: Request): string {
+  return req.ip ? ipKeyGenerator(req.ip) : "unknown";
+}
+
+/**
+ * Key an AUTHENTICATED route's limiter by the session user — mount it
+ * after `requireAuth()`. Falls back to the IP if no session is attached.
+ */
+export function userKey(req: Request): string {
+  const uid = req.session?.userId;
+  return uid ? `user:${uid.toHexString()}` : `ip:${ipKey(req)}`;
 }
 
 /**
@@ -54,7 +75,10 @@ function buildLimiter(cfg: LimiterConfig) {
     // Express handles trust-proxy globally; use whatever it resolves
     // to as the rate-limit key. For the public auth endpoints that's
     // the client's IP — the only thing we have before authentication.
-    keyGenerator: (req: Request) => req.ip ?? "unknown",
+    // `ipKeyGenerator` buckets IPv6 clients by their /56 subnet, so a
+    // client can't rotate addresses inside its own prefix to dodge the
+    // login / TOTP limits (and silences ERR_ERL_KEY_GEN_IPV6 on boot).
+    keyGenerator: cfg.keyGenerator ?? ipKey,
     handler: (_req: Request, _res: Response, next: NextFunction) => {
       next(
         new HttpError(
@@ -144,4 +168,17 @@ export const signupLimiter = buildLimiter({
   windowMs: 60 * 60 * 1000,
   max: 10,
   label: "signup",
+});
+
+/**
+ * POST /goal-verdicts/mine/:goalId/acknowledge — 20 per 10 minutes per
+ * USER. A dispute notifies the report's manager, so a double-clicking
+ * report or a looping script must not flood the manager's inbox. (The
+ * controller also notifies only on a NEW dispute; this caps the writes.)
+ */
+export const verdictAckLimiter = buildLimiter({
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  label: "grade acknowledgement",
+  keyGenerator: userKey,
 });

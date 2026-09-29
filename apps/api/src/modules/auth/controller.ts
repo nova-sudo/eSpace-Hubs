@@ -52,10 +52,18 @@ import {
   verifyTotpCode,
 } from "../../lib/totp.js";
 import { HttpError } from "../../middleware/error-handler.js";
+import { env } from "../../config/env.js";
+import {
+  CLEAR_BACKUP_CODES,
+  consumeBackupCode,
+  countRemainingBackupCodes,
+  issueBackupCodes,
+} from "./backup-codes.js";
 import {
   destroySession,
   destroySessionsForUser,
   mintSession,
+  requireTotpReverifyForOtherSessions,
   setSessionTotpEnrolled,
   setSessionTotpVerified,
 } from "./session.js";
@@ -72,11 +80,21 @@ import {
   passwordResetSchema,
   profileUpdateSchema,
   signupSchema,
+  backupCodesRegenerateSchema,
   totpDisableSchema,
+  totpLoginVerifySchema,
+  totpReenrolConfirmSchema,
+  totpReenrolStartSchema,
   totpVerifySchema,
   type PublicUser,
 } from "./schemas.js";
 import { resolveCompanionPrincipal } from "../companion/bearer-auth.js";
+import {
+  ReenrolError,
+  confirmReenrol,
+  startReenrol,
+  type ReenrolDeps,
+} from "./totp-reenrol.js";
 
 const LOCKOUT_THRESHOLD = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
@@ -98,6 +116,7 @@ export function toPublicUser(u: User): PublicUser {
     status: u.status,
     displayName: u.displayName,
     totpEnrolled: !!u.totpSecret,
+    backupCodesRemaining: countRemainingBackupCodes(u.totpBackupCodes),
     createdAt: u.createdAt.toISOString(),
     lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
     // M-OB fields. Null on pre-onboarding users; populated by the
@@ -297,7 +316,19 @@ export async function meHandler(
       clearSessionCookie(res);
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
-    res.json({ user: toPublicUser(user) });
+    // Name the manager for first-run copy. A disabled manager can't act,
+    // so they read as "no manager" here too (same rule as approvals).
+    let manager: PublicUser["manager"] = null;
+    if (user.managerId) {
+      const m = await users.findOne(
+        { _id: user.managerId, orgId: user.orgId },
+        { projection: { displayName: 1, email: 1, status: 1 } },
+      );
+      if (m && m.status !== "disabled") {
+        manager = { id: m._id.toHexString(), displayName: m.displayName || m.email };
+      }
+    }
+    res.json({ user: { ...toPublicUser(user), manager } });
   } catch (err) {
     next(err);
   }
@@ -942,6 +973,9 @@ export async function totpEnrolHandler(
           totpSecret: encrypted,
           // explicit null — overwrites any earlier pending enrolment
           totpEnrolledAt: null,
+          // Drop any leftover re-enrol (move-to-new-phone) secret.
+          totpPendingSecret: null,
+          totpPendingExpiresAt: null,
           updatedAt: now,
         },
       },
@@ -1036,6 +1070,16 @@ export async function totpVerifyEnrolmentHandler(
       { $set: { totpEnrolledAt: now, updatedAt: now } },
     );
 
+    // Mint the first set of backup codes alongside enrolment. Only the
+    // hashes are stored; the plaintext goes back in THIS response and
+    // nowhere else.
+    const backupCodes = await issueBackupCodes(
+      users,
+      user._id,
+      env.SESSION_SECRET,
+      now,
+    );
+
     // Flip the CURRENT session's totpEnrolled flag so the next request
     // passes requireAuth({requireTotpEnrolled: true}) without a user
     // lookup. Other live sessions for the same user (e.g. an old tab)
@@ -1052,10 +1096,11 @@ export async function totpVerifyEnrolmentHandler(
       action: "user.totp_enrolled",
       targetType: "user",
       targetId: user._id.toHexString(),
+      after: { backupCodesIssued: backupCodes.length },
       ...networkMeta(req),
     });
 
-    res.json({ ok: true });
+    res.json({ ok: true, backupCodes });
   } catch (err) {
     next(err);
   }
@@ -1082,7 +1127,7 @@ export async function totpVerifyLoginHandler(
     if (!session) {
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
-    const { code } = totpVerifySchema.parse(req.body);
+    const input = totpLoginVerifySchema.parse(req.body);
 
     const users = await getUsersCollection();
     const user = await users.findOne({ _id: session.userId });
@@ -1091,6 +1136,109 @@ export async function totpVerifyLoginHandler(
       // auth state error — likely the user was disabled or TOTP was
       // removed admin-side mid-session.
       throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+
+    let backupCodesRemaining = countRemainingBackupCodes(user.totpBackupCodes);
+    let usedBackupCode = false;
+
+    if (typeof input.backupCode === "string") {
+      // Atomic consume — see backup-codes.ts. null = unknown/used/malformed;
+      // one generic error so a caller can't tell "used" from "never existed".
+      const remaining = await consumeBackupCode(
+        users,
+        user._id,
+        input.backupCode,
+        env.SESSION_SECRET,
+      );
+      if (remaining === null) {
+        throw new HttpError(
+          401,
+          "invalid_backup_code",
+          "Backup code did not match or was already used.",
+        );
+      }
+      backupCodesRemaining = remaining;
+      usedBackupCode = true;
+    } else {
+      let plainSecret: string;
+      try {
+        plainSecret = decryptSecret(user.totpSecret);
+      } catch (err) {
+        logger.error(
+          {
+            userId: user._id.toHexString(),
+            err: err instanceof Error ? err.message : String(err),
+          },
+          "[totp] decrypt failed during verify",
+        );
+        throw new HttpError(500, "totp_secret_corrupted", "Internal error.");
+      }
+
+      if (!verifyTotpCode(input.code ?? "", plainSecret)) {
+        throw new HttpError(401, "invalid_totp_code", "Code did not match.");
+      }
+    }
+
+    // Stamp a backup-code verify so the lost-phone path can start a
+    // move to a new phone right away without spending a second code.
+    await setSessionTotpVerified(
+      session._id,
+      true,
+      usedBackupCode ? new Date() : null,
+    );
+
+    await writeAudit({
+      orgId: user.orgId,
+      actorUserId: user._id,
+      actorRole: user.role,
+      action: usedBackupCode ? "auth.backup_code_used" : "auth.totp_verified",
+      targetType: "session",
+      targetId: session._id,
+      ...(usedBackupCode ? { after: { backupCodesRemaining } } : {}),
+      ...networkMeta(req),
+    });
+
+    res.json({
+      user: { ...toPublicUser(user), backupCodesRemaining },
+      usedBackupCode,
+      backupCodesRemaining,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── POST /api/v1/auth/totp/backup-codes/regenerate ──────────────────
+
+/**
+ * Replace every backup code with a fresh set. Requires a full session
+ * AND a current authenticator code — a stolen cookie alone must not be
+ * able to mint recovery codes. Old codes (used or not) stop working
+ * the moment this returns. The new plaintext is returned once.
+ */
+export async function backupCodesRegenerateHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const { code } = backupCodesRegenerateSchema.parse(req.body);
+
+    const users = await getUsersCollection();
+    const user = await users.findOne({ _id: session.userId });
+    if (!user) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    if (user.totpEnrolledAt === null || user.totpSecret === null) {
+      throw new HttpError(
+        409,
+        "totp_not_enrolled",
+        "Two-factor is not enabled.",
+      );
     }
 
     let plainSecret: string;
@@ -1102,7 +1250,7 @@ export async function totpVerifyLoginHandler(
           userId: user._id.toHexString(),
           err: err instanceof Error ? err.message : String(err),
         },
-        "[totp] decrypt failed during verify",
+        "[totp] decrypt failed during backup-code regenerate",
       );
       throw new HttpError(500, "totp_secret_corrupted", "Internal error.");
     }
@@ -1111,21 +1259,157 @@ export async function totpVerifyLoginHandler(
       throw new HttpError(401, "invalid_totp_code", "Code did not match.");
     }
 
-    await setSessionTotpVerified(session._id, true);
+    const backupCodes = await issueBackupCodes(
+      users,
+      user._id,
+      env.SESSION_SECRET,
+    );
 
     await writeAudit({
       orgId: user.orgId,
       actorUserId: user._id,
       actorRole: user.role,
-      action: "auth.totp_verified",
-      targetType: "session",
-      targetId: session._id,
+      action: "user.backup_codes_regenerated",
+      targetType: "user",
+      targetId: user._id.toHexString(),
+      before: {
+        backupCodesRemaining: countRemainingBackupCodes(user.totpBackupCodes),
+      },
+      after: { backupCodesRemaining: backupCodes.length },
       ...networkMeta(req),
     });
 
-    res.json({ user: toPublicUser(user) });
+    res.json({ backupCodes, backupCodesRemaining: backupCodes.length });
   } catch (err) {
     next(err);
+  }
+}
+
+// ─── POST /api/v1/auth/totp/re-enrol/{start,confirm} ─────────────────
+
+async function reenrolDeps(): Promise<ReenrolDeps> {
+  return {
+    store: await getUsersCollection(),
+    pepper: env.SESSION_SECRET,
+    verifyPassword,
+    verifyTotp: verifyTotpCode,
+    encrypt: encryptSecret,
+    decrypt: decryptSecret,
+    generateSecret: generateTotpSecret,
+    provisioningUri: buildProvisioningUri,
+  };
+}
+
+function asHttpError(err: unknown): unknown {
+  return err instanceof ReenrolError
+    ? new HttpError(err.status, err.code, err.message)
+    : err;
+}
+
+/**
+ * Move two-factor to a new phone, step 1. Full session required, plus
+ * the password AND one of: a current authenticator code, an unused
+ * backup code (consumed), or — on the lost-phone path — this session
+ * having been verified with a backup code in the last 10 minutes.
+ * Returns a PENDING secret; the live one keeps working until confirm.
+ */
+export async function totpReenrolStartHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const input = totpReenrolStartSchema.parse(req.body);
+    const result = await startReenrol(await reenrolDeps(), session.userId, input, {
+      verifiedWithBackupCodeAt: session.verifiedWithBackupCodeAt ?? null,
+    });
+
+    await writeAudit({
+      orgId: session.orgId,
+      actorUserId: session.userId,
+      actorRole: session.role,
+      action: "user.totp_reenrol_started",
+      targetType: "user",
+      targetId: session.userId.toHexString(),
+      after: {
+        factor: result.factor,
+        backupCodesRemaining: result.backupCodesRemaining,
+        pendingExpiresAt: result.expiresAt.toISOString(),
+      },
+      ...networkMeta(req),
+    });
+
+    res.json({
+      secret: result.secret,
+      otpauthUrl: result.otpauthUrl,
+      expiresAt: result.expiresAt.toISOString(),
+      backupCodesRemaining: result.backupCodesRemaining,
+    });
+  } catch (err) {
+    next(asHttpError(err));
+  }
+}
+
+/**
+ * Step 2. A code from the NEW app swaps the pending secret in, issues
+ * 10 fresh backup codes (old ones stop working) and sends every OTHER
+ * session of this user back to the TOTP prompt. This session stays
+ * verified.
+ */
+export async function totpReenrolConfirmHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const { code } = totpReenrolConfirmSchema.parse(req.body);
+    const result = await confirmReenrol(await reenrolDeps(), session.userId, code);
+
+    // This session proved the new factor just now — clear its
+    // backup-code stamp so the shortcut can't be replayed.
+    await setSessionTotpVerified(session._id, true, null);
+    let otherSessionsReset = 0;
+    try {
+      otherSessionsReset = await requireTotpReverifyForOtherSessions(
+        session.userId,
+        session._id,
+      );
+    } catch (err) {
+      logger.warn(
+        {
+          userId: session.userId.toHexString(),
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "[totp] re-enrol: other-session re-verify flip failed",
+      );
+    }
+
+    await writeAudit({
+      orgId: session.orgId,
+      actorUserId: session.userId,
+      actorRole: session.role,
+      action: "user.totp_reenrolled",
+      targetType: "user",
+      targetId: session.userId.toHexString(),
+      before: { backupCodesRemaining: result.previousBackupCodesRemaining },
+      after: {
+        backupCodesRemaining: result.backupCodes.length,
+        otherSessionsReset,
+      },
+      ...networkMeta(req),
+    });
+
+    res.json({ ok: true, backupCodes: result.backupCodes });
+  } catch (err) {
+    next(asHttpError(err));
   }
 }
 
@@ -1186,6 +1470,9 @@ export async function totpDisableHandler(
         $set: {
           totpSecret: null,
           totpEnrolledAt: null,
+          ...CLEAR_BACKUP_CODES,
+          totpPendingSecret: null,
+          totpPendingExpiresAt: null,
           updatedAt: now,
         },
       },

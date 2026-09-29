@@ -54,7 +54,9 @@ import { stripAssigned } from "../../lib/assigned-goals.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import { logger } from "../../lib/logger.js";
-import { validateSpec } from "@espace-devhub/shared/goal-specs";
+import { isAssignedGoalId, validateSpec } from "@espace-devhub/shared/goal-specs";
+import { applyComposedGate, resolveStoredApproval } from "../goal-specs/approval.js";
+import { notifyApprovalRoute, resolveApprovalRoute } from "../goal-specs/route-approval.js";
 
 // Permissive at the migration boundary — we accept whatever the
 // localStorage layer wrote and surface what couldn't be imported.
@@ -239,7 +241,36 @@ export async function importHandler(
     if (payload.goalSpecs?.specs) {
       const col = await getGoalSpecsCollection();
       const ops: AnyBulkWriteOperation<GoalSpecRecord>[] = [];
+      // `approval` is server-owned here exactly as on PUT /goal-specs: an
+      // import may only (re)submit, never carry in an approved block or
+      // revert a decision (resolveStoredApproval).
+      const importIds = Object.keys(payload.goalSpecs.specs);
+      const storedApprovals = new Map<
+        string,
+        { approval?: unknown; widget?: unknown } | undefined
+      >(
+        (
+          await col
+            .find(
+              { orgId: session.orgId, userId: session.userId, goalId: { $in: importIds } },
+              { projection: { goalId: 1, "spec.approval": 1, "spec.widget": 1 } },
+            )
+            .toArray()
+        ).map((d) => [
+          d.goalId,
+          d.spec as { approval?: unknown; widget?: unknown } | undefined,
+        ]),
+      );
+      // Specs the BYO gate forced to pending — routed + notified after the
+      // write, like PUT /goal-specs does (applyComposedGate).
+      const forcedGoalIds: string[] = [];
+      let forcedRoute: Awaited<ReturnType<typeof resolveApprovalRoute>> | null = null;
       for (const [goalId, raw] of Object.entries(payload.goalSpecs.specs)) {
+        // Shared goals live in assigned_goals, never in goal_specs.
+        if (isAssignedGoalId(goalId)) {
+          counts.goalSpecs.skipped += 1;
+          continue;
+        }
         const candidate = (raw && typeof raw === "object"
           ? raw
           : {}) as Record<string, unknown>;
@@ -253,6 +284,28 @@ export async function importHandler(
           }
           continue;
         }
+        const storedSpec = storedApprovals.get(goalId);
+        const resolved = resolveStoredApproval(
+          storedSpec?.approval,
+          (result.spec as { approval?: unknown }).approval,
+          now.getTime(),
+        );
+        const gate = applyComposedGate({
+          widget: result.spec.widget,
+          storedWidget: storedSpec?.widget,
+          storedExists: storedApprovals.has(goalId),
+          resolved,
+          now: now.getTime(),
+        });
+        let approval = gate.approval;
+        if (gate.forced && approval) {
+          forcedRoute ??= await resolveApprovalRoute(session);
+          approval = { ...forcedRoute.response.approval, submittedAt: approval.submittedAt };
+          forcedGoalIds.push(goalId);
+        }
+        const { approval: _clientApproval, ...specWithoutApproval } =
+          result.spec as unknown as Record<string, unknown>;
+        const spec = approval ? { ...specWithoutApproval, approval } : specWithoutApproval;
         ops.push({
           updateOne: {
             filter: {
@@ -262,7 +315,7 @@ export async function importHandler(
             },
             update: {
               $set: {
-                spec: result.spec as unknown as Record<string, unknown>,
+                spec,
                 generatedAt: now,
                 classifierVersion: null,
               },
@@ -279,6 +332,11 @@ export async function importHandler(
       if (ops.length > 0) {
         const r = await col.bulkWrite(ops, { ordered: false });
         counts.goalSpecs.imported = (r.upsertedCount ?? 0) + (r.modifiedCount ?? 0);
+      }
+      if (forcedRoute) {
+        for (const goalId of forcedGoalIds) {
+          await notifyApprovalRoute({ req, session, goalId, route: forcedRoute });
+        }
       }
     }
 

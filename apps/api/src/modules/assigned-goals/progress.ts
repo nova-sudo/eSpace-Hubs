@@ -38,7 +38,7 @@ export interface ProgressWindow {
   start: number;
   end: number;
   deadline: number;
-  counts: { onTime: number; late: number; missing: number; open: number; upcoming: number };
+  counts: { onTime: number; late: number; missing: number; open: number; upcoming: number; before: number };
 }
 
 export interface ProgressResult {
@@ -62,8 +62,15 @@ export function buildProgress(args: {
   graceHours: number;
   timeZone?: string;
   now?: number;
+  /**
+   * When the assignees' tracker started counting — the assignment's
+   * creation. Windows that ended before it are "before" (optional
+   * backfill), never "missing".
+   */
+  trackingStart?: number | null;
 }): ProgressResult {
   const now = args.now ?? Date.now();
+  const trackingStart = args.trackingStart ?? null;
   const graceMs = Math.max(0, args.graceHours || 0) * 3_600_000;
 
   const byUser = new Map<string, ProgressEntry[]>();
@@ -79,6 +86,7 @@ export function buildProgress(args: {
       now,
       graceMs,
       timeZone: args.timeZone,
+      trackingStart,
       entries: (byUser.get(user.id) ?? []).map((e) => ({
         ts: ms(e.ts),
         createdAt: ms(e.createdAt ?? null),
@@ -97,15 +105,16 @@ export function buildProgress(args: {
   const baseCells =
     rows.length > 0
       ? null
-      : periodStatuses({ spec: args.spec, now, graceMs, timeZone: args.timeZone, entries: [] });
+      : periodStatuses({ spec: args.spec, now, graceMs, timeZone: args.timeZone, trackingStart, entries: [] });
   const windows: ProgressWindow[] = assignedWindows(args.spec, now).map((w, i) => {
-    const counts = { onTime: 0, late: 0, missing: 0, open: 0, upcoming: 0 };
+    const counts = { onTime: 0, late: 0, missing: 0, open: 0, upcoming: 0, before: 0 };
     for (const r of rows) {
       const s = r.cells[i]?.status;
       if (s === "on_time") counts.onTime += 1;
       else if (s === "late") counts.late += 1;
       else if (s === "missing") counts.missing += 1;
       else if (s === "open") counts.open += 1;
+      else if (s === "before") counts.before += 1;
       else counts.upcoming += 1;
     }
     const cell = rows[0]?.cells[i] ?? baseCells?.[i];

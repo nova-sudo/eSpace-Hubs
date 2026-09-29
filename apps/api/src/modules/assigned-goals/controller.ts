@@ -327,7 +327,7 @@ export async function createAssignedGoalHandler(req: Request, res: Response, nex
     notifyMany(session.orgId, session.userId, assignees, () => ({
       kind: "assigned_goal_assigned",
       title: `New shared goal: ${doc.title}`.slice(0, 200),
-      body: `${doc.createdByName} shared "${doc.title}" with you. It's in your goals under "Shared goals".`,
+      body: `${doc.createdByName} shared "${doc.title}" with you. It's on your Goals page under "Assigned to you".`,
       data: { assignedGoalId: id, goalId: assignedGoalId(id) },
     }));
     notifyMany(session.orgId, session.userId, viewers, () => ({
@@ -386,6 +386,7 @@ export async function listAssignedGoalsHandler(req: Request, res: Response, next
           spec: d.spec,
           graceHours: d.graceHours,
           timeZone: d.timeZone || DEFAULT_TIME_ZONE,
+          trackingStart: d.createdAt instanceof Date ? d.createdAt.getTime() : null,
           users: scoped.map((id) => ({ id: String(id), displayName: "", email: null })),
           entries: (byGoal.get(gid) ?? [])
             .filter((e) => assigneeSet.has(String(e.userId)))
@@ -515,7 +516,7 @@ export async function patchAssignedGoalHandler(req: Request, res: Response, next
     notifyMany(session.orgId, session.userId, added, () => ({
       kind: "assigned_goal_assigned",
       title: `New shared goal: ${updated.title}`.slice(0, 200),
-      body: `${updated.createdByName} shared "${updated.title}" with you. It's in your goals under "Shared goals".`,
+      body: `${updated.createdByName} shared "${updated.title}" with you. It's on your Goals page under "Assigned to you".`,
       data: { assignedGoalId: id, goalId: assignedGoalId(id) },
     }));
     notifyMany(session.orgId, session.userId, addedViewers, () => ({
@@ -608,6 +609,7 @@ export async function getProgressHandler(req: Request, res: Response, next: Next
       spec: doc.spec,
       graceHours: doc.graceHours,
       timeZone: doc.timeZone || DEFAULT_TIME_ZONE,
+      trackingStart: doc.createdAt instanceof Date ? doc.createdAt.getTime() : null,
       users: doc.assigneeIds.map((id) => publicUser(people.get(String(id)), String(id))),
       entries: entries.map((e) => ({
         userId: String(e.userId),
@@ -648,6 +650,7 @@ export async function getProgressCellHandler(req: Request, res: Response, next: 
       spec: doc.spec,
       graceHours: doc.graceHours,
       timeZone: doc.timeZone || DEFAULT_TIME_ZONE,
+      trackingStart: doc.createdAt instanceof Date ? doc.createdAt.getTime() : null,
       users: [],
       entries: [],
     }).windows;
@@ -716,6 +719,7 @@ export async function getMyProgressHandler(req: Request, res: Response, next: Ne
       spec: doc.spec,
       graceHours: doc.graceHours,
       timeZone: doc.timeZone || DEFAULT_TIME_ZONE,
+      trackingStart: doc.createdAt instanceof Date ? doc.createdAt.getTime() : null,
       users: [{ id: String(session.userId), displayName: "", email: null }],
       entries: entries.map((e) => ({
         userId: String(session.userId),

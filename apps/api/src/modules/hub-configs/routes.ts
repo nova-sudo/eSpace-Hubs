@@ -1,19 +1,22 @@
 /**
  * /api/v1/hub-configs/* router.
  *
- *   GET    /                 admin: list every override for the org
- *   GET    /:hubId           admin: one override (or 404)
- *   PUT    /:hubId           admin: upsert
- *   DELETE /:hubId           admin: revert to registry default
+ *   GET    /                 list every override for the org
+ *   GET    /:hubId           one override (or 404)
+ *   PUT    /:hubId           upsert
+ *   DELETE /:hubId           revert to registry default
  *
- * The list/get reads are admin-only too — overrides aren't sensitive
- * but admin is the audience that needs them, and exposing the routes
- * to non-admin sessions just bloats the public surface.
+ * Every route needs `admin.hubs.configure` (hub-audit §2.1), checked
+ * server-side by `requireCapability` against the user's CURRENT roles.
+ * The reads are gated too — overrides aren't sensitive, but the
+ * configure capability is the audience that needs them, and exposing
+ * the routes to everyone else just bloats the public surface.
  */
 
 import { Router } from "express";
 import { requireAuth } from "../../middleware/require-auth.js";
-import { requireRole } from "../../middleware/require-role.js";
+import { CAPABILITIES } from "@espace-devhub/shared/capabilities";
+import { requireCapability } from "../../middleware/require-capability.js";
 import {
   deleteHubConfigHandler,
   getHubConfigHandler,
@@ -26,24 +29,24 @@ export const hubConfigsRouter: Router = Router();
 hubConfigsRouter.get(
   "/",
   requireAuth(),
-  requireRole("admin"),
+  requireCapability(CAPABILITIES.ADMIN_HUBS_CONFIGURE),
   listHubConfigsHandler,
 );
 hubConfigsRouter.get(
   "/:hubId",
   requireAuth(),
-  requireRole("admin"),
+  requireCapability(CAPABILITIES.ADMIN_HUBS_CONFIGURE),
   getHubConfigHandler,
 );
 hubConfigsRouter.put(
   "/:hubId",
   requireAuth(),
-  requireRole("admin"),
+  requireCapability(CAPABILITIES.ADMIN_HUBS_CONFIGURE),
   upsertHubConfigHandler,
 );
 hubConfigsRouter.delete(
   "/:hubId",
   requireAuth(),
-  requireRole("admin"),
+  requireCapability(CAPABILITIES.ADMIN_HUBS_CONFIGURE),
   deleteHubConfigHandler,
 );

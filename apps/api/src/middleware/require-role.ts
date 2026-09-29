@@ -1,68 +1,36 @@
 /**
- * Route guard: requires an authenticated session holding at least one of
- * the allowed roles. 403 if authenticated but no allowed role is held.
+ * Route guard: requires an authenticated session whose user CURRENTLY
+ * holds at least one of the allowed roles. 403 otherwise.
+ *
+ * Prefer `requireCapability` for new routes — roles grant capabilities,
+ * and routes should name the capability they need (hub-audit §2.1). This
+ * guard remains for the few call sites that still gate on a role.
  *
  * Always pair with `requireAuth` — this guard does NOT check session
  * presence (so the 401 vs 403 distinction stays correct: 401 = "log
  * in", 403 = "you're logged in but not allowed").
  *
- * Checks `req.session.roles` — the FULL effective-roles snapshot taken
- * at login (mint time), not just the single "primary" `req.session.role`.
- * This deliberately does NOT reduce to one role and compare: a user can
- * legitimately hold several roles (["dev", "admin"]), and which one a
- * caller happened to write first into the `roles` array on the user doc
- * is an implementation detail of whatever UI/script made the edit — it
- * is NOT a meaningful signal for authorization. Checking membership
- * across the whole set is the only version of this check that can't be
- * broken by array-ordering.
+ * Freshness (hub-audit §2.2): this used to read `req.session.roles`, the
+ * effective-roles snapshot taken at login. A role REVOCATION therefore
+ * stayed effective on admin routes until the user logged out — and two
+ * freshness models guarded adjacent routes (requireCapability already
+ * re-read the user). It now re-reads the user doc on every request, the
+ * same way requireCapability does, via the shared loader. A disabled
+ * account is refused with 401 even while its session lingers.
  *
- * (`req.session.roles` is itself a snapshot with no per-request DB
- * lookup — same performance tradeoff as the TOTP flags in requireAuth.
- * Falls back to `[req.session.role]` for sessions minted before this
- * field existed. That tradeoff is only safe if every write path that
- * changes the underlying roles also re-syncs it into live sessions. See
- * `syncSessionRolesForUser` in `../modules/auth/session.js`, called from
- * the admin user-update handler — without that call, a role promotion
- * granted mid-session is invisible to this guard until the user logs
- * out and back in.
- *
- * History: an earlier version of this fix synced only the singular
- * `session.role`, computed as `roles[0]`. That still broke, because
- * `roles[0]` isn't reliably "the role that matters" — granting a second
- * role via the admin UI appends it to the END of the array, so a
- * freshly-admin-granted user kept minting sessions with role "dev"
- * (their original role) and 403-ing every admin route no matter how
- * many times they logged out and back in. Checking the full set here
- * closes that entire bug class regardless of array order.
+ * Membership is checked across the user's FULL role set, never a single
+ * "primary" role — which role sits first in the `roles` array is an
+ * artifact of whatever UI or script wrote it, not an authorization
+ * signal (the historic "admin-granted user kept 403-ing" bug).
  */
 
-import type { NextFunction, Request, Response } from "express";
 import type { UserRole } from "../db/types.js";
-import { HttpError } from "./error-handler.js";
+import { roleGuard, type Middleware } from "./capability-guard.js";
+import { loadGuardUser } from "./require-capability.js";
 
-export function requireRole(...allowed: UserRole[]) {
+export function requireRole(...allowed: UserRole[]): Middleware {
   if (allowed.length === 0) {
     throw new Error("requireRole: at least one role must be specified");
   }
-  return (req: Request, _res: Response, next: NextFunction): void => {
-    if (!req.session) {
-      // Defensive — `requireAuth` should run first. Treat as auth failure
-      // to keep the contract simple.
-      return next(new HttpError(401, "unauthenticated", "Login required."));
-    }
-    const heldRoles =
-      req.session.roles && req.session.roles.length > 0
-        ? req.session.roles
-        : [req.session.role];
-    if (!allowed.some((r) => heldRoles.includes(r))) {
-      return next(
-        new HttpError(
-          403,
-          "forbidden",
-          `Requires role: ${allowed.join(", ")}.`,
-        ),
-      );
-    }
-    next();
-  };
+  return roleGuard(allowed, loadGuardUser);
 }

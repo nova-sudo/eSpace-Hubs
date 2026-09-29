@@ -61,6 +61,7 @@ import {
   listQueryTemplates,
   validateQuerySource,
 } from "@espace-devhub/shared/goal-specs";
+import { aiUnconfigured } from "./unconfigured.js";
 
 /** Parse a model's JSON reply, tolerating stray prose / markdown fences
  *  (the OpenAI path uses json_object mode; Claude relies on the prompt). */
@@ -177,9 +178,7 @@ async function callProvider(
   timeoutMs?: number,
 ): Promise<{ data: unknown; raw: string }> {
   if (!provider.apiKey) {
-    throw new HttpError(
-      500,
-      "ai_provider_unconfigured",
+    throw aiUnconfigured(
       `${provider.label} has no API key. Set ${provider.keyEnv} in apps/api/.env.local and restart.`,
     );
   }
@@ -504,6 +503,14 @@ const VALID_TIERS = [
 ];
 const VALID_CONFIDENCE = ["high", "medium", "low"];
 
+/** A persisted grading timestamp as ISO, tolerating legacy rows that lack
+ *  it (or stored it as a string) — never throws on a bad value. */
+export function toIsoOrNull(v: unknown): string | null {
+  if (v == null) return null;
+  const d = v instanceof Date ? v : new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 export async function gradeGoalTierHandler(
   req: Request,
   res: Response,
@@ -539,6 +546,9 @@ export async function gradeGoalTierHandler(
           provider: hit.provider,
           cached: true,
           periodKey,
+          // When the model ACTUALLY graded this (not now — this is a cache
+          // hit). Omitted on a legacy row that never stamped it.
+          ...(hit.gradedAt ? { gradedAt: toIsoOrNull(hit.gradedAt) } : {}),
         });
         return;
       }
@@ -616,7 +626,9 @@ export async function gradeGoalTierHandler(
 
     // Persist the fresh verdict under (user, goal, window) keyed by tierHash.
     // Upsert so a data change (new hash) replaces the prior row — only the
-    // latest per window is kept.
+    // latest per window is kept. One timestamp is both persisted and
+    // returned, so the ladder's "Last graded" matches the stored row.
+    const gradedAt = new Date();
     if (cacheable) {
       await verdicts.updateOne(
         {
@@ -629,7 +641,7 @@ export async function gradeGoalTierHandler(
           $set: {
             tierHash: payload.tierHash!,
             verdict,
-            gradedAt: new Date(),
+            gradedAt,
             model: modelName ?? null,
             provider: providerId ?? null,
           },
@@ -644,7 +656,14 @@ export async function gradeGoalTierHandler(
       );
     }
 
-    res.json({ verdict, model: modelName, provider: providerId, cached: false, periodKey });
+    res.json({
+      verdict,
+      model: modelName,
+      provider: providerId,
+      cached: false,
+      periodKey,
+      gradedAt: gradedAt.toISOString(),
+    });
   } catch (err) {
     next(err);
   }
@@ -678,7 +697,10 @@ export async function listGoalTierVerdictsHandler(
         periodKey: r.periodKey || WHOLE_GOAL_TIER_KEY,
         tierHash: r.tierHash,
         verdict: r.verdict,
-        gradedAt: r.gradedAt,
+        // ISO string, or null on a legacy row that predates the stamp (the
+        // collection has no updatedAt/createdAt to fall back on) — the client
+        // then simply omits "Last graded".
+        gradedAt: toIsoOrNull(r.gradedAt),
         model: r.model,
         provider: r.provider,
       })),
