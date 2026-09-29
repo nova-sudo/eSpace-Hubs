@@ -29,6 +29,7 @@ import { useIntegrations, githubApi, gitlabApi } from "@/features/integrations";
 import { useGoalContext } from "@/features/goal-context";
 import { useSession } from "@/features/auth";
 import {
+  clearErroredVerdicts,
   fetchVerdicts,
   getVerdictsSnapshot,
   getVerdictsServerSnapshot,
@@ -371,6 +372,16 @@ export function useGradedPrs(spec, options = {}) {
   // PR in the year window. New callers prefer `grade(subset)`.
   const gradeAll = useCallback(() => grade(prs), [grade, prs]);
 
+  // "Retry grading" — forget the transient failures for this rubric and
+  // grade those PRs again. Errored verdicts are local-only, so nothing
+  // needs un-persisting.
+  const retryErrored = useCallback(async () => {
+    const erroredPrs = prs.filter((pr) => readVerdict(pr.id, hash)?.errored);
+    clearErroredVerdicts(hash);
+    if (erroredPrs.length === 0) return;
+    await grade(erroredPrs);
+  }, [prs, hash, grade]);
+
   // Cancel any in-flight grading when the hook owner unmounts or the
   // rubric changes — we don't want verdicts for the old hash landing in the
   // store under the new hash.
@@ -423,6 +434,7 @@ export function useGradedPrs(spec, options = {}) {
     listError,
     grade,
     gradeAll,
+    retryErrored,
     refreshList,
     // `hasGithub` historically gated the rubric UI on a connected code
     // host; it now means GitHub OR GitLab (grading supports both). The

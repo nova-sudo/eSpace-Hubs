@@ -2,10 +2,9 @@
 
 import Link from "next/link";
 import { Check } from "lucide-react";
-import { useSnapshots } from "@/features/snapshots";
+import { hasSnapshotThisWeek, useSnapshots } from "@/features/snapshots";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
 import { useActiveHub, useHubLink } from "@/features/hubs";
-import { weekLabel } from "@/lib/date";
 
 /**
  * Review-prep checklist — the pre-flight steps before generating evidence:
@@ -22,26 +21,32 @@ import { weekLabel } from "@/lib/date";
  * a blocker demanding setup the document never used.
  */
 export function ReviewPrepChecklist() {
-  const { hasSpecs } = useGoalWidgetItems();
+  const { items, unclassifiedGoals } = useGoalWidgetItems();
+  // L2s are the goals that get trackers; L1s are section headers.
+  const trackedCount = items.filter((it) => it.goal?.kind !== "L1").length;
+  const totalGoals = trackedCount + (unclassifiedGoals?.length || 0);
   const { snapshots } = useSnapshots();
   const hub = useActiveHub();
   const link = useHubLink();
 
-  // Snapshot weeks are stamped with lib/date's weekLabel ("Wnn") — use
-  // the same function here so the comparison can actually match, with
-  // capturedAt-this-week as the tolerant fallback.
-  const currentWeek = weekLabel(new Date());
-  const latestSnap = snapshots[0];
-  const hasThisWeekSnap =
-    latestSnap?.week === currentWeek ||
-    (latestSnap?.capturedAt &&
-      new Date(latestSnap.capturedAt) >= startOfWeek(new Date()));
+  // One predicate with the Home nudge: the snapshot's WEEK key, never the
+  // day it was written (the scheduler's Sunday freeze of last week used to
+  // turn this green while Home still asked for this week's).
+  const hasThisWeekSnap = hasSnapshotThisWeek(snapshots);
+  const untracked = Math.max(0, totalGoals - trackedCount);
 
   const steps = [
     {
       id: "classified",
-      label: "Every goal has a grade",
-      done: hasSpecs,
+      // Say the state, not the goal: "10 of 13 goals have no tracker yet"
+      // on peach read as done when it said "All goals have a tracker (3 of 13)".
+      label:
+        totalGoals > 0 && untracked === 0
+          ? `All ${totalGoals} goal${totalGoals === 1 ? " has" : "s have"} a tracker`
+          : `${untracked} of ${totalGoals} goal${totalGoals === 1 ? "" : "s"} ${untracked === 1 ? "has" : "have"} no tracker yet`,
+      // Ticks only when EVERY goal is classified — one tracked goal out
+      // of ten used to read as done.
+      done: totalGoals > 0 && trackedCount === totalGoals,
       href: link("/goals"),
       actionLabel: "Classify",
     },
@@ -68,7 +73,7 @@ export function ReviewPrepChecklist() {
   );
 }
 
-/** One checklist row: mint + check when done, peach + hollow circle + a link when open. */
+/** One checklist row: mint + check when done, lemon (pending) + hollow circle + a link when open. */
 function ChecklistRow({ step }) {
   if (step.done) {
     return (
@@ -79,22 +84,16 @@ function ChecklistRow({ step }) {
     );
   }
   return (
-    <div className="flex items-center gap-2.5 rounded-[var(--radius-lg)] bg-peach px-3 py-2.5 text-peach-ink">
+    <div className="flex items-center gap-2.5 rounded-[var(--radius-lg)] bg-lemon px-3 py-2.5 text-lemon-ink">
       <span
         aria-hidden="true"
         className="inline-block h-3.5 w-3.5 shrink-0 rounded-full border-2 border-current"
       />
       <span className="flex-1 text-[13px] font-semibold">{step.label}</span>
-      <Link href={step.href} className="text-[12px] font-bold text-inherit">
+      <Link href={step.href} className="link-target text-[12px] font-bold text-inherit">
         {step.actionLabel}
       </Link>
     </div>
   );
 }
 
-function startOfWeek(date) {
-  const d = new Date(date);
-  d.setDate(d.getDate() - d.getDay());
-  d.setHours(0, 0, 0, 0);
-  return d;
-}

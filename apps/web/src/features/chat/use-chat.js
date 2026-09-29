@@ -42,8 +42,10 @@ const WELCOME_THREAD = Object.freeze({
     Object.freeze({
       id: "welcome",
       role: "assistant",
+      // Honest scope: the endpoint sends the thread and nothing else — the
+      // assistant can't see your PRs, tickets or dashboard numbers.
       content:
-        "Hey — this is your Hubs assistant. Ask about your PRs, Jira tickets, review turnaround, or anything you see on the dashboard.",
+        "Hi — this is the Hubs assistant. I can't see your PRs, tickets or dashboard numbers, so paste in what you want to talk through: a goal, a review comment, a plan. I'll help you think it out.",
       ts: 0,
     }),
   ],
@@ -152,7 +154,36 @@ export async function sendChatMessage(_userMessage) {
 }
 
 /**
- * Alias kept for callers that still reference `stubRespond`. Delete once
- * all imports are migrated — it simply proxies to `sendChatMessage`.
+ * Remove one message (by id) — lets a UI drop a user turn whose send
+ * failed so a retry doesn't double it.
  */
-export const stubRespond = sendChatMessage;
+export function removeMessage(id) {
+  const state = read();
+  const next = state.messages.filter((m) => m.id !== id);
+  if (next.length === state.messages.length) return;
+  write({ ...state, messages: next });
+}
+
+/**
+ * Whole send in one call, without polluting the thread on failure:
+ * appends the user turn, calls the API, appends the reply. On error the
+ * user turn is REMOVED again and the error is thrown, so the caller can
+ * render a transient error row with Retry and restore the draft. The
+ * thread only ever holds real user/assistant turns.
+ */
+export async function sendAndAppend(text) {
+  const content = typeof text === "string" ? text.trim() : "";
+  if (!content) throw new Error("Nothing to send — write a message first.");
+  const userId = `user-${Date.now()}`;
+  const state = read();
+  state.messages.push({ id: userId, role: "user", content, ts: Date.now() });
+  write(state);
+  try {
+    const reply = await sendChatMessage(content);
+    appendMessage("assistant", reply);
+    return reply;
+  } catch (err) {
+    removeMessage(userId);
+    throw err;
+  }
+}

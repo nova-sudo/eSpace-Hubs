@@ -10,7 +10,7 @@
  * toast persists and updates no matter which page the user is on.
  */
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import {
   subscribeJobs,
@@ -39,11 +39,30 @@ function describe(jobs) {
 export function JobsToast() {
   // Tick subscription — re-runs the derivation whenever a job starts/ends.
   useSyncExternalStore(subscribeJobs, getJobsSnapshot, getJobsServerSnapshot);
-  const summary = describe(getRunningJobs());
+  const running = getRunningJobs();
+  const summary = describe(running);
+  const gradingNow = running.filter((j) => j.kind === "grading").length;
+  // Peak grading count for the current batch — so the settle line can say
+  // how many goals were graded, not just "done".
+  const gradingPeak = useRef(0);
+  if (gradingNow > gradingPeak.current) gradingPeak.current = gradingNow;
 
   useEffect(() => {
     if (!summary) {
-      toast.dismiss(TOAST_ID);
+      // Settle, don't vanish: a "Grading…" toast that just disappears
+      // reads as "nothing happened". Failures get their own toast (with
+      // Retry) from the tier store; this line covers the batch.
+      const graded = gradingPeak.current;
+      gradingPeak.current = 0;
+      if (graded > 0) {
+        toast.success(`Graded ${graded} goal tier${graded === 1 ? "" : "s"}`, {
+          id: TOAST_ID,
+          duration: 3500,
+          description: "Tier badges are up to date. Any that failed have a Retry above.",
+        });
+      } else {
+        toast.dismiss(TOAST_ID);
+      }
       return;
     }
     // Same id → updates the one toast in place as jobs come and go.

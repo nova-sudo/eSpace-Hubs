@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { X } from "lucide-react";
+import { toast } from "sonner";
 import { Badge, Button, IconButton, Input, Label, Select } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { WidgetShell } from "../widget-shell";
@@ -52,6 +53,14 @@ export function IncidentLogWidget({
   onRetry,
 }) {
   const { entries, append, remove } = useGoalInputs(goal?.id);
+  // Remove by ENTRY (server id) — backfilled incidents share a timestamp, so
+  // a ts-keyed remove could delete the wrong one. Undo re-appends it.
+  const removeWithUndo = (e) => {
+    remove(e);
+    toast("Entry removed", {
+      action: { label: "Undo", onClick: () => append(e.value, e.note, e.ts) },
+    });
+  };
   const [severity, setSeverity] = useState("P2");
   const [downtime, setDowntime] = useState("");
   const [rca, setRca] = useState("");
@@ -263,12 +272,12 @@ export function IncidentLogWidget({
           {allDefects
             .slice()
             .reverse()
-            .map((e) => {
+            .map((e, i) => {
               const v = e.value || {};
               const rcaText = v.rca || v.link || "";
               const rcaIsLink = /^https?:\/\//i.test(rcaText);
               return (
-                <li key={e.ts} className="group flex items-center gap-2 rounded-[var(--radius-md)] bg-card-alt px-2 py-1.5">
+                <li key={e.id || `${e.ts}-${i}`} className="group flex items-center gap-2 rounded-[var(--radius-md)] bg-card-alt px-2 py-1.5">
                   <span className="shrink-0 font-bold text-fg">{fullDate(e.ts)}</span>
                   <Badge tone={severityTone(v.severity)} className="shrink-0">
                     {v.severity || "—"}
@@ -295,11 +304,11 @@ export function IncidentLogWidget({
                     <span className="flex-1" />
                   )}
                   <IconButton
-                    label="Remove"
+                    label="Remove this entry"
                     size="sm"
                     onCard
-                    className="opacity-0 transition-opacity group-hover:opacity-100"
-                    onClick={() => remove(e.ts)}
+                    className="opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+                    onClick={() => removeWithUndo(e)}
                   >
                     <X size={12} />
                   </IconButton>
@@ -371,11 +380,11 @@ function DocMarkers({ v }) {
         hasAction ? "yes" : "no"
       } · preventive: ${v.preventive || "—"}`}
     >
-      <span className={hasRca ? "text-fg" : "text-dim-fg"}>RCA</span>
+      <span className={hasRca ? "text-fg" : "text-muted-fg"}>RCA</span>
       <span className="text-dim-fg"> · </span>
-      <span className={hasAction ? "text-fg" : "text-dim-fg"}>ACT</span>
+      <span className={hasAction ? "text-fg" : "text-muted-fg"}>ACT</span>
       <span className="text-dim-fg"> · </span>
-      <span className={prevClosed ? "text-fg" : "text-dim-fg"}>{prevClosed ? "Prev done" : "Prev"}</span>
+      <span className={prevClosed ? "text-fg" : "text-muted-fg"}>{prevClosed ? "Prev done" : "Prev"}</span>
     </span>
   );
 }
@@ -440,7 +449,7 @@ function Headline({ totals, headlineValue, budget, unit, period, mode }) {
           <div
             className={cn(
               "text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums sm:text-[36px]",
-              over ? "text-peach-ink" : "text-fg",
+              over ? "text-peach-text" : "text-fg",
             )}
           >
             {headlineValue}
@@ -450,8 +459,8 @@ function Headline({ totals, headlineValue, budget, unit, period, mode }) {
             {period ? ` · ${period}` : ""}
           </span>
         </div>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-card-alt">
-          <div className={cn("h-full", over ? "bg-peach-ink" : "bg-ink")} style={{ width: `${pct}%` }} />
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">
+          <div className={cn("h-full", over ? "bg-peach-text" : "bg-ink")} style={{ width: `${pct}%` }} />
         </div>
         {secondary || over ? (
           <div className="text-[12.5px] text-muted-fg">
@@ -467,9 +476,12 @@ function Headline({ totals, headlineValue, budget, unit, period, mode }) {
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline gap-2">
         <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
-          {isCountMode ? headlineValue : `Σ ${headlineValue}`}
+          {headlineValue}
         </div>
-        <span className="text-[13px] text-muted-fg">{unit}</span>
+        <span className="text-[13px] text-muted-fg">
+          {unit}
+          {isCountMode ? "" : " in total"}
+        </span>
       </div>
       {secondary ? <div className="text-[12.5px] text-muted-fg">{secondary}</div> : null}
     </div>

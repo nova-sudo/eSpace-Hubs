@@ -18,20 +18,28 @@ import { GoalTierBadge } from "@/features/goal-tiers";
 import { cn } from "@/lib/cn";
 import { humanizeKind } from "./flow-row-meta";
 import { ASSIGNED_ROOT_ID } from "@espace-devhub/shared/goal-specs";
+import { AssignedBadge } from "@/features/assigned-goals";
 
 const MONTH_INITIALS = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
 
 const CELL_STYLE = {
   filled: { background: "var(--ink)" },
-  owed: { background: "transparent", border: "1.5px solid var(--peach-ink)" },
+  owed: { background: "transparent", border: "1.5px solid var(--peach-text)" },
   current: { background: "var(--card-alt)", border: "1.5px dashed var(--dim-fg)" },
   settled: { background: "var(--card-alt)", opacity: 0.6 },
   future: { background: "var(--card-alt)" },
+  // Ended before the tracker was created — neutral, never peach.
+  before: { background: "var(--card-alt)", opacity: 0.35 },
   none: { background: "var(--card-alt)", opacity: 0.45 },
 };
 
-/** Worst-first, so a month holding one owed window reads as owed. */
-const CELL_PRIORITY = ["owed", "current", "filled", "settled"];
+const CELL_TITLE = {
+  before: "Before this tracker existed — you can still backfill it.",
+};
+
+/** Worst-first, so a month holding one owed window reads as owed. A month
+ *  that is only pre-tracker windows reads "before", not "upcoming". */
+const CELL_PRIORITY = ["owed", "current", "filled", "settled", "before"];
 
 /** The 12 month cells for one goal, or null when it has no cadence at all. */
 function monthCells(cyc, year) {
@@ -69,52 +77,56 @@ export function TimelineView({
   return (
     <Card padding={20} className="flex flex-col">
       <div className="grid grid-cols-[minmax(0,1fr)] items-center gap-3 border-b border-line pb-2.5 sm:grid-cols-[minmax(130px,230px)_minmax(0,1fr)_96px]">
-        <Label caps>Goal · {year}</Label>
+        <Label>Goal · {year}</Label>
         <div className="hidden grid-cols-12 gap-[3px] sm:grid">
           {MONTH_INITIALS.map((m, i) => (
             <span
               key={`${m}-${i}`}
               className={cn(
                 "text-center text-[11px]",
-                i === currentMonth ? "font-extrabold text-fg" : "font-medium text-dim-fg",
+                i === currentMonth ? "font-extrabold text-fg" : "font-medium text-muted-fg",
               )}
             >
               {m}
             </span>
           ))}
         </div>
-        <Label caps className="hidden text-right sm:block">
-          Tier
-        </Label>
+        <Label className="hidden text-right sm:block">Tier</Label>
       </div>
 
       {rows.map((row) => {
         const collapsed = collapsedIds.has(row.l1.id);
         return (
           <div key={row.l1.id} className="flex flex-col">
+            <h2 className="m-0">
             <button
               type="button"
               onClick={() => onToggleGroup(row.l1.id)}
               aria-expanded={!collapsed}
-              className="flex items-center gap-2 border-t border-line pb-1.5 pt-3 text-left"
+              className="flex w-full items-center gap-2 border-t border-line pb-1.5 pt-3 text-left"
             >
-              <Label className="min-w-0 truncate">{row.l1.title || "Untitled objective"}</Label>
-              {row.l1.id === ASSIGNED_ROOT_ID ? <Badge tone="sky">Shared</Badge> : null}
+              <Label className="min-w-0 truncate" title={row.l1.title || "Untitled objective"}>
+                {row.l1.title || "Untitled objective"}
+              </Label>
+              {row.l1.id === ASSIGNED_ROOT_ID ? (
+                <AssignedBadge names={row.l2s.map((x) => x.goal?.assigned?.byName)} />
+              ) : null}
               <Badge tone="neutral">{row.l2s.length}</Badge>
               <ChevronDown
                 size={13}
                 className={cn(
-                  "shrink-0 text-dim-fg transition-transform",
+                  "shrink-0 text-muted-fg transition-transform",
                   collapsed ? "-rotate-90" : "",
                 )}
               />
             </button>
+            </h2>
 
             {collapsed
               ? null
               : row.l2s.map((it) => {
                   const cells = monthCells(it.status.cyc, year);
-                  const title = it.spec?.title || it.goal.title || "(untitled)";
+                  const title = it.goal.title || it.spec?.title || "(untitled)";
                   return (
                     <button
                       key={it.goal.id}
@@ -145,6 +157,7 @@ export function TimelineView({
                           return (
                             <span
                               key={i}
+                              title={CELL_TITLE[state]}
                               className="rounded-[var(--radius-md)]"
                               style={{
                                 height: compact ? 12 : 15,

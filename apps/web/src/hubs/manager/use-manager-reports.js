@@ -10,31 +10,13 @@
  * target userId. See docs/manager-hub-plan.md.
  */
 
-import { useEffect, useState } from "react";
-import { apiGet } from "@/lib/api-client";
+import { EMPTY_LIST, useFetchOnce } from "./use-fetch-once";
 
 export function useManagerReports() {
-  const [state, setState] = useState({
-    loading: true,
-    reports: [],
-    error: null,
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const r = await apiGet("/manager/reports");
-      if (cancelled) return;
-      if (r.ok) {
-        setState({ loading: false, reports: r.data?.reports ?? [], error: null });
-      } else {
-        setState({ loading: false, reports: [], error: r.error ?? "error" });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return state;
+  const { loading, data, error } = useFetchOnce("/manager/reports");
+  return {
+    loading,
+    reports: Array.isArray(data?.reports) ? data.reports : EMPTY_LIST,
+    error,
+  };
 }

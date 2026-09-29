@@ -205,7 +205,7 @@ export function UserPanel({
       </div>
 
       <div className="mt-4">
-        <SegmentedControl
+        <SegmentedControl ariaLabel="User details"
           size="sm"
           onCard
           options={TABS}
@@ -266,7 +266,7 @@ export function UserPanel({
           >
             {saving ? "Saving…" : dirty ? "Save changes" : "No changes"}
           </Button>
-          <p className="mt-2 text-[12px] leading-[1.45] text-dim-fg">
+          <p className="mt-2 text-[12px] leading-[1.45] text-muted-fg">
             Changes take effect on this member&apos;s next request — they
             don&apos;t need to sign out.
           </p>
@@ -343,7 +343,7 @@ function DetailsTab({
           manager gets a team. */}
       <UiField
         label="Manager"
-        hint="Who this member reports to. This is what puts them on a manager's team board."
+        hint="Who this member reports to — an active member with the manager role. With nobody here, their goal approvals go to admins."
       >
         <Select
           value={managerId ?? ""}
@@ -352,12 +352,26 @@ function DetailsTab({
           className="w-full"
         >
           <option value="">(no manager)</option>
+          {/* Only active members holding the manager role can be picked —
+              the server refuses anyone else (and any reporting loop) with
+              a 400 that names the reason. The CURRENT manager stays listed
+              even when no longer valid, so the field never reads blank. */}
           {(allUsers ?? [])
-            .filter((c) => c.id !== user.id)
+            .filter(
+              (c) =>
+                c.id !== user.id &&
+                ((c.status === "active" && c.roles?.includes("manager")) ||
+                  c.id === user.managerId),
+            )
+            .sort((a, b) => a.displayName.localeCompare(b.displayName))
             .map((c) => (
               <option key={c.id} value={c.id}>
                 {c.displayName}
-                {c.roles?.includes("manager") ? " · manager" : ""}
+                {c.status === "disabled"
+                  ? " · disabled"
+                  : !c.roles?.includes("manager")
+                    ? " · not a manager"
+                    : ""}
               </option>
             ))}
         </Select>

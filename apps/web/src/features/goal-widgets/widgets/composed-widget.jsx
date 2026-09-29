@@ -319,7 +319,7 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
             <span className="font-bold text-fg">{period.label}</span>
             {period.dueAt ? (
               // F4: an overdue period says so instead of blending in.
-              <span className={overdue ? "text-peach-ink" : "text-muted-fg"}>
+              <span className={overdue ? "text-peach-text" : "text-muted-fg"}>
                 {overdue ? "overdue" : "due"} {period.dueAt}
               </span>
             ) : null}

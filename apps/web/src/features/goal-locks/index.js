@@ -16,4 +16,4 @@ export {
   LOCKS_CHANGE_EVENT,
 } from "./locks-store";
 export { useGoalLocks } from "./use-goal-locks";
-export { currentWindowKey } from "./window-key";
+export { currentWindowKey, legacyCurrentWindowKey } from "./window-key";

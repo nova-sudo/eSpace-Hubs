@@ -38,6 +38,7 @@
  */
 
 import { apiPost } from "@/lib/api-client";
+import { aiErrorMessage } from "./ai-error-copy";
 import { getAiProvider } from "./use-ai-provider";
 
 /** Mirrors the server's multer limit — reject locally before wasting an upload. */
@@ -118,14 +119,19 @@ export async function composeWidget({
     : await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    throw new Error(
-      body?.error?.message || body?.error || `Couldn't build a tracker (${res.status}).`,
+    const e = typeof body?.error === "object" ? body.error : { message: body?.error };
+    throw withCode(
+      new Error(aiErrorMessage(e, `Couldn't build a tracker (${res.status}).`)),
+      e?.code || "compose_failed",
     );
   }
   // An SSE response is always HTTP 200 — the status line is sent before the
   // work starts — so an in-band failure has to be checked separately.
   if (body?.__sseError) {
-    throw new Error(body.message || "Couldn't build a tracker.");
+    throw withCode(
+      new Error(aiErrorMessage(body, "Couldn't build a tracker.")),
+      body.code || "compose_failed",
+    );
   }
   if (!body?.spec) throw new Error("The AI returned no tracker — try rephrasing.");
   // `seeded: true` means the model's field list was unusable and the server

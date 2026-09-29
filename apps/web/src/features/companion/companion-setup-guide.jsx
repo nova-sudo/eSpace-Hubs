@@ -13,9 +13,8 @@
  *     includes the version, so there's no stable one-click asset URL
  *     without also pinning a fixed filename. /releases/latest degrades
  *     gracefully (shows "no releases yet") if none has been cut.
- *   - The CF tunnel hostname is user-provided. Phase 4 wraps the
- *     `cloudflared` CLI so the companion mints the hostname itself,
- *     but for v1 we let the user paste their existing one.
+ *   - The CF tunnel hostname is user-provided: the user pastes the
+ *     hostname they bound to their tunnel.
  */
 
 import { ArrowUpRight } from "lucide-react";
@@ -76,8 +75,6 @@ export function CompanionSetupGuide() {
               and copy its <Code>token</Code>. In the companion's Settings
               section, paste the token AND the public hostname you bound
               to the tunnel (e.g. <Code>your-name.cf-tunnel.com</Code>).
-              Phase 4 will mint a named tunnel for you automatically; for
-              now you provide the hostname yourself.
             </>
           }
         />
@@ -110,7 +107,7 @@ export function CompanionSetupGuide() {
         />
       </div>
 
-      <p className="mt-5 text-[12px] leading-[1.6] text-dim-fg">
+      <p className="mt-5 text-[12px] leading-[1.6] text-muted-fg">
         Auth model: the companion holds a per-device bearer token
         encrypted by your OS keychain (DPAPI on Windows, Keychain on
         macOS). The token never leaves your machine; revoking from the
@@ -142,8 +139,8 @@ function StatusLine({ live, stale, hostname }) {
         </Badge>
         <span className="text-[12.5px] text-muted-fg">
           last heartbeat from <strong className="text-fg">{hostname}</strong>{" "}
-          went stale. Open the desktop app to resume routing; we're falling
-          back to the bundled API in the meantime.
+          went stale. Provider data (PRs, tickets, builds) is unavailable
+          until the desktop app is back — open it to resume routing.
         </span>
       </div>
     );
@@ -151,7 +148,7 @@ function StatusLine({ live, stale, hostname }) {
   return (
     <p className="text-[12.5px] text-muted-fg">
       No companion registered. Follow the steps below if your engagement
-      requires routing through your local laptop (Crealogix, etc.).
+      requires routing provider calls through your own laptop.
     </p>
   );
 }

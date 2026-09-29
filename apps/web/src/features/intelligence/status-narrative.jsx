@@ -18,13 +18,6 @@
  */
 
 import { Card, Label } from "@/components/ui";
-import { HEALTH } from "./status";
-
-const WORST_REASON = {
-  [HEALTH.NO_DATA]: "has no data yet",
-  [HEALTH.STALE]: "has gone quiet",
-  [HEALTH.BEHIND]: "is behind target",
-};
 
 /**
  * Deterministic summary line(s) from the health model.
@@ -34,8 +27,7 @@ const WORST_REASON = {
  * @returns {{ headline: string, detail: string | null }}
  */
 export function ruleBasedNarrative(summary, queue = []) {
-  const { total, onPace, auto, attention, noData, stale, behind, slipping } =
-    summary;
+  const { total, onPace, auto, attention, noData, behind } = summary;
   const healthy = onPace + auto;
 
   if (total === 0) {
@@ -65,20 +57,18 @@ export function ruleBasedNarrative(summary, queue = []) {
   const worst = queue[0];
   let detail;
   if (worst) {
-    const why = worst.health.overdue
-      ? "is overdue"
-      : (WORST_REASON[worst.health.status] ?? "needs an update");
-    detail = `Start with “${worst.goal.title}” — it ${why}.`;
+    // The shared status's own words ("Behind · 2 weeks missed").
+    const st = worst.status;
+    const why = st ? [st.label, st.reason].filter(Boolean).join(" · ").toLowerCase() : "needs an update";
+    detail = `Start with “${worst.goal.title}” — ${why}.`;
     const tail = [];
-    if (noData > 0) tail.push(`${noData} with no data`);
-    if (stale > 0) tail.push(`${stale} gone quiet`);
-    if (behind > 0) tail.push(`${behind} behind target`);
+    if (noData > 0) tail.push(`${noData} not logged`);
+    if (behind > 0) tail.push(`${behind} behind`);
     if (tail.length > 1) detail += ` In all: ${tail.join(", ")}.`;
   } else {
     const parts = [];
-    if (noData > 0) parts.push(`${noData} ${noData === 1 ? "has" : "have"} no data yet`);
-    if (stale > 0) parts.push(`${stale} ${stale === 1 ? "has" : "have"} gone quiet`);
-    if (behind > 0) parts.push(`${behind} ${behind === 1 ? "is" : "are"} behind target`);
+    if (noData > 0) parts.push(`${noData} not logged yet`);
+    if (behind > 0) parts.push(`${behind} ${behind === 1 ? "is" : "are"} behind`);
     detail = parts.length ? `${capitalize(parts.join(", "))}.` : null;
   }
 
@@ -119,7 +109,7 @@ export function StatusNarrative({ summary, queue }) {
           <span className="text-[44px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg">
             {statNum}
           </span>
-          <span className="pb-0.5 text-[18px] font-semibold text-dim-fg">/{summary.total}</span>
+          <span className="pb-0.5 text-[18px] font-semibold text-muted-fg">/{summary.total}</span>
         </div>
         <Label>{statLabel}</Label>
       </div>

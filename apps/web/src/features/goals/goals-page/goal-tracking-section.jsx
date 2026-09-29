@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { ChevronRight } from "lucide-react";
+import { useHubLink } from "@/features/hubs";
 import { PlainSection as Section } from "./plain-section";
 import { GoalWidgetsGrid, useGoalWidgetItems } from "@/features/goal-widgets";
 import { useAnalyst, ANALYST_MODES } from "@/features/analyst";
@@ -72,7 +74,7 @@ export function GoalTrackingSection() {
           title="Add goals to start tracking"
           body="You haven't added any L1 or L2 goals yet. Paste them into Settings and the analyst will turn each into a live widget here."
           ctaLabel="Open Settings"
-          ctaHref="/settings"
+          ctaHref="/settings?tab=goals"
         />
       ) : !hasSpecs ? (
         <EmptyState
@@ -203,6 +205,8 @@ function L1Group({ l1, items, index }) {
 /* ─────────────────── Empty state ─────────────────── */
 
 function EmptyState({ title, body, ctaLabel, ctaHref, onCta }) {
+  // Hub-prefixed: a bare "/settings" is not a route in this app.
+  const link = useHubLink();
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center">
       <div className="flex max-w-[580px] flex-col items-start gap-3 rounded-[var(--radius-xl)] bg-card-alt p-8">
@@ -213,12 +217,12 @@ function EmptyState({ title, body, ctaLabel, ctaHref, onCta }) {
             {ctaLabel}
           </Button>
         ) : (
-          <a
-            href={ctaHref}
+          <Link
+            href={link(ctaHref)}
             className="inline-flex h-9 items-center justify-center gap-2 rounded-[var(--radius-pill)] bg-ink px-4 text-[13px] font-bold text-ink-on transition-colors hover:opacity-90"
           >
             {ctaLabel}
-          </a>
+          </Link>
         )}
       </div>
     </div>

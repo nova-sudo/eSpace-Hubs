@@ -16,7 +16,12 @@
  *
  * Every cell carries an aria-label + `title` tooltip naming its state, so the
  * state is never color-only even though the visual language (FillStrip's
- * filled/owed/current/future/settled palette) leans on color first.
+ * filled/owed/current/future/settled/before palette) leans on color first.
+ *
+ * Weekly windows are Sunday-anchored work weeks labelled like the snapshot
+ * store's weeks ("W39" = Sun 20 – Sat 26 Sep 2026). Windows that ended
+ * before the tracker was created are "before": neutral, never nagged about,
+ * left out of the "x/y logged" count — and still clickable to backfill.
  *
  * NESTED CADENCES. A COMPOSED period can itself frame a whole second cadence
  * (`period.nested` — see composed-widget.jsx's header comment for the full
@@ -30,15 +35,25 @@
  * beyond closing back up to the level above it.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { Button, Label } from "@/components/ui";
 import {
   useGoalInputs,
   buildCycleWindows,
   composedCycleBounds,
+  WINDOW_STATE_LABEL,
+  cadencePeriodWord,
+  windowCellTitle,
+  loggedSoFar,
+  periodWords,
 } from "@/features/goal-inputs";
-import { GoalManualEditor, isInlineFillable } from "@/features/goal-editors";
+import {
+  DraftFlushProvider,
+  GoalManualEditor,
+  isInlineFillable,
+  useDraftRegistry,
+} from "@/features/goal-editors";
 import {
   SPEC_KINDS,
   specCadence,
@@ -47,6 +62,7 @@ import {
   resolveNestedPeriodContent,
 } from "@/features/goal-specs";
 import { isLocked, setLock, useGoalLocks } from "@/features/goal-locks";
+import { windowKeyAliases } from "@espace-devhub/shared/goal-specs";
 import {
   useGoalTier,
   useGoalWindowTier,
@@ -63,31 +79,68 @@ import { EvidenceAttachments } from "./evidence-attachments.jsx";
 /** Mirrors the shared validator's COMPOSED_MAX_NEST_DEPTH — a safety ceiling. */
 const MAX_NEST_DEPTH = 8;
 
-const STATE_LABEL = {
-  filled: "filled",
-  owed: "not logged",
-  current: "current",
-  future: "upcoming",
-  settled: "nothing to report",
-};
+// Window-state words and the before-tracker hint are shared with the flow
+// strip and the fill strip (goal-inputs/window-vocab.js).
+const STATE_LABEL = WINDOW_STATE_LABEL;
+const cellTitle = windowCellTitle;
+
+/** Every lock key that settles window `w` — its own key plus legacy aliases. */
+function lockKeysOf(goalId, w, cycleKeys, cadence) {
+  const keys = [w.key];
+  for (const alias of windowKeyAliases(cadence, w, cycleKeys)) {
+    if (isLocked(goalId, alias)) keys.push(alias);
+  }
+  return keys;
+}
+
+const SHORT_DATE = { month: "short", day: "numeric", timeZone: "UTC" };
+
+/** "Sep 22–28" / "Sep 29 – Oct 5" for a [start, end) window. */
+function windowRange(start, end) {
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return "";
+  const a = new Date(start);
+  const b = new Date(end - 1);
+  const sameMonth = a.getUTCMonth() === b.getUTCMonth() && a.getUTCFullYear() === b.getUTCFullYear();
+  if (a.getUTCDate() === b.getUTCDate() && sameMonth) return a.toLocaleDateString("en-US", SHORT_DATE);
+  if (sameMonth) return `${a.toLocaleDateString("en-US", SHORT_DATE)}–${b.getUTCDate()}`;
+  return `${a.toLocaleDateString("en-US", SHORT_DATE)} – ${b.toLocaleDateString("en-US", SHORT_DATE)}`;
+}
 
 // One place to translate a window's state into the FillStrip visual
 // language — filled = ink, owed = peach-ink at 55%, current = card-alt with
 // a dashed dim outline (the ONE dashed exception in the app), future and
-// settled = card-alt (settled dimmed).
+// settled = card-alt (settled dimmed). The CURRENT window keeps its outline
+// even once filled, so "which one is now" never disappears after logging.
 const CURRENT_DASH = { border: "1.5px dashed var(--dim-fg)" };
-function cellVisual(state) {
+const CURRENT_FILLED_RING = { boxShadow: "0 0 0 1.5px var(--card-alt), 0 0 0 3px var(--dim-fg)" };
+function cellVisual(state, isCurrentPeriod = false) {
   switch (state) {
     case "filled":
-      return { className: "bg-ink text-ink-on", style: undefined, glyph: <Check size={14} /> };
+      return {
+        className: "bg-ink text-ink-on",
+        style: isCurrentPeriod ? CURRENT_FILLED_RING : undefined,
+        glyph: <Check size={14} />,
+      };
     case "owed":
-      return { className: "bg-peach-ink opacity-55", style: undefined, glyph: null };
+      // A glyph, not colour alone, says "missed".
+      return {
+        className: "bg-peach text-peach-ink ring-1 ring-inset ring-peach-text",
+        style: undefined,
+        glyph: <span aria-hidden className="text-[11px] font-extrabold leading-none">!</span>,
+      };
     case "current":
-      return { className: "bg-card-alt text-fg", style: CURRENT_DASH, glyph: null };
+      return { className: "bg-track text-fg", style: CURRENT_DASH, glyph: null };
     case "settled":
-      return { className: "bg-card-alt text-dim-fg opacity-60", style: undefined, glyph: null };
-    default: // future
-      return { className: "bg-card-alt text-dim-fg", style: undefined, glyph: null };
+      return {
+        className: "bg-track text-muted-fg opacity-60",
+        style: isCurrentPeriod ? CURRENT_DASH : undefined,
+        glyph: null,
+      };
+    case "before":
+      // Neutral, and quieter than "upcoming": nothing was owed here.
+      return { className: "bg-transparent text-muted-fg ring-1 ring-inset ring-field-line opacity-60", style: undefined, glyph: null };
+    default: // future — outlined so it reads on a card at 3:1
+      return { className: "bg-card text-muted-fg ring-1 ring-inset ring-field-line", style: undefined, glyph: null };
   }
 }
 
@@ -99,42 +152,91 @@ function cellVisual(state) {
  * what goes in it (grading controls vs. not) differs by level.
  */
 function WindowsGrid({ goalId, data, fillable, selectedKey, onSelect }) {
+  const [showEarlier, setShowEarlier] = useState(false);
   const windows = data.windows || [];
+  const cycleKeys = new Set(windows.map((w) => w.key));
   const settledOf = (w) =>
-    isLocked(goalId, w.key) && w.state !== "filled" && w.state !== "future";
+    w.state !== "filled" &&
+    w.state !== "future" &&
+    (w.state === "settled" || lockKeysOf(goalId, w, cycleKeys, data.cadence).some((k) => isLocked(goalId, k)));
+
+  // Honest count: of the windows DUE so far (ended + counted, plus the
+  // current one once it's logged), how many are logged. Never "6/19" where
+  // 19 includes weeks that haven't happened yet.
+  const logged = loggedSoFar(data) || { done: 0, due: 0 };
+  const [periodOne, periodMany] = periodWords(data.cadence);
+  const periodNoun = logged.due === 1 ? periodOne : periodMany;
+
+  // Pre-tracker windows collapse behind ONE control instead of 40+ hidden
+  // "Log Wnn (before this tracker)" tab stops. Filled/selected ones stay.
+  const isHiddenBefore = (w) => w.state === "before" && !showEarlier && w.key !== selectedKey;
+  const hiddenCount = windows.filter((w) => w.state === "before" && w.key !== selectedKey).length;
+  const firstCounted = windows.find((w) => w.state !== "before");
+  const visible = windows
+    .map((w, i) => ({ w, i }))
+    .filter(({ w }) => !isHiddenBefore(w));
 
   const header = (
     <div className="mb-2.5 flex items-center justify-between gap-2">
-      <Label>{data.cadence} cycle</Label>
+      <Label>This cycle</Label>
       {/* "logged" not "filled": a window counts here as soon as an entry
-          exists for it, whatever that entry contains. The tier grader
-          separately reports how many periods have every required field,
-          which is a smaller number — naming both "filled" made the two
-          read as a contradiction. */}
-      <Label title="A window counts as logged once it has an entry, whatever that entry contains.">
-        {data.filledCount}/{data.total} logged
+          exists for it, whatever that entry contains. */}
+      <Label title="Counts only the windows that were due so far. A window counts as logged once it has an entry, whatever that entry contains.">
+        {logged.due > 0
+          ? `${logged.done} of ${logged.due} ${periodNoun} logged`
+          : `Nothing due yet`}
       </Label>
     </div>
   );
+
+  const beforeControl =
+    data.beforeCount > 0 && fillable ? (
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-muted-fg">
+        <span>
+          Started {firstCounted?.label ?? "recently"} · earlier {periodMany} can be backfilled
+        </span>
+        <button
+          type="button"
+          aria-expanded={showEarlier}
+          onClick={() => setShowEarlier((v) => !v)}
+          className="min-h-6 rounded-[var(--radius-pill)] px-1 font-bold text-fg hover:underline"
+        >
+          {showEarlier
+            ? `Hide earlier ${periodMany}`
+            : `Backfill earlier ${periodMany} (${hiddenCount})`}
+        </button>
+      </div>
+    ) : data.beforeCount > 0 ? (
+      <div className="mt-2 text-[12px] text-muted-fg">
+        Started {firstCounted?.label ?? "recently"} · earlier {periodMany} aren&apos;t counted
+      </div>
+    ) : null;
 
   if (data.mode === "heatmap") {
     return (
       <>
         {header}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(11px, 1fr))", gap: 3 }}>
-          {windows.map((w) => {
+        {/* 24px hit targets (WCAG 2.5.8) around a 16px visual. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(24px, 1fr))", gap: 2 }}>
+          {visible.map(({ w, i }) => {
             const effState = settledOf(w) ? "settled" : w.state;
-            const v = cellVisual(effState);
+            const isCurrentPeriod = i === data.currentIndex;
+            const v = cellVisual(effState, isCurrentPeriod);
             const isSelected = w.key === selectedKey;
             const canFill = fillable && w.state !== "future";
-            const cellStyle = {
-              aspectRatio: "1 / 1",
-              width: "100%",
-              borderRadius: 2,
-              boxShadow: isSelected ? "0 0 0 2px var(--ink)" : "none",
-              padding: 0,
-              ...v.style,
-            };
+            const visual = (
+              <span
+                aria-hidden
+                className={`flex h-4 w-4 items-center justify-center rounded-[3px] ${v.className}`}
+                style={{
+                  ...v.style,
+                  ...(isSelected ? { boxShadow: "0 0 0 2px var(--ink)" } : {}),
+                }}
+              >
+                {effState === "owed" ? v.glyph : null}
+              </span>
+            );
+            const box = "flex h-6 w-full items-center justify-center";
             return canFill ? (
               <button
                 key={w.key}
@@ -142,15 +244,19 @@ function WindowsGrid({ goalId, data, fillable, selectedKey, onSelect }) {
                 onClick={() => onSelect(isSelected ? null : w.key)}
                 aria-pressed={isSelected}
                 aria-label={`${isSelected ? "Close" : "Log"} ${w.label} (${STATE_LABEL[effState]})`}
-                title={`${w.label} · ${STATE_LABEL[effState]}`}
-                className={v.className}
-                style={{ ...cellStyle, cursor: "pointer" }}
-              />
+                title={cellTitle(w, effState)}
+                className={`${box} cursor-pointer rounded-[var(--radius-md)]`}
+              >
+                {visual}
+              </button>
             ) : (
-              <div key={w.key} title={`${w.label} · ${STATE_LABEL[effState]}`} className={v.className} style={cellStyle} />
+              <div key={w.key} title={cellTitle(w, effState)} className={box}>
+                {visual}
+              </div>
             );
           })}
         </div>
+        {beforeControl}
       </>
     );
   }
@@ -160,24 +266,25 @@ function WindowsGrid({ goalId, data, fillable, selectedKey, onSelect }) {
     <>
       {header}
       <div className="flex items-start gap-1.5">
-        {windows.map((w) => {
+        {visible.map(({ w, i }) => {
           const settled = settledOf(w);
           const effState = settled ? "settled" : w.state;
-          const v = cellVisual(effState);
-          const isCurrent = w.state === "current";
+          // Positional "contains now" — stays true after the window is filled.
+          const isCurrent = i === data.currentIndex;
+          const v = cellVisual(effState, isCurrent);
           const isSelected = w.key === selectedKey;
           const canFill = fillable && w.state !== "future";
           const sz = isCurrent ? 40 : 34;
           const cell = (
             <div
-              title={`${w.label} · ${STATE_LABEL[effState]}`}
+              title={cellTitle(w, effState, isCurrent)}
               className={`flex items-center justify-center rounded-[var(--radius-md)] ${v.className}`}
               style={{
                 width: "100%",
                 maxWidth: sz + 8,
                 height: sz,
-                boxShadow: isSelected ? "0 0 0 2px var(--ink)" : "none",
                 ...v.style,
+                ...(isSelected ? { boxShadow: "0 0 0 2px var(--ink)" } : {}),
               }}
             >
               {v.glyph}
@@ -185,26 +292,34 @@ function WindowsGrid({ goalId, data, fillable, selectedKey, onSelect }) {
           );
           return (
             <div key={w.key} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-              {canFill ? (
-                <button
-                  type="button"
-                  onClick={() => onSelect(isSelected ? null : w.key)}
-                  aria-pressed={isSelected}
-                  aria-label={`${isSelected ? "Close" : "Log"} ${w.label} (${STATE_LABEL[w.state]})`}
-                  style={{ width: "100%", maxWidth: sz + 8, padding: 0, border: "none", background: "transparent", cursor: "pointer" }}
-                >
-                  {cell}
-                </button>
-              ) : (
-                cell
-              )}
-              <span className={`text-[11px] ${isCurrent || isSelected ? "font-bold text-fg" : "text-dim-fg"}`}>
+              {/* Fixed-height slot so every label below sits on one baseline,
+                  however tall the current window's cell is. */}
+              <div className="flex h-10 w-full items-center justify-center">
+                {canFill ? (
+                  <button
+                    type="button"
+                    onClick={() => onSelect(isSelected ? null : w.key)}
+                    aria-pressed={isSelected}
+                    aria-label={`${isSelected ? "Close" : "Log"} ${w.label} (${STATE_LABEL[effState]})`}
+                    className="flex w-full justify-center"
+                    style={{ maxWidth: sz + 8, padding: 0, border: "none", background: "transparent", cursor: "pointer" }}
+                  >
+                    {cell}
+                  </button>
+                ) : (
+                  cell
+                )}
+              </div>
+              <span
+                className={`h-4 text-[11px] leading-4 ${isCurrent || isSelected ? "font-bold text-fg" : "text-muted-fg"}`}
+              >
                 {w.label}
               </span>
             </div>
           );
         })}
       </div>
+      {beforeControl}
     </>
   );
 }
@@ -230,6 +345,9 @@ function NestedStepperLevel({
   fallbackEnd,
   fillable,
   depth,
+  /* The tracker's tracking start (epoch ms) — nested windows that ended
+     before it are "before", same as the top level's. */
+  trackingStart = null,
 }) {
   const [selectedKey, setSelectedKey] = useState(null);
   const cadence = composedBlock?.cadence || null;
@@ -248,8 +366,9 @@ function NestedStepperLevel({
         cadence,
         now: Date.now(),
         ...(hasBounds ? { cycleStart, cycleEnd } : {}),
+        trackingStart,
       }),
-    [entries, cadence, cycleStart, cycleEnd, hasBounds],
+    [entries, cadence, cycleStart, cycleEnd, hasBounds, trackingStart],
   );
 
   if (!cadence || data.mode === "pip" || depth > MAX_NEST_DEPTH) return null;
@@ -314,6 +433,7 @@ function NestedStepperLevel({
           fallbackEnd={selected.end}
           fillable={fillable}
           depth={depth + 1}
+          trackingStart={trackingStart}
         />
       ) : null}
     </div>
@@ -352,7 +472,8 @@ function WindowTierPanel({ goalId, spec, periodKey, windowStart, windowEnd }) {
     windowEnd,
   );
   if (!hasTiers) return null;
-  const color = verdict?.tier ? WINDOW_TIER_COLOR[verdict.tier] : "var(--muted-fg)";
+  // `.text`: this label sits on a plain card, not on the tier's tint.
+  const color = verdict?.tier ? WINDOW_TIER_COLOR[verdict.tier]?.text : "var(--muted-fg)";
   const current = verdict?.tier || null;
   const tierMap = tiers || {};
 
@@ -388,7 +509,7 @@ function WindowTierPanel({ goalId, spec, periodKey, windowStart, windowEnd }) {
         {TIER_ORDER.map((t) => {
           const criterion = tierMap[TIER_FIELD[t]];
           const isCurrent = t === current;
-          const tColor = WINDOW_TIER_COLOR[t];
+          const tColor = WINDOW_TIER_COLOR[t]?.text;
           return (
             <div
               key={t}
@@ -438,9 +559,31 @@ export function CadenceStepper({ spec, onEditingWindowChange }) {
   // widgets re-derive deterministically on render, no AI call.
   const { hasTiers } = useGoalTier(goalId, spec);
   const { captureBefore, settleAfter } = useTierFillFeedback(goalId);
+  // Drafts held by the inline editors (free-text note, before/after pair).
+  // The panel's Save flushes them; "Back" asks before dropping them.
+  const drafts = useDraftRegistry();
   function saveAndGrade() {
+    // A draft that fails validation (half a before/after pair, a rejected
+    // note) is NOT saved — closing the panel would unmount the editor and
+    // silently drop both the draft and its error. Stay open and put the
+    // cursor where the problem is.
+    const flushed = drafts.flushAll();
+    if (!flushed.ok) {
+      flushed.failed[0]?.focus?.();
+      return;
+    }
     captureBefore();
     settleAfter();
+    setSelectedKey(null);
+  }
+  function closePanel() {
+    if (
+      drafts.anyDirty() &&
+      typeof window !== "undefined" &&
+      !window.confirm("You have an unsaved entry in this window. Discard it?")
+    ) {
+      return;
+    }
     setSelectedKey(null);
   }
 
@@ -461,7 +604,10 @@ export function CadenceStepper({ spec, onEditingWindowChange }) {
   // hides its own body for the duration so the two editors never stack.
   const editingOtherWindow = selectedKey != null && selectedKey !== currentKey;
   const notifyRef = useRef(onEditingWindowChange);
-  notifyRef.current = onEditingWindowChange;
+  // Refreshed after commit, not during render (React Compiler refs rule).
+  useLayoutEffect(() => {
+    notifyRef.current = onEditingWindowChange;
+  });
   useEffect(() => {
     notifyRef.current?.(editingOtherWindow);
   }, [editingOtherWindow]);
@@ -469,9 +615,21 @@ export function CadenceStepper({ spec, onEditingWindowChange }) {
 
   function selectWindow(key) {
     // Clicking the current window returns to the default body instead of
-    // duplicating it in the panel.
-    setSelectedKey(key === currentKey ? null : key);
+    // duplicating it in the panel. Leaving a window with a dirty draft asks
+    // first, same as "Back".
+    const next = key === currentKey ? null : key;
+    if (next === selectedKey) return;
+    if (
+      selectedKey != null &&
+      drafts.anyDirty() &&
+      typeof window !== "undefined" &&
+      !window.confirm("You have an unsaved entry in this window. Discard it?")
+    ) {
+      return;
+    }
+    setSelectedKey(next);
   }
+  const periodWord = cadencePeriodWord(cadence);
 
   if (data.mode === "pip") {
     const done = data.complete;
@@ -497,6 +655,10 @@ export function CadenceStepper({ spec, onEditingWindowChange }) {
   // Per-period content, if the spec authored any. Positional: window i is
   // period i, the same alignment the widget body uses.
   const selectedPeriod = selected ? resolvePeriodContent(spec, selectedIndex) : null;
+  const selectedLockKeys = selected
+    ? lockKeysOf(goalId, selected, new Set(windows.map((w) => w.key)), cadence)
+    : [];
+  const selectedLocked = selectedLockKeys.some((k) => isLocked(goalId, k));
 
   const editorPanel = selected ? (
     <div className="mt-3 flex flex-col gap-2.5 border-t border-line pt-3">
@@ -513,12 +675,17 @@ export function CadenceStepper({ spec, onEditingWindowChange }) {
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => setLock(goalId, selected.key, !isLocked(goalId, selected.key))}
+            onClick={() => {
+              // Reopen clears the window's own key AND any legacy alias lock
+              // that settled it (see lockKeysOf).
+              if (selectedLocked) for (const k of selectedLockKeys) setLock(goalId, k, false);
+              else setLock(goalId, selected.key, true);
+            }}
             title="Settle this period — nothing happened, stop flagging it as owed"
           >
-            {isLocked(goalId, selected.key) ? "Reopen" : "Nothing to report"}
+            {selectedLocked ? "Reopen" : "Nothing to report"}
           </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedKey(null)}>
+          <Button type="button" variant="ghost" size="sm" onClick={closePanel}>
             {currentWindow ? `Back to ${currentWindow.label}` : "Close"}
           </Button>
           {/* Primary action — commit + re-grade. The one ink button in this
@@ -565,11 +732,15 @@ export function CadenceStepper({ spec, onEditingWindowChange }) {
               fallbackEnd={selected.end}
               fillable={fillable}
               depth={1}
+              trackingStart={data.trackingStart ?? null}
             />
           ) : null}
         </>
       ) : (
+        // Keyed on the window so a half-typed draft never carries over into
+        // the next window the user opens.
         <GoalManualEditor
+          key={selected.key}
           widget={spec.widget}
           goal={goal}
           spec={spec}
@@ -577,6 +748,7 @@ export function CadenceStepper({ spec, onEditingWindowChange }) {
           weekEnd={new Date(selected.end)}
           activeLabel={selected.label}
           writeTs={Math.floor((selected.start + selected.end) / 2)}
+          periodWord={periodWord}
         />
       )}
       {spec?.tiers ? (
@@ -591,16 +763,38 @@ export function CadenceStepper({ spec, onEditingWindowChange }) {
     </div>
   ) : null;
 
-  return (
-    <div className="mt-3 rounded-[var(--radius-lg)] bg-card-alt p-4.5">
-      <WindowsGrid
-        goalId={goalId}
-        data={data}
-        fillable={fillable}
-        selectedKey={selectedKey}
-        onSelect={selectWindow}
-      />
-      {editorPanel}
+  // Which window the body above is filling right now. Without this line a
+  // user had to infer it from which cell was dashed.
+  const loggingWindow = selected || currentWindow;
+  const loggingHeader = loggingWindow ? (
+    <div className="mb-2.5 flex flex-wrap items-baseline gap-x-2 text-[12.5px]">
+      <span className="font-bold text-fg">
+        Logging: {loggingWindow.label}
+        {windowRange(loggingWindow.start, loggingWindow.end)
+          ? ` (${windowRange(loggingWindow.start, loggingWindow.end)})`
+          : ""}
+      </span>
+      <span className="text-muted-fg">
+        {selected && selected.key !== currentKey
+          ? "backfilling a past window"
+          : `the current ${periodWord}`}
+      </span>
     </div>
+  ) : null;
+
+  return (
+    <DraftFlushProvider registry={drafts}>
+      <div className="mt-3 rounded-[var(--radius-lg)] bg-card-alt p-4.5">
+        {loggingHeader}
+        <WindowsGrid
+          goalId={goalId}
+          data={data}
+          fillable={fillable}
+          selectedKey={selectedKey}
+          onSelect={selectWindow}
+        />
+        {editorPanel}
+      </div>
+    </DraftFlushProvider>
   );
 }

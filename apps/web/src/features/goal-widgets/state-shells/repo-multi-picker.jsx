@@ -124,7 +124,7 @@ export function RepoMultiPicker({ value, onChange, onBlur }) {
               addFromQuery();
             }
           }}
-          className="w-full rounded-[var(--radius-lg)] bg-card-alt px-3 py-2 text-[13.5px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
+          className="w-full rounded-[var(--radius-lg)] bg-card-alt px-3 py-2 text-[13.5px] text-fg border border-field-line outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
           aria-label="Filter repositories or type owner/name to add"
         />
         <Button type="button" variant="soft" size="sm" onClick={addFromQuery} disabled={!canAddQuery}>

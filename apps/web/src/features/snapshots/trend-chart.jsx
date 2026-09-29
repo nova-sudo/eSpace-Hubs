@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { Badge, Card, Label } from "@/components/ui";
+import { shortWeekLabel } from "@/lib/date";
 
 /**
  * Snapshot trend chart. Selection UX is preserved: clicking the chart or any
@@ -50,8 +51,8 @@ export function TrendChart({
         <div className="flex h-[260px] flex-col items-center justify-center gap-2 px-6 text-center">
           <Label>Needs more snapshots</Label>
           <p className="max-w-md text-[13px] leading-[1.5] text-muted-fg">
-            Trends need at least two weeks of data. Capture another snapshot next
-            Monday and the line will start to build.
+            Trends need at least two weeks of data. The next completed week is
+            captured when you open the dashboard, and the line starts to build.
           </p>
         </div>
       </Card>
@@ -153,7 +154,7 @@ export function TrendChart({
                         onSelect(payload.value);
                       }}
                     >
-                      {payload.value}
+                      {shortWeekLabel(payload.value)}
                     </text>
                   </g>
                 );

@@ -38,6 +38,7 @@ export function CodeRubricWidget({ spec, goal, variant = "light", className, onR
     listError,
     grade,
     gradeAll,
+    retryErrored,
     refreshList,
     hasGithub,
   } = useGradedPrs(spec, {
@@ -166,7 +167,7 @@ export function CodeRubricWidget({ spec, goal, variant = "light", className, onR
                 Provider rate limit hit — the grader pauses and retries automatically; wait a moment and press <strong>Retry</strong>{" "}
                 if it stalls.
                 <br />
-                <span className="text-[11px] text-dim-fg">{msg.slice(0, 180)}</span>
+                <span className="text-[11px] text-muted-fg">{msg.slice(0, 180)}</span>
               </>
             ) : (
               <>Could not load PRs: {msg}</>
@@ -202,7 +203,7 @@ export function CodeRubricWidget({ spec, goal, variant = "light", className, onR
     >
       <div className="flex min-h-0 flex-1 flex-col gap-2">
         <PctRow pct={summary.pct} />
-        <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-card-alt">
+        <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-track">
           <div className="h-full bg-ink" style={{ width: `${summary.pct ?? 0}%` }} />
         </div>
         <ThisWeekRow weekLabel={thisWeek?.weekLabel} stats={thisWeekStats} prCount={thisWeekPrs.length} />
@@ -218,6 +219,16 @@ export function CodeRubricWidget({ spec, goal, variant = "light", className, onR
           allWeeksWithPrs={allWeeksWithPrs}
           onGradeWeek={(weekPrs) => grade(weekPrs)}
         />
+        {summary.errored > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-lg)] bg-peach px-3 py-2 text-[12.5px] text-peach-ink">
+            <span>
+              {summary.errored} PR{summary.errored === 1 ? "" : "s"} couldn&apos;t be graded — not counted in the rate.
+            </span>
+            <Button size="sm" variant="soft" onClick={() => void retryErrored?.()} disabled={progress?.running}>
+              Retry grading ({summary.errored})
+            </Button>
+          </div>
+        ) : null}
         <ListDisclosure open={listOpen} count={prs.length} summary={summary} onToggle={() => setListOpen((v) => !v)} />
         {listOpen ? (
           <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1 text-[13px]" style={{ maxHeight: 320 }}>
@@ -467,12 +478,12 @@ function PrRow({ pr, verdict, expanded, onToggle }) {
   return (
     <li className="flex flex-col">
       <button type="button" onClick={onToggle} className="flex w-full items-center gap-2 py-1 text-left text-fg">
-        <span className="w-[46px] shrink-0 font-mono font-bold text-lav-ink">#{pr.number}</span>
+        <span className="w-[46px] shrink-0 font-mono font-bold text-lav-text">#{pr.number}</span>
         <span className="flex-1 truncate" title={pr.title}>
           {pr.title}
         </span>
         <VerdictBadge verdict={verdict} />
-        <span className="shrink-0 text-[11px] text-dim-fg">{pr.state}</span>
+        <span className="shrink-0 text-[11px] text-muted-fg">{pr.state}</span>
       </button>
       {expanded && verdict ? (
         <div className="mb-1 ml-[54px] rounded-[var(--radius-md)] bg-card-alt px-2.5 py-2 text-[12px] leading-[1.45] text-muted-fg">
@@ -496,7 +507,7 @@ function PrRow({ pr, verdict, expanded, onToggle }) {
 }
 
 function VerdictBadge({ verdict }) {
-  if (!verdict) return <span className="shrink-0 text-[11px] text-dim-fg">ungraded</span>;
+  if (!verdict) return <span className="shrink-0 text-[11px] text-muted-fg">ungraded</span>;
   if (verdict.errored) {
     return (
       <span className="shrink-0 text-[11px] text-muted-fg" title={verdict.reasoning}>

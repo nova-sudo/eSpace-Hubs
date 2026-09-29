@@ -32,16 +32,18 @@ export function CompanionGateStep({ submitting, onContinue, onBack }) {
           Connect the companion
         </h2>
         <p className="mt-2 text-[14px] leading-[1.5] text-muted-fg">
-          Your engagement routes API calls through your own laptop, so we
-          need to confirm the companion app is installed, paired, and live
-          before letting you in. This is a one-time check.
+          Your company&apos;s Jira and GitLab are only reachable from your own
+          laptop, so eSpace Hubs talks to them through a small desktop app —
+          the companion. Install it, pair it with your account, and leave it
+          running; we&apos;ll let you in as soon as it reports a live
+          connection. This is a one-time check.
         </p>
       </div>
 
       <Card tone="sky" radius="lg" padding={14} className="flex items-center gap-2.5 text-[13px]">
         <span
           aria-hidden="true"
-          className={cn("h-2 w-2 shrink-0 rounded-full", live ? "bg-mint-ink" : "bg-sky-ink")}
+          className={cn("h-2 w-2 shrink-0 rounded-full", live ? "bg-mint-text" : "bg-sky-text")}
         />
         <span>
           {live

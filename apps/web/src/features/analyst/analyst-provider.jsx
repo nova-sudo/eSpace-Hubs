@@ -40,14 +40,8 @@ export function AnalystProvider({ children }) {
     };
   }, []);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  // Escape, focus trap and focus restore live with the dialog itself
+  // (analyst-page.jsx) — it knows whether a nested dialog owns the key.
 
   const close = useCallback(() => setOpen(false), []);
   const toggle = useCallback(() => setOpen((v) => !v), []);

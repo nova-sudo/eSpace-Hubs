@@ -55,51 +55,7 @@ import {
   getInputsState,
 } from "@/features/goal-inputs";
 import { readGoalLiveReading } from "@/features/goal-tiers";
-import { isoDaysAgo, weekLabel, DAY_MS } from "@/lib/date";
-
-const HOUR = 60 * 60 * 1000;
-const DAY = 24 * HOUR;
-
-/**
- * Resolve the most recent completed Sun → Thu work-week.
- *
- * Returns a `{ start, end, weekLabel }` triple where:
- *   start = the Sunday at 00:00 (start of the week)
- *   end   = the next Friday at 00:00 (Thursday EOD + 1ms is in Friday)
- *   weekLabel = "Wnn" (already-completed week)
- *
- * If "now" is INSIDE a Sun-Thu window (e.g. Wednesday), the function
- * returns the PRIOR week — we only snapshot completed weeks.
- */
-function resolveCompletedWorkWeek(now = new Date()) {
-  const d = new Date(now);
-  // Day numbers: 0 = Sun, 1 = Mon, ..., 4 = Thu, 5 = Fri, 6 = Sat.
-  const day = d.getDay();
-
-  // Anchor: most recent Friday 00:00 (the moment the work-week ended).
-  // - If today is Friday or later (Fri/Sat), the just-passed Friday is THIS week's
-  //   end (5d ago Sun). Use that.
-  // - If today is Sun..Thu, the most recent Friday is in the prior week.
-  let daysSinceFriday;
-  if (day >= 5) {
-    daysSinceFriday = day - 5; // Fri=0, Sat=1
-  } else {
-    daysSinceFriday = day + 2; // Sun=2, Mon=3, ..., Thu=6
-  }
-
-  const friday = new Date(d);
-  friday.setDate(d.getDate() - daysSinceFriday);
-  friday.setHours(0, 0, 0, 0);
-
-  const sunday = new Date(friday);
-  sunday.setDate(friday.getDate() - 5); // Friday is 5 days after Sunday
-
-  return {
-    start: sunday,
-    end: friday, // exclusive — week is [Sun 00:00, Fri 00:00)
-    weekLabel: weekLabel(new Date(sunday.getTime() + 3 * DAY)), // mid-week date
-  };
-}
+import { isoDaysAgo, resolveCompletedWorkWeek } from "@/lib/date";
 
 /**
  * Find the snapshot for the immediately PRIOR week — used to thread
@@ -107,9 +63,8 @@ function resolveCompletedWorkWeek(now = new Date()) {
  */
 function priorWeekReadings(snapshots, currentWeekLabel) {
   if (!Array.isArray(snapshots) || snapshots.length === 0) return null;
-  // Snapshots are kept newest-first; the week label sorts naturally
-  // ("W17-2026" > "W16-2026"). We want the most recent that's NOT
-  // the current week.
+  // Snapshots are kept newest-first (store sorts by year, then week).
+  // We want the most recent that's NOT the current week.
   for (const s of snapshots) {
     if (s.week === currentWeekLabel) continue;
     return s.goalReadings || null;
@@ -204,7 +159,8 @@ export function useAutoSnapshot() {
       readLive: readGoalLiveReading,
     });
 
-    saveSnapshot({
+    ranRef.current = true;
+    void saveSnapshot({
       week: week.weekLabel,
       capturedAt: new Date().toISOString(),
       capturedBy: "auto",
@@ -213,18 +169,19 @@ export function useAutoSnapshot() {
       turnaround: median == null ? 0 : Math.round(median * 24),
       linkage,
       rounds: Math.round(rounds * 10) / 10,
-      // Auto-captures don't add notes — but if a manual snapshot
-      // existed for this week with a note, `saveSnapshot` refuses to
-      // overwrite it (manual wins).
+      // Auto-captures don't add notes — if a manual snapshot exists for
+      // this week the server keeps it (manual wins) and only fills in
+      // goalReadings it lacked.
       note: "",
       goalReadings,
       partial: false,
       gaps: [],
+    }).then((r) => {
+      // Friendly confirmation — keeps the system feeling alive without
+      // being noisy. Only fires on an actual, applied capture.
+      if (r?.ok && r.precedence !== "manual_kept") {
+        toast.success(`Captured weekly snapshot — ${week.weekLabel}`);
+      }
     });
-
-    ranRef.current = true;
-    // Friendly confirmation — keeps the system feeling alive without
-    // being noisy. Only fires on the actual capture.
-    toast.success(`Captured weekly snapshot — ${week.weekLabel}`);
   }, [goals, specs, mrs, events, jira, snapshotsTick, inputsTick]);
 }

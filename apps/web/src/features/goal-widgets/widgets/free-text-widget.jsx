@@ -7,6 +7,8 @@ import { cn } from "@/lib/cn";
 import { WidgetShell } from "../widget-shell";
 import { useGoalInputs } from "@/features/goal-inputs";
 import { fullDate } from "@/lib/date";
+import { plural } from "@/lib/fmt";
+import { SavedNote, useSavedFlash } from "../saved-note";
 
 /**
  * Free-text journal. Each entry is a dated note the user writes. Useful
@@ -15,19 +17,21 @@ import { fullDate } from "@/lib/date";
 export function FreeTextWidget({ spec, goal, variant = "light", className, onRetry }) {
   const { entries, append, remove } = useGoalInputs(goal?.id);
   const [draft, setDraft] = useState("");
+  const [saved, flash] = useSavedFlash();
 
   function submit() {
     const body = draft.trim();
     if (!body) return;
     append(body);
     setDraft("");
+    flash(`Saved · ${plural(entries.length + 1, "entry", "entries")} logged`);
   }
 
   return (
     <WidgetShell
       spec={spec}
       variant={variant}
-      label={`Journal · ${entries.length} entries`}
+      label={`Journal · ${plural(entries.length, "entry", "entries")}`}
       title={goal?.title || spec.title}
       onRetry={onRetry}
       className={className}
@@ -35,7 +39,7 @@ export function FreeTextWidget({ spec, goal, variant = "light", className, onRet
       <div className="flex h-full flex-col gap-2">
         <Label>{spec.manual?.prompt || "Capture a short note"}</Label>
         <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1 text-[13px]">
-          {entries.length === 0 ? <li className="text-dim-fg">No entries yet.</li> : null}
+          {entries.length === 0 ? <li className="text-muted-fg">No entries yet.</li> : null}
           {entries.slice().reverse().map((e) => (
             <li key={e.ts} className="group flex flex-col gap-0.5 rounded-[var(--radius-md)] bg-card-alt px-2.5 py-1.5">
               <div className="flex items-center justify-between">
@@ -59,15 +63,17 @@ export function FreeTextWidget({ spec, goal, variant = "light", className, onRet
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder="Write a short note…"
-            rows={1}
+            rows={2}
+            aria-label={spec.manual?.prompt || "Journal entry"}
             className={cn(
-              "max-h-[100px] min-h-[44px] flex-1 resize-none rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-2.5 text-[14px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink",
+              "max-h-[160px] min-h-[64px] flex-1 resize-none rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-2.5 text-[14px] text-fg border border-field-line outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink",
             )}
           />
           <Button size="sm" disabled={!draft.trim()} onClick={submit}>
             Log
           </Button>
         </div>
+        <SavedNote message={saved} />
       </div>
     </WidgetShell>
   );

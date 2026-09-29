@@ -110,7 +110,7 @@ export function ManagementRoster({ className = "" }) {
             onChange={(e) => setDraft(e.target.value)}
             rows={2}
             placeholder="someone@espace.com.eg, another@espace.com.eg"
-            className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt px-3 py-2 text-[13px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
+            className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt px-3 py-2 text-[13px] text-fg border border-field-line outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
           />
           <Button type="button" variant="soft" size="sm" className="w-fit" onClick={() => void check()} disabled={checking}>
             {checking ? "Checking…" : "Check"}
@@ -124,7 +124,7 @@ export function ManagementRoster({ className = "" }) {
             </span>
           ) : null}
           {checkResult?.empty ? (
-            <span className="text-[12.5px] text-dim-fg">Add at least one email address.</span>
+            <span className="text-[12.5px] text-muted-fg">Add at least one email address.</span>
           ) : null}
         </div>
       ) : (
@@ -142,7 +142,7 @@ export function ManagementRoster({ className = "" }) {
               >
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-[13px] font-bold text-fg">{r.name}</span>
-                  <span className="text-[11.5px] text-dim-fg">
+                  <span className="text-[11.5px] text-muted-fg">
                     {tracked} {tracked === 1 ? "goal" : "goals"} logged
                   </span>
                 </span>

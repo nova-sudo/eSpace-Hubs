@@ -21,6 +21,8 @@ export {
   readVerdict,
   saveVerdict,
   clearVerdicts,
+  clearErroredVerdicts,
+  isErroredReasoning,
   pruneUnrelated,
   fetchVerdicts,
   resetVerdicts,

@@ -59,7 +59,7 @@ import {
   useJiraTickets,
 } from "@/features/integrations";
 import { readInputs, useAllGoalInputs } from "@/features/goal-inputs";
-import { isoDaysAgo, weekLabel } from "@/lib/date";
+import { isoDaysAgo, weekKey } from "@/lib/date";
 
 const DAY = 24 * 60 * 60 * 1000;
 // GitHub's events feed caps at ~90d — that's the furthest back we
@@ -106,12 +106,19 @@ export function useBackfill() {
   // Completed Sun → Thu weeks since Jan 1 with NO snapshot yet. Drives
   // the onboarding banner ("X weeks need backfill"). Recomputes whenever
   // the snapshots array changes (hydration / save / backfill run).
+  //
+  // Weeks that ended before the user's first tracker existed (or before
+  // their hire date) are NOT missing — there was nothing to check in on.
+  // They stay backfillable via `run`, they just don't nag.
+  const trackingFloor = useMemo(() => trackingFloorMs(specs), [specs]);
   const missingWeeks = useMemo(() => {
     if (typeof window === "undefined") return 0;
     const ranges = enumerateCompletedWeeks();
     const existing = new Set((snapshots || []).map((s) => s.week));
-    return ranges.filter((r) => !existing.has(r.weekLabel)).length;
-  }, [snapshots, isRunning]);
+    return ranges.filter(
+      (r) => !existing.has(r.weekLabel) && (trackingFloor == null || r.end.getTime() > trackingFloor),
+    ).length;
+  }, [snapshots, isRunning, trackingFloor]);
 
   // Total completed weeks since Jan 1 — the refresh target count. A run
   // recomputes all of these, not just the missing ones.
@@ -171,10 +178,34 @@ export function useBackfill() {
     [],
   );
 
-  return { run, isRunning, progress, missingWeeks };
+  return { run, isRunning, progress, missingWeeks, totalWeeks };
 }
 
 /* ─────────────── helpers ─────────────── */
+
+/**
+ * When check-ins started being owed at all (epoch ms), or null for "since
+ * Jan 1" (no creation data): the EARLIEST tracker's creation time, floored
+ * by the hire date — the same tracking-start facts the cadence windows use
+ * (see goal-specs' store: specs arrive stamped with `createdAt`/`hireDate`).
+ */
+export function trackingFloorMs(specs) {
+  let earliest = null;
+  let hire = null;
+  const list = specs instanceof Map ? [...specs.values()] : Object.values(specs || {});
+  if (list.length === 0) return null;
+  for (const spec of list) {
+    const created = Date.parse(spec?.createdAt ?? "");
+    // One tracker with no creation stamp means we can't claim anything
+    // started late — keep the old "since Jan 1" behaviour.
+    if (Number.isNaN(created)) return null;
+    if (earliest == null || created < earliest) earliest = created;
+    const h = Date.parse(spec?.hireDate ?? "");
+    if (!Number.isNaN(h)) hire = h;
+  }
+  if (earliest == null) return null;
+  return hire != null && hire > earliest ? hire : earliest;
+}
 
 /**
  * Every completed Sun → Thu week from Jan 1 of the current year up to
@@ -205,7 +236,7 @@ function enumerateCompletedWeeks() {
     out.unshift({
       start,
       end,
-      weekLabel: weekLabel(new Date(start.getTime() + 3 * DAY)),
+      weekLabel: weekKey(new Date(start.getTime() + 3 * DAY)),
     });
     cursorSunday.setDate(cursorSunday.getDate() - 7);
   }

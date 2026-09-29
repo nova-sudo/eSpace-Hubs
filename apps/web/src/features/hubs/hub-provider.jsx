@@ -28,6 +28,8 @@ import { findHubById } from "@espace-devhub/shared/hubs";
 import { useSession } from "@/features/auth";
 import { useAvailableHubs } from "./use-available-hubs";
 import { HubContext } from "./hub-context";
+import { HubsUnavailable } from "./hub-redirect";
+import { refetchHubs } from "./hubs-store.js";
 
 function themeStyle(_hub) {
   // Per-hub accent skins are retired (docs/design-system-v2.md §9) — hubs
@@ -41,18 +43,25 @@ function themeStyle(_hub) {
 
 export function HubProvider({ hubSlug, children }) {
   const router = useRouter();
-  const { user, loading: sessionLoading } = useSession();
-  const { status: hubsStatus, hubs, primaryHubId } = useAvailableHubs();
+  const { user, loading: sessionLoading, logout } = useSession();
+  const { status: hubsStatus, hubs, primaryHubId, error: hubsError } = useAvailableHubs();
 
   // Validate the URL slug exists at all (registry membership) and
   // that the user has access (allowedHubs membership).
   const registryHub = findHubById(hubSlug);
   const userHub = hubs.find((h) => h.id === hubSlug) ?? null;
+  const hubsSettled = !sessionLoading && Boolean(user) && hubsStatus !== "loading";
 
-  // The hub we'll actually render: prefer the user-allowed match so
-  // we get the same identity used elsewhere; fall back to the
-  // registry record only for the loading window.
-  const activeHub = userHub ?? registryHub ?? null;
+  // The hub we'll actually render: the user-allowed match. The registry
+  // record stands in ONLY during the loading window — once hubs are
+  // known, a slug the user can't enter never renders that hub's shell
+  // (it would 403 on every call and look broken).
+  const activeHub = userHub ?? (hubsSettled ? null : registryHub ?? null);
+  // Signed in, hubs loaded (or failed), and nowhere to bounce to.
+  const noHub =
+    hubsSettled &&
+    !userHub &&
+    (hubsStatus === "error" || !(primaryHubId || hubs[0]?.id));
 
   useEffect(() => {
     if (sessionLoading) return;
@@ -69,9 +78,22 @@ export function HubProvider({ hubSlug, children }) {
     }
   }, [sessionLoading, user, hubsStatus, userHub, primaryHubId, hubs, router]);
 
-  // Tiny placeholder during the loading window. Stays minimal so the
-  // pageshell flashes for the smallest possible time before the real
-  // content renders.
+  if (noHub) {
+    return (
+      <HubsUnavailable
+        error={hubsStatus === "error" ? hubsError : null}
+        onRetry={refetchHubs}
+        onSignOut={async () => {
+          await logout();
+          router.replace("/login");
+        }}
+      />
+    );
+  }
+
+  // Tiny placeholder during the loading window (and while a redirect to
+  // an allowed hub is in flight). Stays minimal so the pageshell flashes
+  // for the smallest possible time before the real content renders.
   if (!activeHub) {
     return (
       <div

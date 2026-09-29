@@ -54,4 +54,26 @@ export function resetHubsStore() {
     error: null,
   };
   for (const cb of subscribers) cb();
+  // Wake the fetcher: a reset outside a session change (onboarding just
+  // created a hub, admin granted one) used to leave the store in
+  // "loading" with nobody re-fetching — HubsFetcher only re-ran when
+  // user.id changed. See `refetchHubs`.
+  for (const cb of refetchListeners) cb();
+}
+
+/* ─────────────────────── refetch channel ─────────────────────── */
+
+const refetchListeners = new Set();
+
+/** HubsFetcher registers here so `refetchHubs()` / `resetHubsStore()`
+ *  can re-run the GET without a session change. */
+export function onHubsRefetch(cb) {
+  refetchListeners.add(cb);
+  return () => refetchListeners.delete(cb);
+}
+
+/** Re-run GET /hubs/me for the current session (error card "Retry",
+ *  post-onboarding refresh). No-op when no fetcher is mounted. */
+export function refetchHubs() {
+  for (const cb of refetchListeners) cb();
 }

@@ -37,7 +37,7 @@ export function CompanionPairForm() {
   const { user, loading } = useSession();
   const code = params.get("code") || "";
 
-  const [phase, setPhase] = useState("idle"); // idle | submitting | approved | error
+  const [phase, setPhase] = useState("idle"); // idle | submitting | approved | cancelled | error
   const [error, setError] = useState(null);
   const [device, setDevice] = useState(null);
 
@@ -89,6 +89,27 @@ export function CompanionPairForm() {
     );
   }
 
+  if (phase === "cancelled") {
+    return (
+      <PanelCard
+        title="Pairing cancelled."
+        body="Nothing was approved — the code expires on its own within 5 minutes. You can close this tab. If you didn't start this pairing, tell whoever did to stop."
+      />
+    );
+  }
+
+  // There's no server-side "deny" for a pending code (it just expires),
+  // so cancelling is a local state change. `window.close()` only works
+  // on script-opened tabs; the panel above is the reliable outcome.
+  function handleCancel() {
+    setPhase("cancelled");
+    try {
+      window.close();
+    } catch {
+      /* not a script-opened tab — the cancelled panel stays visible */
+    }
+  }
+
   async function handleApprove() {
     setPhase("submitting");
     setError(null);
@@ -127,7 +148,7 @@ export function CompanionPairForm() {
         </div>
 
         {error ? (
-          <p className="mt-4 text-[12.5px] leading-[1.5] text-peach-ink">
+          <p className="mt-4 text-[12.5px] leading-[1.5] text-peach-text">
             {humanise(error)}
           </p>
         ) : null}
@@ -143,7 +164,7 @@ export function CompanionPairForm() {
           <Button
             type="button"
             variant="soft"
-            onClick={() => window.close()}
+            onClick={handleCancel}
             disabled={phase === "submitting"}
           >
             Cancel

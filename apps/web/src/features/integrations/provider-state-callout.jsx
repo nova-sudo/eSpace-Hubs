@@ -70,11 +70,9 @@ export function ProviderStateCallout({
       <div className="text-[13px] font-bold">{resolvedTitle}</div>
       <p className="mt-1.5 max-w-[34ch] text-[13px] leading-[1.45] opacity-85">{resolvedMessage}</p>
       {actionHref && resolvedAction ? (
-        <Link href={actionHref} className="mt-3 inline-flex w-fit">
-          <Button variant="soft" size="sm">
+        <Button as={Link} href={actionHref} className="mt-3 inline-flex w-fit" variant="soft" size="sm">
             {resolvedAction}
           </Button>
-        </Link>
       ) : null}
     </Card>
   );

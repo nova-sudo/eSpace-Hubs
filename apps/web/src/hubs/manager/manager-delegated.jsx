@@ -59,7 +59,7 @@ export function ManagerDelegated() {
         title="Goals only you can score."
         subtitle="These reports marked a goal “manager evaluates” — there's no self-tracking, so it stays open until you grade it."
         right={
-          <SegmentedControl
+          <SegmentedControl as="radiogroup" ariaLabel="Filter goals"
             size="sm"
             value={filter}
             onChange={(v) => FILTERS.includes(v) && setFilter(v)}
@@ -167,7 +167,7 @@ export function ManagerDelegated() {
                       <span className="flex-1" />
                       <Button
                         type="button"
-                        variant={it.verdict ? "soft" : "ink"}
+                        variant="soft"
                         size="sm"
                         onClick={() =>
                           setGrading({

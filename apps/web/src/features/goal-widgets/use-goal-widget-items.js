@@ -37,7 +37,14 @@ export function useGoalWidgetItems() {
     error: goalsError,
     retry: retryGoals,
   } = useGoals();
-  const { specs, lastAnalyzedAt, fetched: specsFetched } = useGoalSpecs();
+  const {
+    specs,
+    lastAnalyzedAt,
+    fetched: specsFetched,
+    error: specsError,
+    retry: retrySpecs,
+    invalidSpecIds,
+  } = useGoalSpecs();
 
   const items = useMemo(() => {
     const flat = flattenGoals(goals);
@@ -110,10 +117,12 @@ export function useGoalWidgetItems() {
     // here keeps the toolbar's "N goals unclassified" count honest.
     // A shared goal always has a spec (server-injected); if one briefly
     // doesn't, it's still not the user's to classify.
-    return flat.filter(
-      (g) => g.kind !== "L1" && !specs.has(g.id) && !isAssignedGoalId(g.id),
-    );
-  }, [goals, specs]);
+    // `invalidSpec` marks a goal that HAS a stored spec which failed
+    // validation — it needs re-analysis, not first-time classification.
+    return flat
+      .filter((g) => g.kind !== "L1" && !specs.has(g.id) && !isAssignedGoalId(g.id))
+      .map((g) => (invalidSpecIds?.has(g.id) ? { ...g, invalidSpec: true } : g));
+  }, [goals, specs, invalidSpecIds]);
 
   const hasGoals = (goals?.l1s?.length || 0) > 0;
 
@@ -127,9 +136,17 @@ export function useGoalWidgetItems() {
     // True once goals + specs have both hydrated — gate empty/CTA states on
     // this so "Add goals" / "Analyze" never flash before the first load.
     ready: goalsFetched && specsFetched,
-    // A failed goals fetch settles without flipping `ready` — pages must
-    // branch on this (error + retry) instead of spinning forever.
+    // A failed fetch (either store) settles without flipping `ready` — pages
+    // must branch on these (error + retry) instead of spinning forever.
     goalsError,
     retryGoals,
+    specsError,
+    retrySpecs,
+    // Either error, with a retry that re-fetches whichever store(s) failed.
+    loadError: goalsError || specsError || null,
+    retryLoad: () => {
+      if (!goalsFetched) void retryGoals();
+      if (!specsFetched) void retrySpecs();
+    },
   };
 }

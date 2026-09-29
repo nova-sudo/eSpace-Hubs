@@ -33,3 +33,24 @@ export function fmtRelative(iso) {
   if (hr < 24) return `${Math.round(hr)}h`;
   return `${Math.round(hr / 24)}d`;
 }
+
+/** Comparison operators as people write them: ">=" → "≥". */
+export function opLabel(op) {
+  return { ">=": "≥", "<=": "≤", "==": "=", "!=": "≠" }[op] || op;
+}
+
+/**
+ * A target as people read it — `{op:">=", value:3, unit:"h"}` → "≥ 3 h".
+ * Never prints the raw operator. Null when there's no value.
+ */
+export function fmtTarget(target) {
+  if (!target || target.value == null || target.value === "") return null;
+  const op = target.op ? `${opLabel(target.op)} ` : "";
+  const unit = target.unit ? ` ${target.unit}` : "";
+  return `${op}${target.value}${unit}`;
+}
+
+/** "1 entry" / "3 entries" — count + the right noun. */
+export function plural(n, one, many = `${one}s`) {
+  return `${n} ${n === 1 ? one : many}`;
+}

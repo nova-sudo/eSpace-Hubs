@@ -54,11 +54,7 @@ export function TeamPeopleView({ reports, perReport, link, toolCounts }) {
                   active ? "bg-card-alt" : "hover:bg-card-alt",
                 )}
               >
-                <Avatar
-                  name={r.displayName}
-                  size={26}
-                  tone={attention ? "peach" : "lav"}
-                />
+                <Avatar name={r.displayName} size={26} />
                 <span
                   className={cn(
                     "min-w-0 flex-1 truncate text-[12.5px]",
@@ -71,7 +67,7 @@ export function TeamPeopleView({ reports, perReport, link, toolCounts }) {
                   <span
                     aria-label="Needs attention"
                     title="Needs attention"
-                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-peach-ink"
+                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-peach-text"
                   />
                 ) : null}
               </button>
@@ -129,7 +125,7 @@ export function TeamPeopleView({ reports, perReport, link, toolCounts }) {
             <CountTile label="Goals" value={summary?.total ?? stat?.total ?? "—"} />
             <CountTile label="Graded" value={summary?.graded ?? stat?.graded ?? "—"} />
             <CountTile
-              label="Need setup"
+              label="Needs setup"
               value={summary?.needsSetup ?? stat?.needsSetup ?? "—"}
             />
             <CountTile
@@ -180,7 +176,7 @@ export function TeamPeopleView({ reports, perReport, link, toolCounts }) {
                         {group.l1.title}
                       </span>
                       {group.l1.weightage ? (
-                        <Badge tone="lav">{group.l1.weightage}% of the year</Badge>
+                        <Badge>Weight {group.l1.weightage}%</Badge>
                       ) : null}
                       <Badge tone={graded === total ? "mint" : "lemon"}>
                         {graded} of {total} graded

@@ -29,9 +29,9 @@
  * Bucketing window boundaries
  * ───────────────────────────
  * The SAME windows the cadence stepper shows and the snapshot capture
- * keys on: `buildCycleWindows` (calendar months / quarters, fixed
- * strides for weekly / biweekly / daily, anchored on the cycle — the
- * calendar year). Audit #237: this used to bucket from the FIRST ENTRY
+ * keys on: `buildCycleWindows` (calendar months / quarters, Sunday-anchored
+ * work weeks for weekly / biweekly, calendar days for daily, clipped to the
+ * cycle — the calendar year). Audit #237: this used to bucket from the FIRST ENTRY
  * in fixed 30-day "months" and 91-day "quarters", so a window the
  * stepper called "March" could be compliance's "days 30–59 since your
  * first log" — three surfaces, three answers. Windows counted run from
@@ -41,10 +41,9 @@
  * log; compliance only stops being trivial once a full window has
  * elapsed.
  *
- * ponytail: weekly strides here are Jan-1-anchored (cadence-windows'
- * keys), while snapshot week labels are Sunday-anchored — a residual
- * few-day skew on weekly goals only. Unifying that means migrating every
- * stored weekly periodKey; do it when the skew is actually observed.
+ * Weekly windows are the snapshot store's Sun→Sat weeks (same number, same
+ * label — "W39" is Sep 20–26 2026 on both), so there is no longer a skew
+ * between this and the snapshot compliance view.
  */
 
 import { buildCycleWindows } from "./cadence-windows";
@@ -168,6 +167,8 @@ export function cadenceWindowLabel(cadence) {
       return ["month", "months"];
     case "quarterly":
       return ["quarter", "quarters"];
+    case "yearly":
+      return ["year", "years"];
     default:
       return ["window", "windows"];
   }

@@ -25,6 +25,7 @@
  * composite `${goalId}::${periodKey}` key instead. See `tierKey`.
  */
 
+import { toast } from "sonner";
 import { fetchWithRateLimitRetry } from "@/lib/rate-limit";
 import { startJob, endJob } from "@/lib/jobs-store";
 
@@ -45,7 +46,9 @@ function tierKey(goalId, periodKey) {
     : goalId;
 }
 
-/** { [goalId | `${goalId}::${periodKey}`]: { tier, reasoning, confidence, key } } */
+/** { [goalId | `${goalId}::${periodKey}`]: { tier, reasoning, confidence, key, criteriaKey?, gradedDay?, gradedAt? } }
+ *  `gradedAt` (ISO) is when the AI actually graded it — display only; the
+ *  once-a-day throttle still keys on `gradedDay`. */
 let state = {};
 let tick = 0;
 let loaded = false;
@@ -160,6 +163,12 @@ export async function gradeGoalTier({
   // just makes it visible — and keyed per goal (+ window) so the toast can
   // count them.
   startJob(`grading:${storeKey}`, { kind: "grading", label: goalTitle || "" });
+  // Failures used to vanish with the running-jobs toast — the user saw
+  // "Grading…" disappear and a badge that never changed. Say what happened
+  // and offer the same call again (forced, so the freshness guard can't
+  // swallow the retry).
+  let failure = null;
+  const retryArgs = { goalId, goalTitle, tiers, currentData, key, criteriaKey, gradedDay, aiProvider, periodKey };
   try {
     const res = await fetchWithRateLimitRetry(
       "/api/v1/ai/grade-goal-tier",
@@ -198,6 +207,17 @@ export async function gradeGoalTier({
         prior.tier !== body.verdict.tier
           ? prior.tier
           : undefined;
+      // When the model graded this verdict — the server's stamp (on a cache
+      // hit that's the ORIGINAL grade time, not now). A fresh grade from an
+      // older API without the field falls back to the local clock; a cache
+      // hit without one leaves it unset so the ladder omits "Last graded"
+      // rather than claim a time it doesn't know.
+      const gradedAt =
+        typeof body.gradedAt === "string" && body.gradedAt
+          ? body.gradedAt
+          : body.cached
+            ? null
+            : new Date().toISOString();
       state = {
         ...state,
         [storeKey]: {
@@ -205,17 +225,31 @@ export async function gradeGoalTier({
           key,
           criteriaKey,
           gradedDay,
+          ...(gradedAt ? { gradedAt } : {}),
           ...(prevTier ? { prevTier } : {}),
         },
       };
       persist();
       notify();
+    } else {
+      failure = body?.error?.message || `The grader answered with HTTP ${res.status}.`;
     }
-  } catch {
+  } catch (err) {
     /* network / abort — keep any prior verdict */
+    failure = err?.message || "Couldn't reach the grader.";
   } finally {
     inflight.delete(storeKey);
     endJob(`grading:${storeKey}`);
+  }
+  if (failure) {
+    toast.error(`Couldn't grade "${goalTitle || "this goal"}"`, {
+      id: `grading-failed:${storeKey}`,
+      description: failure,
+      action: {
+        label: "Retry",
+        onClick: () => void gradeGoalTier({ ...retryArgs, force: true }),
+      },
+    });
   }
 }
 
@@ -299,8 +333,21 @@ export async function hydrateGoalTiers() {
     for (const r of rows) {
       if (!r?.goalId || !r?.tierHash || !r?.verdict) continue;
       const storeKey = tierKey(r.goalId, r.periodKey);
-      if (state[storeKey]) continue; // keep the local (≥ as fresh) entry
-      state = { ...state, [storeKey]: { ...r.verdict, key: r.tierHash } };
+      const gradedAt = typeof r.gradedAt === "string" && r.gradedAt ? r.gradedAt : null;
+      const local = state[storeKey];
+      if (local) {
+        // Keep the local (≥ as fresh) entry — but backfill its grading time
+        // when it predates the stamp and describes the same data state.
+        if (gradedAt && !local.gradedAt && local.key === r.tierHash && !local.awaiting) {
+          state = { ...state, [storeKey]: { ...local, gradedAt } };
+          changed = true;
+        }
+        continue;
+      }
+      state = {
+        ...state,
+        [storeKey]: { ...r.verdict, key: r.tierHash, ...(gradedAt ? { gradedAt } : {}) },
+      };
       changed = true;
     }
     if (changed) {

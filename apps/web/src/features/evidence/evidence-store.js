@@ -151,7 +151,9 @@ export async function fetchEvidence() {
  * with the canonical version (sets starredAt to the server's clock).
  */
 export async function starEvidence(item) {
-  if (!item || !item.id) return;
+  if (!item || !item.id) {
+    return { ok: false, error: { code: "validation_error", message: "Nothing to star." } };
+  }
   const prev = state.items;
   // Optimistic: replace any existing entry with same id, prepend new.
   const optimisticItem = {
@@ -186,13 +188,13 @@ export async function starEvidence(item) {
       ];
       setState({ items: reconciled });
     }
-    return;
+    return { ok: true };
   }
   if (
     r.error?.code === "unauthenticated" ||
     r.error?.code === "totp_required"
   ) {
-    return;
+    return { ok: false, error: r.error };
   }
   // Rollback.
   setState({ items: prev, error: r.error });
@@ -202,6 +204,7 @@ export async function starEvidence(item) {
     r.error?.code,
     r.error?.message,
   );
+  return { ok: false, error: r.error };
 }
 
 /**
@@ -213,19 +216,21 @@ export async function starEvidence(item) {
  * the optimistic removal.
  */
 export async function unstarEvidence(id) {
-  if (!id) return;
+  if (!id) {
+    return { ok: false, error: { code: "validation_error", message: "Nothing to remove." } };
+  }
   const prev = state.items;
   const optimistic = prev.filter((x) => x.id !== id);
   setState({ items: optimistic, error: null });
   const r = await apiDelete(`/evidence/${encodeURIComponent(id)}`);
-  if (r.ok) return;
+  if (r.ok) return { ok: true };
   // 404 == server already has it removed → keep optimistic state.
-  if (r.error?.code === "not_found" || r.status === 404) return;
+  if (r.error?.code === "not_found" || r.status === 404) return { ok: true };
   if (
     r.error?.code === "unauthenticated" ||
     r.error?.code === "totp_required"
   ) {
-    return;
+    return { ok: false, error: r.error };
   }
   setState({ items: prev, error: r.error });
   // eslint-disable-next-line no-console
@@ -234,6 +239,7 @@ export async function unstarEvidence(id) {
     r.error?.code,
     r.error?.message,
   );
+  return { ok: false, error: r.error };
 }
 
 /**
@@ -241,13 +247,14 @@ export async function unstarEvidence(id) {
  * shim for the existing `toggleStar` / `toggleEvidence` callers.
  */
 export function toggleStar(item) {
-  if (!item || !item.id) return;
-  const exists = state.items.find((x) => x.id === item.id);
-  if (exists) {
-    void unstarEvidence(item.id);
-  } else {
-    void starEvidence(item);
+  if (!item || !item.id) {
+    return Promise.resolve({
+      ok: false,
+      error: { code: "validation_error", message: "Nothing to star." },
+    });
   }
+  const exists = state.items.find((x) => x.id === item.id);
+  return exists ? unstarEvidence(item.id) : starEvidence(item);
 }
 
 /**

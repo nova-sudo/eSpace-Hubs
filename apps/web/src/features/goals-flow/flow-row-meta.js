@@ -61,11 +61,11 @@ export function windowTier(goalId, periodKey) {
   return stored?.tier || null;
 }
 
-/** The ink token for a tier, or null when ungraded. Delegates to the
- *  canonical tier -> token map in goal-tiers so this page can never drift
- *  from the tier badge's own colors. */
+/** The colour for a tier's dot / mark on a plain surface, or null when
+ *  ungraded — the theme-aware `-text` token from the canonical tier map
+ *  (`-ink` is for text ON the tint and fails on a dark card). */
 export function tierColor(tier) {
-  return (tier && TIER_COLOR[tier]?.ink) || null;
+  return (tier && TIER_COLOR[tier]?.text) || null;
 }
 
 /** The tracker kind as a human label — "Recurring milestone", "Counter". */

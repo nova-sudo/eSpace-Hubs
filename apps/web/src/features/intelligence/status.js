@@ -35,7 +35,13 @@ import {
   specCadence,
   isSingleRecordWidget,
 } from "@/features/goal-specs";
-import { computeCompliance, buildCycleWindows, composedCycleBounds } from "@/features/goal-inputs";
+import {
+  computeCompliance,
+  buildCycleWindows,
+  composedCycleBounds,
+  GOAL_STATUS,
+  STATUS_META,
+} from "@/features/goal-inputs";
 import { goalReadiness, GOAL_READINESS } from "@/features/goal-widgets";
 
 export const HEALTH = Object.freeze({
@@ -96,6 +102,7 @@ export function deriveGoalHealth({
   entries,
   lockedCurrentWindow = false,
   contextComplete = false,
+  lockedKeys = null,
 }) {
   if (!spec) {
     return { status: HEALTH.UNCLASSIFIED, needsFill: false, fill: null, compliance: null };
@@ -122,7 +129,9 @@ export function deriveGoalHealth({
   // AUTO variant covers MERGED_COUNT/LINKAGE/… plus CODE_RUBRIC and
   // SCORECARD (both declared AUTO in SPEC_KIND_META). All are computed,
   // not hand-filled, so there's no "fill now" obligation in Sprint 1.
-  if (variant === SPEC_VARIANTS.AUTO) {
+  // A HYBRID spec has a hand-logged half, so it is NOT auto — the same rule
+  // the Goals page applies (goals-flow/goal-status.js).
+  if (variant === SPEC_VARIANTS.AUTO && spec.kind !== SPEC_VARIANTS.HYBRID) {
     return { status: HEALTH.AUTO, needsFill: false, fill: null, compliance: null };
   }
 
@@ -143,12 +152,24 @@ export function deriveGoalHealth({
   const hasData = list.length > 0;
   const lastEntryTs = hasData ? list[list.length - 1].ts : null;
 
+  // The whole cycle WITH the goal's settle locks — the exact grid the Goals
+  // page's stepper and the shared status model (`goalStatus`) read. Built
+  // before the no-data branch so a never-logged tracker whose weeks have
+  // come due reads Behind here too, not a softer "no data".
+  const cycle = buildCycleWindows({
+    entries: list,
+    cadence,
+    now: Date.now(),
+    ...composedCycleBounds(spec),
+    ...(lockedKeys instanceof Set && lockedKeys.size > 0 ? { lockedKeys } : {}),
+  });
+
   if (!hasData) {
     // User finalised this window ("nothing to report") → settled, not owed.
     if (lockedCurrentWindow) {
-      return { status: HEALTH.LOCKED, needsFill: false, fill: null, compliance: null };
+      return { status: HEALTH.LOCKED, needsFill: false, fill: null, compliance: null, cycle };
     }
-    return { status: HEALTH.NO_DATA, needsFill: true, fill: null, compliance: null };
+    return { status: HEALTH.NO_DATA, needsFill: true, fill: null, compliance: null, cycle };
   }
 
   // Cycle-anchored windows — the SAME model the Goals-page cadence stepper
@@ -162,12 +183,6 @@ export function deriveGoalHealth({
   // tracked, same as before. There's no real "window" concept for those, but
   // the footer's "last logged" line still needs lastEntryTs, so `fill` stays
   // a minimal object rather than null (FillStrip no-ops on total:0).
-  const cycle = buildCycleWindows({
-    entries: list,
-    cadence,
-    now: Date.now(),
-    ...composedCycleBounds(spec),
-  });
   if (cycle.mode === "pip") {
     return {
       status: HEALTH.ON_PACE,
@@ -182,6 +197,7 @@ export function deriveGoalHealth({
         lastEntryTs,
       },
       compliance: null,
+      cycle,
     };
   }
 
@@ -193,6 +209,11 @@ export function deriveGoalHealth({
     windows: cycle.windows, // oldest→newest window objects, unlike the old boolean[]
     total: cycle.total,
     filledCount: cycle.filledCount,
+    doneCount: cycle.doneCount,
+    // Windows that ended before the tracker was created — not owed, not in
+    // `total` — and the pace tick measured over the counted span only.
+    beforeCount: cycle.beforeCount,
+    expectedPct: cycle.expectedPct,
     currentIndex: cycle.currentIndex,
     lastEntryTs,
   };
@@ -200,7 +221,7 @@ export function deriveGoalHealth({
   if (!filledCurrentWindow) {
     // A lock settles the current window even when it's empty.
     if (lockedCurrentWindow) {
-      return { status: HEALTH.LOCKED, needsFill: false, fill, compliance: null };
+      return { status: HEALTH.LOCKED, needsFill: false, fill, compliance: null, cycle };
     }
     // How many consecutive windows, walking back from the current one, are
     // empty? Two or more = the user has skipped a whole period, not just
@@ -217,6 +238,7 @@ export function deriveGoalHealth({
       missedWindows,
       fill,
       compliance: null,
+      cycle,
     };
   }
 
@@ -228,10 +250,10 @@ export function deriveGoalHealth({
       ? computeCompliance(entries, target, cadence)
       : null;
   if (compliance && compliance.latestWindowMet === false) {
-    return { status: HEALTH.BEHIND, needsFill: false, fill, compliance };
+    return { status: HEALTH.BEHIND, needsFill: false, fill, compliance, cycle };
   }
 
-  return { status: HEALTH.ON_PACE, needsFill: false, fill, compliance };
+  return { status: HEALTH.ON_PACE, needsFill: false, fill, compliance, cycle };
 }
 
 /**
@@ -294,30 +316,20 @@ export function computeTrend(snapshots, goalId, spec) {
 }
 
 /**
- * Display metadata per status — label + tint name for the Badge primitive
- * (mint/sky/lav/peach/lemon/neutral). `dot` is a token reference for the
- * leading status dot, letting the "attention" states read distinctly even
- * though they may share a tint.
+ * Display metadata. There is ONE vocabulary now — `STATUS_META` from the
+ * shared status model (goal-inputs → packages/shared goal-status.js). The
+ * HEALTH values above are this page's internal chore signals (does this
+ * window still need an entry?); what a person READS is always the shared
+ * status, derived per card in useGoalHealth (`card.status`).
  */
-export const STATUS_META = Object.freeze({
-  [HEALTH.UNCLASSIFIED]: { label: "Not classified", tone: "neutral", dot: "var(--dim-fg)" },
-  [HEALTH.NEEDS_SETUP]: { label: "Needs setup", tone: "lemon", dot: "var(--lemon-ink)" },
-  [HEALTH.AUTO]: { label: "Auto-tracked", tone: "lav", dot: "var(--lav-ink)" },
-  [HEALTH.NO_DATA]: { label: "No data", tone: "lemon", dot: "var(--lemon-ink)" },
-  [HEALTH.STALE]: { label: "Needs update", tone: "lemon", dot: "var(--lemon-ink)" },
-  [HEALTH.BEHIND]: { label: "Behind target", tone: "peach", dot: "var(--peach-ink)" },
-  [HEALTH.ON_PACE]: { label: "On pace", tone: "mint", dot: "var(--mint-ink)" },
-  [HEALTH.LOCKED]: { label: "Finalized", tone: "neutral", dot: "var(--dim-fg)" },
-});
+export { STATUS_META };
 
 /**
- * The chip to show for a card's health — STATUS_META, but escalated to a
- * harder "Overdue" when a stale goal has gone dark for 2+ windows. One
- * place so cards and the Action Queue stay in sync.
+ * The chip for a card: the shared status (label + tint), with the reason
+ * ("Gone quiet · 3 weeks with nothing logged") alongside.
  */
-export function statusDisplay(health) {
-  if (health?.overdue) {
-    return { label: "Overdue", tone: "peach", dot: "var(--peach-ink)" };
-  }
-  return STATUS_META[health?.status] ?? STATUS_META[HEALTH.NO_DATA];
+export function statusDisplay(card) {
+  const st = card?.status;
+  if (st?.status) return { label: st.label, tone: st.tone, reason: st.reason ?? null };
+  return { ...STATUS_META[GOAL_STATUS.UNCLASSIFIED], reason: null };
 }

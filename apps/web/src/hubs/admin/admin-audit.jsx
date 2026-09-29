@@ -22,12 +22,18 @@
  * `nextUntil`, which we feed straight back as `?until=`. There is no
  * count() — for an append-only log, recency is the only axis that
  * matters.
+ *
+ * Gated on `admin.audit.view` (hub-audit §2.1) — client-side here, and
+ * server-side on both endpoints. "Export CSV" downloads every row that
+ * matches the current filters from GET /admin/audit/export.csv (§2.4).
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { apiGet } from "@/lib/api-client";
+import { useSession } from "@/features/auth";
+import { CAPABILITIES } from "@espace-devhub/shared/capabilities";
 import {
   Badge,
   Button,
@@ -39,7 +45,7 @@ import {
   Select,
 } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { AdminShell } from "./admin-shell";
+import { AdminNotAuthorised, AdminShell } from "./admin-shell";
 import {
   actionTone,
   formatDateTime,
@@ -50,10 +56,36 @@ import { EmptyState } from "./admin-ui";
 
 const PAGE_SIZE = 50;
 
+/** The feed's current filters as export query params (no paging). */
+function exportQuery(f) {
+  const params = new URLSearchParams();
+  if (f.action.trim()) params.set("action", f.action.trim());
+  if (f.actorUserId) params.set("actorUserId", f.actorUserId);
+  if (f.targetType.trim()) params.set("targetType", f.targetType.trim());
+  return params.toString();
+}
+
 const COLS =
   "grid grid-cols-[142px_minmax(0,190px)_minmax(0,1fr)_minmax(0,1fr)_32px] items-center gap-3";
 
 export function AdminAudit() {
+  const { user: sessionUser } = useSession();
+  const canView = Boolean(
+    sessionUser?.capabilities?.includes(CAPABILITIES.ADMIN_AUDIT_VIEW),
+  );
+  if (!canView) {
+    return (
+      <AdminNotAuthorised
+        active="audit"
+        crumb="Admin · audit log"
+        capability={CAPABILITIES.ADMIN_AUDIT_VIEW}
+      />
+    );
+  }
+  return <AuditLog />;
+}
+
+function AuditLog() {
   const [entries, setEntries] = useState([]);
   const [users, setUsers] = useState([]); // actor-filter dropdown
   const [hasMore, setHasMore] = useState(false);
@@ -79,11 +111,12 @@ export function AdminAudit() {
     return params.toString();
   }
 
-  // The actor dropdown only needs the roster once.
+  // The actor dropdown only needs the names once — the lightweight
+  // directory (the roster itself is paginated).
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const r = await apiGet("/admin/users");
+      const r = await apiGet("/admin/users/directory");
       if (cancelled) return;
       if (r.ok) setUsers(r.data?.users ?? []);
     })();
@@ -143,7 +176,18 @@ export function AdminAudit() {
       <PageHeader
         crumb="Admin · audit log"
         title="Privileged-action history."
-        subtitle="Append-only. Every audited action — invites, role changes, hub overrides, password resets, integration connect and disconnect, snapshot mutations. Newest first; filters apply server-side."
+        subtitle="Append-only. Every audited action — invites, role and manager changes, hub overrides, password resets, integration connect and disconnect, manager grades, goal approvals, tier-policy edits, snapshot mutations. Newest first; filters apply server-side."
+        right={
+          <Button
+            as="a"
+            href={`/api/v1/admin/audit/export.csv?${exportQuery(filters)}`}
+            download
+            variant="soft"
+            size="sm"
+          >
+            Export CSV
+          </Button>
+        }
       />
 
       <FilterBar filters={filters} setFilters={setFilters} users={users} />
@@ -227,7 +271,7 @@ export function AdminAudit() {
                 </Button>
               </div>
             ) : (
-              <div className="text-center text-[12px] text-dim-fg">
+              <div className="text-center text-[12px] text-muted-fg">
                 End of the audit log.
               </div>
             )}
@@ -323,7 +367,7 @@ function EntryRow({ entry, expanded, onExpand, actorDisplay }) {
         <span
           className={cn(
             "truncate text-[12.5px]",
-            isSystem ? "text-dim-fg" : "font-semibold text-fg",
+            isSystem ? "text-muted-fg" : "font-semibold text-fg",
           )}
         >
           {actorDisplay}

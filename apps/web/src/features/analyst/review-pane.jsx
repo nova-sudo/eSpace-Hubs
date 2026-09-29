@@ -52,6 +52,13 @@ import {
   useTicketTypeOptions,
 } from "./spec-editors";
 
+/** Human labels for the raw variant values in the Kind dropdown. */
+const KIND_LABEL = {
+  auto: "Automatic (read from your tools)",
+  manual: "Manual (you log it)",
+  hybrid: "Hybrid (both)",
+};
+
 // Map each widget to the kind(s) that are valid for it. The validator
 // already enforces this; we duplicate it here so the kind dropdown
 // disables incompatible combinations BEFORE the user tries to save.
@@ -123,6 +130,8 @@ export function ReviewPane({
   discardSpec,
   discardAllPending,
   updatePendingSpec,
+  pendingCommitImpact,
+  pendingCommitImpactAll,
   onSwitchToGrid,
   onRetryGoal,
 }) {
@@ -161,8 +170,22 @@ export function ReviewPane({
   const [bulkError, setBulkError] = useState(null);
   const pendingEntries = Object.entries(pendingSpecs);
 
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : (word.endsWith("y") ? "" : "s")}`;
+
   const handleSaveAll = () => {
     setBulkError(null);
+    // Say what saving deletes BEFORE it deletes it. Only shape-changing
+    // proposals wipe history, so the count is exact, not a scare.
+    const impact = pendingCommitImpactAll?.() || { entries: 0, goals: 0 };
+    if (
+      impact.entries > 0 &&
+      typeof window !== "undefined" &&
+      !window.confirm(
+        `Saving all replaces the tracker on ${plural(impact.goals, "goal")} and deletes ${impact.entries} logged ${impact.entries === 1 ? "entry" : "entries"}. Continue?`,
+      )
+    ) {
+      return;
+    }
     const { saved, failed: rejectedSpecs } = commitAllPending();
     if (rejectedSpecs.length > 0) {
       setBulkError(
@@ -183,6 +206,14 @@ export function ReviewPane({
         bulkError={bulkError}
         onSaveAll={handleSaveAll}
         onDiscardAll={() => {
+          if (
+            typeof window !== "undefined" &&
+            !window.confirm(
+              `Discard all ${pendingEntries.length} proposal${pendingEntries.length === 1 ? "" : "s"}? You'd need to run the analysis again to get them back.`,
+            )
+          ) {
+            return;
+          }
           setBulkError(null);
           discardAllPending();
         }}
@@ -203,7 +234,18 @@ export function ReviewPane({
             jobOptions={jobOptions}
             labelOptions={labelOptions}
             ticketTypeOptions={ticketTypeOptions}
+            impact={pendingCommitImpact?.(goalId) || null}
             onSave={() => {
+              const impact = pendingCommitImpact?.(goalId);
+              if (
+                impact?.wipes &&
+                typeof window !== "undefined" &&
+                !window.confirm(
+                  `This replaces the tracker and deletes ${impact.entries} logged ${impact.entries === 1 ? "entry" : "entries"}. Continue?`,
+                )
+              ) {
+                return;
+              }
               const result = commitSpec(goalId);
               if (!result.ok) {
                 setBulkError(
@@ -331,7 +373,7 @@ function BulkStrip({
       </div>
 
       {bulkError ? (
-        <div className="max-w-[420px] truncate text-[13px] text-peach-ink" title={bulkError}>
+        <div className="max-w-[420px] truncate text-[13px] text-peach-text" title={bulkError}>
           {bulkError}
         </div>
       ) : null}
@@ -366,6 +408,7 @@ function PendingCard({
   onChangeLabels,
   onChangeTicketType,
   onChangeScorecard,
+  impact = null,
 }) {
   const kindsOk = validKindsFor(spec.widget);
   const widgetMeta = SPEC_KIND_META[spec.widget];
@@ -409,7 +452,7 @@ function PendingCard({
         <div className="flex min-w-0 flex-col gap-0.5">
           <Label>{widgetMeta?.label || spec.widget}</Label>
           {meta?.parentL1 ? (
-            <span className="truncate text-[12px] text-dim-fg" title={`Parent L1: ${meta.parentL1}`}>
+            <span className="truncate text-[12px] text-muted-fg" title={`Parent L1: ${meta.parentL1}`}>
               {truncate(meta.parentL1, 70)}
             </span>
           ) : null}
@@ -442,10 +485,18 @@ function PendingCard({
           onChange={onChangeKind}
           options={ALL_SPEC_VARIANTS.map((v) => ({
             value: v,
-            label: v,
+            label: KIND_LABEL[v] || v,
             disabled: !kindsOk.includes(v),
           }))}
         />
+        {impact?.wipes ? (
+          <Badge
+            tone="peach"
+            title="This proposal changes the tracker kind, so saving it deletes the goal's logged history."
+          >
+            Deletes {impact.entries} logged {impact.entries === 1 ? "entry" : "entries"}
+          </Badge>
+        ) : null}
         {spec.source?.metric ? <Badge>{spec.source.metric}</Badge> : null}
         {spec.source?.window ? <Badge>{spec.source.window}</Badge> : null}
         {spec.manual?.cadence ? <Badge>{spec.manual.cadence}</Badge> : null}
@@ -541,7 +592,7 @@ function PendingCard({
               onChange={(e) => setUntrackableDraft(e.target.value)}
               placeholder="e.g. needs a quarterly survey we haven't set up yet"
               rows={2}
-              className="w-full resize-y rounded-[var(--radius-md)] bg-card px-2.5 py-2 text-[13px] text-fg outline-none focus:ring-2 focus:ring-ink"
+              className="w-full resize-y rounded-[var(--radius-md)] bg-card px-2.5 py-2 text-[13px] text-fg border border-field-line outline-none focus:ring-2 focus:ring-ink"
             />
           </Field>
           <div className="flex items-center justify-end gap-2">

@@ -21,7 +21,15 @@
  */
 
 import Link from "next/link";
-import { LayoutDashboard, LayoutGrid, ScrollText, Settings, Users } from "lucide-react";
+import {
+  CheckSquare,
+  LayoutDashboard,
+  LayoutGrid,
+  Network,
+  ScrollText,
+  Settings,
+  Users,
+} from "lucide-react";
 import { Label } from "@/components/ui";
 import { useActiveHub, useHubLink } from "@/features/hubs";
 import { cn } from "@/lib/cn";
@@ -30,6 +38,8 @@ import { cn } from "@/lib/cn";
 const SECTIONS = [
   { slot: "dashboard", label: "Overview", subpath: "", icon: LayoutDashboard },
   { slot: "users", label: "Members", subpath: "/users", icon: Users },
+  { slot: "orgchart", label: "Org chart", subpath: "/org-chart", icon: Network },
+  { slot: "approvals", label: "Approvals", subpath: "/approvals", icon: CheckSquare },
   { slot: "hub-config", label: "Hubs & pages", subpath: "/hub-config", icon: LayoutGrid },
   { slot: "audit", label: "Audit log", subpath: "/audit", icon: ScrollText },
   { slot: "settings", label: "Settings", subpath: "/settings", icon: Settings },
@@ -45,8 +55,8 @@ export function AdminShell({ active, children }) {
 
   return (
     <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-7 sm:px-10">
-      <div className="grid gap-6 lg:grid-cols-[212px_minmax(0,1fr)] lg:gap-7">
-        <nav aria-label="Admin sections" className="lg:sticky lg:top-[88px] lg:self-start">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[212px_minmax(0,1fr)] lg:gap-7">
+        <nav aria-label="Admin sections" className="min-w-0 lg:sticky lg:top-[88px] lg:self-start">
           <div className="hidden lg:block">
             <Label className="mb-2 block px-3">Administration</Label>
           </div>

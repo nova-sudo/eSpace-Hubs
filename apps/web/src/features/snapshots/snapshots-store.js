@@ -38,7 +38,8 @@
  * server already returns this shape):
  *
  *   {
- *     week:        "W16-2026",
+ *     week:        "W16-2026" (year-qualified; legacy "W16" rows are
+ *                  read as the current year — see normaliseWeekLabel),
  *     capturedAt:  "2026-04-22T..." (ISO),
  *     capturedBy:  "auto" | "manual",
  *     merged:      8,
@@ -54,6 +55,7 @@
  */
 
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api-client";
+import { compareWeekLabels, normaliseWeekLabel } from "@/lib/date";
 
 const CHANGE_EVENT = "snapshots:change";
 
@@ -154,7 +156,9 @@ export function readSnapshots() {
 function normaliseSnapshot(s) {
   if (!s || typeof s !== "object") return null;
   return {
-    week: typeof s.week === "string" ? s.week : "",
+    // Legacy rows were keyed "W16" with no year; read them as the
+    // current year so this January's W02 and last year's stay apart.
+    week: typeof s.week === "string" ? normaliseWeekLabel(s.week) : "",
     capturedAt: typeof s.capturedAt === "string" ? s.capturedAt : null,
     capturedBy: s.capturedBy === "auto" ? "auto" : "manual",
     merged: Number.isFinite(s.merged) ? s.merged : 0,
@@ -170,6 +174,35 @@ function normaliseSnapshot(s) {
     partial: Boolean(s.partial),
     gaps: Array.isArray(s.gaps) ? s.gaps : [],
   };
+}
+
+/** Newest-first order by (year, week). */
+function sortWeeksDesc(rows) {
+  return [...rows].sort((a, b) => compareWeekLabels(b.week, a.week));
+}
+
+/**
+ * A legacy "W36" row and a scheduler-written "W36-2026" row can both
+ * exist server-side for the same week. After normalisation they share
+ * a key; keep one — manual beats auto, then the later capture.
+ */
+function dedupeByWeek(rows) {
+  const byWeek = new Map();
+  for (const row of rows) {
+    const cur = byWeek.get(row.week);
+    if (!cur) {
+      byWeek.set(row.week, row);
+      continue;
+    }
+    const curManual = cur.capturedBy === "manual";
+    const rowManual = row.capturedBy === "manual";
+    if (curManual !== rowManual) {
+      if (rowManual) byWeek.set(row.week, row);
+      continue;
+    }
+    if ((row.capturedAt || "") > (cur.capturedAt || "")) byWeek.set(row.week, row);
+  }
+  return Array.from(byWeek.values());
 }
 
 /* ─────────────────────── hydration ─────────────────────── */
@@ -191,17 +224,19 @@ export async function fetchSnapshots() {
       const isAuth =
         r.error?.code === "unauthenticated" ||
         r.error?.code === "totp_required";
+      // `fetched` flips even on failure so pages can leave the loader
+      // and render "Couldn't load — Retry" instead of a blank page.
       setState({
         loading: false,
+        fetched: !isAuth,
         error: isAuth ? null : r.error,
       });
       return state.snapshots;
     }
     const incoming = Array.isArray(r.data?.snapshots) ? r.data.snapshots : [];
-    const normalized = incoming
-      .map(normaliseSnapshot)
-      .filter(Boolean)
-      .sort((a, b) => b.week.localeCompare(a.week));
+    const normalized = sortWeeksDesc(
+      dedupeByWeek(incoming.map(normaliseSnapshot).filter(Boolean)),
+    );
     setState({
       loading: false,
       fetched: true,
@@ -218,10 +253,14 @@ export async function fetchSnapshots() {
 /**
  * Persist a snapshot. Optimistic update + background POST.
  *
- * Server enforces manual-wins-over-auto: if the existing row is
- * manual and the incoming is auto, the response carries
- * `precedence: "manual_kept"` and the row is the prior (manual)
- * version. We accept whatever the server returned as canonical, so
+ * Resolves `{ ok: true, precedence }` or `{ ok: false, error }` — callers
+ * (the Snapshots page, the command palette) toast from the result
+ * instead of assuming success.
+ *
+ * Server precedence: a manual row outranks an incoming auto capture
+ * (`precedence: "manual_kept"`), and a manual capture that lacks
+ * goalReadings / a note is MERGED into the existing row rather than
+ * blanking it. We accept whatever the server returned as canonical, so
  * the local state mirrors what the server actually persisted.
  *
  * On POST failure, the optimistic write rolls back to what was
@@ -230,15 +269,32 @@ export async function fetchSnapshots() {
  */
 export async function saveSnapshot(snapshot) {
   const incoming = normaliseSnapshot(snapshot);
-  if (!incoming || !incoming.week) return;
+  if (!incoming || !incoming.week) {
+    return {
+      ok: false,
+      error: { code: "validation_error", message: "Snapshot has no week." },
+    };
+  }
   const prev = state.snapshots;
-  // Optimistic: replace any existing snapshot for the same week.
-  // The server may reject under manual-wins; we'll reconcile when
-  // the POST returns.
-  const optimistic = [
-    incoming,
+  // Optimistic: replace any existing snapshot for the same week, but
+  // carry its goalReadings / note forward when the incoming payload
+  // has none — mirrors the server-side merge so the row never blanks
+  // between the click and the response.
+  const existing = prev.find((s) => s.week === incoming.week);
+  const merged = existing
+    ? {
+        ...incoming,
+        goalReadings:
+          Object.keys(incoming.goalReadings).length > 0
+            ? incoming.goalReadings
+            : existing.goalReadings,
+        note: incoming.note || existing.note,
+      }
+    : incoming;
+  const optimistic = sortWeeksDesc([
+    merged,
     ...prev.filter((s) => s.week !== incoming.week),
-  ].sort((a, b) => b.week.localeCompare(a.week));
+  ]);
   setState({ snapshots: optimistic, error: null });
   const r = await apiPost("/snapshots", toApi(incoming));
   if (r.ok) {
@@ -246,24 +302,25 @@ export async function saveSnapshot(snapshot) {
     // a manual version we didn't know about).
     const serverRow = normaliseSnapshot(r.data?.snapshot);
     if (serverRow) {
-      const reconciled = [
+      const reconciled = sortWeeksDesc([
         serverRow,
         ...state.snapshots.filter((s) => s.week !== serverRow.week),
-      ].sort((a, b) => b.week.localeCompare(a.week));
+      ]);
       setState({ snapshots: reconciled });
     }
-    return;
+    return { ok: true, precedence: r.data?.precedence || "applied" };
   }
   if (
     r.error?.code === "unauthenticated" ||
     r.error?.code === "totp_required"
   ) {
-    return;
+    return { ok: false, error: r.error };
   }
   // Roll back the optimistic write — leave `prev` intact.
   setState({ snapshots: prev, error: r.error });
   // eslint-disable-next-line no-console
   console.warn("[snapshots] save failed:", r.error?.code, r.error?.message);
+  return { ok: false, error: r.error };
 }
 
 /**
@@ -276,19 +333,24 @@ export async function saveSnapshot(snapshot) {
  * roll back local and surface the error so the UI can retry.
  */
 export async function updateSnapshotNote(week, note) {
-  if (!week) return;
+  if (!week) {
+    return {
+      ok: false,
+      error: { code: "validation_error", message: "No week given." },
+    };
+  }
   const prev = state.snapshots;
   const optimistic = prev.map((s) =>
     s.week === week ? { ...s, note } : s,
   );
   setState({ snapshots: optimistic, error: null });
   const r = await apiPatch(`/snapshots/${encodeURIComponent(week)}`, { note });
-  if (r.ok) return;
+  if (r.ok) return { ok: true };
   if (
     r.error?.code === "unauthenticated" ||
     r.error?.code === "totp_required"
   ) {
-    return;
+    return { ok: false, error: r.error };
   }
   setState({ snapshots: prev, error: r.error });
   // eslint-disable-next-line no-console
@@ -297,6 +359,7 @@ export async function updateSnapshotNote(week, note) {
     r.error?.code,
     r.error?.message,
   );
+  return { ok: false, error: r.error };
 }
 
 /* ─────────────────────── deletes ─────────────────────── */

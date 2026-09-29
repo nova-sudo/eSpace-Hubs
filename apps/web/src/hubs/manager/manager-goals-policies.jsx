@@ -55,7 +55,7 @@ export function ManagerGoalsPolicies() {
             ? "Share one goal with the people who should fill it, and see who's on time, who's late and who hasn't started."
             : "Author the achievement-tier ladders that grade every goal carrying a Goal Code. Policies are scoped to a cycle, and affected people are notified on save."
         }
-        right={<SegmentedControl options={TABS} value={tab} onChange={setTab} />}
+        right={<SegmentedControl ariaLabel="Goals and policies" options={TABS} value={tab} onChange={setTab} />}
       />
       {tab === "policies" ? <ManagerTierPolicies embedded /> : <SharedGoalsTab />}
     </main>
@@ -98,7 +98,7 @@ function SharedGoalsTab() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <SegmentedControl
+        <SegmentedControl as="radiogroup" ariaLabel="Show policies"
           size="sm"
           options={[
             { value: "active", label: "Active" },

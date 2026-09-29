@@ -162,7 +162,7 @@ export function ScorecardWidget({
       >
         <div className="flex h-full flex-col gap-2">
           <Headline score={score} pass={pass} total={total} />
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-card-alt">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">
             <div className="h-full bg-ink" style={{ width: `${score ?? 0}%` }} />
           </div>
           <ul className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
@@ -265,7 +265,7 @@ function ComponentRow({ component, data, score, loading, error, rubric, onExpand
         <span className="font-bold">
           {error ? "!" : loading ? "…" : value == null ? "—" : formatValue(value, component?.widget)}
         </span>
-        <span className="text-[11px] text-dim-fg">
+        <span className="text-[11px] text-muted-fg">
           {weightCopy(component?.weight)}
           {component?.firstReviewOnly ? " · first-review only" : ""}
         </span>
@@ -299,7 +299,7 @@ function RubricRowFooter({ rubric, data }) {
     criteriaCount > 0 &&
     typeof rubric.gradeAll === "function";
   return (
-    <div className="flex items-center justify-between gap-2 text-[11px] text-dim-fg">
+    <div className="flex items-center justify-between gap-2 text-[11px] text-muted-fg">
       <span>
         {criteriaCount === 0
           ? "no criteria yet — edit in Review pane"

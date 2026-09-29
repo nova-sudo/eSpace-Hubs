@@ -27,23 +27,66 @@
  *                             for now — full editors in a later PR)
  */
 
-import { useMemo, useState } from "react";
+import { recurringPeriodKey } from "@espace-devhub/shared/goal-specs";
+import { opLabel } from "@/lib/fmt";
+import { useMemo, useRef, useState } from "react";
 import { Minus, Plus, Check, X, ArrowRight } from "lucide-react";
+import { toast } from "sonner";
 import { Select, Input, Button, Label, Badge, ItemEvidence } from "@/components/ui";
-import { useGoalInputs } from "@/features/goal-inputs";
+import { thisPeriod, useGoalInputs } from "@/features/goal-inputs";
 import { useGoalContext, resolveMilestoneItems } from "@/features/goal-context";
 import { useTierFillFeedback } from "@/features/goal-tiers";
 import { midWeekTs } from "@/lib/date";
 import { cn } from "@/lib/cn";
+import { useDraftFlush } from "./draft-flush-context.jsx";
+
+/**
+ * A local draft seeded from the saved value — and RE-seeded when that saved
+ * value changes underneath an untouched draft (entries landing after the
+ * panel opened, another tab saving). Without this an editor mounted before
+ * its window's note loaded held "" as a dirty draft, and the host's Save
+ * flush overwrote the real note with an empty one. A draft the user has
+ * edited is never replaced. `keyOf` turns an object seed into a comparable
+ * value (default: identity).
+ */
+function useSeededDraft(initial, keyOf = (v) => v) {
+  const [draft, setDraft] = useState(initial);
+  const [seed, setSeed] = useState(initial);
+  if (keyOf(initial) !== keyOf(seed)) {
+    // Adjusting state during render (React's documented pattern for
+    // "reset when a prop changes") — no extra commit with the stale draft.
+    setSeed(initial);
+    if (keyOf(draft) === keyOf(seed)) setDraft(initial);
+  }
+  return [draft, setDraft];
+}
+
+/**
+ * Surface a rejected append. `append` validates synchronously and returns
+ * `{ ok, errors }`; a silent `false` used to look like a save.
+ */
+function reportAppend(res, what = "entry") {
+  if (res && res.ok === false) {
+    toast.error(`Couldn't log this ${what}`, {
+      description: (res.errors || []).join(", ") || "Invalid value.",
+    });
+    return false;
+  }
+  return true;
+}
 
 /* ─────────────────────── Counter ─────────────────────── */
 
-export function CounterEditor({ goal, spec, weekStart, weekEnd, activeLabel, writeTs }) {
-  const { entries, append } = useGoalInputs(goal?.id);
+export function CounterEditor({ goal, spec, weekStart, weekEnd, activeLabel, writeTs, periodWord }) {
+  const { entries, append, remove } = useGoalInputs(goal?.id);
   const { captureBefore, settleAfter } = useTierFillFeedback(goal?.id);
-  const weekTotal = useMemo(
-    () => sumNumericInWindow(entries, weekStart, weekEnd),
+  const inWindow = useMemo(
+    () => numericEntriesInWindow(entries, weekStart, weekEnd),
     [entries, weekStart, weekEnd],
+  );
+  const weekTotal = useMemo(
+    () => inWindow.reduce((sum, e) => sum + Number(e.value), 0),
+    [inWindow],
   );
   const target = spec.manual?.target;
   const unit = spec.manual?.unit || "";
@@ -54,19 +97,38 @@ export function CounterEditor({ goal, spec, weekStart, weekEnd, activeLabel, wri
     // F9 G1.1 — explicit-fill bracket: rapid +1 bursts collapse to one
     // re-grade via the orchestrator's trailing debounce.
     captureBefore();
-    append(delta, undefined, ts);
+    reportAppend(append(delta, undefined, ts), "count");
+    settleAfter();
+  };
+
+  // "−" takes back the last thing logged in THIS window rather than writing
+  // a −1 entry — a −1 entry still marks the window as logged (at 0), which
+  // is not what "undo my click" means.
+  const undoLast = () => {
+    const last = inWindow[inWindow.length - 1];
+    if (!last) return;
+    captureBefore();
+    remove(last);
     settleAfter();
   };
 
   return (
     <div className="flex items-center gap-2">
+      <span className="text-[11.5px] text-muted-fg">
+        {activeLabel ? `${activeLabel}:` : `${capitalizeFirst(thisPeriod(periodWord))}:`}
+      </span>
       <ValueChip
         value={weekTotal}
         unit={unit}
         target={target}
-        suffix={target ? `${target.op}${target.value}` : null}
+        suffix={target ? `${opLabel(target.op)} ${target.value}` : null}
       />
-      <StepButton onClick={() => add(-1)} aria-label="Subtract 1">
+      <StepButton
+        onClick={undoLast}
+        aria-label={`Remove the last entry logged ${thisPeriod(periodWord)}`}
+        title={inWindow.length ? "Remove the last entry logged here" : "Nothing logged here yet"}
+        disabled={inWindow.length === 0}
+      >
         <Minus size={12} />
       </StepButton>
       <StepButton onClick={() => add(+1)} aria-label="Add 1" primary>
@@ -81,7 +143,9 @@ export function CounterEditor({ goal, spec, weekStart, weekEnd, activeLabel, wri
 
 /* ─────────────────────── Scale (1–5) ─────────────────────── */
 
-export function ScaleEditor({ goal, weekStart, weekEnd, activeLabel, writeTs }) {
+const SCALE_ANCHORS = { 1: "lowest", 5: "highest" };
+
+export function ScaleEditor({ goal, weekStart, weekEnd, activeLabel, writeTs, periodWord }) {
   const { entries, append } = useGoalInputs(goal?.id);
   const { captureBefore, settleAfter } = useTierFillFeedback(goal?.id);
   const currentValue = useMemo(() => {
@@ -100,17 +164,24 @@ export function ScaleEditor({ goal, weekStart, weekEnd, activeLabel, writeTs }) 
     if (ts == null) return;
     // F9 G1.1 — explicit-fill bracket.
     captureBefore();
-    append(n, undefined, ts);
+    reportAppend(append(n, undefined, ts), "rating");
     settleAfter();
   };
 
   return (
-    <div className="flex items-center gap-1">
+    <div
+      className="flex items-center gap-1"
+      role="group"
+      aria-label={`Rating for ${thisPeriod(periodWord)}, 1 lowest to 5 highest`}
+    >
       {[1, 2, 3, 4, 5].map((n) => (
         <button
           key={n}
           type="button"
           onClick={() => pick(n)}
+          aria-pressed={currentValue === n}
+          aria-label={SCALE_ANCHORS[n] ? `${n} — ${SCALE_ANCHORS[n]}` : String(n)}
+          title={SCALE_ANCHORS[n] ? `${n} — ${SCALE_ANCHORS[n]}` : undefined}
           className={cn(
             "h-7 w-7 rounded-[var(--radius-pill)] text-[12px] font-bold transition-colors",
             currentValue === n
@@ -127,7 +198,7 @@ export function ScaleEditor({ goal, weekStart, weekEnd, activeLabel, writeTs }) 
 
 /* ─────────────────────── Milestone (checklist) ─────────────────────── */
 
-export function MilestoneEditor({ goal, spec, weekStart, weekEnd, activeLabel, writeTs }) {
+export function MilestoneEditor({ goal, spec, weekStart, weekEnd, activeLabel, writeTs, periodWord }) {
   const { entries, append } = useGoalInputs(goal?.id);
   const { answers: contextAnswers } = useGoalContext(goal?.id);
   // Resolve the SAME way the Goals-page MilestoneWidget does (shared resolver:
@@ -166,7 +237,7 @@ export function MilestoneEditor({ goal, spec, weekStart, weekEnd, activeLabel, w
         <span>
           {done} / {total} done · {pct}%
         </span>
-        {weekStart && <span className="text-dim-fg">latest snapshot ≤ week-end</span>}
+        {weekStart && <span className="text-muted-fg">as of the end of {thisPeriod(periodWord)}</span>}
       </div>
       <div className="flex flex-col gap-1.5">
         {items.map((it) => (
@@ -198,45 +269,64 @@ export function MilestoneEditor({ goal, spec, weekStart, weekEnd, activeLabel, w
 
 /* ─────────────────────── Free-text ─────────────────────── */
 
-export function FreeTextEditor({ goal, weekStart, weekEnd, activeLabel, writeTs }) {
+export function FreeTextEditor({ goal, weekStart, weekEnd, activeLabel, writeTs, periodWord }) {
   const { entries, append } = useGoalInputs(goal?.id);
-  const initial = useMemo(() => {
+  const { initial, hasSaved } = useMemo(() => {
     const inWindow = entries.filter(
       (e) => e.ts >= weekStart.getTime() && e.ts < weekEnd.getTime(),
     );
     const latest = inWindow[inWindow.length - 1];
-    return typeof latest?.value === "string" ? latest.value : "";
+    return {
+      initial: typeof latest?.value === "string" ? latest.value : "",
+      hasSaved: latest != null,
+    };
   }, [entries, weekStart, weekEnd]);
 
-  const [draft, setDraft] = useState(initial);
+  const [draft, setDraft] = useSeededDraft(initial);
+  const [error, setError] = useState(null);
   const dirty = draft !== initial;
+  const textareaRef = useRef(null);
 
+  // Returns `{ ok }` so the host's Save can tell a rejected note from a
+  // saved one and keep the panel open (see draft-flush-context.jsx).
   const save = () => {
     const ts = writeTs ?? midWeekTs(activeLabel);
-    if (ts == null) return;
-    append(draft, undefined, ts);
+    if (ts == null) return { ok: false };
+    const res = append(draft, undefined, ts);
+    const failed = res && res.ok === false;
+    setError(failed ? (res.errors || []).join(", ") || "Invalid note." : null);
+    return { ok: !failed };
   };
+
+  // Under the stepper's panel the host's Save/Back handle this draft; the
+  // inner button would be a second control for the same intent.
+  const hosted = useDraftFlush({ dirty, flush: save, focus: () => textareaRef.current?.focus() });
 
   return (
     <div className="flex w-full flex-col gap-1.5">
       <textarea
+        ref={textareaRef}
+        data-draft-registered=""
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         rows={2}
         maxLength={500}
-        placeholder="Note for this week…"
-        className="w-full resize-none rounded-[var(--radius-lg)] bg-card-alt p-3 text-[13px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
+        placeholder={`Note for ${thisPeriod(periodWord)}…`}
+        aria-label={`Note for ${thisPeriod(periodWord)}`}
+        className="w-full resize-none rounded-[var(--radius-lg)] bg-card-alt p-3 text-[13px] text-fg border border-field-line outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
       />
       <div className="flex items-center justify-between">
-        <span className="text-[11.5px] text-dim-fg">{draft.length} / 500</span>
-        <Button
-          size="sm"
-          variant={dirty ? "ink" : "soft"}
-          onClick={save}
-          disabled={!dirty || draft.length === 0}
-        >
-          {dirty ? "Save note" : "Saved"}
-        </Button>
+        <span className="text-[11.5px] text-muted-fg">
+          {draft.length} / 500
+          {error ? <span className="text-peach-text"> · {error}</span> : null}
+          {hosted && dirty ? <span> · unsaved</span> : null}
+        </span>
+        {hosted ? null : (
+          // Saving an empty note is allowed: it is how a note gets cleared.
+          <Button size="sm" variant={dirty ? "ink" : "soft"} onClick={save} disabled={!dirty}>
+            {dirty ? "Save note" : hasSaved ? "Saved" : "Nothing to save"}
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -260,7 +350,7 @@ export function DateLogEditor({ goal, weekStart, weekEnd, activeLabel, writeTs }
     if (ts == null) return;
     // F9 G1.1 — explicit-fill bracket.
     captureBefore();
-    append(true, undefined, ts);
+    reportAppend(append(true, undefined, ts), "log");
     settleAfter();
   };
 
@@ -277,6 +367,8 @@ export function DateLogEditor({ goal, weekStart, weekEnd, activeLabel, writeTs }
 
 /* ─────────────────────── Before-after ─────────────────────── */
 
+const beforeAfterKey = (v) => `${v.baseline}|${v.current}`;
+
 export function BeforeAfterEditor({ goal, weekStart, weekEnd, activeLabel, writeTs }) {
   const { entries, append } = useGoalInputs(goal?.id);
   const initial = useMemo(() => {
@@ -290,34 +382,60 @@ export function BeforeAfterEditor({ goal, weekStart, weekEnd, activeLabel, write
     };
   }, [entries, weekEnd]);
 
-  const [draft, setDraft] = useState(initial);
+  const [draft, setDraft] = useSeededDraft(initial, beforeAfterKey);
+  const [error, setError] = useState(null);
   const dirty = draft.baseline !== initial.baseline || draft.current !== initial.current;
+  const baselineRef = useRef(null);
+  const currentRef = useRef(null);
 
+  // Returns `{ ok }` — a pair missing a number is NOT saved, and the host's
+  // Save must keep the panel (and this draft) open when that happens.
   const save = () => {
     const ts = writeTs ?? midWeekTs(activeLabel);
-    if (ts == null) return;
+    if (ts == null) return { ok: false };
     const baseline = Number(draft.baseline);
     const current = Number(draft.current);
-    if (!Number.isFinite(baseline) || !Number.isFinite(current)) return;
-    append({ baseline, current }, undefined, ts);
+    if (draft.baseline === "" || draft.current === "" || !Number.isFinite(baseline) || !Number.isFinite(current)) {
+      setError("Both numbers are needed.");
+      return { ok: false };
+    }
+    const res = append({ baseline, current }, undefined, ts);
+    const failed = res && res.ok === false;
+    setError(failed ? (res.errors || []).join(", ") || "Invalid values." : null);
+    return { ok: !failed };
   };
 
+  // Focus the first number that's missing — that is the one the error means.
+  const focusFirstInvalid = () => {
+    const baselineOk = draft.baseline !== "" && Number.isFinite(Number(draft.baseline));
+    (baselineOk ? currentRef : baselineRef).current?.focus();
+  };
+
+  const hosted = useDraftFlush({ dirty, flush: save, focus: focusFirstInvalid });
+
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5">
       <NumberField
         value={draft.baseline}
         onChange={(v) => setDraft((d) => ({ ...d, baseline: v }))}
         label="Baseline"
+        inputRef={baselineRef}
       />
       <ArrowRight size={12} className="shrink-0 text-muted-fg" aria-hidden="true" />
       <NumberField
         value={draft.current}
         onChange={(v) => setDraft((d) => ({ ...d, current: v }))}
         label="Current"
+        inputRef={currentRef}
       />
-      <Button size="sm" variant="ink" onClick={save} disabled={!dirty}>
-        Save
-      </Button>
+      {hosted ? (
+        dirty ? <span className="text-[11.5px] text-muted-fg">unsaved</span> : null
+      ) : (
+        <Button size="sm" variant="ink" onClick={save} disabled={!dirty}>
+          Save
+        </Button>
+      )}
+      {error ? <span className="basis-full text-[11.5px] text-peach-text">{error}</span> : null}
     </div>
   );
 }
@@ -343,8 +461,20 @@ const SEVERITIES = [
   { id: "P4", label: "P4 · low" },
 ];
 
-export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel, writeTs }) {
+export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel, writeTs, periodWord }) {
   const { entries, append, remove } = useGoalInputs(goal?.id);
+  // Remove by ENTRY (server id), never by ts — backfilled incidents in one
+  // window all share the window's midpoint timestamp. Undo re-appends the
+  // same value at the same ts.
+  const removeWithUndo = (e) => {
+    remove(e);
+    toast("Incident removed", {
+      action: {
+        label: "Undo",
+        onClick: () => append(e.value, e.note, e.ts),
+      },
+    });
+  };
   const inWindow = useMemo(
     () =>
       (entries || []).filter(
@@ -387,7 +517,7 @@ export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel,
     if (!canLog) return;
     const ts = writeTs ?? midWeekTs(activeLabel);
     if (ts == null) return;
-    append(
+    const res = append(
       {
         severity,
         ...(Number.isFinite(minutesValue) && minutesValue >= 0
@@ -398,6 +528,7 @@ export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel,
       undefined,
       ts,
     );
+    if (!reportAppend(res, noun)) return;
     setDowntime("");
     setLink("");
   };
@@ -407,16 +538,16 @@ export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel,
       <div className="flex items-baseline justify-between text-[11.5px] text-muted-fg">
         <span>
           {inWindow.length} {noun}
-          {inWindow.length === 1 ? "" : "s"} this week
+          {inWindow.length === 1 ? "" : "s"} {thisPeriod(periodWord)}
         </span>
         {totalDowntime > 0 && <span>Σ {totalDowntime} min downtime</span>}
       </div>
 
       {inWindow.length > 0 && (
         <ul className="flex flex-col gap-1 rounded-[var(--radius-lg)] bg-card-alt p-1.5">
-          {inWindow.map((e) => (
+          {inWindow.map((e, i) => (
             <li
-              key={e.ts}
+              key={e.id || `${e.ts}-${i}`}
               className="flex items-center justify-between gap-2 text-[11.5px]"
             >
               <span className="flex items-center gap-1.5">
@@ -435,7 +566,7 @@ export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel,
               </span>
               <button
                 type="button"
-                onClick={() => remove(e.ts)}
+                onClick={() => removeWithUndo(e)}
                 className="shrink-0 text-muted-fg hover:text-fg"
                 aria-label="Remove incident"
                 title="Remove incident"
@@ -502,6 +633,7 @@ export function IncidentLogEditor({ goal, spec, weekStart, weekEnd, activeLabel,
  * of the active week so the entry lives on a known weekday.
  */
 export function RecurringMilestoneEditor({ goal, spec, activeLabel, writeTs }) {
+  // (periodWord is not needed here — the cadence word comes from the spec.)
   const { entries, append } = useGoalInputs(goal?.id);
   const { answers: contextAnswers } = useGoalContext(goal?.id);
   const cadence = spec.manual?.cadence || "quarterly";
@@ -510,7 +642,7 @@ export function RecurringMilestoneEditor({ goal, spec, activeLabel, writeTs }) {
   // write timestamp (the selected stepper window) or the active-label week.
   const activePeriodKey = useMemo(() => {
     const ts = writeTs ?? midWeekTs(activeLabel);
-    return ts == null ? "all" : periodKeyFor(ts, cadence);
+    return ts == null ? "all" : recurringPeriodKey(ts, cadence);
   }, [activeLabel, cadence, writeTs]);
 
   // Resolve identically to the Goals-page RecurringMilestoneWidget (shared
@@ -548,12 +680,12 @@ export function RecurringMilestoneEditor({ goal, spec, activeLabel, writeTs }) {
         <span>
           {done} / {total} this {cadenceWord(cadence)} · {pct}%
         </span>
-        <span className="text-dim-fg">{activePeriodKey}</span>
+        <span className="text-muted-fg">{activePeriodKey}</span>
       </div>
       <div className="flex flex-col gap-1.5">
         {items.length === 0 ? (
-          <span className="text-[11.5px] text-dim-fg">
-            No checklist items — define them via the dashboard widget first.
+          <span className="text-[11.5px] text-muted-fg">
+            No checklist items yet — add them under the goal&apos;s &ldquo;Edit setup&rdquo; first.
           </span>
         ) : (
           items.map((it) => (
@@ -589,8 +721,8 @@ export function RecurringMilestoneEditor({ goal, spec, activeLabel, writeTs }) {
 export function AutoReadout({ value, unit, target, hint }) {
   return (
     <div className="flex items-center gap-2">
-      <ValueChip value={value} unit={unit} target={target} suffix={target ? `${target.op}${target.value}` : null} />
-      {hint && <span className="text-[11.5px] text-dim-fg">{hint}</span>}
+      <ValueChip value={value} unit={unit} target={target} suffix={target ? `${opLabel(target.op)} ${target.value}` : null} />
+      {hint && <span className="text-[11.5px] text-muted-fg">{hint}</span>}
     </div>
   );
 }
@@ -616,7 +748,7 @@ function StepButton({ onClick, children, primary, ...rest }) {
       type="button"
       onClick={onClick}
       className={cn(
-        "flex h-8 min-w-8 items-center justify-center rounded-[var(--radius-pill)] px-2 text-[12px] font-bold transition-colors",
+        "flex h-8 min-w-8 items-center justify-center rounded-[var(--radius-pill)] px-2 text-[12px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40",
         primary ? "bg-ink text-ink-on hover:opacity-90" : "bg-card-alt text-muted-fg hover:text-fg",
       )}
       {...rest}
@@ -626,11 +758,12 @@ function StepButton({ onClick, children, primary, ...rest }) {
   );
 }
 
-function NumberField({ value, onChange, label }) {
+function NumberField({ value, onChange, label, inputRef }) {
   return (
     <label className="flex items-center gap-1.5">
       <Label className="shrink-0">{label}</Label>
       <Input
+        ref={inputRef}
         type="number"
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -665,17 +798,18 @@ function ValueChip({ value, unit, target, suffix }) {
 
 /* ─────── helpers ─────── */
 
-function sumNumericInWindow(entries, start, end) {
-  if (!Array.isArray(entries)) return 0;
+/** Numeric-valued entries inside [start, end), in store (ts-ascending) order. */
+function numericEntriesInWindow(entries, start, end) {
+  if (!Array.isArray(entries)) return [];
   const s = start.getTime();
   const e = end.getTime();
-  let sum = 0;
-  for (const entry of entries) {
-    if (entry.ts < s || entry.ts >= e) continue;
-    const n = Number(entry.value);
-    if (Number.isFinite(n)) sum += n;
-  }
-  return sum;
+  return entries.filter(
+    (entry) => entry.ts >= s && entry.ts < e && Number.isFinite(Number(entry.value)),
+  );
+}
+
+function capitalizeFirst(s) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
 function evalMet(value, target) {
@@ -695,50 +829,7 @@ function formatNumber(n) {
   return n.toFixed(2).replace(/\.?0+$/, "");
 }
 
-/**
- * Period key for RECURRING_MILESTONE. Matches the dashboard widget's
- * shape so entries written from the dashboard and from check-in
- * collide on the same key for the same period.
- *
- *   daily      → "YYYY-MM-DD"
- *   weekly     → "YYYY-W##"   (ISO week, simplified — sun-anchored)
- *   biweekly   → "YYYY-B##"
- *   monthly    → "YYYY-MM"
- *   quarterly  → "YYYY-Q#"
- */
-function periodKeyFor(ts, cadence) {
-  const d = new Date(ts);
-  if (!Number.isFinite(d.getTime())) return "all";
-  const y = d.getUTCFullYear();
-  switch (cadence) {
-    case "daily":
-      return `${y}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
-    case "weekly": {
-      const w = sunWeekOf(d);
-      return `${y}-W${pad2(w)}`;
-    }
-    case "biweekly": {
-      const w = sunWeekOf(d);
-      return `${y}-B${pad2(Math.floor((w - 1) / 2))}`;
-    }
-    case "monthly":
-      return `${y}-${pad2(d.getUTCMonth() + 1)}`;
-    case "quarterly":
-      return `${y}-Q${Math.floor(d.getUTCMonth() / 3) + 1}`;
-    default:
-      return "all";
-  }
-}
 
-function pad2(n) {
-  return String(n).padStart(2, "0");
-}
-
-function sunWeekOf(d) {
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const daysSinceJan1 = Math.floor((d.getTime() - yearStart.getTime()) / (24 * 60 * 60 * 1000));
-  return Math.floor(daysSinceJan1 / 7) + 1;
-}
 
 function cadenceWord(cadence) {
   switch (cadence) {

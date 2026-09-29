@@ -141,6 +141,15 @@ export function subscribeGoals(cb) {
 export function resetGoals() {
   state = { ...INITIAL_STATE };
   inflightFetch = null;
+  // Drop any coalesced edit and any queued save — they belonged to the
+  // previous session. A PUT already on the wire is ignored when it lands
+  // (see `sessionGen`).
+  if (pendingTimer) clearTimeout(pendingTimer);
+  pendingTimer = null;
+  pendingPrevL1s = null;
+  queuedSave = null;
+  saveTail = Promise.resolve();
+  sessionGen += 1;
   emit();
 }
 
@@ -194,23 +203,70 @@ export async function fetchGoals() {
   return inflightFetch;
 }
 
-/**
- * Send a new l1s list to /goals. Optimistically updates local state;
- * rolls back on failure.
+/* ─── Save queue ─────────────────────────────────────────────────────
+ * Every save sends THE CURRENT LOCAL TREE (`state.l1s` at send time) with
+ * the concurrency token we hold AT SEND TIME. Saves are serialised: only
+ * one PUT is on the wire at once, and the next one waits for it so it can
+ * echo the `updatedAt` that PUT returned. Two PUTs racing on the same token
+ * made the second 409, the store adopt the server tree, and whatever was
+ * typed between them vanish.
+ *
+ * Saves that queue up behind an in-flight PUT coalesce into ONE follow-up
+ * send — it reads the tree when it starts, so it carries every edit made
+ * meanwhile. (A replace-import's `archiveCurrent` never coalesces: that
+ * flag belongs to exactly one write.)
  */
-async function persistL1s(nextL1s, options = {}) {
-  const prevL1s = state.l1s;
-  setState({ l1s: nextL1s, error: null });
-  // Echo the concurrency token: the server 409s (goals_conflict) when
-  // the stored tree moved under us, instead of letting this stale tab
-  // silently wipe another device's edits.
-  const r = await apiPut("/goals", {
-    l1s: nextL1s,
-    updatedAt: state.updatedAt,
-    // Replace imports send an archive label so the outgoing tree is
-    // frozen into goal_cycles instead of destroyed (F2 v1).
-    ...(options.archiveCurrent ? { archiveCurrent: options.archiveCurrent } : {}),
+let saveTail = Promise.resolve(); // settles when the last queued save does
+let queuedSave = null; // the save waiting for the wire, if any
+let saveInFlight = false;
+let sessionGen = 0; // bumped by resetGoals — stale responses are dropped
+
+function queueSave(prevL1s, options = {}) {
+  if (queuedSave && !options.archiveCurrent && !queuedSave.options.archiveCurrent) {
+    return queuedSave.promise;
+  }
+  const entry = { prevL1s, options, promise: null };
+  const gen = sessionGen;
+  entry.promise = saveTail.then(() => {
+    if (queuedSave === entry) queuedSave = null;
+    if (gen !== sessionGen) return { ok: false, error: { code: "session_changed", message: "Signed out before the save ran." } };
+    return sendTree(entry.prevL1s, entry.options);
   });
+  saveTail = entry.promise.catch(() => {});
+  queuedSave = entry;
+  return entry.promise;
+}
+
+/**
+ * PUT the current tree. Resolves `{ ok, error }`. `prevL1s` is the tree to
+ * roll back to on a plain failure — the tree from BEFORE the first edit
+ * this save carries.
+ */
+async function sendTree(prevL1s, options = {}, init = undefined) {
+  const gen = sessionGen;
+  const sent = state.l1s;
+  saveInFlight = true;
+  let r;
+  try {
+    // Echo the concurrency token: the server 409s (goals_conflict) when
+    // the stored tree moved under us, instead of letting this stale tab
+    // silently wipe another device's edits.
+    r = await apiPut(
+      "/goals",
+      {
+        l1s: sent,
+        updatedAt: state.updatedAt,
+        // Replace imports send an archive label so the outgoing tree is
+        // frozen into goal_cycles instead of destroyed (F2 v1).
+        ...(options.archiveCurrent ? { archiveCurrent: options.archiveCurrent } : {}),
+      },
+      init,
+    );
+  } finally {
+    saveInFlight = false;
+  }
+  // Signed out (or in as someone else) while this was on the wire.
+  if (gen !== sessionGen) return r.ok ? { ok: true } : { ok: false, error: r.error };
   if (!r.ok) {
     if (r.error?.code === "goals_conflict") {
       // Adopt the live tree the 409 carried (or refetch as a fallback)
@@ -230,8 +286,12 @@ async function persistL1s(nextL1s, options = {}) {
         setState({ l1s: prevL1s, error: r.error });
         void fetchGoals();
       }
-    } else {
+    } else if (state.l1s === sent) {
       setState({ l1s: prevL1s, error: r.error });
+    } else {
+      // Edits landed while this PUT was out — rolling back would throw
+      // them away too. Keep them; the save queued behind retries them.
+      setState({ error: r.error });
     }
     // eslint-disable-next-line no-console
     console.warn(
@@ -239,11 +299,90 @@ async function persistL1s(nextL1s, options = {}) {
       r.error?.code,
       r.error?.message,
     );
-    return;
+    return { ok: false, error: r.error };
   }
-  // A successful save advances the token — without this, the SECOND
-  // save from this tab would conflict against its own first write.
+  // A successful save advances the token — without this, the NEXT save
+  // from this tab would conflict against its own write.
   setState({ updatedAt: r.data?.updatedAt ?? state.updatedAt });
+  return { ok: true };
+}
+
+/**
+ * Apply a new l1s list locally at once (optimistic), then queue a save.
+ * Resolves `{ ok, error }` so callers that need to know (imports, toasts)
+ * can await it.
+ */
+function persistL1s(nextL1s, options = {}, prevL1s = state.l1s) {
+  setState({ l1s: nextL1s, error: null });
+  return queueSave(prevL1s, options);
+}
+
+/* ─── Debounced field edits ──────────────────────────────────────────
+ * Typing into a title used to PUT the whole tree on EVERY keystroke.
+ * Field edits now update local state at once (inputs stay controlled) and
+ * coalesce into one save ~600ms after the last keystroke; the save queue
+ * above keeps those saves from racing each other. Structural mutations
+ * (add / remove / import) flush the pending edit first so the order of
+ * writes matches the order of edits.
+ */
+const EDIT_DEBOUNCE_MS = 600;
+let pendingTimer = null;
+let pendingPrevL1s = null; // tree before the FIRST coalesced edit
+
+function persistL1sDebounced(nextL1s) {
+  if (pendingPrevL1s === null) pendingPrevL1s = state.l1s;
+  setState({ l1s: nextL1s, error: null });
+  if (pendingTimer) clearTimeout(pendingTimer);
+  pendingTimer = setTimeout(() => void flushPendingGoalsSave(), EDIT_DEBOUNCE_MS);
+}
+
+/** Send the coalesced edit now. Resolves once its save settles. */
+export function flushPendingGoalsSave() {
+  if (pendingTimer) {
+    clearTimeout(pendingTimer);
+    pendingTimer = null;
+  }
+  if (pendingPrevL1s === null) return Promise.resolve({ ok: true });
+  const prev = pendingPrevL1s;
+  pendingPrevL1s = null;
+  return queueSave(prev);
+}
+
+/** Browsers cap the total body of in-flight keepalive requests at 64 KiB. */
+const KEEPALIVE_BODY_LIMIT = 60 * 1024;
+
+/**
+ * Tab closing mid-debounce: send the pending edit NOW with `keepalive`, so
+ * the browser lets the request outlive the page. This skips the queue —
+ * waiting for an in-flight PUT's response can't work once the page is
+ * gone — so it is best effort: if a PUT is still out, this one may 409.
+ * A tree too big for keepalive goes as a normal request (which the browser
+ * may cancel).
+ */
+export function flushGoalsOnPageHide() {
+  if (pendingTimer) {
+    clearTimeout(pendingTimer);
+    pendingTimer = null;
+  }
+  if (pendingPrevL1s === null) return;
+  const prev = pendingPrevL1s;
+  pendingPrevL1s = null;
+  let size = Infinity;
+  try {
+    size = new Blob([JSON.stringify({ l1s: state.l1s, updatedAt: state.updatedAt })]).size;
+  } catch {
+    /* size unknown → no keepalive */
+  }
+  void sendTree(prev, {}, size <= KEEPALIVE_BODY_LIMIT ? { keepalive: true } : undefined);
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", flushGoalsOnPageHide);
+}
+
+/** Test hook: true while a PUT /goals is on the wire. */
+export function isGoalsSaveInFlight() {
+  return saveInFlight;
 }
 
 function uid() {
@@ -294,30 +433,38 @@ export function readGoals() {
 // back state and surface in `error`. Editor components subscribe to
 // state via useGoals and re-render on either success or rollback.
 
+/** Structural change: flush any coalesced field edit, then persist at once. */
+function persistStructural(nextL1sFn, options) {
+  // Queue the coalesced edit first (it may merge with this save — both
+  // send the current tree), then apply + queue the structural change.
+  void flushPendingGoalsSave();
+  return persistL1s(nextL1sFn(state.l1s), options);
+}
+
 export function addL1() {
-  void persistL1s([...state.l1s, emptyL1()]);
+  void persistStructural((l1s) => [...l1s, emptyL1()]);
 }
 
 export function updateL1(id, patch) {
-  void persistL1s(
+  persistL1sDebounced(
     state.l1s.map((l1) => (l1.id === id ? { ...l1, ...patch } : l1)),
   );
 }
 
 export function removeL1(id) {
-  void persistL1s(state.l1s.filter((l1) => l1.id !== id));
+  void persistStructural((l1s) => l1s.filter((l1) => l1.id !== id));
 }
 
 export function addL2(l1Id) {
-  void persistL1s(
-    state.l1s.map((l1) =>
+  void persistStructural((l1s) =>
+    l1s.map((l1) =>
       l1.id === l1Id ? { ...l1, l2s: [...l1.l2s, emptyL2()] } : l1,
     ),
   );
 }
 
 export function updateL2(l1Id, l2Id, patch) {
-  void persistL1s(
+  persistL1sDebounced(
     state.l1s.map((l1) => {
       if (l1.id !== l1Id) return l1;
       return {
@@ -329,8 +476,8 @@ export function updateL2(l1Id, l2Id, patch) {
 }
 
 export function removeL2(l1Id, l2Id) {
-  void persistL1s(
-    state.l1s.map((l1) => {
+  void persistStructural((l1s) =>
+    l1s.map((l1) => {
       if (l1.id !== l1Id) return l1;
       return { ...l1, l2s: l1.l2s.filter((l2) => l2.id !== l2Id) };
     }),
@@ -338,15 +485,16 @@ export function removeL2(l1Id, l2Id) {
 }
 
 export function clearGoals() {
-  void persistL1s([]);
+  void persistStructural(() => []);
 }
 
 /**
  * Replace the entire goal tree (used by the Zoho import flow). Every
  * row is passed through the empty-record factory first so partial
- * imports never end up missing v2 fields.
+ * imports never end up missing v2 fields. Resolves the persist result so
+ * the importer can wait before claiming success.
  */
-export function replaceGoals(tree) {
+export async function replaceGoals(tree) {
   const incoming = Array.isArray(tree?.l1s) ? tree.l1s : [];
   const l1s = incoming.map((l1) => ({
     ...emptyL1(),
@@ -370,7 +518,7 @@ export function replaceGoals(tree) {
         year: "numeric",
       })}`
     : null;
-  void persistL1s(l1s, archiveCurrent ? { archiveCurrent } : {});
+  return persistStructural(() => l1s, archiveCurrent ? { archiveCurrent } : {});
 }
 
 /**
@@ -383,31 +531,35 @@ export function replaceGoals(tree) {
  */
 export async function loadTestGoals() {
   const { getTestGoals } = await import("./test-goals");
-  replaceGoals(getTestGoals());
+  return replaceGoals(getTestGoals());
 }
 
 /**
  * Append new L1s on top of the existing tree. Dedupes by `code` when
- * set.
+ * set. Resolves `{ ok, error, added, skipped }` — `skipped` lists the L1s
+ * dropped as duplicates so the importer can report them instead of
+ * counting them as imported.
  */
-export function appendGoals(tree) {
+export async function appendGoals(tree) {
   const existingCodes = new Set(
     state.l1s.map((l1) => l1.code).filter(Boolean),
   );
   const incoming = Array.isArray(tree?.l1s) ? tree.l1s : [];
-  const deduped = incoming.filter(
-    (l1) => !l1.code || !existingCodes.has(l1.code),
-  );
-  const next = [
-    ...state.l1s,
-    ...deduped.map((l1) => ({
-      ...emptyL1(),
-      ...l1,
-      id: l1.id || uid(),
-      l2s: Array.isArray(l1.l2s)
-        ? l1.l2s.map((l2) => ({ ...emptyL2(), ...l2, id: l2.id || uid() }))
-        : [],
-    })),
-  ];
-  void persistL1s(next);
+  const deduped = [];
+  const skipped = [];
+  for (const l1 of incoming) {
+    if (l1.code && existingCodes.has(l1.code)) skipped.push(l1);
+    else deduped.push(l1);
+  }
+  const added = deduped.map((l1) => ({
+    ...emptyL1(),
+    ...l1,
+    id: l1.id || uid(),
+    l2s: Array.isArray(l1.l2s)
+      ? l1.l2s.map((l2) => ({ ...emptyL2(), ...l2, id: l2.id || uid() }))
+      : [],
+  }));
+  if (added.length === 0) return { ok: true, added, skipped };
+  const res = await persistStructural((l1s) => [...l1s, ...added]);
+  return { ...res, added, skipped };
 }

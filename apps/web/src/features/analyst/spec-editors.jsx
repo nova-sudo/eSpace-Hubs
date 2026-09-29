@@ -179,7 +179,7 @@ export function LabelsPicker({ value, mode, options, assisted, onChange, onChang
             className="rounded-[var(--radius-pill)] bg-card px-2 py-0.5 text-[12px] text-fg"
             title={`${count} merged PR${count === 1 ? "" : "s"} this year`}
           >
-            {label} <span className="text-dim-fg">{count}</span>
+            {label} <span className="text-muted-fg">{count}</span>
           </button>
         ))}
         <Input
@@ -608,7 +608,7 @@ export function RubricCriteriaEditor({
           onPatchCriteria(items);
         }}
         placeholder={"meaningful tests\nno any types\nall branches handled"}
-        className="w-full resize-y rounded-[var(--radius-md)] bg-card-alt px-2.5 py-2 text-[13px] text-fg outline-none focus:ring-2 focus:ring-ink"
+        className="w-full resize-y rounded-[var(--radius-md)] bg-card-alt px-2.5 py-2 text-[13px] text-fg border border-field-line outline-none focus:ring-2 focus:ring-ink"
       />
       <label
         className="flex items-center gap-1.5 text-[12px] text-muted-fg"
@@ -951,7 +951,7 @@ function TimelinessEditor({ spec, onChange }) {
         />
         <span>minutes</span>
       </div>
-      <p className="text-[11.5px] leading-snug text-dim-fg">
+      <p className="text-[11.5px] leading-snug text-muted-fg">
         A per-incident ceiling, not a summed budget. Leave blank to skip. An
         incident with no timestamps is reported as unmeasured, never as late.
       </p>
@@ -987,7 +987,7 @@ function EvidenceRequirementEditor({ spec, onChange }) {
         <span className="block text-[13px] font-semibold text-fg">
           Expect evidence each period
         </span>
-        <span className="mt-0.5 block text-[11.5px] leading-snug text-dim-fg">
+        <span className="mt-0.5 block text-[11.5px] leading-snug text-muted-fg">
           Tracks each period as evidenced, carried over, or missing. A period
           still running is never marked missing.
         </span>

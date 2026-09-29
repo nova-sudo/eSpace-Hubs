@@ -25,3 +25,8 @@ export {
   isInlineFillable,
   INLINE_FILLABLE_KINDS,
 } from "./dispatch";
+export {
+  DraftFlushProvider,
+  useDraftFlush,
+  useDraftRegistry,
+} from "./draft-flush-context.jsx";

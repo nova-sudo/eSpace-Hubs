@@ -80,6 +80,8 @@ const PAGE_LABELS = {
   approvals: "Approvals",
   tierpolicies: "Goals & policies",
   sharedgoals: "Shared with me",
+  notifications: "Notifications inbox",
+  orgchart: "Org chart",
 };
 
 export function pageLabel(slot) {

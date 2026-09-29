@@ -8,7 +8,12 @@
  *   <PasswordResetRequestForm>   — used by /forgot-password page
  *   <PasswordResetForm>          — used by /password-reset?token=… page
  *   <TotpSetupForm>              — used by /totp-setup page
+ *   <BackupCodesPanel>           — one-time display of 2FA backup codes (copy / download)
+ *   <RegenerateBackupCodesDialog> — Settings → Account "Generate new codes"
+ *   <MoveTwoFactorDialog>        — Settings → Account "Move to a new phone"
+ *   MOVE_2FA_ACTION              — `?action=` value that opens that dialog
  *   <AuthGuard>                  — wraps protected page contents
+ *   <SignInGate>                 — soft gate: sign-in link with ?next=, no redirect
  *   <UserChip>                   — header chip showing the session user + logout
  *   <RequireCapability>          — gate child elements on a capability check
  *   hasCapability/hasAllCapabilities — non-React reader helpers
@@ -26,9 +31,15 @@ export { AcceptInviteForm } from "./accept-invite-form.jsx";
 export { PasswordResetRequestForm } from "./password-reset-request-form.jsx";
 export { PasswordResetForm } from "./password-reset-form.jsx";
 export { TotpSetupForm } from "./totp-setup-form.jsx";
+export { BackupCodesPanel } from "./backup-codes-panel.jsx";
+export { RegenerateBackupCodesDialog } from "./regenerate-backup-codes-dialog.jsx";
+export { MoveTwoFactorDialog } from "./move-two-factor-dialog.jsx";
+export { TotpSecretPanel } from "./totp-secret-panel.jsx";
+export { MOVE_2FA_ACTION } from "./backup-login-marker.js";
 export { SignupForm } from "./signup-form.jsx";
 export { WaitingApproval } from "./waiting-approval.jsx";
 export { AuthGuard } from "./auth-guard.jsx";
+export { SignInGate } from "./sign-in-gate.jsx";
 export { UserChip } from "./user-chip.jsx";
 export {
   RequireCapability,

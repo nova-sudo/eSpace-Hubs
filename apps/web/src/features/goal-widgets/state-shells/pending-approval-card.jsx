@@ -14,6 +14,7 @@ import { useEffect } from "react";
 import { Badge, Button } from "@/components/ui";
 import { WidgetShell } from "../widget-shell";
 import { fetchSpecs } from "@/features/goal-specs";
+import { ADMIN_APPROVAL_COPY } from "../approval-outcome";
 
 /**
  * Nothing pushes this tile a signal when the manager decides. Notifications
@@ -28,10 +29,24 @@ import { fetchSpecs } from "@/features/goal-specs";
  */
 const PENDING_POLL_MS = 30_000;
 
+function fmtWhen(ts) {
+  const n = typeof ts === "string" ? Date.parse(ts) : ts;
+  if (!Number.isFinite(n)) return null;
+  return new Date(n).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 export function PendingApprovalCard({ spec, goal, className, onRetry, onRevise }) {
   const rejected = spec?.approval?.status === "rejected";
   const note = spec?.approval?.note;
   const reviewer = spec?.approval?.reviewedByName;
+  const sentOn = fmtWhen(spec?.approval?.submittedAt);
+  // Who it went to, when the server recorded it. Falls back to "your
+  // manager" — the approval block only names the reviewer once they act.
+  const manager = spec?.approval?.managerName || spec?.approval?.submittedToName || null;
+  // No active manager on file → the approval gate routes it to the org's
+  // admins (hub-audit §1.3); never claim "sent to your manager".
+  const toAdmins =
+    spec?.approval?.approverScope === "admins" || spec?.approval?.noManager === true;
 
   // Only while pending — "rejected" is waiting on the DEV to revise, not the
   // manager, so there's nothing new to poll for until they act.
@@ -65,10 +80,16 @@ export function PendingApprovalCard({ spec, goal, className, onRetry, onRevise }
               <span className="font-bold text-fg">{reviewer || "Your manager"}</span> asked
               for changes before this tracker goes live.
             </>
+          ) : toAdmins ? (
+            <>
+              {ADMIN_APPROVAL_COPY} You can&apos;t log on this tracker until it&apos;s
+              approved.
+            </>
           ) : (
             <>
-              This <span className="font-bold text-fg">Build-Your-Own</span> tracker is
-              waiting on your manager's approval — it goes live once they sign off.
+              Sent to <span className="font-bold text-fg">{manager || "your manager"}</span>
+              {sentOn ? ` on ${sentOn}` : ""} for approval. You can&apos;t log on this tracker
+              until it&apos;s approved.
             </>
           )}
         </div>

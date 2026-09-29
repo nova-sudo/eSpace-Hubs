@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
+import { toast } from "sonner";
 import {
   fetchEvidence,
   getEvidenceServerSnapshot,
@@ -75,8 +76,21 @@ export function useEvidenceCandidates() {
   );
 }
 
-export function toggleEvidence(item) {
-  toggleStar(item);
+/**
+ * Star / unstar with a visible outcome — the store rolls back silently
+ * on failure, which used to look like the click did nothing.
+ */
+export async function toggleEvidence(item) {
+  const wasStarred = readStarred().some((x) => x.id === item?.id);
+  const r = await toggleStar(item);
+  if (r?.ok === false) {
+    const what = item?.ref || item?.title || "this item";
+    toast.error(
+      `Couldn't ${wasStarred ? "remove" : "star"} ${what}: ${r.error?.message || "the server didn't respond"}`,
+      { action: { label: "Retry", onClick: () => void toggleEvidence(item) } },
+    );
+  }
+  return r;
 }
 
 function shortDate(iso) {

@@ -1,55 +1,57 @@
 "use client";
 
 /**
- * Sticky sidebar "Review packet" card: goal-standing compliance at a
- * glance + the "Compile into review" CTA that switches to the document
- * builder. Goal-oriented — no integration tallies.
+ * Sidebar "Review packet" card: where the goals stand, in the SAME words and
+ * the same number Home and Goals print — "Logged so far" (due windows only,
+ * weighted by objective) and the shared status counts — plus the goals that
+ * aren't in that number. The "Preview document" action switches tabs.
  */
 
 import { Badge, Button, Card, Stat } from "@/components/ui";
-
-const ROWS = [
-  { key: "onTrack", label: "On track", tone: "mint" },
-  { key: "inProgress", label: "In progress", tone: "lav" },
-  { key: "behind", label: "Behind", tone: "peach" },
-  { key: "awaiting", label: "Awaiting data", tone: "neutral" },
-];
+import { unmeasuredLine } from "@/features/goal-inputs";
 
 export function EvidenceSummary({ rangeLabel, summary, onCompile, loading, lastPacket }) {
-  const total = summary?.total ?? 0;
-  const onTrack = summary?.onTrack ?? 0;
-  const pct = loading || total === 0 ? null : Math.round((onTrack / total) * 100);
+  const pct = loading ? null : (summary?.pct ?? null);
+  const logged = summary?.logged ?? { done: 0, due: 0 };
+  const counts = summary?.counts ?? [];
+  const unmeasured = loading ? null : unmeasuredLine(summary?.unmeasured ?? 0);
 
   return (
     <Card className="flex flex-col gap-4">
-      <div className="text-[15px] font-bold text-fg">Review packet</div>
+      <h2 className="m-0 text-[15px] font-bold text-fg">Review packet</h2>
 
       <Stat
-        label={rangeLabel}
+        label={`Logged so far · ${rangeLabel}`}
         value={pct == null ? "—" : `${pct}%`}
-        unit={pct == null ? undefined : "on track"}
-        sub={`${loading ? "—" : onTrack} of ${loading ? "—" : total} goals on track`}
+        sub={
+          loading
+            ? "—"
+            : logged.due > 0
+              ? `${logged.done} of ${logged.due} check-ins that were due`
+              : "Nothing was due yet"
+        }
         size="lg"
       />
 
-      {total > 0 ? (
-        <div className="flex gap-1">
-          <span className="h-2 rounded-full bg-ink" style={{ flex: Math.max(onTrack, 0.001) }} />
-          <span
-            className="h-2 rounded-full bg-peach"
-            style={{ flex: Math.max(total - onTrack, 0.001) }}
-          />
+      {pct != null ? (
+        <div className="flex gap-1" aria-hidden="true">
+          <span className="h-2 rounded-full bg-ink" style={{ flex: Math.max(pct, 0.001) }} />
+          <span className="h-2 rounded-full bg-peach" style={{ flex: Math.max(100 - pct, 0.001) }} />
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-2">
-        {ROWS.map((r) => (
-          <div key={r.key} className="flex items-center justify-between gap-2">
-            <span className="text-[13px] text-muted-fg">{r.label}</span>
-            <Badge tone={r.tone}>{loading ? "—" : (summary?.[r.key] ?? 0)}</Badge>
-          </div>
-        ))}
-      </div>
+      {unmeasured ? <p className="m-0 text-[12.5px] leading-[1.5] text-muted-fg">{unmeasured}</p> : null}
+
+      {counts.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          {counts.map((c) => (
+            <div key={c.status} className="flex items-center justify-between gap-2" title={c.description}>
+              <span className="text-[13px] text-muted-fg">{c.label}</span>
+              <Badge tone={c.tone}>{loading ? "—" : c.count}</Badge>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {lastPacket?.submittedAt ? (
         <div className="flex items-center justify-between border-t border-line pt-3 text-[12.5px] text-muted-fg">
@@ -63,8 +65,10 @@ export function EvidenceSummary({ rangeLabel, summary, onCompile, loading, lastP
         </div>
       ) : null}
 
-      <Button className="w-full" onClick={onCompile}>
-        Compile into review
+      {/* Soft: it only switches to the Document tab. "Submit packet" is the
+          page's one ink button. */}
+      <Button className="w-full" variant="soft" onClick={onCompile}>
+        Preview document
       </Button>
     </Card>
   );

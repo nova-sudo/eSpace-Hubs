@@ -5,6 +5,27 @@
 
 import { formatExpected } from "./format-expected";
 
+/**
+ * "1 objective · 3 goals" — counts the objective GROUPS the goals sit in
+ * (an unclassified L1 still heads its goals), with no L1/L2 jargon. Shared
+ * by the preview and the export so they can't disagree.
+ */
+export function goalCountLine(goalReadings) {
+  const l2 = (goalReadings || []).filter((r) => r.level === "L2");
+  const objectives = new Set(l2.map((r) => r.parentL1?.id ?? "_none")).size;
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  return `${plural(objectives, "objective", "objectives")} · ${plural(l2.length, "goal", "goals")}`;
+}
+
+/** The document's title line — never "— —" when a piece is missing. */
+export function documentTitle(name, level) {
+  const who = typeof name === "string" && name.trim() ? name.trim() : null;
+  const lvl = typeof level === "string" ? level.trim() : "";
+  if (who && lvl) return `${who} — ${lvl}`;
+  if (who) return `${who} — Performance review`;
+  return lvl ? `Performance review — ${lvl}` : "Performance review";
+}
+
 export function renderMarkdown({
   name,
   team,
@@ -12,12 +33,16 @@ export function renderMarkdown({
   rangeLabel,
   narrative,
   goalReadings,
+  untracked = [],
   starred,
   include = { narrative: true, goals: true },
 }) {
   const lines = [];
-  lines.push(`# ${name ?? "—"} — ${level ?? "Performance review"}`);
-  lines.push(`_${team ?? ""} · ${rangeLabel ?? ""}_`);
+  // No empty segments: "Jane Doe — Senior engineer" when a level is set,
+  // "Jane Doe — Performance review" when it isn't.
+  lines.push(`# ${documentTitle(name, level)}`);
+  const sub = [team, rangeLabel].filter(Boolean).join(" · ");
+  if (sub) lines.push(`_${sub}_`);
   lines.push("");
 
   if (include.narrative && narrative?.trim()) {
@@ -27,9 +52,7 @@ export function renderMarkdown({
   }
 
   if (include.goals && Array.isArray(goalReadings) && goalReadings.length > 0) {
-    const l1s = goalReadings.filter((r) => r.level === "L1").length;
-    const l2s = goalReadings.filter((r) => r.level === "L2").length;
-    lines.push(`## 02 · Performance goals · ${l1s} L1 · ${l2s} L2`);
+    lines.push(`## 02 · Performance goals · ${goalCountLine(goalReadings)}`);
     // Group L1 → its L2s. Each L2 becomes a per-goal block — what it was set
     // out to achieve → where it landed (+ tier), the grader's assessment (the
     // "how/why"), and the dated proof logged against it (the "when"). Richer
@@ -40,10 +63,10 @@ export function renderMarkdown({
         activeL1 = r;
         const w = r.goal?.weightage > 0 ? ` _(${r.goal.weightage}% weight)_` : "";
         lines.push("");
-        lines.push(`### ${r.goal?.title || "(untitled L1)"}${w}`);
-        if (r.reading) {
+        lines.push(`### ${r.goal?.title || "(untitled objective)"}${w}`);
+        if (r.reading?.value) {
           lines.push("");
-          lines.push(`> ${r.reading.value} — _${r.reading.statusLabel}_`);
+          lines.push(`> ${r.reading.value}`);
         }
       } else if (r.level === "L2") {
         if (!activeL1 || activeL1.goal?.id !== r.parentL1?.id) {
@@ -51,11 +74,23 @@ export function renderMarkdown({
           const w =
             r.parentL1?.weightage > 0 ? ` _(${r.parentL1.weightage}% weight)_` : "";
           lines.push("");
-          lines.push(`### ${r.parentL1?.title || "(untitled L1)"}${w}`);
+          lines.push(`### ${r.parentL1?.title || "(untitled objective)"}${w}`);
         }
         emitGoalBlock(lines, r);
       }
     }
+    lines.push("");
+  }
+
+  // Goals with no tracker — listed so the reader sees the whole year, not a
+  // clean-looking subset. Never scored.
+  const untrackedList = (untracked || []).filter(Boolean);
+  if (include.goals && untrackedList.length > 0) {
+    lines.push(`## Not yet tracked (${untrackedList.length})`);
+    lines.push("");
+    lines.push("_No tracker yet — these goals aren't in any number above._");
+    lines.push("");
+    for (const g of untrackedList) lines.push(`- ${g.title || "(untitled goal)"}`);
     lines.push("");
   }
 
@@ -119,8 +154,10 @@ function emitGoalBlock(lines, r) {
   const status = r.reading?.statusLabel || "—";
 
   lines.push("");
-  lines.push(`#### ${r.goal?.title || "(untitled L2)"}${tier ? ` — ${tier}` : ""}`);
-  lines.push(`- **Target:** ${expected} → **Achieved:** ${achieved} _(${status})_`);
+  const reason = r.reading?.statusReason ? ` · ${r.reading.statusReason}` : "";
+  lines.push(`#### ${r.goal?.title || "(untitled goal)"}${tier ? ` — ${tier}` : ""}`);
+  lines.push(`- **Status:** ${status}${reason}`);
+  lines.push(`- **Target:** ${expected} → **Achieved:** ${achieved}`);
   if (graded && v.reasoning) {
     lines.push(
       `- **Assessment:** ${v.reasoning}${v.confidence === "low" ? " _(low confidence)_" : ""}`,

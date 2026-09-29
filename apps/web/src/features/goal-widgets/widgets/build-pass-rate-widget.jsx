@@ -86,7 +86,7 @@ export function BuildPassRateWidget({
               fail: <strong className="text-fg">{fail}</strong>
             </span>
           </div>
-          <div className="flex h-2 w-full overflow-hidden rounded-full bg-card-alt">
+          <div className="flex h-2 w-full overflow-hidden rounded-full bg-track">
             <div className="bg-ink" style={{ width: `${pct ?? 0}%` }} />
           </div>
         </div>

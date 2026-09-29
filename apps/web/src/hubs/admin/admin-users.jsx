@@ -15,15 +15,25 @@
  * The choice persists to localStorage and broadcasts a change event, so
  * a second tab follows along (admin-users-view-store.js).
  *
- * API surface, unchanged:
- *   GET    /admin/users                     the roster
+ * The roster is PAGINATED server-side (hub-audit §2.3): search, the
+ * status pills and the reporting-line filters (`?flag=no_manager`,
+ * `?flag=disabled_manager`, `?managerId=`, `?q=` — the overview and org
+ * chart link here with them) all run in the API, and "Load more" follows
+ * the keyset cursor. Names for the manager column, the pickers and the
+ * reassign dialog come from the lightweight directory.
+ *
+ * API surface:
+ *   GET    /admin/users?q=&status=&flag=&managerId=&cursor=   one page
+ *   GET    /admin/users/directory           id/name/email/roles/manager
+ *   POST   /admin/users/:id/reassign-reports  move a whole team
  *   PATCH  /admin/users/:id                 roles / status / hubs / name / …
  *   POST   /admin/users/:id/totp/reset      clear an authenticator
  *   DELETE /admin/users/:id/personal-data   wipe dashboard data
  *   GET    /admin/signup-codes  · POST · PATCH   self-serve signup codes
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import { apiGet, apiPatch, apiPost } from "@/lib/api-client";
@@ -49,7 +59,6 @@ import {
   STATUS_FILTERS,
   formatDate,
   formatRelative,
-  matchesQuery,
 } from "./admin-lib";
 import { patchUser, resetTotp, wipeDashboardData } from "./admin-user-actions";
 import {
@@ -61,7 +70,17 @@ import {
 } from "./admin-ui";
 import { InviteDialog } from "./admin-invite-dialog";
 import { UserPanel } from "./admin-user-panel";
+import { ReassignReportsDialog } from "./admin-reassign-dialog";
+import { AdminApproveDialog } from "./admin-approve-dialog";
 import { useUsersView } from "./admin-users-view-store";
+
+const PAGE_SIZE = 50;
+
+/** Reporting-line filters the overview / org chart deep-link to. */
+const FLAG_LABELS = {
+  no_manager: "People with no manager",
+  disabled_manager: "Reports of a disabled manager",
+};
 
 const VIEW_OPTIONS = [
   { value: "table", label: "Table" },
@@ -73,70 +92,138 @@ export function AdminUsers() {
   const [view, setView] = useUsersView();
   const confirm = useConfirm();
 
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const flag = searchParams.get("flag") || "";
+  const managerFilter = searchParams.get("managerId") || "";
+
   const [users, setUsers] = useState([]);
+  const [directory, setDirectory] = useState([]);
+  const [counts, setCounts] = useState({ all: 0 });
+  const [nextCursor, setNextCursor] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => searchParams.get("q") || "");
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [activeUserId, setActiveUserId] = useState(null);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [reassign, setReassign] = useState(null); // { manager, disabling }
+  const [approving, setApproving] = useState(null); // a pending_admin member
   const [busy, setBusy] = useState(false);
+  const generation = useRef(0);
 
   const canManage = sessionUser?.capabilities?.includes(
     CAPABILITIES.ADMIN_USERS_MANAGE,
   );
 
+  // Typing shouldn't fire a request per keystroke.
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query.trim()), 250);
+    return () => clearTimeout(id);
+  }, [query]);
+
+  const pageQuery = useCallback(
+    (cursor) => {
+      const p = new URLSearchParams({ limit: String(PAGE_SIZE) });
+      if (debouncedQuery) p.set("q", debouncedQuery);
+      if (statusFilter !== "all") p.set("status", statusFilter);
+      if (flag) p.set("flag", flag);
+      if (managerFilter) p.set("managerId", managerFilter);
+      if (cursor) p.set("cursor", cursor);
+      return `/admin/users?${p.toString()}`;
+    },
+    [debouncedQuery, statusFilter, flag, managerFilter],
+  );
+
   /**
-   * Re-read the roster. `initial` also drives the page-level loading and
-   * error states; a background refresh (after an invite, say) leaves the
-   * list on screen and only toasts if it fails.
+   * Re-read the first page for the current filters. `initial` also drives
+   * the page-level loading and error states; a background refresh (after
+   * an invite, say) leaves the list on screen and only toasts on failure.
    */
-  async function loadUsers({ initial = false } = {}) {
-    const r = await apiGet("/admin/users");
-    if (!r.ok) {
-      const message = r.error?.message || "Couldn't load users.";
-      toast.error(message);
-      if (initial) {
-        setLoadError(message);
-        setLoading(false);
+  const loadUsers = useCallback(
+    async ({ initial = false } = {}) => {
+      const gen = ++generation.current;
+      const r = await apiGet(pageQuery(null));
+      if (gen !== generation.current) return null;
+      if (!r.ok) {
+        const message = r.error?.message || "Couldn't load users.";
+        toast.error(message);
+        if (initial) {
+          setLoadError(message);
+          setLoading(false);
+        }
+        return null;
       }
-      return null;
-    }
-    const next = r.data?.users ?? [];
-    setUsers(next);
-    setLoadError(null);
-    if (initial) setLoading(false);
-    return next;
-  }
+      const next = r.data?.users ?? [];
+      setUsers(next);
+      setCounts(r.data?.counts ?? { all: next.length });
+      setNextCursor(r.data?.hasMore ? (r.data?.nextCursor ?? null) : null);
+      setLoadError(null);
+      setLoading(false);
+      return next;
+    },
+    [pageQuery],
+  );
+
+  const loadDirectory = useCallback(async () => {
+    const r = await apiGet("/admin/users/directory");
+    if (r.ok) setDirectory(r.data?.users ?? []);
+  }, []);
 
   useEffect(() => {
     void loadUsers({ initial: true });
-    // Fires once on mount; loadUsers closes over setters only, all stable.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadUsers]);
 
+  useEffect(() => {
+    void loadDirectory();
+  }, [loadDirectory]);
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    const gen = generation.current;
+    setLoadingMore(true);
+    const r = await apiGet(pageQuery(nextCursor));
+    setLoadingMore(false);
+    if (gen !== generation.current) return;
+    if (!r.ok) {
+      toast.error(r.error?.message || "Couldn't load more members.");
+      return;
+    }
+    setUsers((prev) => [...prev, ...(r.data?.users ?? [])]);
+    setNextCursor(r.data?.hasMore ? (r.data?.nextCursor ?? null) : null);
+  }
+
+  function clearLinkFilters() {
+    const p = new URLSearchParams(searchParams.toString());
+    p.delete("flag");
+    p.delete("managerId");
+    p.delete("q");
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  // Name lookups for every member, not just the loaded page.
   const usersById = useMemo(() => {
     const map = new Map();
+    for (const u of directory) map.set(u.id, u);
     for (const u of users) map.set(u.id, u);
     return map;
-  }, [users]);
+  }, [directory, users]);
 
-  const counts = useMemo(() => {
-    const out = { all: users.length };
-    for (const u of users) out[u.status] = (out[u.status] ?? 0) + 1;
-    return out;
-  }, [users]);
+  const reportCount = useMemo(() => {
+    const m = new Map();
+    for (const u of directory) {
+      if (u.managerId) m.set(u.managerId, (m.get(u.managerId) ?? 0) + 1);
+    }
+    return m;
+  }, [directory]);
 
-  const visible = useMemo(
-    () =>
-      users.filter(
-        (u) =>
-          (statusFilter === "all" || u.status === statusFilter) &&
-          matchesQuery(u, query),
-      ),
-    [users, statusFilter, query],
-  );
+  // Filtering happens server-side; the loaded rows ARE the visible rows.
+  const visible = users;
 
   // Never act on a row the admin can't see: whenever the filter or the
   // search narrows the list, drop anything that fell out of it.
@@ -151,7 +238,51 @@ export function AdminUsers() {
 
   function applyUpdate(updated) {
     if (!updated) return;
-    setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+    // PATCH returns the plain public row; keep the page row's resolved
+    // manager name unless the manager itself changed.
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.id !== updated.id) return u;
+        const mgr = updated.managerId ? usersById.get(updated.managerId) : null;
+        return {
+          ...u,
+          ...updated,
+          managerName:
+            updated.managerId === u.managerId ? u.managerName : (mgr?.displayName ?? null),
+          managerStatus:
+            updated.managerId === u.managerId ? u.managerStatus : (mgr?.status ?? null),
+        };
+      }),
+    );
+    setDirectory((prev) =>
+      prev.map((d) =>
+        d.id === updated.id
+          ? {
+              ...d,
+              displayName: updated.displayName,
+              status: updated.status,
+              roles: updated.roles,
+              managerId: updated.managerId,
+            }
+          : d,
+      ),
+    );
+  }
+
+  /**
+   * A status change moves someone between filter chips, and the chip counts
+   * come from the server — lift the row, then re-read the counts.
+   */
+  function applyStatusChange(updated) {
+    if (!updated) return;
+    applyUpdate(updated);
+    void loadUsers();
+  }
+
+  /** After a team move: re-read both the page and the directory. */
+  function refreshAll() {
+    void loadUsers();
+    void loadDirectory();
   }
 
   function toggleSelected(id) {
@@ -188,7 +319,10 @@ export function AdminUsers() {
     }
     setBusy(false);
     setSelectedIds(new Set());
-    if (changed > 0) toast.success(summary(changed));
+    if (changed > 0) {
+      toast.success(summary(changed));
+      void loadUsers(); // counts on the filter chips
+    }
   }
 
   function bulkSetStatus(status) {
@@ -263,11 +397,8 @@ export function AdminUsers() {
       { label: "Edit access", onSelect: () => openUser(u.id) },
       u.status === "pending_admin"
         ? {
-            label: "Approve",
-            onSelect: async () => {
-              const updated = await patchUser(u, { status: "active" });
-              applyUpdate(updated);
-            },
+            label: "Approve…",
+            onSelect: () => setApproving(u),
           }
         : null,
       u.hasTotp && !isSelf
@@ -294,23 +425,33 @@ export function AdminUsers() {
             onConfirm: () => wipeDashboardData(u),
           }),
       },
+      (reportCount.get(u.id) ?? 0) > 0
+        ? {
+            label: `Reassign ${reportCount.get(u.id)} report${reportCount.get(u.id) === 1 ? "" : "s"}…`,
+            onSelect: () => setReassign({ manager: u, disabling: false }),
+          }
+        : null,
       u.status === "disabled"
         ? {
             label: "Re-activate",
-            onSelect: async () => applyUpdate(await patchUser(u, { status: "active" })),
+            onSelect: async () => applyStatusChange(await patchUser(u, { status: "active" })),
           }
         : {
             label: "Disable account",
             danger: true,
             disabled: isSelf,
             onSelect: () =>
-              confirm({
-                title: `Disable ${u.displayName}?`,
-                body: "They are signed out and can't sign back in until an admin re-activates them. Their data is untouched.",
-                confirmLabel: "Disable",
-                onConfirm: async () =>
-                  applyUpdate(await patchUser(u, { status: "disabled" })),
-              }),
+              // A manager with a team gets the reassign dialog instead of
+              // the plain confirm — disabling them strands their queue.
+              (reportCount.get(u.id) ?? 0) > 0
+                ? setReassign({ manager: u, disabling: true })
+                : confirm({
+                    title: `Disable ${u.displayName}?`,
+                    body: "They are signed out and can't sign back in until an admin re-activates them. Their data is untouched.",
+                    confirmLabel: "Disable",
+                    onConfirm: async () =>
+                      applyStatusChange(await patchUser(u, { status: "disabled" })),
+                  }),
           },
     ];
   }
@@ -335,7 +476,7 @@ export function AdminUsers() {
         subtitle="Everyone with an account here, once. Status is a filter, so a person waiting for approval shows up in the same list as everybody else."
         right={
           <div className="flex items-center gap-2">
-            <SegmentedControl
+            <SegmentedControl ariaLabel="Users view"
               size="sm"
               options={VIEW_OPTIONS}
               value={view}
@@ -355,7 +496,7 @@ export function AdminUsers() {
 
       {inviteOpen ? (
         <InviteDialog
-          users={users}
+          users={directory}
           onClose={() => setInviteOpen(false)}
           onSuccess={(opts) => {
             if (!opts?.keepOpen) setInviteOpen(false);
@@ -371,11 +512,25 @@ export function AdminUsers() {
           <FilterPill
             key={f.value}
             label={f.label}
-            count={f.value === "all" ? counts.all : (counts[f.value] ?? 0)}
+            count={f.value === "all" ? (counts.all ?? 0) : (counts[f.value] ?? 0)}
             active={statusFilter === f.value}
             onClick={() => setStatusFilter(f.value)}
           />
         ))}
+        {flag || managerFilter ? (
+          <span className="inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] bg-ink px-3 py-1.5 text-[12px] font-semibold text-ink-on">
+            {FLAG_LABELS[flag] ??
+              `Reports of ${usersById.get(managerFilter)?.displayName ?? "one manager"}`}
+            <button
+              type="button"
+              onClick={clearLinkFilters}
+              aria-label="Clear this filter"
+              className="ml-1 opacity-80 hover:opacity-100"
+            >
+              ×
+            </button>
+          </span>
+        ) : null}
         <div className="relative ml-auto min-w-[200px] flex-1 sm:max-w-[280px] sm:flex-none">
           <Search
             size={15}
@@ -418,7 +573,7 @@ export function AdminUsers() {
             }
           />
         </div>
-      ) : users.length === 0 ? (
+      ) : users.length === 0 && !debouncedQuery && !flag && !managerFilter && statusFilter === "all" ? (
         <div
           className="rounded-[var(--radius-xl)] bg-card p-5"
           style={{ boxShadow: "var(--shadow-card)" }}
@@ -452,7 +607,7 @@ export function AdminUsers() {
                 key={activeUser.id}
                 user={activeUser}
                 isSelf={activeUser.id === sessionUser?.id}
-                allUsers={users}
+                allUsers={directory}
                 usersById={usersById}
                 onUpdate={applyUpdate}
                 onClose={() => setActiveUserId(null)}
@@ -474,7 +629,7 @@ export function AdminUsers() {
       ) : (
         <MembersTable
           users={visible}
-          total={users.length}
+          total={counts.all ?? users.length}
           sessionUserId={sessionUser?.id}
           usersById={usersById}
           selectedIds={selectedIds}
@@ -491,6 +646,56 @@ export function AdminUsers() {
           onClearSelection={() => setSelectedIds(new Set())}
         />
       )}
+
+      {nextCursor && !loading && !loadError ? (
+        <div className="mt-4 flex justify-center">
+          <Button
+            type="button"
+            variant="soft"
+            size="sm"
+            disabled={loadingMore}
+            onClick={() => void loadMore()}
+          >
+            {loadingMore ? "Loading…" : `Load more (${users.length} of ${
+              statusFilter === "all" ? (counts.all ?? "?") : (counts[statusFilter] ?? "?")
+            })`}
+          </Button>
+        </div>
+      ) : null}
+
+      {approving ? (
+        <AdminApproveDialog
+          user={approving}
+          directory={directory}
+          onClose={() => setApproving(null)}
+          onApproved={(updated) => {
+            setApproving(null);
+            applyUpdate(updated);
+            toast.success(`Approved ${updated.displayName}.`, {
+              description: updated.managerId
+                ? `They report to ${usersById.get(updated.managerId)?.displayName ?? "their manager"}.`
+                : "No manager — their approvals go to admins.",
+            });
+            // The filter chips' counts come from the server — re-read them
+            // (and the directory, for report counts).
+            refreshAll();
+          }}
+        />
+      ) : null}
+
+      {reassign ? (
+        <ReassignReportsDialog
+          manager={reassign.manager}
+          directory={directory}
+          disabling={reassign.disabling}
+          onClose={() => setReassign(null)}
+          onDone={({ disabledUser }) => {
+            setReassign(null);
+            if (disabledUser) applyUpdate(disabledUser);
+            refreshAll();
+          }}
+        />
+      ) : null}
 
       {/* Self-serve signup configuration. Codes an admin distributes
           out-of-band to people who should be able to /signup into this
@@ -575,7 +780,11 @@ function MembersTable({
                 isSelf={u.id === sessionUserId}
                 selected={selectedIds.has(u.id)}
                 managerName={
-                  u.managerId ? (usersById.get(u.managerId)?.displayName ?? "—") : "—"
+                  u.managerId
+                    ? `${u.managerName ?? usersById.get(u.managerId)?.displayName ?? "—"}${
+                        u.managerStatus === "disabled" ? " (disabled)" : ""
+                      }`
+                    : "—"
                 }
                 onToggleSelected={() => onToggleSelected(u.id)}
                 onOpen={() => onOpen(u.id)}
@@ -710,7 +919,7 @@ function MemberRow({
         {user.roles.join(" · ")}
       </span>
       <span className="truncate text-[12px] text-muted-fg">{managerName}</span>
-      <span className="text-[12px] text-dim-fg">
+      <span className="text-[12px] text-muted-fg">
         {formatRelative(user.lastLoginAt)}
       </span>
 

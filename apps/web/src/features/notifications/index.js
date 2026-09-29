@@ -6,3 +6,6 @@
 export { NotificationBell } from "./notification-bell.jsx";
 export { useNotifications } from "./use-notifications";
 export { fetchNotifications, resetNotifications } from "./notifications-store";
+export { NotificationsPage } from "./notifications-page.jsx";
+export { NotificationPreferences } from "./notification-preferences.jsx";
+export { notificationPath, NOTIFICATION_KIND_GROUPS } from "./notification-kinds";

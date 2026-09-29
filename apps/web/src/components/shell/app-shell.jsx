@@ -3,10 +3,10 @@
 import { AnalystPage, AnalystProvider, useAnalyst } from "@/features/analyst";
 import { CommandPalette, useGlobalShortcuts } from "@/features/command-palette";
 import { BackfillBanner, useAutoSnapshot } from "@/features/snapshots";
+import { SPEC_KIND_META, SPEC_VARIANTS, useGoalSpecs } from "@/features/goal-specs";
 import { useActiveHub } from "@/features/hubs";
 import { Header } from "./header";
 import { Footer } from "./footer";
-import { SubTabsTag } from "./sub-tabs-tag";
 
 /**
  * Top-level page chrome — grain overlay, sticky header, optional footer.
@@ -67,14 +67,8 @@ function AppShellInner({ children, hideFooter }) {
             snapshot store has every completed Sun → Thu week of the
             current year already covered. Gated to snapshot-tracking hubs
             (dev) so it never surfaces in admin/qa/manager. */}
-        {tracksSnapshots ? <BackfillBanner /> : null}
+        {tracksSnapshots ? <BackfillBannerGate /> : null}
         <Header />
-        {/* Side bookmark for drill-down routes within the active top-level
-            tab (Performance → Reviews log + Snapshots). Self-hides on
-            tabs that have no drill-downs, so it doesn't render orphan
-            UI on Goals / Evidence / Settings. Lives INSIDE the swipe
-            wrapper so the analyst overlay slides cleanly over it. */}
-        <SubTabsTag />
         <div>{children}</div>
         {hideFooter ? null : (
           <div className="px-4 sm:px-10">
@@ -93,6 +87,26 @@ function AppShellInner({ children, hideFooter }) {
       {tracksSnapshots ? <AutoSnapshotRunner /> : null}
     </>
   );
+}
+
+/**
+ * Mount the backfill banner only once the user has something to backfill.
+ * A brand-new account (zero goals, or only auto-tracked ones) was greeted
+ * with "38 weeks missing — backfill…" before it had a single check-in to
+ * miss. Backfill synthesises MANUAL readings, so the gate is: at least one
+ * classified manual / hybrid tracker.
+ */
+function BackfillBannerGate() {
+  const { specs, fetched } = useGoalSpecs();
+  if (!fetched) return null;
+  let hasManualTracker = false;
+  for (const spec of specs.values()) {
+    if (SPEC_KIND_META[spec?.widget]?.variant !== SPEC_VARIANTS.AUTO) {
+      hasManualTracker = true;
+      break;
+    }
+  }
+  return hasManualTracker ? <BackfillBanner /> : null;
 }
 
 /**

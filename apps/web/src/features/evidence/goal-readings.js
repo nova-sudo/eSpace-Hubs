@@ -41,8 +41,17 @@ function specMrs(spec, ctx) {
   return filterMrsByRepo(ctx.mrs, spec?.source?.filter?.repo);
 }
 import { useGoals } from "@/features/goals";
-import { useGoalSpecs, SPEC_KINDS } from "@/features/goal-specs";
 import {
+  useGoalSpecs,
+  SPEC_KINDS,
+  SPEC_KIND_META,
+  SPEC_VARIANTS,
+  isSingleRecordWidget,
+  specCadence,
+} from "@/features/goal-specs";
+import {
+  buildCycleWindows,
+  goalStatus,
   cadenceWindowLabel,
   computeCompliance,
   composedCycleBounds,
@@ -55,7 +64,8 @@ import {
   goalCompliance,
   useSnapshots,
 } from "@/features/snapshots";
-import { readContextFor, useAllGoalContext } from "@/features/goal-context";
+import { isContextComplete, readContextFor, useAllGoalContext } from "@/features/goal-context";
+import { isGoalReady } from "@/features/goal-widgets";
 import {
   readGoalLiveReading,
   subscribeGoalLiveReadings,
@@ -251,6 +261,28 @@ function pushReading(out, goal, level, ctx) {
         lockedKeysForGoal(ctx.allLocks, goal.id),
         latestSnapReading(ctx.snapshots, goal.id),
       ) ?? readGoalTier(goal.id);
+    // The goal's STATUS comes from the one shared model (goal-inputs →
+    // shared goal-status) — the same word, tint and rule Home, Goals and the
+    // manager board use. The per-widget reader keeps its headline VALUE;
+    // its ad-hoc "drifting / below / tracked" words are replaced here so the
+    // board, the preview, the export and the frozen packet can't disagree
+    // with the rest of the app.
+    const graded = row.verdict && !row.verdict.awaiting && !row.verdict.pendingSetup;
+    const status = sharedStatusFor(
+      spec,
+      entries,
+      graded ? row.verdict.tier ?? null : null,
+      ctx.allLocks,
+      goal.id,
+    );
+    row.status = status;
+    row.reading = {
+      ...(row.reading || { value: "—" }),
+      statusLabel: status.label,
+      statusTone: status.tone,
+      status: status.status,
+      statusReason: status.reason,
+    };
     row.evidence = extractEvidenceItems(entries, cutoff, 8);
     const inWindowTs = entries
       .filter((e) => typeof e?.ts === "number" && e.ts >= cutoff)
@@ -259,6 +291,38 @@ function pushReading(out, goal, level, ctx) {
     row.lastTs = entries.length ? entries[entries.length - 1].ts : null;
   }
   out.push(row);
+}
+
+/**
+ * One goal's shared status (`goalStatus`) from the facts this module already
+ * holds — spec readiness, auto-vs-manual, the cadence windows with the
+ * goal's settle locks, and the DISPLAYED tier.
+ */
+function sharedStatusFor(spec, entries, tier, allLocks, goalId) {
+  const ready = isGoalReady(spec, isContextComplete(spec));
+  const auto =
+    SPEC_KIND_META[spec?.widget]?.variant === SPEC_VARIANTS.AUTO &&
+    spec?.kind !== SPEC_VARIANTS.HYBRID;
+  const cadence = isSingleRecordWidget(spec?.widget) ? null : specCadence(spec);
+  const cycle =
+    ready && !auto
+      ? buildCycleWindows({
+          entries,
+          cadence,
+          now: Date.now(),
+          lockedKeys: lockedKeysForGoal(allLocks, goalId),
+          ...composedCycleBounds(spec),
+        })
+      : null;
+  return goalStatus({
+    hasTracker: Boolean(spec),
+    ready,
+    auto,
+    cycle,
+    hasData: entries.length > 0,
+    tier,
+    cadence,
+  });
 }
 
 /**

@@ -47,5 +47,7 @@ export {
   goalReadiness,
   isGoalReady,
   readinessLabel,
+  readinessShortLabel,
+  readinessHint,
   GOAL_READINESS,
 } from "./readiness";

@@ -2,6 +2,7 @@ export { validateInput } from "./schema";
 export {
   appendEntry,
   clearGoalEntries,
+  fetchInputs,
   getInputsState,
   INPUTS_CHANGE_EVENT,
   INPUTS_STORAGE_KEY,
@@ -13,6 +14,13 @@ export {
 } from "./inputs-store";
 export { useGoalInputs, useAllGoalInputs } from "./use-goal-inputs";
 export { computeCompliance, cadenceWindowLabel } from "./compliance";
+export {
+  BEFORE_TRACKER_HINT,
+  WINDOW_STATE_LABEL,
+  cadencePeriodWord,
+  thisPeriod,
+  windowCellTitle,
+} from "./window-vocab";
 export {
   buildCycleWindows,
   currentPeriodKey,
@@ -37,8 +45,18 @@ export {
   SEVERITY,
   isMeasurable,
   goalProgress,
+  goalExpected,
   objectiveProgress,
   weightedProgress,
   worstStatus,
   countStatuses,
+  goalStatus,
+  loggedSoFar,
+  objectiveStatus,
+  periodWords,
+  quietWindows,
+  statusMeta,
+  loggedPercent,
+  loggedTotals,
+  unmeasuredLine,
 } from "./goal-progress";

@@ -238,7 +238,7 @@ export function ManagerTierPolicies({ embedded = false }) {
                 </code>
                 <span className="truncate text-[11.5px] text-muted-fg">{c.title}</span>
               </span>
-              <span className="shrink-0 text-[11px] text-dim-fg">
+              <span className="shrink-0 text-[11px] text-muted-fg">
                 {c.level} · {plural(c.goals, "goal", "goals")} ·{" "}
                 {plural(c.people, "person", "people")}
               </span>
@@ -291,7 +291,7 @@ export function ManagerTierPolicies({ embedded = false }) {
                         Zero is a warning, not silence: a policy matching
                         nothing is either a typo or a stale code. */}
                     {scope && scope.goals > 0 ? (
-                      <span className="shrink-0 text-[11px] tabular-nums text-dim-fg">
+                      <span className="shrink-0 text-[11px] tabular-nums text-muted-fg">
                         {scope.goals}g · {scope.people}p
                       </span>
                     ) : (
@@ -474,7 +474,7 @@ function Ladder({ title, hint, ladder, onChange, disabled }) {
               value={ladder[k]}
               onChange={(e) => onChange({ ...ladder, [k]: e.target.value })}
               disabled={disabled}
-              className="w-full rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-2.5 text-[12.5px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
+              className="w-full rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-2.5 text-[12.5px] text-fg border border-field-line outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
               style={{ resize: "vertical" }}
             />
           </div>

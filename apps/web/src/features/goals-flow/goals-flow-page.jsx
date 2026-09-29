@@ -27,9 +27,12 @@
  * and a polite live region announces selection, filtering and view changes.
  */
 
-import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Sparkles, X } from "lucide-react";
-import { Badge, Button, Card, SegmentedControl } from "@/components/ui";
+import { Badge, Button, Card, PageHeader, SegmentedControl } from "@/components/ui";
+import { useHubLink } from "@/features/hubs";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
 import { useAllGoalInputs } from "@/features/goal-inputs";
 import { useGoalLocks } from "@/features/goal-locks";
@@ -39,12 +42,15 @@ import {
   subscribeGoalTiers,
 } from "@/features/goal-tiers";
 import { useAnalystOptional, ANALYST_MODES } from "@/features/analyst";
+import { ASSIGNED_GROUP_LABEL } from "@/features/assigned-goals";
+import { ASSIGNED_ROOT_ID } from "@espace-devhub/shared/goal-specs";
 import { EvidenceDrawer } from "./evidence-drawer";
 import { GoalsSummary, ObjectiveTiles } from "./goals-overview";
 import { FocusView } from "./focus-view";
 import { TimelineView } from "./timeline-view";
 import { BoardView } from "./board-view";
 import { goalStatusFor, objectiveRollup, statusCounts, weightedProgress } from "./goal-status";
+import { loggedTotals } from "@/features/goal-inputs";
 import { useGoalsView } from "./use-goals-view";
 
 const DENSITY_OPTIONS = [
@@ -59,8 +65,19 @@ const VIEW_OPTIONS = [
 ];
 
 export function GoalsFlowPage() {
-  const { groupedItems, unclassifiedGoals, hasGoals, ready, goalsError, retryGoals } =
+  const { groupedItems, unclassifiedGoals, hasGoals, ready, loadError, retryLoad } =
     useGoalWidgetItems();
+  const link = useHubLink();
+  // `/goals?goal=<id>` deep-links one goal: it opens in the Focus view and
+  // scrolls into place once the rows exist. Read once, on mount.
+  const searchParams = useSearchParams();
+  const deepLinkedId = searchParams?.get("goal") || null;
+  // `/goals?from=checkin` — where the retired check-in routes land. Open the
+  // first goal that owes a window in Focus so its cadence stepper is on
+  // screen, then drop the param so a reload doesn't re-apply it.
+  const fromCheckin = searchParams?.get("from") === "checkin";
+  const router = useRouter();
+  const pathname = usePathname();
   const [view, setView] = useGoalsView();
   const [owedOnly, setOwedOnly] = useState(false);
   const [density, setDensity] = useState("comfortable");
@@ -101,7 +118,11 @@ export function GoalsFlowPage() {
           items: [],
         });
       }
-      byL1.get(l1Id).items.push({ goal: { ...g, kind: "L2" }, spec: null });
+      byL1.get(l1Id).items.push({
+        goal: { ...g, kind: "L2" },
+        spec: null,
+        invalidSpec: g.invalidSpec === true,
+      });
     }
     return [...byL1.values()];
   }, [groupedItems, unclassifiedGoals]);
@@ -111,10 +132,25 @@ export function GoalsFlowPage() {
   const rows = useMemo(
     () =>
       mergedGroups.map((g) => {
+        // Goals a manager assigned you arrive under a synthetic objective
+        // the server titles "Shared goals"; on this page they read as
+        // "Assigned to you" ("Shared with me" is the viewer page).
+        const assignedRoot = g.l1.id === ASSIGNED_ROOT_ID;
         const l2s = g.items
           .filter((it) => it.goal?.kind === "L2")
-          .map((it) => ({ ...it, status: goalStatusFor(it.goal.id, it.spec) }));
-        return { l1: g.l1, l2s, rollup: objectiveRollup(l2s.map((x) => x.status)) };
+          .map((it) => ({
+            ...it,
+            // parentL1Rubric: the ladder falls back to the objective's written
+            // rubric when the goal has none (same rule as the manager drawer).
+            goal: {
+              ...it.goal,
+              parentL1Rubric: g.l1?.rubric || null,
+              ...(assignedRoot ? { parentL1Title: ASSIGNED_GROUP_LABEL } : {}),
+            },
+            status: goalStatusFor(it.goal.id, it.spec),
+          }));
+        const l1 = assignedRoot ? { ...g.l1, title: ASSIGNED_GROUP_LABEL } : g.l1;
+        return { l1, l2s, rollup: objectiveRollup(l2s.map((x) => x.status)) };
       }),
     // The status reads live stores; the ticks are what make this honest.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -130,6 +166,9 @@ export function GoalsFlowPage() {
     () => weightedProgress(rows.map((r) => ({ pct: r.rollup.pct, weight: r.l1.weightage }))),
     [rows],
   );
+  // "N of M check-ins" under the headline, and the goals that aren't in it.
+  const logged = useMemo(() => loggedTotals(allStatuses), [allStatuses]);
+  const unmeasured = useMemo(() => allStatuses.filter((s) => s.pct == null).length, [allStatuses]);
   const owedCount = useMemo(() => allStatuses.filter((s) => s.owed).length, [allStatuses]);
   const totalGoals = allStatuses.length;
   const objectiveCount = rows.length;
@@ -149,6 +188,10 @@ export function GoalsFlowPage() {
   // re-import) would silently show nothing — resolve it against what's
   // actually on screen instead of keeping it in an effect.
   const activeObjectiveId = tileRows.some((r) => r.l1.id === objectiveId) ? objectiveId : null;
+
+  const activeObjectiveTitle = activeObjectiveId
+    ? rows.find((r) => r.l1.id === activeObjectiveId)?.l1.title || "objective"
+    : null;
 
   const viewRows = useMemo(
     () => (activeObjectiveId ? tileRows.filter((r) => r.l1.id === activeObjectiveId) : tileRows),
@@ -171,20 +214,79 @@ export function GoalsFlowPage() {
 
   const allL1Ids = useMemo(() => rows.map((r) => r.l1.id), [rows]);
   const allCollapsed = allL1Ids.length > 0 && allL1Ids.every((id) => collapsedL1Ids.has(id));
+  // L1s exist but none of them has an L2 — a different dead end from "no
+  // goals at all", and it needs a different sentence.
+  const hasL2s = rows.some((r) => r.l2s.length > 0);
+  const showControls = ready && hasGoals && rows.length > 0 && hasL2s;
 
   const registerRow = useCallback((id, el) => {
     if (el) rowRefs.current.set(id, el);
     else rowRefs.current.delete(id);
   }, []);
 
+  // Apply the deep link once the rows are in: select the goal in Focus and
+  // scroll its row into view. `rowIds` is the full visible list at mount
+  // (no filter is on yet), so a goal that isn't in it simply isn't ours.
+  const deepLinkApplied = useRef(false);
+  useEffect(() => {
+    if (deepLinkApplied.current || !ready) return;
+    // No link on arrival: done. Later `?goal=` writes come from our own
+    // selection (selectGoal), which must not re-trigger the scroll.
+    if (!deepLinkedId) {
+      deepLinkApplied.current = true;
+      return;
+    }
+    if (!rowIds.includes(deepLinkedId)) return;
+    deepLinkApplied.current = true;
+    setSelectedId(deepLinkedId);
+    setFocusedId(deepLinkedId);
+    setView("focus");
+    requestAnimationFrame(() => {
+      const el = rowRefs.current.get(deepLinkedId);
+      el?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+      el?.focus?.({ preventScroll: true });
+    });
+  }, [deepLinkedId, ready, rowIds, setView]);
+
+  const checkinApplied = useRef(false);
+  useEffect(() => {
+    if (checkinApplied.current || !fromCheckin || !ready) return;
+    checkinApplied.current = true;
+    const target = visibleGoals.find((x) => x.status.owed) || visibleGoals[0] || null;
+    if (target) {
+      const id = target.goal.id;
+      setSelectedId(id);
+      setFocusedId(id);
+      setView("focus");
+      requestAnimationFrame(() => {
+        rowRefs.current.get(id)?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+      });
+    }
+    const params = new URLSearchParams(searchParams?.toString() || "");
+    params.delete("from");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [fromCheckin, ready, visibleGoals, searchParams, pathname, router, setView]);
+
   function goalTitleOf(id) {
     const hit = visibleGoals.find((x) => x.goal.id === id);
-    return hit?.spec?.title || hit?.goal?.title || "goal";
+    return hit?.goal?.title || hit?.spec?.title || "goal";
+  }
+
+  // The selected goal lives in the URL (`?goal=`), so a reload, a shared
+  // link or the back button lands on the same goal.
+  function writeGoalParam(goalId) {
+    const params = new URLSearchParams(searchParams?.toString() || "");
+    if (goalId) params.set("goal", goalId);
+    else params.delete("goal");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
   function selectGoal(goalId) {
     setSelectedId(goalId);
     setFocusedId(goalId);
+    writeGoalParam(goalId);
     if (view !== "focus") {
       setView("focus");
       setAnnouncement(`Opened ${goalTitleOf(goalId)} in the focus view`);
@@ -198,6 +300,18 @@ export function GoalsFlowPage() {
     setAnnouncement(
       `${VIEW_OPTIONS.find((o) => o.value === next)?.label || next} view`,
     );
+  }
+
+  /** A goal named on an objective tile: filter to its objective AND open it. */
+  function openGoalFromTile(l1Id, goalId) {
+    setObjectiveId(l1Id);
+    setCollapsedL1Ids((prev) => {
+      if (!prev.has(l1Id)) return prev;
+      const next = new Set(prev);
+      next.delete(l1Id);
+      return next;
+    });
+    selectGoal(goalId);
   }
 
   function toggleObjective(l1Id) {
@@ -223,7 +337,7 @@ export function GoalsFlowPage() {
 
   function toggleOwedOnly() {
     setOwedOnly((v) => {
-      setAnnouncement(v ? "Showing all goals" : `Showing ${owedCount} owed goals`);
+      setAnnouncement(v ? "Showing all goals" : `Showing ${owedCount} goals with missed windows`);
       return !v;
     });
   }
@@ -278,74 +392,104 @@ export function GoalsFlowPage() {
         {announcement}
       </span>
 
-      <div className="mx-auto flex w-full max-w-[1560px] flex-wrap items-center justify-between gap-3 px-4 pb-4 pt-5 sm:px-7">
-        <div className="flex min-w-0 items-baseline gap-3">
-          <h1 className="text-[26px] font-extrabold leading-none tracking-[-0.03em] text-fg">
-            Goals
-          </h1>
-          <span className="truncate text-[12px] font-semibold text-muted-fg">
-            {objectiveCount} objective{objectiveCount === 1 ? "" : "s"} · {totalGoals} goal
-            {totalGoals === 1 ? "" : "s"}
-            {ghostCount > 0 ? ` · ${ghostCount} unclassified` : ""}
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {ghostCount > 0 ? (
-            <Button variant="tint" tone="lav" size="sm" onClick={openAnalyst}>
-              <Sparkles size={13} />
-              Classify {ghostCount}
-            </Button>
-          ) : null}
-          <Button variant={owedOnly ? "ink" : "soft"} size="sm" onClick={toggleOwedOnly}>
-            Owed only
-            <Badge tone="peach">{owedCount}</Badge>
-          </Button>
-          <SegmentedControl
-            options={DENSITY_OPTIONS}
-            value={density}
-            onChange={setDensity}
-            size="sm"
-          />
-          <Button variant="soft" size="sm" onClick={toggleAllGroups}>
-            {allCollapsed ? "Expand all" : "Collapse all"}
-          </Button>
-          <Button
-            variant={evidenceOpen ? "ink" : "soft"}
-            size="sm"
-            onClick={() => setEvidenceOpen((v) => !v)}
-            aria-expanded={evidenceOpen}
-          >
-            Evidence
-          </Button>
-        </div>
+      <div className="mx-auto w-full max-w-[1320px] px-4 pt-7 sm:px-10">
+        <PageHeader
+          crumb={
+            showControls
+              ? `${objectiveCount} objective${objectiveCount === 1 ? "" : "s"} · ${totalGoals} goal${
+                  totalGoals === 1 ? "" : "s"
+                }${ghostCount > 0 ? ` · ${ghostCount} without a tracker` : ""}`
+              : "Goals"
+          }
+          title="Goals"
+          right={
+            // An empty page has nothing to filter, collapse or classify —
+            // the controls only appear once there are goals to act on.
+            showControls ? (
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                {ghostCount > 0 ? (
+                  <Button variant="tint" tone="lav" size="sm" onClick={openAnalyst}>
+                    <Sparkles size={13} />
+                    Classify {ghostCount}
+                  </Button>
+                ) : null}
+                <Button
+                  variant={owedOnly ? "ink" : "soft"}
+                  size="sm"
+                  onClick={toggleOwedOnly}
+                  aria-pressed={owedOnly}
+                  title="Only goals with a missed window — one that ended without an entry"
+                >
+                  Missed only
+                  {owedCount > 0 ? <Badge tone="peach">{owedCount}</Badge> : null}
+                </Button>
+                <SegmentedControl as="radiogroup" ariaLabel="Density"
+                  options={DENSITY_OPTIONS}
+                  value={density}
+                  onChange={setDensity}
+                  size="sm"
+                />
+                {/* Kept in place (disabled) on the board, which has no
+                    objective groups — so the row doesn't shift between views. */}
+                <Button
+                  variant="soft"
+                  size="sm"
+                  onClick={toggleAllGroups}
+                  disabled={view === "board"}
+                  title={view === "board" ? "The board has no objective groups to collapse" : undefined}
+                >
+                  {allCollapsed ? "Expand all" : "Collapse all"}
+                </Button>
+                <Button
+                  variant={evidenceOpen ? "ink" : "soft"}
+                  size="sm"
+                  onClick={() => setEvidenceOpen((v) => !v)}
+                  aria-expanded={evidenceOpen}
+                >
+                  Evidence
+                </Button>
+              </div>
+            ) : null
+          }
+        />
       </div>
 
       <div
-        className="mx-auto w-full max-w-[1560px] px-4 pb-16 sm:px-7"
+        className="mx-auto w-full max-w-[1320px] px-4 pb-16 sm:px-10"
         onKeyDown={handleTreeKeyDown}
       >
-        {goalsError && !ready ? (
+        {loadError && !ready ? (
           <Card padding={24} className="flex flex-col items-start gap-3">
             <span className="text-[13px] text-fg">
-              Couldn&apos;t load goals — {goalsError.message || "the server didn't respond"}.
+              Couldn&apos;t load your goals — {loadError.message || "the server didn't respond"}.
             </span>
-            <Button variant="soft" size="sm" onClick={() => void retryGoals()}>
+            <Button variant="soft" size="sm" onClick={retryLoad}>
               Retry
             </Button>
           </Card>
         ) : !ready ? (
           <div className="p-6 text-[13px] text-muted-fg">Loading goals&hellip;</div>
-        ) : !hasGoals || rows.length === 0 ? (
-          <Card padding={24} className="text-center text-[13px] text-muted-fg">
-            No goals to map yet.
+        ) : !hasGoals || rows.length === 0 || !hasL2s ? (
+          <Card padding={24} className="flex flex-col items-center gap-3 text-center">
+            <span className="text-[15px] font-bold text-fg">
+              {hasGoals && !hasL2s ? "Your objectives have no goals under them yet" : "No goals yet"}
+            </span>
+            <span className="max-w-[420px] text-[13px] leading-[1.5] text-muted-fg">
+              {hasGoals && !hasL2s
+                ? "Each objective needs at least one goal under it before there is anything to track. Add them in Settings."
+                : "Add your objectives and goals by hand, or import them from your review document, then give each one a tracker."}
+            </span>
+            <Button as={Link} href={link("/settings?tab=goals")} variant="ink" size="sm">
+              Add or import goals
+            </Button>
           </Card>
         ) : (
           <div className="flex flex-col gap-4">
-            <GoalsSummary weighted={weighted} counts={counts} />
+            <GoalsSummary weighted={weighted} logged={logged} unmeasured={unmeasured} counts={counts} />
 
             {tileRows.length === 0 ? (
               <Card padding={24} className="text-center text-[13px] text-muted-fg">
-                Nothing owed right now.
+                Nothing missed right now.
               </Card>
             ) : (
               <>
@@ -353,11 +497,13 @@ export function GoalsFlowPage() {
                   rows={tileRows}
                   selectedId={activeObjectiveId}
                   onSelect={toggleObjective}
+                  onSelectGoal={openGoalFromTile}
+                  selectedGoalId={selected?.goal.id || null}
                   collapsedIds={collapsedL1Ids}
                 />
 
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-                  <SegmentedControl
+                  <SegmentedControl ariaLabel="Goals view"
                     options={VIEW_OPTIONS}
                     value={view}
                     onChange={changeView}
@@ -368,9 +514,10 @@ export function GoalsFlowPage() {
                       variant="soft"
                       size="sm"
                       onClick={() => toggleObjective(activeObjectiveId)}
+                      aria-label={`Clear the objective filter (${activeObjectiveTitle})`}
                     >
+                      {visibleGoals.length} of {totalGoals} goals · {activeObjectiveTitle}
                       <X size={13} />
-                      Clear objective filter
                     </Button>
                   ) : (
                     <span className="text-[12px] font-semibold text-muted-fg">

@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { PageHeader } from "@/components/ui";
+import { DrillDownNav } from "@/components/shell/drill-down-nav";
 import { useActiveHub } from "@/features/hubs";
 import { useSharedWithMe } from "./api";
 import { AssignedGoalProgress } from "./assigned-goal-progress";
@@ -18,7 +19,8 @@ export function SharedWithMePage({ goalId = null }) {
   const hub = useActiveHub();
   const router = useRouter();
   const base = `/${hub?.id ?? ""}/shared-goals`;
-  const { goals, loading, error } = useSharedWithMe();
+  // The list isn't shown on the detail route — don't fetch it there.
+  const { goals, loading, error } = useSharedWithMe({ enabled: !goalId });
 
   if (goalId) {
     return (
@@ -39,8 +41,22 @@ export function SharedWithMePage({ goalId = null }) {
       <PageHeader
         crumb="Shared goals"
         title="Shared with me."
-        subtitle="Goals someone gave you visibility into: who filled each period, when, and who's late."
+        subtitle={
+          <>
+            Goals your manager shared so you can see how the team is doing. Goals assigned to you to
+            fill in live on your{" "}
+            {hub?.pages?.goals ? (
+              <Link href={`/${hub.id}/goals`} className="font-bold text-fg underline-offset-2 hover:underline">
+                Goals page
+              </Link>
+            ) : (
+              "Goals page"
+            )}
+            .
+          </>
+        }
       />
+      <DrillDownNav className="-mt-2 mb-7" />
       {error ? (
         <div className="text-[13px] text-muted-fg">Couldn&apos;t load: {error.message}</div>
       ) : loading && goals.length === 0 ? (

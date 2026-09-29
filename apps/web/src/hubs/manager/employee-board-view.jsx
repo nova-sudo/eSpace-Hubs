@@ -3,7 +3,7 @@
 /**
  * One report's goals, grouped under their objective bands.
  *
- * The band header carries the objective's WEIGHTAGE — "20% of the year"
+ * The band header carries the objective's WEIGHTAGE — "Weight 20%"
  * — which the API has always returned and the board never showed, so a
  * lead reading five goals had no idea which of them the year actually
  * hangs on. Where the person stands, and the packet they submitted, move
@@ -13,7 +13,7 @@
 
 import { Badge, Button, Card, Label } from "@/components/ui";
 import { readinessLabel } from "@/features/goal-widgets";
-import { ago } from "./manager-format";
+import { ago, goalStatusMeta, statusLine } from "./manager-format";
 import {
   CountTile,
   EmptyCard,
@@ -22,25 +22,7 @@ import {
   TierSpreadLegend,
 } from "./manager-ui";
 import { ReviewPacketCard } from "./review-packet-card";
-
-const STATUS_META = {
-  auto: { label: "Auto-tracked", tone: "lav" },
-  tracking: { label: "Tracking", tone: "mint" },
-  no_data: { label: "No data", tone: "lemon" },
-  needs_setup: { label: "Needs setup", tone: "neutral" },
-  delegated: { label: "Delegated", tone: "lav" },
-  untrackable: { label: "Untrackable", tone: "neutral" },
-  unclassified: { label: "Not classified", tone: "neutral" },
-};
-
-function StatusChip({ goal }) {
-  const meta = STATUS_META[goal.status] ?? STATUS_META.unclassified;
-  const label =
-    goal.status === "delegated" && goal.delegatedJudge === "manager"
-      ? "Delegated to you"
-      : meta.label;
-  return <Badge tone={meta.tone}>{label}</Badge>;
-}
+import { ReportTrendCard } from "./report-trend-card";
 
 export function EmployeeBoardView({ user, summary, groups, userId, onGrade }) {
   const hasGoals = summary.total > 0;
@@ -68,14 +50,21 @@ export function EmployeeBoardView({ user, summary, groups, userId, onGrade }) {
                   <Badge>{group.l1.category}</Badge>
                 ) : null}
                 {group.l1.weightage ? (
-                  <Badge tone="lav">{group.l1.weightage}% of the year</Badge>
+                  <Badge>Weight {group.l1.weightage}%</Badge>
                 ) : null}
               </div>
 
               {group.goals.map((goal) => {
                 const notReady = goal.readiness && goal.readiness !== "ready";
-                const sub = notReady ? readinessLabel(goal.readiness) : goal.kindLabel;
+                const status = goalStatusMeta(goal);
+                const graded = Boolean(goal.tier?.tier);
                 const activity = ago(goal.lastActivityAt);
+                const sub = notReady
+                  ? readinessLabel(goal.readiness, {
+                      audience: "manager",
+                      name: user.displayName,
+                    })
+                  : statusLine(goal);
                 return (
                   <div
                     key={goal.id}
@@ -85,10 +74,18 @@ export function EmployeeBoardView({ user, summary, groups, userId, onGrade }) {
                       <div className="text-[13.5px] font-bold text-fg">
                         {goal.title}
                       </div>
-                      <div className="mt-0.5 truncate text-[11.5px] text-muted-fg">
-                        {[sub, activity ? `updated ${activity}` : null]
+                      <div className="mt-0.5 text-[11.5px] text-muted-fg">
+                        {/* Status lives in the sub-line when the row's one
+                            badge is the grade. */}
+                        {graded && !notReady ? (
+                          <span className="font-bold text-fg">{sub}</span>
+                        ) : (
+                          sub
+                        )}
+                        {[goal.kindLabel, activity ? `last logged ${activity}` : null]
                           .filter(Boolean)
-                          .join(" · ")}
+                          .map((x) => ` · ${x}`)
+                          .join("")}
                       </div>
                       {/* #238: the frozen headline from the report's latest
                           review packet — a real number for AUTO goals instead
@@ -100,7 +97,7 @@ export function EmployeeBoardView({ user, summary, groups, userId, onGrade }) {
                           title={`From the review packet submitted ${ago(goal.readingAsOf) || "recently"}`}
                         >
                           {goal.reading}
-                          <span className="text-dim-fg">
+                          <span className="text-muted-fg">
                             {" "}
                             · as of packet {ago(goal.readingAsOf) || ""}
                           </span>
@@ -110,15 +107,35 @@ export function EmployeeBoardView({ user, summary, groups, userId, onGrade }) {
                         <div className="mt-1 text-[11.5px] font-semibold text-muted-fg">
                           Graded by {goal.tier.gradedByName || "you"}
                           {ago(goal.tier.gradedAt) ? ` · ${ago(goal.tier.gradedAt)}` : ""}
+                          {goal.tier.ack
+                            ? goal.tier.ack.disagree
+                              ? ""
+                              : " · seen"
+                            : " · not seen yet"}
+                        </div>
+                      ) : null}
+                      {goal.tier?.ack?.disagree ? (
+                        <div className="mt-1.5 rounded-[var(--radius-lg)] bg-peach px-3 py-2 text-[12px] leading-snug text-peach-ink">
+                          <b>{user.displayName.split(" ")[0]} disagrees</b>
+                          {goal.tier.ack.note ? ` — ${goal.tier.ack.note}` : ""}
                         </div>
                       ) : null}
                     </div>
                     <div className="flex flex-none items-center gap-2">
-                      <StatusChip goal={goal} />
-                      <TierBadge tier={goal.tier?.tier} />
+                      {/* One badge per row: the grade once there is one,
+                          otherwise the shared status. */}
+                      {graded ? (
+                        <TierBadge tier={goal.tier.tier} />
+                      ) : goal.delegatedJudge === "manager" ? (
+                        <Badge tone="lav">Delegated to you</Badge>
+                      ) : (
+                        <Badge tone={status.tone} dot>
+                          {status.label}
+                        </Badge>
+                      )}
                       <Button
                         type="button"
-                        variant={goal.tier?.source === "manager" ? "soft" : "ink"}
+                        variant="soft"
                         size="sm"
                         onClick={() => onGrade(goal)}
                       >
@@ -145,14 +162,17 @@ export function EmployeeBoardView({ user, summary, groups, userId, onGrade }) {
           <div className="mt-3.5 grid grid-cols-2 gap-2.5">
             <CountTile label="Goals" value={summary.total} />
             <CountTile label="Graded" value={summary.graded} />
-            <CountTile label="Need setup" value={summary.needsSetup} />
+            <CountTile label="Needs setup" value={summary.needsSetup} />
             <CountTile label="Delegated to you" value={summary.delegatedToYou} />
           </div>
         </Card>
 
         {/* The frozen evidence document this report submitted (F1) — the
             artifact you grade against, not a live recompute. */}
-        <ReviewPacketCard userId={userId} />
+        <ReviewPacketCard userId={userId} personName={user?.displayName} />
+
+        {/* Weekly snapshot headline — whether they're trending up. */}
+        <ReportTrendCard userId={userId} />
       </div>
     </div>
   );

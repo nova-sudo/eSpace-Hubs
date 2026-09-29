@@ -89,18 +89,18 @@ export function MilestoneWidget({ spec, goal, variant = "light", className, onRe
           </div>
           <span className="text-[13px] text-muted-fg">complete</span>
         </div>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-card-alt">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">
           <div className="h-full bg-ink" style={{ width: `${pct}%` }} />
         </div>
         <Label>{promptCopy}</Label>
         <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto text-[13px]">
-          {items.length === 0 ? <li className="text-dim-fg">No milestones yet.</li> : null}
+          {items.length === 0 ? <li className="text-muted-fg">No milestones yet.</li> : null}
           {items.map((it) => (
             <li key={it.id} className="group flex flex-col gap-0.5">
               <div className="flex items-center gap-2">
                 <Checkbox checked={!!it.done} onChange={() => toggle(it.id)} label={it.label || it.title || "milestone item"} />
                 <span
-                  className={it.done ? "flex-1 truncate text-dim-fg line-through" : "flex-1 truncate text-fg"}
+                  className={it.done ? "flex-1 truncate text-muted-fg line-through" : "flex-1 truncate text-fg"}
                   title={it.label}
                 >
                   {it.label}

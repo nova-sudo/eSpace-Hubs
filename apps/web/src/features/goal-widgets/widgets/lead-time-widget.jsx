@@ -87,7 +87,7 @@ export function LeadTimeWidget({
               <Bars data={histogram.map((b) => ({ n: b.n, label: b.bin }))} height={48} />
               <div className="flex gap-1">
                 {histogram.map((b) => (
-                  <span key={b.bin} className="flex-1 text-center text-[11px] text-dim-fg">
+                  <span key={b.bin} className="flex-1 text-center text-[11px] text-muted-fg">
                     {b.bin}
                   </span>
                 ))}

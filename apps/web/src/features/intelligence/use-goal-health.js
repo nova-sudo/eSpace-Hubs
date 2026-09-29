@@ -19,14 +19,19 @@
 
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import {
+  fetchInputs,
   getInputsState,
   readGoalEntries,
   useAllGoalInputs,
+  composedCycleBounds,
+  goalStatus,
+  GOAL_STATUS,
 } from "@/features/goal-inputs";
 import { useSnapshots } from "@/features/snapshots";
 import {
   isCurrentWindowLocked,
   currentWindowKey,
+  legacyCurrentWindowKey,
   readLocks,
   useGoalLocks,
 } from "@/features/goal-locks";
@@ -52,12 +57,19 @@ import {
 } from "./status";
 
 /**
- * Carousel ranking: WORST achievement tier first. A graded goal ranks by its
- * tier index (not_achieved = 0, the worst); a goal that still needs work but
- * isn't graded yet (no data / needs-setup) ranks AFTER the graded-failing ones.
+ * Queue ranking, worst first:
+ *   -1  manager requested changes — the goal is blocked on the user
+ *    0  graded Not achieved
+ *    1  gone quiet / behind target (filled history, owes this window or
+ *       missed the number) — ranked after the graded failures
+ *    2+ never logged / setup questions unanswered
+ * Within a graded band the tier index still orders (not_achieved = 0).
  */
 function carouselRank(card) {
+  if (card.health?.readiness === GOAL_READINESS.REJECTED) return -1;
   const t = card.tier;
+  if (t === "not_achieved") return 0;
+  if (card.status?.status === GOAL_STATUS.BEHIND) return 1;
   if (t == null) return TIER_ORDER.length; // ungraded → after not_achieved
   const i = TIER_ORDER.indexOf(t);
   return i < 0 ? TIER_ORDER.length : i;
@@ -144,15 +156,19 @@ export function useGoalHealth(groupedItems) {
       const cards = [];
       for (const { goal, spec } of group.items) {
         const entries = readGoalEntries(goal.id);
+        const cadence = specCadence(spec);
         const lockedCurrentWindow = isCurrentWindowLocked(
           goal.id,
-          currentWindowKey(specCadence(spec)),
+          currentWindowKey(cadence, new Date(), composedCycleBounds(spec)),
+          legacyCurrentWindowKey(cadence),
         );
+        const lockedKeys = lockedKeysFor(allLocks, goal.id);
         const health = deriveGoalHealth({
           spec,
           entries,
           lockedCurrentWindow,
           contextComplete: isContextComplete(spec),
+          lockedKeys,
         });
         const trend = computeTrend(snapshots, goal.id, spec);
         // The DISPLAYED achievement tier (with the consistency cap), read
@@ -168,7 +184,7 @@ export function useGoalHealth(groupedItems) {
               goal.id,
               spec,
               entries,
-              lockedKeysFor(allLocks, goal.id),
+              lockedKeys,
               latestSnapReading(snapshots, goal.id),
             )
           : null;
@@ -176,10 +192,24 @@ export function useGoalHealth(groupedItems) {
         // Carry the L1 parent + tier (and the grader's reasoning, so the Focus
         // hero can explain WHY a goal is Not achieved) — rank without
         // re-deriving downstream.
+        // The ONE status (shared with Goals, Evidence and the manager
+        // board). `health` stays as this page's chore signal — does the
+        // CURRENT window still want an entry — but every label, tint and
+        // count a person reads comes from `status`.
+        const status = goalStatus({
+          hasTracker: true,
+          ready: health.status !== HEALTH.NEEDS_SETUP,
+          auto: health.status === HEALTH.AUTO,
+          cycle: health.cycle ?? null,
+          hasData: entries.length > 0,
+          tier,
+          cadence,
+        });
         const card = {
           goal,
           spec,
           health,
+          status,
           trend,
           l1: group.l1,
           tier,
@@ -188,26 +218,39 @@ export function useGoalHealth(groupedItems) {
         cards.push(card);
 
         summary.total += 1;
-        if (health.status === HEALTH.AUTO) summary.auto += 1;
-        if (health.status === HEALTH.ON_PACE) summary.onPace += 1;
-        if (health.status === HEALTH.NO_DATA) summary.noData += 1;
-        if (health.status === HEALTH.STALE) summary.stale += 1;
-        if (health.status === HEALTH.BEHIND) summary.behind += 1;
-        if (health.status === HEALTH.NEEDS_SETUP) summary.setup += 1;
+        if (status.status === GOAL_STATUS.AUTO) summary.auto += 1;
+        if (status.status === GOAL_STATUS.ON_PACE || status.status === GOAL_STATUS.EXCEEDING) {
+          summary.onPace += 1;
+        }
+        if (status.status === GOAL_STATUS.NOT_LOGGED) summary.noData += 1;
+        if (status.status === GOAL_STATUS.BEHIND) {
+          summary.behind += 1;
+          if (status.quiet >= 2) summary.stale += 1;
+        }
+        if (status.status === GOAL_STATUS.NEEDS_SETUP) summary.setup += 1;
         if (trend?.good === true) summary.improving += 1;
         if (trend?.good === false) summary.slipping += 1;
 
-        // Carousel = goals that haven't reached "Achieved": graded not_achieved,
-        // plus goals with no data / actionable needs-setup that can't be graded
-        // yet (setup questions unanswered). Goals at Achieved+ — and untrackable
-        // / delegated goals, which are intentionally not self-tracked — stay out.
+        // Queue = everything the user has to ACT on: graded not_achieved; a
+        // goal the manager sent back for changes; a goal that's gone quiet
+        // or is behind its target (the summary strip counts these as
+        // "behind", so the queue must too — or the page says "2 behind" and
+        // "nothing needs you" in the same breath); and goals with no data /
+        // unanswered setup questions. Goals at Achieved+ and filled, plus
+        // untrackable / delegated / pending-approval ones (waiting on
+        // someone else), stay out.
         const actionableSetup =
           health.status === HEALTH.NEEDS_SETUP &&
-          health.readiness === GOAL_READINESS.NEEDS_CONTEXT;
-        const ungradedNeedsWork =
-          tier == null &&
-          (health.status === HEALTH.NO_DATA || actionableSetup);
-        if (tier === "not_achieved" || ungradedNeedsWork) {
+          (health.readiness === GOAL_READINESS.NEEDS_CONTEXT ||
+            health.readiness === GOAL_READINESS.REJECTED);
+        // Behind / Not logged by the shared status, or this window still
+        // wants its entry (a chore on an otherwise on-pace goal).
+        const owesWindow =
+          status.status === GOAL_STATUS.BEHIND ||
+          status.status === GOAL_STATUS.NOT_LOGGED ||
+          health.needsFill === true;
+        const ungradedNeedsWork = tier == null && actionableSetup;
+        if (tier === "not_achieved" || owesWindow || ungradedNeedsWork) {
           summary.attention += 1;
           queue.push(card);
         }
@@ -223,11 +266,15 @@ export function useGoalHealth(groupedItems) {
       const wa = Number(a.l1?.weightage) || 0;
       const wb = Number(b.l1?.weightage) || 0;
       if (wb !== wa) return wb - wa;
-      return (b.health.missedWindows ?? 0) - (a.health.missedWindows ?? 0);
+      return (b.status?.quiet ?? 0) - (a.status?.quiet ?? 0);
     });
 
+    const inputsState = getInputsState();
     return {
-      ready: getInputsState().fetched,
+      ready: inputsState.fetched,
+      // Surfaced so the page can stop spinning when /goal-inputs fails.
+      error: inputsState.fetched ? null : inputsState.error,
+      retry: fetchInputs,
       groups,
       queue,
       summary,

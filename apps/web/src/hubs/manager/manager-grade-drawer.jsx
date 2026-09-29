@@ -3,8 +3,9 @@
 /**
  * Manager grading drawer — set the achievement tier on a report's goal.
  * Writes PUT /manager/reports/:userId/goals/:goalId/verdict, which
- * upserts the manager verdict (outranks the AI tier) and notifies the
- * report.
+ * records the manager verdict (append-only — outranks the AI tier) and
+ * notifies the report. Reads …/verdicts for the grade history and the
+ * report's "seen" / "I disagree" on the current grade.
  *
  * TWO PANES, not one column: the decision on the left, the evidence on
  * the right. People reference adjacent records while editing one — a
@@ -33,11 +34,15 @@ import {
   useFocusTrap,
 } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { fmtNumber } from "@/lib/fmt";
+import { periodWords } from "@/features/goal-inputs";
 import { useGoalDetail } from "./use-goal-detail";
-import { ManagerGoalReview } from "./manager-goal-review";
+import { useVerdictHistory } from "./use-verdict-history";
+import { ManagerGoalReview, RubricNote } from "./manager-goal-review";
+
 import { TierSpreadLegend } from "./manager-ui";
 import { saveGoalVerdict } from "./verdict-api";
-import { ago } from "./manager-format";
+import { ago, describeAck, goalStatusMeta } from "./manager-format";
 
 const TIER_DESC = {
   not_achieved: "Below the agreed bar for the cycle.",
@@ -63,9 +68,11 @@ const TONE_CLASSES = {
 
 const CONFIDENCE_LABEL = { high: "high", medium: "medium", low: "low" };
 
+// Numbers first: a grade is a judgement on what was logged, so the drawer
+// opens on the readings, not on an (often empty) evidence list.
 const TABS = [
+  { value: "readings", label: "Numbers" },
   { value: "evidence", label: "Evidence" },
-  { value: "readings", label: "Readings" },
   { value: "history", label: "History" },
 ];
 
@@ -75,6 +82,59 @@ function rungDelta(from, to) {
   const b = TIER_ORDER.indexOf(to);
   if (a < 0 || b < 0) return 0;
   return b - a;
+}
+
+/**
+ * The report's acknowledgement of the CURRENT grade: seen (mint),
+ * disagrees (peach), or nothing yet. Only shown once a manager grade
+ * exists — `ack` is undefined before then.
+ */
+function AckBadge({ ack, firstName }) {
+  if (ack === undefined) return null;
+  if (!ack) {
+    return <Badge tone="neutral">Not seen yet</Badge>;
+  }
+  return (
+    <Badge tone={ack.disagree ? "peach" : "mint"}>{describeAck(ack, firstName)}</Badge>
+  );
+}
+
+/**
+ * The numbers, first: the shared status, "4 of 6 weeks logged" (due so
+ * far — never future weeks) and the total logged, e.g.
+ * "Behind · 1 week missed · 4 of 6 weeks logged · 14 h logged in total".
+ */
+function ReadingHeadline({ goal, detail }) {
+  const status = goalStatusMeta(goal);
+  const logged = goal?.logged;
+  const windows = detail?.windows ?? null;
+  const numeric = windows && windows.length > 0 && windows.every((w) => w.total != null);
+  const sum = numeric ? windows.reduce((a, w) => a + w.total, 0) : null;
+  const unit = windows?.[0]?.unit ?? null;
+  const parts = [
+    logged && logged.due > 0
+      ? `${logged.done} of ${logged.due} ${periodWords(goal?.cadence)[1]} logged`
+      : null,
+    sum != null ? `${fmtNumber(sum)}${unit ? ` ${unit}` : ""} logged in total` : null,
+    goal?.reading ? `${goal.reading} (from their packet)` : null,
+  ].filter(Boolean);
+  return (
+    <div className="mt-4 rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-3">
+      {goal?.status ? (
+        <div className="mb-1.5 flex flex-wrap items-center gap-2">
+          <Badge tone={status.tone} dot>
+            {status.label}
+          </Badge>
+          {status.reason ? (
+            <span className="text-[12.5px] text-muted-fg">{status.reason}</span>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="text-[14px] font-bold leading-snug text-fg">
+        {parts.length > 0 ? parts.join(" · ") : "Nothing logged against this goal yet."}
+      </div>
+    </div>
+  );
 }
 
 export function ManagerGradeDrawer({
@@ -89,7 +149,7 @@ export function ManagerGradeDrawer({
   const [tier, setTier] = useState(null);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
-  const [tab, setTab] = useState("evidence");
+  const [tab, setTab] = useState("readings");
   const [showWorkings, setShowWorkings] = useState(false);
   // Whether the manager has touched the note in this session. Until they
   // do, the note stays the server's — see the hydration effect below.
@@ -99,6 +159,10 @@ export function ManagerGradeDrawer({
   // Read-only goal detail (definition, evidence, verdict history) for the
   // review panel — fetched lazily while the drawer is open.
   const detail = useGoalDetail(userId, goal?.id, open);
+  // Every grade ever set on this goal + whether the report has seen /
+  // disputed the current one. A re-grade is a CHANGE the report is told
+  // about — the manager should see what they're changing from.
+  const verdicts = useVerdictHistory(userId, goal?.id, open);
 
   useEffect(() => {
     if (!open || !goal) return;
@@ -106,7 +170,7 @@ export function ManagerGradeDrawer({
     setNote(goal.tier?.source === "manager" ? (goal.tier?.reasoning ?? "") : "");
     noteDirty.current = false;
     setSaving(false);
-    setTab("evidence");
+    setTab("readings");
     setShowWorkings(false);
   }, [open, goal]);
 
@@ -123,21 +187,15 @@ export function ManagerGradeDrawer({
     if (typeof saved === "string" && saved.length > 0) setNote(saved);
   }, [open, detail.data]);
 
-  // #239: Escape closes (every other overlay in the app does), and the
-  // element that opened the drawer gets focus back on close so keyboard
-  // users aren't dropped at the top of the document.
+  // #239: Escape closes (every other overlay in the app does). The element
+  // that opened the drawer gets focus back on close via useFocusTrap.
   useEffect(() => {
     if (!open) return undefined;
-    const opener =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const onKey = (e) => {
       if (e.key === "Escape") onClose?.();
     };
     window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      opener?.focus?.();
-    };
+    return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
   // Lock body scroll while the drawer is open — it sits over the page,
@@ -161,6 +219,17 @@ export function ManagerGradeDrawer({
   const firstName = (userName || "They").split(" ")[0];
   const delta = aiSuggested && tier ? rungDelta(aiSuggested, tier) : 0;
   const objective = detail.data?.l1?.title ?? null;
+  // The grade on file — prefer the history's current row (it carries the
+  // real note) over the board's tier. Saving it unchanged would be a
+  // no-op server-side, so the button says so instead of pretending.
+  const onFile =
+    verdicts.current ??
+    (goal.tier?.source === "manager"
+      ? { tier: goal.tier.tier, note: detail.data?.manager?.note ?? goal.tier.reasoning ?? "" }
+      : null);
+  const unchanged = Boolean(
+    onFile && tier === onFile.tier && (note ?? "") === (onFile.note ?? ""),
+  );
 
   async function save() {
     if (!tier) {
@@ -185,7 +254,7 @@ export function ManagerGradeDrawer({
   return createPortal(
     <>
       <div
-        className="fixed inset-0 z-[60] bg-fg/40"
+        className="fixed inset-0 z-[60] bg-scrim"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -224,6 +293,14 @@ export function ManagerGradeDrawer({
               {goal.title}
             </h2>
 
+            <ReadingHeadline goal={goal} detail={detail.data} />
+            {detail.data?.rubric && !detail.data?.spec?.tiers ? (
+              <div className="mt-3">
+                <Label className="mb-1.5 block">Rubric from their goal sheet</Label>
+                <RubricNote rubric={detail.data.rubric} />
+              </div>
+            ) : null}
+
             {aiSuggested ? (
               <InsightRow
                 tone="lav"
@@ -241,8 +318,11 @@ export function ManagerGradeDrawer({
               </InsightRow>
             ) : (
               <div className="mt-4 rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-3 text-[12.5px] leading-snug text-muted-fg">
-                The AI hasn&apos;t graded this goal yet — not enough logged data
-                to suggest a tier. Grade it from the evidence beside you.
+                {detail.loading
+                  ? "Checking for an AI suggestion…"
+                  : detail.data && !detail.data.spec?.tiers
+                    ? "No AI suggestion (this goal has no scored levels). Grade from the reading and the rubric."
+                    : "No AI suggestion yet — the AI hasn't graded this goal. Grade from the reading and the criteria beside you."}
               </div>
             )}
             {showWorkings && aiReasoning ? (
@@ -251,7 +331,15 @@ export function ManagerGradeDrawer({
               </p>
             ) : null}
 
-            <Label className="mb-2 mt-5 block">Your grade</Label>
+            <div className="mb-2 mt-5 flex flex-wrap items-center gap-2">
+              <Label>Your grade</Label>
+              <AckBadge ack={verdicts.current?.ack} firstName={firstName} />
+            </div>
+            {verdicts.current?.ack?.disagree && verdicts.current.ack.note ? (
+              <p className="mb-2 rounded-[var(--radius-lg)] bg-peach px-3.5 py-2.5 text-[12.5px] leading-snug text-peach-ink">
+                <b>{firstName} disagrees:</b> {verdicts.current.ack.note}
+              </p>
+            ) : null}
             <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
               {TIER_ORDER.map((t) => {
                 const active = tier === t;
@@ -310,7 +398,7 @@ export function ManagerGradeDrawer({
 
             <Label className="mb-2 mt-5 block">
               Note to the engineer{" "}
-              <span className="text-dim-fg">(optional)</span>
+              <span className="text-muted-fg">(optional)</span>
             </Label>
             <textarea
               value={note}
@@ -319,14 +407,14 @@ export function ManagerGradeDrawer({
                 setNote(e.target.value);
               }}
               placeholder="What earned this tier? They'll see this with the grade."
-              className="w-full rounded-[var(--radius-lg)] bg-card-alt p-3.5 text-[13px] leading-relaxed outline-none focus:ring-2 focus:ring-ink"
+              className="w-full rounded-[var(--radius-lg)] bg-card-alt p-3.5 text-[13px] leading-relaxed border border-field-line outline-none focus:ring-2 focus:ring-ink"
               style={{ minHeight: 92, resize: "vertical" }}
             />
           </div>
 
           <div className="min-h-0 bg-card-alt px-5 pb-6 md:overflow-y-auto">
             <div className="sticky top-0 z-10 bg-card-alt pb-3 pt-1">
-              <SegmentedControl
+              <SegmentedControl ariaLabel="Grade sections"
                 options={TABS}
                 value={tab}
                 onChange={setTab}
@@ -340,6 +428,8 @@ export function ManagerGradeDrawer({
               loading={detail.loading}
               error={detail.error}
               data={detail.data}
+              verdicts={verdicts}
+              firstName={firstName}
             />
           </div>
         </div>
@@ -362,8 +452,14 @@ export function ManagerGradeDrawer({
             <Button type="button" variant="soft" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="button" variant="ink" onClick={save} disabled={saving}>
-              {saving ? "Saving…" : "Save grade"}
+            <Button
+              type="button"
+              variant="ink"
+              onClick={save}
+              disabled={saving || unchanged}
+              title={unchanged ? "Nothing changed since the grade on file." : undefined}
+            >
+              {saving ? "Saving…" : unchanged ? "No changes" : "Save grade"}
             </Button>
           </div>
         </div>

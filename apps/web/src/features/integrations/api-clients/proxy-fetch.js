@@ -33,6 +33,21 @@ import {
   isRateLimitStatus,
 } from "@/lib/rate-limit";
 
+/** Turn an HTML error page into a short readable line (or nothing). */
+function stripHtml(text) {
+  if (!text) return "";
+  const str = String(text);
+  if (!/<[a-z!/][^>]*>/i.test(str)) return str.trim();
+  const plain = str
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return plain.slice(0, 160);
+}
+
 export async function proxyFetch(providerId, path, init = {}) {
   if (!providerId) throw new Error("proxyFetch: providerId is required");
   const cleanPath = String(path || "").replace(/^\//, "");
@@ -61,18 +76,26 @@ export async function proxyFetch(providerId, path, init = {}) {
 
   if (!res.ok) {
     let detail = "";
+    let code = null;
     try {
       const text = await res.text();
       // Surface the API's structured error message when present.
       const parsed = text ? JSON.parse(text) : null;
       detail = parsed?.error?.message || parsed?.message || text.slice(0, 200);
+      code = parsed?.error?.code || parsed?.code || null;
     } catch {
-      /* ignore parse errors — empty detail is fine */
+      /* non-JSON body (an upstream HTML error page, say) — see below */
     }
+    // An HTML body is never useful in a toast: strip tags and, if
+    // nothing readable is left, drop it entirely.
+    detail = stripHtml(detail);
     const error = new Error(
       `${providerId} ${res.status}${detail ? `: ${detail}` : ""}`,
     );
     error.status = res.status;
+    error.code = code;
+    error.provider = providerId;
+    error.detail = detail;
     // Tag a still-limited response so batch callers (PR grading) can
     // leave the item for a later run instead of caching a permanent
     // failure.

@@ -31,8 +31,12 @@ export function useCreatedAssignedGoals({ includeArchived = false } = {}) {
 }
 
 /** Goals shared with me as a viewer. */
-export function useSharedWithMe() {
-  const { data, error, isLoading, mutate } = useSWR(`${BASE}?scope=viewing`, fetcher, OPTS);
+export function useSharedWithMe({ enabled = true } = {}) {
+  const { data, error, isLoading, mutate } = useSWR(
+    enabled ? `${BASE}?scope=viewing` : null,
+    fetcher,
+    OPTS,
+  );
   return { goals: data?.goals ?? [], error, loading: isLoading, refresh: mutate };
 }
 

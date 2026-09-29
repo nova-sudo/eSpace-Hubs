@@ -102,7 +102,7 @@ export function ScorecardComponentModal({
       role="dialog"
       aria-modal="true"
       aria-label={`${syntheticSpec.title} — full view`}
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-fg/40 px-4 py-6"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-scrim px-4 py-6"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose?.();
       }}

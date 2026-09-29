@@ -8,9 +8,9 @@
  * archive lazily fetches its full tree.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { Badge, Card, Label } from "@/components/ui";
+import { Badge, Button, Card, Label } from "@/components/ui";
 import { apiGet } from "@/lib/api-client";
 
 function fmtWhen(iso) {
@@ -54,28 +54,42 @@ function TierChip({ row }) {
 
 export function PastCycles() {
   const [cycles, setCycles] = useState(null); // null = loading
+  const [listError, setListError] = useState(null);
   const [openId, setOpenId] = useState(null);
   const [trees, setTrees] = useState({}); // id -> {l1s} | "loading" | "error"
   const [reports, setReports] = useState({}); // id -> {goalId: row} | null
 
+  // A failed list used to be treated as "nothing archived" and the section
+  // vanished — indistinguishable from an empty history. Keep the error.
+  const loadList = useCallback(async () => {
+    setListError(null);
+    const r = await apiGet("/goals/cycles");
+    if (r.ok) {
+      setCycles(Array.isArray(r.data?.cycles) ? r.data.cycles : []);
+    } else {
+      setCycles([]);
+      setListError(r.error?.message || "the server didn't respond");
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    void apiGet("/goals/cycles").then((r) => {
+    void (async () => {
+      const r = await apiGet("/goals/cycles");
       if (cancelled) return;
-      setCycles(r.ok && Array.isArray(r.data?.cycles) ? r.data.cycles : []);
-    });
+      if (r.ok) {
+        setCycles(Array.isArray(r.data?.cycles) ? r.data.cycles : []);
+      } else {
+        setCycles([]);
+        setListError(r.error?.message || "the server didn't respond");
+      }
+    })();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  async function toggleOpen(id) {
-    if (openId === id) {
-      setOpenId(null);
-      return;
-    }
-    setOpenId(id);
-    if (trees[id]) return;
+  async function loadTree(id) {
     setTrees((t) => ({ ...t, [id]: "loading" }));
     const r = await apiGet(`/goals/cycles/${encodeURIComponent(id)}`);
     setTrees((t) => ({
@@ -85,9 +99,20 @@ export function PastCycles() {
     setReports((p) => ({ ...p, [id]: r.ok ? r.data?.report || null : null }));
   }
 
-  // Nothing archived (or still loading) → render nothing; the section
-  // only exists once there's history to show.
-  if (!cycles || cycles.length === 0) return null;
+  async function toggleOpen(id) {
+    if (openId === id) {
+      setOpenId(null);
+      return;
+    }
+    setOpenId(id);
+    if (trees[id] && trees[id] !== "error") return;
+    await loadTree(id);
+  }
+
+  // Still loading → nothing yet. Empty AND no error → the section doesn't
+  // exist until there's history. An error keeps the section so it can say so.
+  if (!cycles) return null;
+  if (cycles.length === 0 && !listError) return null;
 
   return (
     <section className="mt-8">
@@ -96,6 +121,14 @@ export function PastCycles() {
         Trees archived by replace imports — read-only, so last cycle&apos;s
         goals stay inspectable after a new import.
       </p>
+      {listError ? (
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-[var(--radius-lg)] bg-peach px-3 py-2 text-[12.5px] text-peach-ink">
+          <span>Couldn&apos;t load past cycles — {listError}.</span>
+          <Button size="sm" variant="soft" onClick={() => void loadList()}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
       <ul className="mt-3 flex flex-col gap-2">
         {cycles.map((c) => {
           const open = openId === c.id;
@@ -121,7 +154,7 @@ export function PastCycles() {
                 <Badge tone="neutral">
                   {c.l1Count} L1 · {c.l2Count} L2
                 </Badge>
-                <span className="shrink-0 text-[11.5px] text-dim-fg">
+                <span className="shrink-0 text-[11.5px] text-muted-fg">
                   {fmtWhen(c.archivedAt)}
                 </span>
               </button>
@@ -130,8 +163,11 @@ export function PastCycles() {
                   {tree === "loading" || !tree ? (
                     <div className="text-[12px] text-muted-fg">Loading…</div>
                   ) : tree === "error" ? (
-                    <div className="rounded-[var(--radius-lg)] bg-peach px-3 py-2 text-[12px] text-peach-ink">
-                      Couldn&apos;t load this archive — try again.
+                    <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-lg)] bg-peach px-3 py-2 text-[12px] text-peach-ink">
+                      <span>Couldn&apos;t load this archive.</span>
+                      <Button size="sm" variant="soft" onClick={() => void loadTree(c.id)}>
+                        Retry
+                      </Button>
                     </div>
                   ) : (
                     <ul className="flex flex-col gap-2.5">
@@ -146,7 +182,7 @@ export function PastCycles() {
                             {l1.title || "(untitled L1)"}
                             <TierChip row={report[l1.id]} />
                             {l1.weightage > 0 ? (
-                              <span className="text-[11px] text-dim-fg">{l1.weightage}%</span>
+                              <span className="text-[11px] text-muted-fg">{l1.weightage}%</span>
                             ) : null}
                           </div>
                           {(l1.l2s || []).length > 0 ? (

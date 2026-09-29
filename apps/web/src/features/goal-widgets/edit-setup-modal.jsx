@@ -25,7 +25,7 @@
  * backdrop + ESC close.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { X } from "lucide-react";
@@ -52,14 +52,32 @@ export function EditSetupModal({ open, onClose, spec, goal, onSaved }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, spec?.goalId]);
 
+  // Backdrop / Escape / X used to drop edits silently. Ask when dirty.
+  const dirty = useMemo(
+    () => open && draft != null && JSON.stringify(draft) !== JSON.stringify(spec),
+    [open, draft, spec],
+  );
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const requestClose = useCallback(() => {
+    if (
+      dirtyRef.current &&
+      typeof window !== "undefined" &&
+      !window.confirm("Discard your changes to this setup?")
+    ) {
+      return;
+    }
+    onClose?.();
+  }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => {
-      if (e.key === "Escape") onClose?.();
+      if (e.key === "Escape") requestClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, requestClose]);
 
   const goalTitle = useMemo(
     () => goal?.title || spec?.title || "this goal",
@@ -95,11 +113,11 @@ export function EditSetupModal({ open, onClose, spec, goal, onSaved }) {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Edit widget setup"
+      aria-label="Edit tracker setup"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose?.();
+        if (e.target === e.currentTarget) requestClose();
       }}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-fg/40 p-5"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-scrim p-5"
     >
       <div
         className="flex max-h-[86vh] w-full max-w-[560px] flex-col overflow-hidden rounded-[var(--radius-xl)] bg-card"
@@ -113,7 +131,7 @@ export function EditSetupModal({ open, onClose, spec, goal, onSaved }) {
               {goalTitle}
             </div>
           </div>
-          <IconButton label="Close" onCard onClick={() => onClose?.()}>
+          <IconButton label="Close" onCard onClick={requestClose}>
             <X size={16} />
           </IconButton>
         </div>
@@ -121,8 +139,8 @@ export function EditSetupModal({ open, onClose, spec, goal, onSaved }) {
         {/* Body — the shared spec-setup editor on a local draft. */}
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
           <div className="mb-3 text-[12.5px] leading-[1.5] text-muted-fg">
-            Adjust this widget's target{draft.widget === "SCORECARD" ? " and component weights" : ""}.
-            To change HOW it's tracked (a different widget), use{" "}
+            Adjust this tracker's target{draft.widget === "SCORECARD" ? " and component weights" : ""}.
+            To change HOW it's tracked (a different tracker), use{" "}
             <strong className="text-fg">re-analyze</strong> instead.
           </div>
           <SpecSetupEditor spec={draft} onChange={setDraft} />
@@ -139,13 +157,13 @@ export function EditSetupModal({ open, onClose, spec, goal, onSaved }) {
           ) : null}
 
           {error ? (
-            <div className="mt-3 text-[13px] leading-[1.45] text-peach-ink">{error}</div>
+            <div className="mt-3 text-[13px] leading-[1.45] text-peach-text">{error}</div>
           ) : null}
         </div>
 
         {/* Footer actions */}
         <div className="flex items-center justify-between gap-2 border-t border-line px-6 py-4">
-          <Button type="button" variant="ghost" size="sm" onClick={() => onClose?.()}>
+          <Button type="button" variant="ghost" size="sm" onClick={requestClose}>
             Cancel
           </Button>
           <Button type="button" variant="ink" onClick={handleSave} disabled={saving}>

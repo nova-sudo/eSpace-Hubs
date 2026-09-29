@@ -181,16 +181,20 @@ export function toggleLock(goalId, windowKey) {
  * every composed goal a user had already settled. Falling back to "all"
  * when the real key isn't locked keeps those pre-fix locks honored.
  */
-export function isCurrentWindowLocked(goalId, windowKey) {
+export function isCurrentWindowLocked(goalId, windowKey, legacyKey = null) {
   if (isLocked(goalId, windowKey)) return true;
+  // A settle written under the pre-shared-window-model key for this same
+  // window (see window-key.js `legacyCurrentWindowKey`).
+  if (legacyKey && legacyKey !== windowKey && isLocked(goalId, legacyKey)) return true;
   if (windowKey !== "all" && isLocked(goalId, "all")) return true;
   return false;
 }
 
 /** Reopen the current window — clears both the real key and any legacy
  * "all" leftover, so a stale pre-migration lock can't keep re-settling it. */
-export function reopenCurrentWindow(goalId, windowKey) {
+export function reopenCurrentWindow(goalId, windowKey, legacyKey = null) {
   const keys = windowKey !== "all" ? [keyOf(goalId, windowKey), keyOf(goalId, "all")] : [keyOf(goalId, windowKey)];
+  if (legacyKey && legacyKey !== windowKey) keys.push(keyOf(goalId, legacyKey));
   const changed = applyLocal([], keys);
   if (changed) pushRemote([], keys);
 }

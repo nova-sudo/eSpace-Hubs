@@ -66,9 +66,12 @@ export function useGoalInputs(goalId) {
       ),
     [goalId],
   );
-  const remove = useCallback((ts) => removeEntry(goalId, ts), [goalId]);
+  // `remove` takes the entry object (preferred — removes by server id, so two
+  // backfilled entries sharing a timestamp can't be confused) or a bare ts.
+  const remove = useCallback((entryOrTs) => removeEntry(goalId, entryOrTs), [goalId]);
   const clear = useCallback(() => clearGoalEntries(goalId), [goalId]);
 
+  const s = getInputsState();
   return {
     entries,
     latest: entries.length > 0 ? entries[entries.length - 1] : null,
@@ -76,7 +79,9 @@ export function useGoalInputs(goalId) {
     remove,
     clear,
     // Hydration flag for empty-state gating (`!fetched → loader`).
-    fetched: getInputsState().fetched,
+    fetched: s.fetched,
+    error: s.error,
+    retry: fetchInputs,
   };
 }
 

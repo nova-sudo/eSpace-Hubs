@@ -27,53 +27,39 @@
  * "—", never "0%".
  */
 
-/** One goal's status, shared by every surface. Worst first. */
-export const GOAL_STATUS = Object.freeze({
-  BEHIND: "behind",
-  NOT_LOGGED: "not-logged",
-  NEEDS_SETUP: "needs-setup",
-  UNCLASSIFIED: "unclassified",
-  ON_PACE: "on-pace",
-  AUTO: "auto",
-  EXCEEDING: "exceeding",
-});
+// The status vocabulary (one label, one tint, one sentence per state), the
+// severity order and the per-goal rule live in the shared package so the
+// API's manager board derives the SAME status — see
+// packages/shared/src/goal-specs/goal-status.js.
+import {
+  GOAL_STATUS,
+  STATUS_META,
+  SEVERITY,
+  isMeasurable,
+  goalStatus,
+  loggedSoFar,
+  objectiveStatus,
+  periodWords,
+  quietWindows,
+  statusMeta,
+  worstStatus,
+  countStatuses,
+} from "@espace-devhub/shared/goal-specs";
 
-/** Tone + wording per status. Tone is the design system's tint name. */
-export const STATUS_META = Object.freeze({
-  [GOAL_STATUS.BEHIND]: { tone: "peach", label: "Behind" },
-  [GOAL_STATUS.NOT_LOGGED]: { tone: "lemon", label: "Not logged" },
-  [GOAL_STATUS.NEEDS_SETUP]: { tone: "lemon", label: "Needs setup" },
-  [GOAL_STATUS.UNCLASSIFIED]: { tone: "neutral", label: "Unclassified" },
-  [GOAL_STATUS.ON_PACE]: { tone: "mint", label: "On pace" },
-  [GOAL_STATUS.AUTO]: { tone: "mint", label: "Auto-tracked" },
-  [GOAL_STATUS.EXCEEDING]: { tone: "sky", label: "Exceeding" },
-});
-
-/**
- * Severity order, worst first. Drives an objective's chip (Perdoo's rule: a
- * parent's NUMBER is an average, its STATUS is its weakest child) and the
- * order the summary badges appear in.
- */
-export const SEVERITY = Object.freeze([
-  GOAL_STATUS.BEHIND,
-  GOAL_STATUS.NOT_LOGGED,
-  GOAL_STATUS.NEEDS_SETUP,
-  GOAL_STATUS.UNCLASSIFIED,
-  GOAL_STATUS.ON_PACE,
-  GOAL_STATUS.AUTO,
-  GOAL_STATUS.EXCEEDING,
-]);
-
-/** Statuses that carry no completion figure — excluded from every average. */
-const UNMEASURABLE = new Set([
-  GOAL_STATUS.AUTO,
-  GOAL_STATUS.NEEDS_SETUP,
-  GOAL_STATUS.UNCLASSIFIED,
-]);
-
-export function isMeasurable(status) {
-  return !UNMEASURABLE.has(status);
-}
+export {
+  GOAL_STATUS,
+  STATUS_META,
+  SEVERITY,
+  isMeasurable,
+  goalStatus,
+  loggedSoFar,
+  objectiveStatus,
+  periodWords,
+  quietWindows,
+  statusMeta,
+  worstStatus,
+  countStatuses,
+};
 
 function clampPct(n) {
   return Math.round(Math.max(0, Math.min(100, Number(n) || 0)));
@@ -86,17 +72,46 @@ function clampPct(n) {
  * @param {string}  opts.status   a GOAL_STATUS
  * @param {object}  opts.cycle    a buildCycleWindows() result, or null
  * @param {boolean} opts.hasData  any entry at all (for non-bucketing kinds)
+ * @param {number}  [opts.fraction] 0–1 completion for a non-bucketing kind
+ *                                  that CAN state one (a milestone's
+ *                                  done ÷ total). Wins over `hasData`.
  */
-export function goalProgress({ status, cycle, hasData = false } = {}) {
+export function goalProgress({ status, cycle, hasData = false, fraction } = {}) {
   if (status && !isMeasurable(status)) return null;
   if (cycle && cycle.total > 0) {
-    return clampPct((cycle.filledCount / cycle.total) * 100);
+    // A window settled as "nothing to report" is done, not missing — the
+    // number here is "did you keep up", and a settled window kept up.
+    const done = Number.isFinite(cycle.doneCount) ? cycle.doneCount : cycle.filledCount;
+    return clampPct((done / cycle.total) * 100);
   }
-  // Non-bucketing kinds — milestone, before/after, per-incident. There is no
-  // partial credit: the thing happened or it did not.
+  // A checklist knows how far along it is — say that, not 100% after the
+  // first tick.
+  if (typeof fraction === "number" && Number.isFinite(fraction)) {
+    return clampPct(fraction * 100);
+  }
+  // Non-bucketing kinds — before/after, per-incident. There is no partial
+  // credit: the thing happened or it did not.
   if (hasData) return 100;
   if (status === GOAL_STATUS.NOT_LOGGED) return 0;
   return null;
+}
+
+/**
+ * Where one goal SHOULD be by now, 0–100 — the pacing tick its progress is
+ * compared against — or null when it has no progress figure at all.
+ *
+ * A windowed goal paces over the windows that COUNT: a tracker created in
+ * late September doesn't "expect" 74% (the share of the year gone) — its
+ * pre-creation windows are optional backfill (`buildCycleWindows`'
+ * "before" state), so its tick starts at its own first counted window.
+ * Anything else falls back to `fallback` (the year elapsed), as before.
+ */
+export function goalExpected({ status, cycle, fallback = null } = {}) {
+  if (status && !isMeasurable(status)) return null;
+  if (cycle && cycle.total > 0 && Number.isFinite(cycle.expectedPct)) {
+    return clampPct(cycle.expectedPct);
+  }
+  return fallback;
 }
 
 /**
@@ -137,34 +152,48 @@ export function weightedProgress(objectives) {
   return Math.round(measurable.reduce((a, b) => a + b.pct, 0) / measurable.length);
 }
 
-/** The weakest child's status, for an objective's chip. */
-export function worstStatus(statuses) {
-  let worst = null;
-  let rank = Infinity;
-  for (const s of statuses || []) {
-    const i = SEVERITY.indexOf(s);
-    const r = i < 0 ? SEVERITY.length : i;
-    if (r < rank) {
-      rank = r;
-      worst = s;
-    }
-  }
-  return worst;
+/**
+ * "Logged so far" for one goal, 0–100, or null when nothing about it is due
+ * yet. This is the ONE headline number (Home's summary, the Goals overview,
+ * each objective's figure): of the check-ins that were DUE — ended windows
+ * since the tracker started, plus this window once it's logged — how many
+ * were logged or settled. Future windows and pre-tracker windows are never in
+ * the denominator, so "5 of 6 weeks" can't read "5 of 19".
+ *
+ * A goal without cadence windows (milestone, per-incident) has nothing
+ * "due": a checklist states its own done ÷ total; anything else counts once
+ * it has data, and stays out of the number until then.
+ *
+ * @param {object} opts
+ * @param {object} opts.goal       a goalStatus() result
+ * @param {number} [opts.fraction] 0–1 for a checklist
+ * @param {boolean} [opts.hasData]
+ */
+export function loggedPercent({ goal, fraction, hasData = false } = {}) {
+  if (!goal || !isMeasurable(goal.status)) return null;
+  const logged = goal.logged;
+  if (logged) return logged.due > 0 ? clampPct((logged.done / logged.due) * 100) : null;
+  if (typeof fraction === "number" && Number.isFinite(fraction)) return clampPct(fraction * 100);
+  if (hasData) return 100;
+  return null;
 }
 
-/**
- * Ordered counts for the summary badges, worst first. Every surface counts
- * the same buckets over the same per-goal statuses, so two pages showing the
- * same goals can no longer print different tallies.
- *
- * @returns {Array<{status:string, count:number, tone:string, label:string}>}
- */
-export function countStatuses(statuses) {
-  const counts = new Map();
-  for (const s of statuses || []) counts.set(s, (counts.get(s) || 0) + 1);
-  return SEVERITY.filter((k) => counts.get(k) > 0).map((k) => ({
-    status: k,
-    count: counts.get(k),
-    ...STATUS_META[k],
-  }));
+/** Totals across goals for the "N of M check-ins" sub-line. */
+export function loggedTotals(goals) {
+  let done = 0;
+  let due = 0;
+  for (const g of goals || []) {
+    if (!g?.logged || !isMeasurable(g.status)) continue;
+    done += g.logged.done;
+    due += g.logged.due;
+  }
+  return { done, due };
+}
+
+/** "10 goals aren't measured yet — they're not in this number." (or null) */
+export function unmeasuredLine(count) {
+  if (!count) return null;
+  return count === 1
+    ? "1 goal isn't measured yet — it's not in this number."
+    : `${count} goals aren't measured yet — they're not in this number.`;
 }

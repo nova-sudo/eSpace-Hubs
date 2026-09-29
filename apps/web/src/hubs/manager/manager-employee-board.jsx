@@ -12,6 +12,11 @@
  *                counts and the review packet
  *   Consistency  the same goals as a table — AI verdict, your grade, and
  *                the delta — so twelve grades can be read on one scale
+ *   Notes        your running 1:1 journal on this report (private, or
+ *                shared with them)
+ *
+ * The header carries a one-click download of their latest review packet
+ * (the frozen evidence document they submitted), when there is one.
  *
  * Both open the same grading drawer. Data: GET
  * /manager/reports/:userId/goal-health.
@@ -19,8 +24,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { Avatar, SegmentedControl } from "@/components/ui";
+import { ArrowLeft, Download } from "lucide-react";
+import { Button, PageHeader, SegmentedControl } from "@/components/ui";
 import { useHubLink } from "@/features/hubs";
 import { useReportHealth } from "./use-report-health";
 import { useManagerView } from "./use-manager-view";
@@ -29,11 +34,14 @@ import { EmptyCard } from "./manager-ui";
 import { EmployeeBoardView } from "./employee-board-view";
 import { EmployeeConsistencyView } from "./employee-consistency-view";
 import { ManagerGradeDrawer } from "./manager-grade-drawer";
+import { ReportNotesView } from "./report-notes-view";
+import { downloadPacketMarkdown, useReviewPackets } from "./use-review-packets";
 
-const VIEWS = ["board", "consistency"];
+const VIEWS = ["board", "consistency", "notes"];
 const VIEW_OPTIONS = [
   { value: "board", label: "Board" },
   { value: "consistency", label: "Consistency" },
+  { value: "notes", label: "Notes" },
 ];
 
 export function ManagerEmployeeBoard({ userId }) {
@@ -41,6 +49,8 @@ export function ManagerEmployeeBoard({ userId }) {
   const [view, setView] = useManagerView(BOARD_VIEW_KEY, VIEWS, "board");
   const [grading, setGrading] = useState(null);
   const { loading, data, error, refresh } = useReportHealth(userId);
+  const { packets } = useReviewPackets(userId);
+  const latestPacket = packets.find((p) => p.markdown) ?? null;
 
   const back = (
     <Link
@@ -65,7 +75,7 @@ export function ManagerEmployeeBoard({ userId }) {
       <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-7 sm:px-10">
         {back}
         <EmptyCard>
-          {error === "not_found"
+          {error?.code === "not_found"
             ? "That teammate isn't on your team."
             : "Couldn't load this board right now. Refresh, or check back in a moment."}
         </EmptyCard>
@@ -82,37 +92,52 @@ export function ManagerEmployeeBoard({ userId }) {
     <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-7 sm:px-10">
       {back}
 
-      <div className="mb-6 flex flex-wrap items-center gap-4">
-        <Avatar name={user.displayName} size={52} />
-        <div className="min-w-0 flex-1">
-          <h1 className="text-[26px] font-extrabold leading-[1.1] tracking-[-0.02em] text-fg">
-            {user.displayName}
-          </h1>
-          <div className="mt-1 text-[12.5px] text-muted-fg">
-            {[user.role, user.department, user.level].filter(Boolean).join(" · ")} ·
-            reports to you
+      <PageHeader
+        crumb={
+          [user.role, user.department, user.level].filter(Boolean).join(" · ") ||
+          "Reports to you"
+        }
+        title={user.displayName}
+        subtitle={
+          ungraded.length > 0
+            ? `${ungraded.length} of ${summary.total} goals don't have your grade yet.`
+            : summary.total > 0
+              ? "Every goal has your grade."
+              : null
+        }
+        right={
+          <div className="flex flex-wrap items-center gap-2.5">
+            <SegmentedControl ariaLabel="Report view"
+              options={VIEW_OPTIONS}
+              value={view}
+              onChange={setView}
+              size="sm"
+            />
+            {latestPacket ? (
+              <Button
+                type="button"
+                variant="soft"
+                size="sm"
+                onClick={() => downloadPacketMarkdown(latestPacket, user.displayName)}
+                title="Download the review packet they submitted, as markdown"
+              >
+                <Download size={13} /> Review packet
+              </Button>
+            ) : null}
+            {/* The one ink button on this view — every per-goal "Grade"
+                below is soft. */}
+            {ungraded.length > 0 ? (
+              <Button type="button" size="sm" onClick={() => setGrading(ungraded[0])}>
+                Grade {ungraded.length} ungraded
+              </Button>
+            ) : null}
           </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <SegmentedControl
-            options={VIEW_OPTIONS}
-            value={view}
-            onChange={setView}
-            size="sm"
-          />
-          {ungraded.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => setGrading(ungraded[0])}
-              className="inline-flex h-9 items-center rounded-[var(--radius-pill)] bg-ink px-5 text-[13px] font-bold text-ink-on transition-opacity hover:opacity-90"
-            >
-              Grade {ungraded.length} ungraded
-            </button>
-          ) : null}
-        </div>
-      </div>
+        }
+      />
 
-      {view === "consistency" ? (
+      {view === "notes" ? (
+        <ReportNotesView userId={userId} user={user} />
+      ) : view === "consistency" ? (
         <EmployeeConsistencyView
           user={user}
           summary={summary}

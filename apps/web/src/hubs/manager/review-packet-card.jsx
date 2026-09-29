@@ -13,11 +13,10 @@
  * Data: GET /manager/reports/:userId/review-packets.
  */
 
-import { useEffect, useState } from "react";
 import { Download } from "lucide-react";
 import { Badge, Button, Card, Label } from "@/components/ui";
 import { TIER_LABELS } from "@/features/goal-tiers";
-import { apiGet } from "@/lib/api-client";
+import { downloadPacketMarkdown, useReviewPackets } from "./use-review-packets";
 
 function fmtWhen(iso) {
   if (!iso) return "";
@@ -28,26 +27,8 @@ function fmtWhen(iso) {
   });
 }
 
-export function ReviewPacketCard({ userId }) {
-  const [state, setState] = useState({ loading: true, packets: [], error: null });
-
-  useEffect(() => {
-    if (!userId) return;
-    let cancelled = false;
-    void apiGet(`/manager/reports/${encodeURIComponent(userId)}/review-packets`).then(
-      (r) => {
-        if (cancelled) return;
-        setState({
-          loading: false,
-          packets: r.ok && Array.isArray(r.data?.packets) ? r.data.packets : [],
-          error: r.ok ? null : r.error,
-        });
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [userId]);
+export function ReviewPacketCard({ userId, personName }) {
+  const state = useReviewPackets(userId);
 
   if (state.loading) return null;
   const [latest, ...history] = state.packets;
@@ -100,17 +81,7 @@ export function ReviewPacketCard({ userId }) {
             variant="soft"
             size="sm"
             className="mt-3"
-            onClick={() => {
-              const blob = new Blob([latest.markdown], {
-                type: "text/markdown;charset=utf-8",
-              });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `review-packet-${(latest.submittedAt || "").slice(0, 10) || "latest"}.md`;
-              a.click();
-              URL.revokeObjectURL(url);
-            }}
+            onClick={() => downloadPacketMarkdown(latest, personName)}
           >
             <Download size={13} /> Download .md
           </Button>
@@ -129,14 +100,14 @@ export function ReviewPacketCard({ userId }) {
                 <span className="min-w-0 flex-1 truncate text-fg" title={g.title}>
                   {g.title || "(untitled)"}
                   {g.l1Title ? (
-                    <span className="ml-1.5 text-[11px] text-dim-fg">· {g.l1Title}</span>
+                    <span className="ml-1.5 text-[11px] text-muted-fg">· {g.l1Title}</span>
                   ) : null}
                 </span>
                 {g.reading ? (
                   <span className="shrink-0 text-[11px] text-muted-fg">{g.reading}</span>
                 ) : null}
                 <span
-                  className={`shrink-0 text-[11px] font-bold ${g.tier ? "text-fg" : "text-dim-fg"}`}
+                  className={`shrink-0 text-[11px] font-bold ${g.tier ? "text-fg" : "text-muted-fg"}`}
                 >
                   {g.tier ? (TIER_LABELS[g.tier] ?? g.tier) : "ungraded"}
                 </span>

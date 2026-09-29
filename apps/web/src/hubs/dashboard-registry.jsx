@@ -20,9 +20,11 @@
 import { IntelligencePage } from "@/features/intelligence";
 import { QaDashboard, QaPlaceholder } from "@/hubs/qa";
 import {
+  AdminApprovals,
   AdminAudit,
   AdminDashboard,
   AdminHubConfig,
+  AdminOrgChart,
   AdminUsers,
 } from "@/hubs/admin";
 import {
@@ -39,8 +41,7 @@ import {
  */
 const DASHBOARDS = {
   // Dev's home is the Goal Intelligence Hub (replaced the perf bento in
-  // the Sprint-1 revamp). The old DashboardPage slice still exists and is
-  // scheduled for retirement in Sprint 4.
+  // the Sprint-1 revamp; the old `features/dashboard` slice is deleted).
   dev: IntelligencePage,
   qa: QaDashboard,
   admin: AdminDashboard,
@@ -77,6 +78,11 @@ const ADMIN_SLOT_COMPONENTS = {
   "hub-config": AdminHubConfig,
   users: AdminUsers,
   audit: AdminAudit,
+  // BYO approvals whose owner has no active manager (hub-audit §1.3).
+  // Shares the `approvals` slot id with the manager hub; the route file
+  // picks the admin component on the admin hub.
+  approvals: AdminApprovals,
+  orgchart: AdminOrgChart,
 };
 
 export function getAdminSlotComponent(slot) {

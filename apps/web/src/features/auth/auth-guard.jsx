@@ -108,6 +108,19 @@ export function AuthGuard({ children, fallback = null }) {
     user.status === "pending_admin" &&
     pathname !== WAITING_APPROVAL_PATH;
 
+  // Inverse of the 2FA gate: a user who already has TOTP enrolled has
+  // nothing to do on /totp-setup (the enrol call would just 409 with
+  // totp_already_enrolled and the old copy told them to "refresh the
+  // page", which looped). Send them on to wherever the rest of the
+  // chain says they belong.
+  const needsLeaveTotpSetup =
+    AUTH_REQUIRED &&
+    !loading &&
+    !!user &&
+    !needsTotp &&
+    !!user.totpEnrolled &&
+    pathname === TOTP_SETUP_PATH;
+
   useEffect(() => {
     if (needsLoginRedirect) {
       const target = `/login${
@@ -128,12 +141,17 @@ export function AuthGuard({ children, fallback = null }) {
     }
     if (needsApprovalRedirect) {
       router.replace(WAITING_APPROVAL_PATH);
+      return;
+    }
+    if (needsLeaveTotpSetup) {
+      router.replace("/");
     }
   }, [
     needsLoginRedirect,
     needsTotpSetupRedirect,
     needsOnboardingRedirect,
     needsApprovalRedirect,
+    needsLeaveTotpSetup,
     pathname,
     router,
   ]);
@@ -144,6 +162,7 @@ export function AuthGuard({ children, fallback = null }) {
   if (needsTotpSetupRedirect) return fallback ?? <AuthLoading />;
   if (needsOnboardingRedirect) return fallback ?? <AuthLoading />;
   if (needsApprovalRedirect) return fallback ?? <AuthLoading />;
+  if (needsLeaveTotpSetup) return fallback ?? <AuthLoading />;
   return children;
 }
 

@@ -13,6 +13,7 @@
  *   - no readings yet                      → muted "no history yet"
  */
 
+import { opLabel } from "@/lib/fmt";
 import { Badge } from "@/components/ui";
 import { useSnapshotCompliance } from "@/features/snapshots";
 import { cadenceWindowLabel } from "@/features/goal-inputs";
@@ -70,5 +71,5 @@ function formatNumber(n) {
 
 function formatTarget(target) {
   if (!target || target.value == null) return "";
-  return ` ${target.op} ${target.value}`;
+  return ` ${opLabel(target.op)} ${target.value}`;
 }

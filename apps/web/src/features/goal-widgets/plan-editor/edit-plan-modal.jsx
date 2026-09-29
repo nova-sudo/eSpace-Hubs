@@ -25,7 +25,7 @@
  * wrapped pills.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { X } from "lucide-react";
@@ -35,6 +35,7 @@ import { apiPost } from "@/lib/api-client";
 import { Button, IconButton, Label, useFocusTrap } from "@/components/ui";
 import { PlanEditor } from "./plan-editor";
 import { isStructuralChange, resolvePlanBounds, stampBounds } from "./plan-model";
+import { AUTO_APPROVED_COPY, approvalOutcome } from "../approval-outcome";
 
 export function EditPlanModal({ open, onClose, spec, goal, onSaved }) {
   const [draft, setDraft] = useState(null);
@@ -54,14 +55,32 @@ export function EditPlanModal({ open, onClose, spec, goal, onSaved }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, spec?.goalId]);
 
+  // Backdrop / Escape / X used to drop a half-edited plan silently.
+  const dirty = useMemo(
+    () => open && draft != null && JSON.stringify(draft) !== JSON.stringify(spec?.composed || null),
+    [open, draft, spec?.composed],
+  );
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const requestClose = useCallback(() => {
+    if (
+      dirtyRef.current &&
+      typeof window !== "undefined" &&
+      !window.confirm("Discard your changes to this plan?")
+    ) {
+      return;
+    }
+    onClose?.();
+  }, [onClose]);
+
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e) => {
-      if (e.key === "Escape") onClose?.();
+      if (e.key === "Escape") requestClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, requestClose]);
 
   const goalTitle = useMemo(() => goal?.title || spec?.title || "this goal", [goal?.title, spec?.title]);
   const structural = useMemo(
@@ -92,14 +111,14 @@ export function EditPlanModal({ open, onClose, spec, goal, onSaved }) {
     }
     if (resubmit) {
       const r = await apiPost(`/goal-specs/${encodeURIComponent(spec.goalId)}/submit-approval`, {});
-      const status = r.ok ? r.data?.status || "pending" : "pending";
-      if (status === "approved") {
-        saveSpec({ ...next, approval: { status: "approved" } });
+      const outcome = approvalOutcome(r.ok ? r.data : null, next.approval);
+      if (r.ok) saveSpec({ ...next, approval: outcome.approval });
+      if (outcome.approved) {
         toast.success("Plan updated.", {
-          description: r.data?.autoApproved ? "No manager on file, so it went live without a review." : undefined,
+          description: outcome.autoApproved ? AUTO_APPROVED_COPY : undefined,
         });
       } else {
-        toast.success("Plan updated and sent back to your manager.", {
+        toast.success(`Plan updated and sent back to ${outcome.managerName || "your manager"}.`, {
           description: "The cycle changed, so it needs approving again.",
         });
       }
@@ -117,9 +136,9 @@ export function EditPlanModal({ open, onClose, spec, goal, onSaved }) {
       aria-modal="true"
       aria-label="Edit the plan"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose?.();
+        if (e.target === e.currentTarget) requestClose();
       }}
-      className="fixed inset-0 z-[130] flex items-center justify-center bg-fg/40 p-4"
+      className="fixed inset-0 z-[130] flex items-center justify-center bg-scrim p-4"
     >
       <div
         ref={trapRef}
@@ -133,7 +152,7 @@ export function EditPlanModal({ open, onClose, spec, goal, onSaved }) {
               {goalTitle}
             </div>
           </div>
-          <IconButton label="Close" onCard onClick={onClose}>
+          <IconButton label="Close" onCard onClick={requestClose}>
             <X size={16} />
           </IconButton>
         </div>
@@ -145,9 +164,9 @@ export function EditPlanModal({ open, onClose, spec, goal, onSaved }) {
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-line px-6 py-4">
           <div className="min-w-0 text-[12.5px] leading-[1.5]">
             {error ? (
-              <span className="text-peach-ink">{error}</span>
+              <span className="text-peach-text">{error}</span>
             ) : structural && entryCount > 0 ? (
-              <span className="text-lemon-ink">
+              <span className="text-lemon-text">
                 Changing the cadence, start or length re-keys the windows. {entryCount} logged{" "}
                 {entryCount === 1 ? "entry" : "entries"} may stop lining up with them.
               </span>
@@ -156,7 +175,7 @@ export function EditPlanModal({ open, onClose, spec, goal, onSaved }) {
             ) : null}
           </div>
           <div className="flex items-center gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            <Button type="button" variant="ghost" size="sm" onClick={requestClose}>
               Cancel
             </Button>
             <Button type="button" variant="ink" onClick={handleSave} disabled={saving}>

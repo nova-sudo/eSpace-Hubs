@@ -49,7 +49,7 @@
  * own") and from a mounted widget's "build my own" control.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { FileText, Paperclip, Sparkles, X } from "lucide-react";
@@ -60,7 +60,7 @@ import {
   extractComposeAttachment,
 } from "@/features/analyst";
 import { saveSpec } from "@/features/goal-specs";
-import { clearGoalEntries } from "@/features/goal-inputs";
+import { clearGoalEntries, readGoalEntries } from "@/features/goal-inputs";
 import { clearGoalLocks } from "@/features/goal-locks";
 import { apiPost } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
@@ -68,6 +68,7 @@ import { Badge, Button, IconButton, Label } from "@/components/ui";
 import { useIsContextComplete } from "@/features/goal-context";
 import { ContextCollector } from "./state-shells/context-collector";
 import { WidgetErrorBoundary } from "./widget-error-boundary";
+import { AUTO_APPROVED_COPY, approvalOutcome } from "./approval-outcome";
 // One vocabulary for field kinds: the preview names them here and the form
 // names them beside each label, so they come from the same map.
 import { FIELD_KIND_HINT } from "./field-status";
@@ -170,6 +171,19 @@ export function ComposeWidgetModal({
     if (!open) extractAbortRef.current?.abort();
   }, [open]);
 
+  // Anything the user would lose on close: typed text, an attached file, or
+  // a generated preview they haven't submitted. Read through a ref so the
+  // Escape listener sees the live value without re-binding on every key.
+  const dirty =
+    open &&
+    !saving &&
+    (description.trim().length > 0 || file != null || preview != null);
+  const dirtyRef = useRef(dirty);
+  // Refreshed after commit, not during render (React Compiler refs rule).
+  useLayoutEffect(() => {
+    dirtyRef.current = dirty;
+  });
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => {
@@ -178,6 +192,13 @@ export function ComposeWidgetModal({
       // already uploaded and the user has no way to know it was thrown away.
       if (phase === PHASE.EXTRACTING) {
         setError("Still reading your document. Cancel that first, or wait for it to finish.");
+        return;
+      }
+      if (
+        dirtyRef.current &&
+        typeof window !== "undefined" &&
+        !window.confirm("Discard your changes? The tracker you described won't be saved.")
+      ) {
         return;
       }
       onClose?.();
@@ -225,6 +246,13 @@ export function ComposeWidgetModal({
   function requestClose() {
     if (phase === PHASE.EXTRACTING) {
       setError("Still reading your document. Cancel that first, or wait for it to finish.");
+      return;
+    }
+    if (
+      dirty &&
+      typeof window !== "undefined" &&
+      !window.confirm("Discard your changes? The tracker you described won't be saved.")
+    ) {
       return;
     }
     onClose?.();
@@ -406,14 +434,6 @@ export function ComposeWidgetModal({
       composed,
       approval: { status: "pending", submittedAt: Date.now() },
     };
-    const result = saveSpec(pendingSpec, { replace: true });
-    if (!result.ok) {
-      setSaving(false);
-      setError(
-        `Couldn't save the tracker: ${(result.errors || []).join(", ") || "invalid spec"}`,
-      );
-      return;
-    }
     // A fresh tracker replacing a DIFFERENT widget kind starts clean
     // (same as re-analyze) — but a REVISION of an existing COMPOSED
     // tracker keeps its history: "revise & resubmit" after a manager's
@@ -422,6 +442,25 @@ export function ComposeWidgetModal({
     // hazard. Stale field ids from a revised shape are simply ignored
     // by the renderers.
     const revisingComposed = spec?.widget === previewSpec.widget;
+    const historyCount = revisingComposed ? 0 : readGoalEntries(goalId).length;
+    if (
+      historyCount > 0 &&
+      typeof window !== "undefined" &&
+      !window.confirm(
+        `This replaces the current tracker and deletes its ${historyCount} logged ${historyCount === 1 ? "entry" : "entries"}. Continue?`,
+      )
+    ) {
+      setSaving(false);
+      return;
+    }
+    const result = saveSpec(pendingSpec, { replace: true });
+    if (!result.ok) {
+      setSaving(false);
+      setError(
+        `Couldn't save the tracker: ${(result.errors || []).join(", ") || "invalid spec"}`,
+      );
+      return;
+    }
     if (!revisingComposed) {
       clearGoalEntries(goalId);
       clearGoalLocks(goalId);
@@ -430,32 +469,60 @@ export function ComposeWidgetModal({
     // Route it for approval. No manager on file → the server says "approved"
     // and we activate immediately; otherwise it stays pending (read-only) and
     // the manager is notified.
-    const r = await apiPost(
-      `/goal-specs/${encodeURIComponent(goalId)}/submit-approval`,
-      {},
-    );
-    const status = r.ok ? r.data?.status || "pending" : "pending";
-    if (status === "approved") {
-      saveSpec(
-        { ...pendingSpec, approval: { status: "approved" } },
-        { replace: true },
-      );
-      // Honest about the missing gate: with no manager on file the
-      // server auto-approves — say so instead of implying a review
-      // happened.
-      if (r.data?.autoApproved) {
+    const submit = () =>
+      apiPost(`/goal-specs/${encodeURIComponent(goalId)}/submit-approval`, {});
+    // Persist the approval block the server routed (who it went to, or that
+    // it was auto-approved) and toast accordingly.
+    const applySubmitResult = (data) => {
+      const outcome = approvalOutcome(data, pendingSpec.approval);
+      saveSpec({ ...pendingSpec, approval: outcome.approval }, { replace: true });
+      if (outcome.approved) {
+        // Honest about the missing gate: with no manager on file the
+        // server auto-approves — say so instead of implying a review
+        // happened.
         toast.success("Custom tracker created.", {
-          description:
-            "No manager on file, so it went live without a review.",
+          description: outcome.autoApproved ? AUTO_APPROVED_COPY : undefined,
         });
       } else {
-        toast.success("Custom tracker created.");
+        toast.success(`Sent to ${outcome.managerName || "your manager"} for approval.`, {
+          description: "It goes live once they sign off.",
+        });
       }
-    } else {
-      toast.success("Sent to your manager for approval.", {
-        description: "It goes live once they sign off.",
-      });
+    };
+    // submit-approval 400s ("no_tracker") until the PUT has landed — wait
+    // for the stored row before handing it off.
+    // A failed PUT already rolled the local copy back — keep the modal open
+    // so nothing typed is lost.
+    if (!(await result.persisted)) {
+      setSaving(false);
+      setError("Couldn't save the tracker to the server. Try again in a moment.");
+      return;
     }
+    const r = await submit();
+    if (!r.ok) {
+      // The tracker IS saved (pending) — only the notification to the
+      // manager failed. Say that, and offer the POST again; a success
+      // toast here would claim a hand-off that never happened.
+      toast.error("Tracker saved, but it wasn't sent to your manager.", {
+        description: r.error?.message || "The server didn't respond.",
+        action: {
+          label: "Retry",
+          onClick: async () => {
+            const again = await submit();
+            if (again.ok) {
+              applySubmitResult(again.data);
+            } else {
+              toast.error("Still couldn't send it — try again from the tracker's “Revise & resubmit”.");
+            }
+          },
+        },
+      });
+      setSaving(false);
+      onSaved?.();
+      onClose?.();
+      return;
+    }
+    applySubmitResult(r.data);
     setSaving(false);
     onSaved?.();
     onClose?.();
@@ -471,7 +538,7 @@ export function ComposeWidgetModal({
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) requestClose();
       }}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-fg/40 p-5"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-scrim p-5"
     >
       {/* The plan step lays out up to 53 windows with chips inside them, so
           it gets the wider card; every other step stays at the 560px
@@ -558,7 +625,7 @@ export function ComposeWidgetModal({
                     ? "Add anything the document doesn't cover (optional)."
                     : 'e.g. "Each quarter I want to log how many chapters I read — target 5 — plus a short note on what I read."'
                 }
-                className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt p-3 text-[14px] leading-[1.5] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
+                className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt p-3 text-[14px] leading-[1.5] text-fg border border-field-line outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
               />
 
               {file ? (
@@ -598,7 +665,7 @@ export function ComposeWidgetModal({
           )}
 
           {error ? (
-            <div className="mt-3 text-[13px] leading-[1.45] text-peach-ink">{error}</div>
+            <div className="mt-3 text-[13px] leading-[1.45] text-peach-text">{error}</div>
           ) : null}
         </div>
 
@@ -621,7 +688,7 @@ export function ComposeWidgetModal({
                   submit, and a second "done" button beside it would be two
                   controls for one intent — one of which wouldn't commit the
                   answers. */}
-              <span className="text-[12px] font-semibold text-dim-fg">
+              <span className="text-[12px] font-semibold text-muted-fg">
                 Answers save with the form above
               </span>
             </>
@@ -980,7 +1047,7 @@ function ExtractReview({ headingRef, extracted, text, onChange }) {
         value={text}
         onChange={(e) => onChange(e.target.value)}
         rows={14}
-        className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt p-3 text-[12.5px] leading-[1.55] text-fg outline-none focus:ring-2 focus:ring-ink"
+        className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt p-3 text-[12.5px] leading-[1.55] text-fg border border-field-line outline-none focus:ring-2 focus:ring-ink"
       />
     </div>
   );
@@ -1066,7 +1133,7 @@ function SpecPreview({ preview, needsContext, planBounds }) {
             {describeCycle(planBounds)}
           </Badge>
           {planBounds.lengthSource === "default" ? (
-            <span className="text-[12.5px] text-lemon-ink">
+            <span className="text-[12.5px] text-lemon-text">
               No length was stated, so this is a full year. Check the plan to set it.
             </span>
           ) : null}
@@ -1103,12 +1170,12 @@ function SpecPreview({ preview, needsContext, planBounds }) {
                 <div className="flex items-center justify-between gap-2">
                   <span className="min-w-0 truncate text-[13px] text-fg" title={f.label}>
                     {f.label}
-                    {f.unit ? <span className="text-dim-fg"> ({f.unit})</span> : null}
+                    {f.unit ? <span className="text-muted-fg"> ({f.unit})</span> : null}
                   </span>
                   {auto ? (
                     <Badge tone="lav">Auto · read-only</Badge>
                   ) : (
-                    <span className="shrink-0 text-[11.5px] font-semibold text-dim-fg">
+                    <span className="shrink-0 text-[11.5px] font-semibold text-muted-fg">
                       {f.target
                         ? `${FIELD_KIND_HINT[f.kind] || f.kind} · ${f.target.op}${f.target.value}`
                         : FIELD_KIND_HINT[f.kind] || f.kind}

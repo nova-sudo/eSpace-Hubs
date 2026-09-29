@@ -10,7 +10,17 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import { Badge, Button, Card, Field, IconButton, Input, Label, Section, Select } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  Field,
+  IconButton,
+  Input,
+  Label,
+  Section,
+  Select,
+} from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { dueStatus } from "@/lib/date";
 import {
@@ -44,29 +54,35 @@ import { ArchivedSharedGoals } from "@/features/assigned-goals";
  * single biggest signal the AI uses to pick between an AUTO code metric
  * and a MANUAL counter / milestone / etc.
  */
+// The curated test tree is a development aid; it has no business in a
+// production toolbar next to real goals.
+const SHOW_TEST_GOALS = process.env.NODE_ENV !== "production";
+
 export function GoalsEditor() {
-  const { goals, total, weights } = useGoals();
+  const { goals, total, weights, error } = useGoals();
   const [importing, setImporting] = useState(false);
 
-  // Replace the entire tree with the curated test set. Guarded by a
-  // confirm prompt when there's existing data — the action is destructive
-  // (existing goals are wiped) and otherwise too easy to misclick.
+  // Replace the entire tree with the curated test set. Always confirmed —
+  // even on an empty tree it's a whole-tree write that's easy to misclick.
   function handleLoadTest() {
     const hasData = goals.l1s.length > 0;
     if (
-      hasData &&
       !confirm(
-        "Replace your current goal tree with the test set?\n\n" +
-          "13 test L2s will be loaded — one per widget kind plus a delegated " +
-          "and a context-required case. Your existing goals will be wiped.",
+        hasData
+          ? "Replace your current goal tree with the test set?\n\n" +
+              "13 test L2s will be loaded — one per tracker kind plus a delegated " +
+              "and a setup-questions case. Your current tree is archived under Past cycles, " +
+              "but its trackers and readings won't carry over."
+          : "Load the test set? 13 test L2s will be added — one per tracker kind plus a delegated and a setup-questions case.",
       )
     ) {
       return;
     }
-    loadTestGoals();
+    void loadTestGoals();
   }
 
-  const weightTone = weights.total === 100 ? "mint" : weights.total > 100 ? "peach" : "neutral";
+  const weightTone =
+    weights.total === 100 ? "mint" : weights.total > 100 ? "peach" : "neutral";
 
   return (
     <div className="flex flex-col gap-6">
@@ -75,7 +91,8 @@ export function GoalsEditor() {
         right={
           <div className="flex items-center gap-2">
             <Label>
-              {total.l1s} L1 · {total.l2s} L2
+              {total.l1s} {total.l1s === 1 ? "objective" : "objectives"} · {total.l2s}{" "}
+              {total.l2s === 1 ? "goal" : "goals"}
             </Label>
             <Badge tone={weightTone}>
               {weights.total}% weighted
@@ -85,15 +102,30 @@ export function GoalsEditor() {
         }
       >
         <p className="max-w-xl text-[13px] leading-[1.5] text-muted-fg">
-          Fill in every field the AI will see. Rubric + description are
-          the biggest signals for widget choice — the more specific, the
-          better the tracking.
+          Fill in every field the AI will see. Rubric + description are the
+          biggest signals for widget choice — the more specific, the better the
+          tracking.
         </p>
       </Section>
 
+      {error ? (
+        <Card
+          tone="peach"
+          radius="lg"
+          className="flex flex-wrap items-center gap-3"
+        >
+          <span className="text-[13px] leading-[1.45] text-peach-ink">
+            Your last edit didn&apos;t save
+            {error.code === "goals_conflict"
+              ? " — this tree was changed somewhere else and has been refreshed. Re-apply your edit."
+              : ` — ${error.message || "the server didn't respond"}. Re-apply your edit.`}
+          </span>
+        </Card>
+      ) : null}
+
       <div className="flex items-center gap-2">
         <Button variant="soft" size="sm" onClick={addL1}>
-          <Plus size={14} /> Add L1
+          <Plus size={14} /> Add objective
         </Button>
         <Button
           variant={importing ? "ink" : "soft"}
@@ -101,13 +133,15 @@ export function GoalsEditor() {
           onClick={() => setImporting((v) => !v)}
         >
           <Download size={14} />
-          {importing ? "Hide import" : "Import from Zoho"}
+          {importing ? "Hide import" : "Import file (Zoho export)"}
         </Button>
-        <div className="ml-auto">
-          <Button variant="soft" size="sm" onClick={handleLoadTest}>
-            <FlaskConical size={14} /> Load test goals
-          </Button>
-        </div>
+        {SHOW_TEST_GOALS ? (
+          <div className="ml-auto">
+            <Button variant="soft" size="sm" onClick={handleLoadTest}>
+              <FlaskConical size={14} /> Load test goals
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       {importing ? <GoalsImport onClose={() => setImporting(false)} /> : null}
@@ -132,11 +166,11 @@ function EmptyHint() {
     <Card className="text-center">
       <div className="text-[15px] font-bold text-fg">No goals yet</div>
       <p className="mt-1 text-[13px] text-muted-fg">
-        Add an L1 objective to start mapping your goal tree.
+        Add an objective from your performance plan, then the goals under it.
       </p>
       <div className="mt-4 flex justify-center">
         <Button size="sm" onClick={addL1}>
-          <Plus size={14} /> Add L1
+          <Plus size={14} /> Add objective
         </Button>
       </div>
     </Card>
@@ -158,7 +192,9 @@ function L1Card({ l1, index }) {
           variant="danger"
           size="sm"
           onClick={() => {
-            if (confirm(`Remove L1 "${l1.title || "untitled"}" and all its L2s?`)) {
+            if (
+              confirm(`Remove L1 "${l1.title || "untitled"}" and all its L2s?`)
+            ) {
               removeL1(l1.id);
             }
           }}
@@ -224,26 +260,26 @@ function L1Card({ l1, index }) {
           value={l1.rubric}
           onChange={(e) => updateL1(l1.id, { rubric: e.target.value })}
           placeholder="- Achieved: 100% adherence to all client SLAs AND developer environments restored in ≤ 2 hours…"
-          className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt p-3.5 text-[13.5px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
+          className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt p-3.5 text-[13.5px] text-fg border border-field-line outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
         />
       </Field>
 
       <div className="mt-4 rounded-[var(--radius-lg)] bg-card-alt p-4">
         <div className="mb-3 flex items-center justify-between">
           <Label>
-            {l1.l2s.length} L2 mapped · Σ {l2Weight}%
+            {l1.l2s.length} {l1.l2s.length === 1 ? "goal" : "goals"} · weights total {l2Weight}%
           </Label>
-          <IconButton label="Add L2" size="sm" onCard onClick={() => addL2(l1.id)}>
-            <Plus size={14} />
-          </IconButton>
+          <Button variant="soft" size="sm" onClick={() => addL2(l1.id)}>
+            <Plus size={14} /> Add goal
+          </Button>
         </div>
         <div className="flex flex-col gap-2">
           {l1.l2s.map((l2, j) => (
             <L2Card key={l2.id} l1Id={l1.id} l2={l2} index={j} />
           ))}
           {l1.l2s.length === 0 ? (
-            <div className="py-2 text-[12px] text-dim-fg">
-              No L2s yet. Add the specific sub-goals that roll up to this L1.
+            <div className="py-2 text-[12px] text-muted-fg">
+              No goals yet. Add the specific goals that roll up to this objective.
             </div>
           ) : null}
         </div>
@@ -283,41 +319,37 @@ function L2Card({ l1Id, l2, index }) {
 }
 
 function L2Summary({ l2, index, expanded, onToggle, onRemove }) {
+  // Toggle and Remove are siblings: a button can't contain a button.
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-card-alt"
-    >
-      {expanded ? (
-        <ChevronDown size={14} className="shrink-0 text-muted-fg" />
-      ) : (
-        <ChevronRight size={14} className="shrink-0 text-muted-fg" />
-      )}
-      <span className="shrink-0 text-[11px] font-semibold text-dim-fg">
-        L2/{String(index + 1).padStart(2, "0")}
-      </span>
-      {l2.code ? (
-        <span className="shrink-0 font-mono text-[11px] font-bold text-muted-fg">
-          {l2.code}
-        </span>
-      ) : null}
-      <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
-        {l2.title || <span className="text-dim-fg">Untitled L2</span>}
-      </span>
-      <SummaryChips l2={l2} />
-      <IconButton
-        label="Remove L2"
-        size="sm"
-        onCard
-        onClick={(e) => {
-          e.stopPropagation();
-          onRemove();
-        }}
+    <div className="flex w-full items-center gap-2 pr-3 hover:bg-card-alt">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="flex min-w-0 flex-1 items-center gap-3 py-2 pl-3 text-left"
       >
+        {expanded ? (
+          <ChevronDown size={14} className="shrink-0 text-muted-fg" />
+        ) : (
+          <ChevronRight size={14} className="shrink-0 text-muted-fg" />
+        )}
+        <span className="shrink-0 text-[11px] font-semibold text-muted-fg">
+          L2/{String(index + 1).padStart(2, "0")}
+        </span>
+        {l2.code ? (
+          <span className="shrink-0 font-mono text-[11px] font-bold text-muted-fg">
+            {l2.code}
+          </span>
+        ) : null}
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+          {l2.title || <span className="text-muted-fg">Untitled L2</span>}
+        </span>
+        <SummaryChips l2={l2} />
+      </button>
+      <IconButton label="Remove L2" size="sm" onCard onClick={onRemove}>
         <Trash2 size={13} />
       </IconButton>
-    </button>
+    </div>
   );
 }
 
@@ -419,7 +451,7 @@ function L2Form({ l1Id, l2 }) {
           value={l2.description}
           onChange={(e) => patch({ description: e.target.value })}
           placeholder="Defects are tracked on the quality dashboard. Scope is the payments squad only."
-          className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt p-3.5 text-[13.5px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
+          className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt p-3.5 text-[13.5px] text-fg border border-field-line outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
         />
       </Field>
 
@@ -432,8 +464,10 @@ function L2Form({ l1Id, l2 }) {
           rows={3}
           value={l2.rubric}
           onChange={(e) => patch({ rubric: e.target.value })}
-          placeholder={"- Achieved: ≤10% defects per quarter\n- Over achieved: ≤5%\n- Role model: zero defects + documented RCA cadence"}
-          className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt p-3.5 text-[13.5px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
+          placeholder={
+            "- Achieved: ≤10% defects per quarter\n- Over achieved: ≤5%\n- Role model: zero defects + documented RCA cadence"
+          }
+          className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt p-3.5 text-[13.5px] text-fg border border-field-line outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
         />
       </Field>
 

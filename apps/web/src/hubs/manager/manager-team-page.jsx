@@ -13,6 +13,11 @@
  *           setup, and the tier spread the API always returned
  *   Queue   what you owe, grouped by person rather than by obligation
  *   People  a rail of reports, one person's standing at a time
+ *   Calibration  reports side by side on the tier ladder for one grading
+ *           period — your grades only, with disputes (team-calibration-view)
+ *
+ * `lead` renders between the header and the filters — the dashboard puts
+ * its overview (grading progress, team trend, my goals) there.
  *
  * Data: GET /manager/reports, /manager/team-summary (one call for every
  * report's rollup), /manager/delegated-queue, /manager/approvals.
@@ -31,18 +36,20 @@ import { useDelegatedQueue } from "./use-delegated-queue";
 import { useApprovalsQueue } from "./use-approvals-queue";
 import { useTeamGoalSummary } from "./use-team-goal-summary";
 import { useManagerView } from "./use-manager-view";
-import { TEAM_VIEW_KEY } from "./manager-view-store";
+import { TEAM_VIEW_KEY, TEAM_VIEWS } from "./manager-view-store";
 import { EmptyCard } from "./manager-ui";
 import { plural, waitedFor } from "./manager-format";
 import { TeamTableView } from "./team-table-view";
 import { TeamQueueView } from "./team-queue-view";
 import { TeamPeopleView } from "./team-people-view";
+import { TeamCalibrationView } from "./team-calibration-view";
+import { useGradingProgress } from "./use-grading-progress";
 
-const VIEWS = ["table", "queue", "people"];
 const VIEW_OPTIONS = [
   { value: "table", label: "Table" },
   { value: "queue", label: "Queue" },
   { value: "people", label: "People" },
+  { value: "calibration", label: "Calibration" },
 ];
 
 const UNASSIGNED = "Unassigned";
@@ -50,18 +57,40 @@ const EMPTY_STAT = {
   total: 0,
   graded: 0,
   needsAttention: 0,
+  behind: 0,
   needsSetup: 0,
+  noTracker: 0,
   delegatedToYou: 0,
   byTier: null,
+  byStatus: {},
+  worst: null,
+  lastEntryAt: null,
+  openDisputes: 0,
+  packet: null,
 };
 
-export function ManagerTeamPage({ crumb, title, subtitle }) {
+/**
+ * Who needs you first: open disagreements and unopened packets (things
+ * waiting on YOU), then goals behind, then the rest — alphabetical within
+ * a tie so the order is stable.
+ */
+function needRank(stat) {
+  return (
+    (stat.openDisputes ?? 0) * 100 +
+    (stat.packet?.state === "new" ? 50 : 0) +
+    (stat.behind ?? 0) * 10 +
+    (stat.worst?.status === "not-logged" ? 1 : 0)
+  );
+}
+
+export function ManagerTeamPage({ crumb, title, subtitle, lead = null }) {
   const link = useHubLink();
-  const [view, setView] = useManagerView(TEAM_VIEW_KEY, VIEWS, "table");
+  const [view, setView] = useManagerView(TEAM_VIEW_KEY, TEAM_VIEWS, "table");
   const { loading, reports, error } = useManagerReports();
   const { items: delegated, loading: delLoading } = useDelegatedQueue();
   const { items: approvals, loading: apprLoading } = useApprovalsQueue();
   const { loading: summaryLoading, totals, perReport } = useTeamGoalSummary(reports);
+  const progress = useGradingProgress();
   const [query, setQuery] = useState("");
   const [dept, setDept] = useState("");
 
@@ -83,11 +112,19 @@ export function ManagerTeamPage({ crumb, title, subtitle }) {
       );
     });
   }, [reports, query, dept]);
+  // Stable across renders so TeamCalibrationView's row memo holds.
+  const visibleIds = useMemo(() => new Set(filtered.map((r) => r.id)), [filtered]);
 
-  const tableRows = filtered.map((report) => ({
-    report,
-    stat: perReport.get(report.id) ?? EMPTY_STAT,
-  }));
+  const tableRows = filtered
+    .map((report) => ({
+      report,
+      stat: perReport.get(report.id) ?? EMPTY_STAT,
+    }))
+    .sort(
+      (a, b) =>
+        needRank(b.stat) - needRank(a.stat) ||
+        (a.report.displayName || "").localeCompare(b.report.displayName || ""),
+    );
 
   // What you owe, per person. Only people with something outstanding
   // make the queue — an empty card is the honest answer to "nothing".
@@ -105,6 +142,26 @@ export function ManagerTeamPage({ crumb, title, subtitle }) {
         null,
       );
       const actions = [];
+      if (stat.openDisputes > 0) {
+        actions.push({
+          key: "dispute",
+          what: "Disagrees",
+          tone: "peach",
+          detail: `${plural(stat.openDisputes, "grade", "grades")} ${report.displayName.split(" ")[0]} disagrees with`,
+          href: `/employees/${report.id}`,
+        });
+      }
+      if (stat.packet?.state === "new") {
+        actions.push({
+          key: "packet",
+          what: "New packet",
+          tone: "sky",
+          detail: `Review packet submitted ${waitedFor(stat.packet.submittedAt) ?? "recently"}${
+            waitedFor(stat.packet.submittedAt) === "today" ? "" : " ago"
+          }`,
+          href: `/employees/${report.id}`,
+        });
+      }
       if (ungraded > 0) {
         actions.push({
           key: "grade",
@@ -139,9 +196,17 @@ export function ManagerTeamPage({ crumb, title, subtitle }) {
     })
     .filter((row) => row.actions.length > 0);
 
-  const awaiting =
-    delegated.filter((d) => !d.verdict).length + approvals.length;
+  const delegatedOpen = delegated.filter((d) => !d.verdict).length;
   const countsLoading = loading || summaryLoading || delLoading || apprLoading;
+  // Everything waiting on YOU, named: a disagreement and an unopened packet
+  // are as much yours to act on as an approval — "nothing awaiting you"
+  // used to show while a report's packet and dispute sat unread.
+  const awaitingParts = [
+    totals.openDisputes ? plural(totals.openDisputes, "disagreement", "disagreements") : null,
+    totals.newPackets ? plural(totals.newPackets, "new packet", "new packets") : null,
+    approvals.length ? plural(approvals.length, "approval", "approvals") : null,
+    delegatedOpen ? plural(delegatedOpen, "delegated goal", "delegated goals") : null,
+  ].filter(Boolean);
 
   const summaryLine = countsLoading
     ? "Loading your team…"
@@ -150,7 +215,9 @@ export function ManagerTeamPage({ crumb, title, subtitle }) {
         plural(totals.goals, "goal", "goals"),
         `${totals.graded} graded`,
         totals.needsSetup ? `${totals.needsSetup} need setup` : null,
-        awaiting ? `${awaiting} awaiting you` : "nothing awaiting you",
+        awaitingParts.length
+          ? `${awaitingParts.join(" · ")} awaiting you`
+          : "nothing awaiting you",
       ]
         .filter(Boolean)
         .join(" · ");
@@ -179,6 +246,14 @@ export function ManagerTeamPage({ crumb, title, subtitle }) {
       return <EmptyCard>No one matches that search.</EmptyCard>;
     }
     if (view === "queue") return <TeamQueueView rows={queueRows} link={link} />;
+    if (view === "calibration") {
+      return (
+        <TeamCalibrationView
+          visibleIds={visibleIds}
+          link={link}
+        />
+      );
+    }
     if (view === "people") {
       return (
         <TeamPeopleView
@@ -186,7 +261,7 @@ export function ManagerTeamPage({ crumb, title, subtitle }) {
           perReport={perReport}
           link={link}
           toolCounts={{
-            delegated: delegated.filter((d) => !d.verdict).length,
+            delegated: delegatedOpen,
             approvals: approvals.length,
           }}
         />
@@ -197,6 +272,7 @@ export function ManagerTeamPage({ crumb, title, subtitle }) {
         rows={tableRows}
         totals={totals}
         totalsLoading={summaryLoading}
+        progress={progress}
         link={link}
       />
     );
@@ -209,7 +285,7 @@ export function ManagerTeamPage({ crumb, title, subtitle }) {
         title={title}
         subtitle={subtitle}
         right={
-          <SegmentedControl
+          <SegmentedControl ariaLabel="Team view"
             options={VIEW_OPTIONS}
             value={view}
             onChange={setView}
@@ -217,6 +293,8 @@ export function ManagerTeamPage({ crumb, title, subtitle }) {
           />
         }
       />
+
+      {lead}
 
       <div className="flex flex-wrap items-center gap-2.5">
         <Input

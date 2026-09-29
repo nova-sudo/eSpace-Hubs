@@ -6,6 +6,8 @@
  * and the PDF renderer all import this so the three renderings never drift
  * (they used to each carry their own copy). Pure — no React, no IO.
  */
+import { opLabel } from "@/lib/fmt";
+
 export function formatExpected(spec) {
   if (!spec) return "—";
   if (spec.delegated?.delegated) {
@@ -17,7 +19,7 @@ export function formatExpected(spec) {
   if (target && target.value != null) {
     const cadenceSuffix = cadence ? ` / ${cadence}` : "";
     const unitSuffix = unit ? ` ${unit}` : "";
-    return `${target.op} ${target.value}${unitSuffix}${cadenceSuffix}`;
+    return `${opLabel(target.op)} ${target.value}${unitSuffix}${cadenceSuffix}`;
   }
   if (cadence === "milestone") return "Hit listed milestones";
   if (cadence === "continuous") return "Continuous reflection";

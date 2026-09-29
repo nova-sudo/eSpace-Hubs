@@ -1,7 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { dueStatus, weekLabel, weekNumber, weekRangeFromLabel } from "./date.js";
+import {
+  compareWeekLabels,
+  dueStatus,
+  isLegacyWeekLabel,
+  normaliseWeekLabel,
+  parseWeekLabel,
+  shortWeekLabel,
+  weekKey,
+  weekLabel,
+  weekNumber,
+  weekRangeFromLabel,
+} from "./date.js";
 
 // The DST regression: dayOfYear used to be computed by millisecond
 // division, which ran one low for every day inside a DST period — and
@@ -70,4 +81,56 @@ test("dueStatus returns null for empty or malformed input", () => {
   assert.equal(dueStatus(null), null);
   assert.equal(dueStatus("09/01/2026"), null);
   assert.equal(dueStatus("not-a-date"), null);
+});
+
+// ─── week keys (year-qualified snapshot keys) ────────────────────────
+
+test("weekKey is the label plus the calendar year", () => {
+  assert.equal(weekKey(new Date(2026, 0, 4)), "W02-2026");
+  assert.equal(weekKey(new Date(2027, 0, 5)), "W02-2027");
+});
+
+test("normaliseWeekLabel reads legacy year-less labels as the given year", () => {
+  assert.equal(normaliseWeekLabel("W9", 2026), "W09-2026");
+  assert.equal(normaliseWeekLabel("W36-2025", 2026), "W36-2025");
+  assert.equal(normaliseWeekLabel("garbage", 2026), "garbage");
+  assert.ok(isLegacyWeekLabel("W36"));
+  assert.ok(!isLegacyWeekLabel("W36-2026"));
+  assert.deepEqual(parseWeekLabel("W36-2026"), { week: 36, year: 2026 });
+  assert.equal(shortWeekLabel("W36-2026"), "W36");
+});
+
+test("compareWeekLabels orders by year before week number", () => {
+  assert.ok(compareWeekLabels("W53-2025", "W01-2026") < 0);
+  assert.ok(compareWeekLabels("W02-2026", "W01-2026") > 0);
+  assert.equal(compareWeekLabels("W02-2026", "W02-2026"), 0);
+  const sorted = ["W01-2026", "W53-2025", "W02-2026"].sort(compareWeekLabels);
+  assert.deepEqual(sorted, ["W53-2025", "W01-2026", "W02-2026"]);
+});
+
+// Decision 1 parity: a weekly tracker's cadence windows (shared window model,
+// UTC) carry exactly the snapshot store's week label/key for every day.
+// Local-noon dates keep the comparison timezone-proof: lib/date reads local
+// calendar components, the window model reads UTC ones, and noon is the same
+// calendar day in both for any zone within ±11h.
+test("weekly cadence windows use the snapshot store's week label and key", async () => {
+  const { buildCycleWindows, weekLabelUtc } = await import("@espace-devhub/shared/goal-specs");
+  const cycle = buildCycleWindows({ entries: [], cadence: "weekly", now: Date.UTC(2026, 8, 28) });
+  for (let m = 0; m < 12; m += 1) {
+    for (const dom of [1, 3, 4, 9, 15, 20, 24, 26, 27, 28]) {
+      const local = new Date(2026, m, dom, 12);
+      const utcNoon = Date.UTC(2026, m, dom, 12);
+      const w = cycle.windows.find((x) => utcNoon >= x.start && utcNoon < x.end);
+      assert.ok(w, local.toDateString());
+      assert.equal(w.label, weekLabel(local), local.toDateString());
+      assert.equal(`${w.label}-2026`, weekKey(local), local.toDateString());
+      assert.equal(weekLabelUtc(utcNoon), weekLabel(local));
+    }
+  }
+  // "W39" names the same days everywhere: Sun 20 – Sat 26 Sep 2026.
+  const w39 = cycle.windows.find((x) => x.label === "W39");
+  assert.equal(new Date(w39.start).toISOString().slice(0, 10), "2026-09-20");
+  assert.equal(new Date(w39.end - 1).toISOString().slice(0, 10), "2026-09-26");
+  assert.equal(weekLabel(new Date(2026, 8, 20, 12)), "W39");
+  assert.equal(weekLabel(new Date(2026, 8, 26, 12)), "W39");
 });

@@ -2,8 +2,56 @@
 
 import { toast } from "sonner";
 import { Button, Card, Section } from "@/components/ui";
-import { disconnectAll } from "@/features/integrations";
+import { disconnectAll, PROVIDERS } from "@/features/integrations";
 import { clearSnapshots, readSnapshots } from "@/features/snapshots";
+import { useMyEngagementConfig, useSession } from "@/features/auth";
+
+/**
+ * Where to actually revoke a token once our copy is gone. Disconnecting
+ * here deletes the encrypted credential from the user's account; the
+ * token itself stays valid at the provider until revoked there.
+ */
+function RevokeLinks() {
+  const { config } = useMyEngagementConfig();
+  const { user } = useSession();
+  const isEspace = (user?.engagement ?? "espace") === "espace";
+  const gitlabUrl = config?.gitlabBaseUrl || process.env.NEXT_PUBLIC_GITLAB_URL;
+  const links = [
+    { label: "GitHub", href: "https://github.com/settings/applications" },
+    gitlabUrl
+      ? {
+          label: "GitLab",
+          href: `${gitlabUrl.replace(/\/$/, "")}/-/user_settings/personal_access_tokens`,
+        }
+      : { label: "GitLab", text: "User settings → Access tokens" },
+    isEspace
+      ? { label: "Jira", text: "change your Jira password if you think it leaked" }
+      : {
+          label: "Jira",
+          href: "https://id.atlassian.com/manage-profile/security/api-tokens",
+        },
+  ];
+  return (
+    <span>
+      Revoke at the source:{" "}
+      {links.map((l, i) => (
+        <span key={l.label}>
+          {l.href ? (
+            <a className="font-semibold underline" href={l.href} target="_blank" rel="noreferrer">
+              {l.label}
+            </a>
+          ) : (
+            <span>
+              {l.label} ({l.text})
+            </span>
+          )}
+          {i < links.length - 1 ? " · " : ""}
+        </span>
+      ))}
+      .
+    </span>
+  );
+}
 
 const ACTIONS = [
   {
@@ -45,11 +93,27 @@ const ACTIONS = [
   },
   {
     title: "Disconnect all providers",
-    body: "Revokes tokens from localStorage and logs out of GitHub OAuth.",
+    // Honest scope: DELETE /integrations/:id for every provider — the
+    // encrypted credential is removed from the account (so from every
+    // device). Nothing is revoked upstream; see RevokeLinks.
+    body: (
+      <>
+        Deletes your saved credentials for{" "}
+        {Object.values(PROVIDERS)
+          .map((p) => p.label)
+          .join(", ")}{" "}
+        from your account on every device. The tokens themselves stay valid at
+        each provider until you revoke them there. <RevokeLinks />
+      </>
+    ),
     cta: "Disconnect all",
     danger: true,
     onClick: () => {
-      if (confirm("Disconnect all integrations?")) {
+      if (
+        confirm(
+          "Disconnect all providers? Saved credentials are deleted from your account on every device; widgets go blank until you reconnect. Tokens stay valid at each provider until you revoke them there.",
+        )
+      ) {
         disconnectAll();
         toast.success("All providers disconnected");
       }

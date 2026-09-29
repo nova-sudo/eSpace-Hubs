@@ -9,10 +9,19 @@ export const PROVIDERS = {
     id: "jira",
     label: "Jira",
     glyph: "J",
-    authMode: "token", // email + API token (Basic)
-    description:
-      "Paste a Jira API token. Generate one at id.atlassian.com → Security → API tokens.",
-    scopes: "user-scoped API token",
+    authMode: "token", // identity + secret (Basic)
+    // The form and the copy flip together on engagement: eSpace runs
+    // Jira Server 8.x (username + password), Crealogix is Jira Cloud
+    // (Atlassian email + API token). `descriptionFor(engagement)` is
+    // what the UI should render; `description` is the neutral fallback.
+    description: "Connect your Jira account so ticket widgets can read your issues.",
+    descriptionByEngagement: {
+      espace:
+        "Sign in with your Jira Server username and password — the same ones you use in the Jira web UI.",
+      crealogix:
+        "Sign in with your Atlassian email and an API token from id.atlassian.com → Security → API tokens.",
+    },
+    scopes: "your own Jira permissions (read-only use)",
     endpointHint: (url) => (url ? url.replace(/^https?:\/\//, "") : "your Jira workspace"),
   },
   gitlab: {
@@ -21,16 +30,25 @@ export const PROVIDERS = {
     glyph: "GL",
     authMode: "pat", // single Bearer token
     description:
-      "Paste a GitLab Personal Access Token. Create one at User Settings → Access Tokens.",
-    scopes: "read_api",
+      "Paste a GitLab personal access token. Create one under User settings → Access tokens.",
+    // ONE scope list — the card, the form hint and the deep link into
+    // GitLab's token page all read from here.
+    scopeList: ["read_api", "read_user", "read_repository"],
+    scopes: "read_api · read_user · read_repository",
     endpointHint: (url) => (url ? url.replace(/^https?:\/\//, "") : "your GitLab instance"),
+    /** Deep link that pre-fills the token name + scopes on the user's GitLab. */
+    tokenPageUrl: (baseUrl) =>
+      baseUrl
+        ? `${baseUrl.replace(/\/$/, "")}/-/user_settings/personal_access_tokens?name=eSpace%20Hubs&scopes=read_api,read_user,read_repository`
+        : null,
   },
   github: {
     id: "github",
     label: "GitHub",
     glyph: "GH",
     authMode: "oauth",
-    description: "OAuth into your GitHub account.",
+    description:
+      "Authorise with GitHub. We ask for the repo scope because GitHub has no read-only scope that covers private repositories; we only ever read.",
     scopes: "repo · read:user",
     endpointHint: () => "api.github.com",
   },
@@ -56,3 +74,12 @@ export const PROVIDERS = {
 };
 
 export const PROVIDER_IDS = Object.keys(PROVIDERS);
+
+/** Engagement-aware description — falls back to the neutral one. */
+export function providerDescription(provider, engagement) {
+  if (!provider) return "";
+  return (
+    provider.descriptionByEngagement?.[engagement ?? "espace"] ??
+    provider.description
+  );
+}

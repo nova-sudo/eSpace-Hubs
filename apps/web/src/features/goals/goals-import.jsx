@@ -30,8 +30,11 @@ export function GoalsImport({ onClose }) {
   // [{ id, file, filename, detectedType, chosenType, rows, warning }]
   const [fileResults, setFileResults] = useState([]);
   const [orphanAssignments, setOrphanAssignments] = useState({}); // { l2Id: l1Id }
-  const [mode, setMode] = useState("replace"); // "replace" | "append"
+  // Append by default — replacing detaches every tracker and reading from
+  // the current tree, which is the wrong default for "I added a file".
+  const [mode, setMode] = useState("append"); // "replace" | "append"
   const [working, setWorking] = useState(false);
+  const [committing, setCommitting] = useState(false);
 
   const handleFiles = useCallback(async (files) => {
     if (!files || files.length === 0) return;
@@ -129,32 +132,67 @@ export function GoalsImport({ onClose }) {
     e.target.value = "";
   };
 
-  const commit = () => {
-    if (!parsed?.tree) return;
-    if (mode === "replace") {
-      if (
-        !confirm(
-          "Replace all existing goals with the imported tree? Your current goals are archived first — view them under Past cycles, not deleted.",
-        )
-      )
-        return;
-      replaceGoals(parsed.tree);
-    } else {
-      appendGoals(parsed.tree);
+  const commit = async () => {
+    if (!parsed?.tree || committing) return;
+    const orphans = parsed.stats.l2Unmatched;
+    const orphanNote =
+      orphans > 0 ? ` · ${orphans} orphan${orphans === 1 ? "" : "s"} skipped` : "";
+    setCommitting(true);
+    try {
+      if (mode === "replace") {
+        if (
+          !confirm(
+            "Replace all existing goals with the imported tree?\n\n" +
+              "Your current goals are archived (see Past cycles), but their trackers, " +
+              "logged readings and grades won't carry over to the new tree. There is no undo.",
+          )
+        ) {
+          return;
+        }
+        // Wait for the PUT: a toast before it resolves claimed an import
+        // that a 409 or a network error could still throw away.
+        const res = await replaceGoals(parsed.tree);
+        if (!res?.ok) {
+          toast.error("Import didn't save", {
+            description: res?.error?.message || "The server didn't respond — nothing changed.",
+          });
+          return;
+        }
+        toast.success(`Imported ${parsed.stats.l1Count} L1 · ${parsed.stats.l2Matched} L2${orphanNote}`);
+      } else {
+        const res = await appendGoals(parsed.tree);
+        if (!res?.ok) {
+          toast.error("Import didn't save", {
+            description: res?.error?.message || "The server didn't respond — nothing changed.",
+          });
+          return;
+        }
+        const addedL2 = res.added.reduce((n, l1) => n + (l1.l2s?.length || 0), 0);
+        const dupes = res.skipped.length;
+        if (res.added.length === 0) {
+          toast.error(
+            dupes > 0
+              ? `Nothing added — ${dupes} L1${dupes === 1 ? "" : "s"} already exist${dupes === 1 ? "s" : ""} with the same code.`
+              : "Nothing to add.",
+          );
+          return;
+        }
+        toast.success(
+          `Added ${res.added.length} L1 · ${addedL2} L2${orphanNote}` +
+            (dupes > 0 ? ` · ${dupes} duplicate L1${dupes === 1 ? "" : "s"} skipped (same code)` : ""),
+        );
+      }
+      onClose?.();
+    } finally {
+      setCommitting(false);
     }
-    const skipped = parsed.stats.l2Unmatched;
-    toast.success(
-      `Imported ${parsed.stats.l1Count} L1 · ${parsed.stats.l2Matched} L2` +
-        (skipped > 0 ? ` · ${skipped} orphan${skipped === 1 ? "" : "s"} skipped` : ""),
-    );
-    onClose?.();
   };
 
   return (
     <Card className="p-6">
       <header className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <Label>Import from Zoho</Label>
+          <Label>Import file (Zoho export)</Label>
           <p className="mt-1 max-w-xl text-[13px] leading-[1.55] text-muted-fg">
             Drop the L1 View <code className="font-mono text-fg">.csv</code>{" "}
             and the L2 View <code className="font-mono text-fg">.xls</code>{" "}
@@ -219,16 +257,24 @@ export function GoalsImport({ onClose }) {
             }
             l1Options={baseMerged?.tree.l1s || []}
           />
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-4">
-            <ModeSwitch mode={mode} onChange={setMode} />
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+            <div className="flex flex-col gap-1">
+              <ModeSwitch mode={mode} onChange={setMode} />
+              <span className="text-[11.5px] leading-[1.4] text-muted-fg">
+                {mode === "replace"
+                  ? "Archives the current tree; trackers and readings won't carry over. No undo."
+                  : "Adds these L1s to your tree; L1s with a code you already have are skipped."}
+              </span>
+            </div>
             <div className="flex gap-2">
-              <Button variant="soft" size="sm" onClick={clearAll}>
+              <Button variant="soft" size="sm" onClick={clearAll} disabled={committing}>
                 Clear
               </Button>
-              <Button size="sm" onClick={commit}>
+              <Button size="sm" onClick={() => void commit()} disabled={committing}>
                 <Upload size={14} />
-                {mode === "replace" ? "Replace & import" : "Append"}{" "}
-                {parsed.stats.l1Count} L1
+                {committing
+                  ? "Saving…"
+                  : `${mode === "replace" ? "Replace & import" : "Append"} ${parsed.stats.l1Count} L1`}
               </Button>
             </div>
           </div>
@@ -292,7 +338,7 @@ function FileList({ files, disabled, onFlip, onRemove }) {
             {f.detectedType ? `Detected ${f.detectedType.toUpperCase()}` : "Unrecognized"}
           </Badge>
           <div className={disabled ? "pointer-events-none opacity-50" : undefined}>
-            <SegmentedControl
+            <SegmentedControl as="radiogroup" ariaLabel={`Import ${f.filename} as`}
               size="sm"
               options={[
                 { value: "l1", label: "L1" },
@@ -313,7 +359,7 @@ function FileList({ files, disabled, onFlip, onRemove }) {
 
 function ModeSwitch({ mode, onChange }) {
   return (
-    <SegmentedControl
+    <SegmentedControl as="radiogroup" ariaLabel="Import mode"
       size="sm"
       onCard
       options={[
@@ -363,7 +409,7 @@ function Preview({ parsed, baseOrphans, assignments, onAssign, l1Options }) {
                 </div>
               </div>
             </div>
-            <div className="ml-5 text-[11.5px] text-dim-fg">
+            <div className="ml-5 text-[11.5px] text-muted-fg">
               └ {l1.l2s.length} L2{" "}
               {l1.l2s.length === 1 ? "child" : "children"} mapped
             </div>

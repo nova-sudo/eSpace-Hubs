@@ -89,13 +89,13 @@ function BarWithTarget({ value, fill, targetFill }) {
   return (
     <div className="flex items-center gap-2">
       <Label className="w-8 shrink-0">You</Label>
-      <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-card-alt">
+      <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-track">
         <div className="absolute inset-y-0 left-0 rounded-full bg-ink" style={{ width: `${fill}%` }} />
         {targetFill != null ? (
           <div
             aria-hidden="true"
             title="target"
-            className="absolute inset-y-[-2px] w-[2px] rounded-full bg-lav-ink"
+            className="absolute inset-y-[-2px] w-[2px] rounded-full bg-lav-text"
             style={{ left: `${targetFill}%` }}
           />
         ) : null}

@@ -27,6 +27,7 @@
  */
 
 import { ANALYSIS } from "./ai/analysis-events";
+import { aiErrorMessage } from "./ai-error-copy";
 import { getAiProvider } from "./use-ai-provider";
 import { startJob, endJob } from "@/lib/jobs-store";
 
@@ -128,11 +129,8 @@ export async function reclassifyOneGoal({ goal, contextAnswers, signal }) {
     });
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
-      throw new Error(
-        errBody?.error?.message ||
-          errBody?.error ||
-          `Classifier responded ${res.status}`,
-      );
+      const e = typeof errBody?.error === "object" ? errBody.error : { message: errBody?.error };
+      throw new Error(aiErrorMessage(e, `The analyst couldn't start (${res.status}). Try again.`));
     }
     if (!res.body) {
       throw new Error("Classifier returned an empty stream.");
@@ -155,7 +153,7 @@ export async function reclassifyOneGoal({ goal, contextAnswers, signal }) {
         evt.payload?.goalId === goal.id
       ) {
         throw new Error(
-          evt.payload?.error || "Classifier failed to produce a spec.",
+          aiErrorMessage(evt.payload?.error, "Classifier failed to produce a spec."),
         );
       }
     }

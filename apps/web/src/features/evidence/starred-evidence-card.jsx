@@ -11,8 +11,11 @@
  */
 
 import { useState } from "react";
+import Link from "next/link";
 import { Star, X } from "lucide-react";
 import { Badge, Card, Label } from "@/components/ui";
+import { useIntegrations } from "@/features/integrations";
+import { useHubLink } from "@/features/hubs";
 import {
   toggleEvidence,
   useEvidenceCandidates,
@@ -23,6 +26,10 @@ export function StarredEvidenceCard() {
   const starred = useStarredEvidence();
   const candidates = useEvidenceCandidates();
   const [picking, setPicking] = useState(false);
+  const { isConnected } = useIntegrations();
+  const link = useHubLink();
+  const hasCodeHost = isConnected("github") || isConnected("gitlab");
+  const hasJira = isConnected("jira");
 
   return (
     <Card className="flex flex-col gap-3">
@@ -45,13 +52,13 @@ export function StarredEvidenceCard() {
                   <Badge className="mr-1.5 font-mono">{s.ref}</Badge>
                 ) : null}
                 <span className="text-fg">{s.title || "(untitled)"}</span>
-                {s.date ? <span className="ml-1.5 text-dim-fg">{s.date}</span> : null}
+                {s.date ? <span className="ml-1.5 text-muted-fg">{s.date}</span> : null}
               </span>
               <button
                 type="button"
                 onClick={() => toggleEvidence(s)}
                 aria-label={`Remove ${s.ref || s.title} from starred proof`}
-                className="shrink-0 text-dim-fg hover:text-peach-ink"
+                className="shrink-0 text-muted-fg hover:text-peach-text"
               >
                 <X size={13} />
               </button>
@@ -64,10 +71,23 @@ export function StarredEvidenceCard() {
         <div className="border-t border-line pt-3">
           <Label className="mb-2 block">Recent work</Label>
           {candidates.length === 0 ? (
-            <p className="text-[12.5px] text-muted-fg">
-              Nothing new to add — recent merged PRs and closed tickets show
-              up here.
-            </p>
+            !hasCodeHost && !hasJira ? (
+              <p className="text-[12.5px] leading-[1.5] text-muted-fg">
+                Recent merged PRs and closed tickets show up here once a
+                provider is connected.{" "}
+                <Link
+                  href={link("/settings?tab=integrations")}
+                  className="font-bold text-fg hover:underline"
+                >
+                  Connect GitHub / GitLab or Jira
+                </Link>
+              </p>
+            ) : (
+              <p className="text-[12.5px] text-muted-fg">
+                Nothing new to add — recent merged PRs and closed tickets show
+                up here.
+              </p>
+            )
           ) : (
             <ul className="flex max-h-52 flex-col gap-1 overflow-y-auto pr-1">
               {candidates.map((c) => (
@@ -93,7 +113,7 @@ export function StarredEvidenceCard() {
       <button
         type="button"
         onClick={() => setPicking((v) => !v)}
-        className="self-start text-[12.5px] font-bold text-fg hover:underline"
+        className="link-target self-start text-[12.5px] font-bold text-fg hover:underline"
       >
         {picking ? "Done" : "+ Add proof"}
       </button>

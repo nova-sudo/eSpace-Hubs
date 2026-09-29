@@ -31,6 +31,9 @@ import {
 
 const NOW = Date.UTC(2026, 8, 16); // Wed 16 Sep 2026
 
+// Weekly windows are Sunday-anchored work weeks (Sun→Sat, first one clipped
+// to the plan's start) — so a plan's end is the Saturday closing its Nth week,
+// not start + 7N days as under the old fixed-stride weeks.
 const week = (n, detail) => ({ key: `w${n}`, label: `Week ${n}`, ...(detail ? { detail } : {}) });
 
 // ─── resolvePlanBounds ────────────────────────────────────────────────
@@ -38,7 +41,7 @@ const week = (n, detail) => ({ key: `w${n}`, label: `Week ${n}`, ...(detail ? { 
 test("a flat weekly block with nothing stated is the calendar-year default — and says so", () => {
   const b = resolvePlanBounds({ cadence: "weekly" }, { now: NOW });
   assert.equal(b.startSource, "today");
-  assert.equal(b.cycleStart, "2026-09-14", "snaps to the Monday");
+  assert.equal(b.cycleStart, "2026-09-13", "snaps to the Sunday that opens the work week");
   assert.equal(b.lengthSource, "default");
   assert.equal(b.periodCount, 53);
   assert.equal(b.windows.length, 53);
@@ -49,7 +52,7 @@ test("a stated periodCount bounds a flat block to exactly that many windows", ()
   assert.equal(b.startSource, "spec");
   assert.equal(b.lengthSource, "spec");
   assert.equal(b.periodCount, 13);
-  assert.equal(b.cycleEnd, "2026-11-30");
+  assert.equal(b.cycleEnd, "2026-11-28");
   assert.equal(b.windows.length, 13);
 });
 
@@ -66,7 +69,7 @@ test("authored periods outrank a contradicting periodCount and cycleEnd", () => 
   );
   assert.equal(b.lengthSource, "periods");
   assert.equal(b.periodCount, 3);
-  assert.equal(b.cycleEnd, "2026-09-21");
+  assert.equal(b.cycleEnd, "2026-09-19");
 });
 
 test("a stored cycleEnd alone still yields the length", () => {
@@ -79,7 +82,7 @@ test("the goal's own start date anchors a block with none, at the top level", ()
   const b = resolvePlanBounds({ cadence: "weekly", periodCount: 4 }, { now: NOW, goal: { startDate: "2026-10-05" } });
   assert.equal(b.startSource, "goal");
   assert.equal(b.cycleStart, "2026-10-05");
-  assert.equal(b.cycleEnd, "2026-11-01");
+  assert.equal(b.cycleEnd, "2026-10-31");
 });
 
 test("a nested block inherits its containing window for both start and length", () => {
@@ -88,7 +91,7 @@ test("a nested block inherits its containing window for both start and length", 
   assert.equal(b.startSource, "container");
   assert.equal(b.lengthSource, "container");
   assert.equal(b.cycleStart, "2026-07-01");
-  assert.equal(b.periodCount, 14, "92 days at a 7-day stride");
+  assert.equal(b.periodCount, 14, "Wed 1 Jul → 30 Sep spans 14 Sunday-anchored work weeks");
 });
 
 test("non-bucketing cadences have no plan to map", () => {
@@ -102,19 +105,19 @@ test("stampBounds writes the reviewed cycle onto the block, periodCount only whe
   assert.deepEqual(stampedFlat, {
     cadence: "weekly",
     cycleStart: "2026-09-01",
-    cycleEnd: "2026-11-30",
+    cycleEnd: "2026-11-28",
     periodCount: 13,
   });
   const authored = { cadence: "weekly", periods: [week(1), week(2)], periodCount: 9 };
   const stamped = stampBounds(authored, resolvePlanBounds(authored, { now: NOW, goal: { startDate: "2026-09-07" } }));
   assert.equal(stamped.periodCount, undefined);
   assert.equal(stamped.cycleStart, "2026-09-07");
-  assert.equal(stamped.cycleEnd, "2026-09-20");
+  assert.equal(stamped.cycleEnd, "2026-09-19");
 });
 
 test("describeCycle reads as a plan, not a config", () => {
   const b = resolvePlanBounds({ cadence: "weekly", cycleStart: "2026-09-01", periodCount: 13 }, { now: NOW });
-  assert.equal(describeCycle(b), "13 weeks · 1 Sept – 30 Nov 2026");
+  assert.equal(describeCycle(b), "13 weeks · 1 Sept – 28 Nov 2026");
 });
 
 // ─── cycle mutators ───────────────────────────────────────────────────
@@ -125,7 +128,7 @@ test("setPeriodCount pads authored periods with placeholders and re-derives the 
   const out = setPeriodCount(block, 4, b);
   assert.equal(out.periods.length, 4);
   assert.deepEqual(out.periods[3], { key: "w4", label: "Week 4" });
-  assert.equal(out.cycleEnd, "2026-09-28");
+  assert.equal(out.cycleEnd, "2026-09-26");
   assert.equal(out.periodCount, undefined);
 });
 
@@ -144,13 +147,13 @@ test("setPeriodCount trimming folds the dropped windows' content into the last k
   assert.deepEqual(out.periods[1].detail.activities, ["Write charter", "Spec template"]);
   assert.deepEqual(out.periods[1].detail.deliverables.map((d) => d.label), ["AGENTS.md", "spec.md"]);
   assert.equal(out.periods[1].detail.focus, "Charter");
-  assert.equal(out.cycleEnd, "2026-09-14");
+  assert.equal(out.cycleEnd, "2026-09-12");
 });
 
 test("setPeriodCount on a flat block just records the count", () => {
   const out = setPeriodCount({ cadence: "weekly", cycleStart: "2026-09-01" }, 13);
   assert.equal(out.periodCount, 13);
-  assert.equal(out.cycleEnd, "2026-11-30");
+  assert.equal(out.cycleEnd, "2026-11-28");
   assert.equal(out.periods, undefined);
 });
 
@@ -165,7 +168,7 @@ test("setCycleStart keeps the length and moves the end", () => {
   const block = { cadence: "weekly", cycleStart: "2026-09-01", periodCount: 13 };
   const out = setCycleStart(block, "2026-10-05", resolvePlanBounds(block, { now: NOW }));
   assert.equal(out.cycleStart, "2026-10-05");
-  assert.equal(out.cycleEnd, "2027-01-03");
+  assert.equal(out.cycleEnd, "2027-01-02");
   assert.equal(out.periodCount, 13);
 });
 
@@ -254,7 +257,7 @@ test("removePeriod folds the removed window into its predecessor and shortens th
   const out = removePeriod(block, 1, resolvePlanBounds(block, { now: NOW }));
   assert.equal(out.periods.length, 2);
   assert.deepEqual(out.periods[0].detail.activities, ["A", "B"]);
-  assert.equal(out.cycleEnd, "2026-09-14");
+  assert.equal(out.cycleEnd, "2026-09-12");
   // The first window folds forward instead.
   const out2 = removePeriod(block, 0, resolvePlanBounds(block, { now: NOW }));
   assert.deepEqual(out2.periods[0].detail.activities, ["B", "A"]);
@@ -267,7 +270,7 @@ test("insertPeriodAfter adds a window and lengthens the cycle — even on a flat
   const flat = { cadence: "weekly", cycleStart: "2026-09-01", periodCount: 2 };
   const out = insertPeriodAfter(flat, 0, resolvePlanBounds(flat, { now: NOW }));
   assert.equal(out.periods.length, 3);
-  assert.equal(out.cycleEnd, "2026-09-21");
+  assert.equal(out.cycleEnd, "2026-09-19");
   assert.equal(out.periodCount, undefined);
   assert.ok(new Set(out.periods.map((p) => p.key)).size === 3, "keys stay unique");
 });
