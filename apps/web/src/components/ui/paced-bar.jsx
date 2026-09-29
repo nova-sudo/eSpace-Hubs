@@ -29,7 +29,7 @@ export function PacedBar({
         display: "block",
         height,
         borderRadius: "var(--radius-pill)",
-        background: "var(--card-alt)",
+        background: "var(--track)",
       }}
     >
       <span
@@ -51,7 +51,7 @@ export function PacedBar({
           left: `${pctExpected}%`,
           width: 2,
           borderRadius: 2,
-          background: "var(--dim-fg)",
+          background: "var(--muted-fg)",
         }}
       />
     </span>

@@ -27,10 +27,22 @@
      tokens are the source of truth, not the ramp. Guarded by
      src/design-system-contrast.test.js. */
   --muted-fg: #6d6d76;
-  /* Tertiary/placeholder ONLY — 2.56:1 on --card, below the body-text bar
-     by design. Never use it for text a reader has to read. */
-  --dim-fg: #a1a1aa;
+  /* Tertiary: placeholders, disabled text, decorative separators ONLY —
+     3.11:1 on --bg, 3.42:1 on --card, 3.20:1 on --card-alt. That clears the
+     3:1 non-text bar (WCAG 1.4.11) but NOT the 4.5:1 body-text bar, so it is
+     never used for text a reader has to read — use --muted-fg for that. */
+  --dim-fg: #8a8a93;
   --line: rgba(24, 24, 27, 0.07);
+  /* Resting boundary of a form field (input / select / textarea). Inputs are
+     the one exception to "borderless" — WCAG 1.4.11 wants a 3:1 boundary.
+     3.11:1 on --bg, 3.42:1 on --card, 3.20:1 on the --card-alt fill. */
+  --field-line: #8a8a93;
+  /* Empty progress track (fill strips, paced bars) — visible, not loud:
+     1.48:1 on --card. The FILLED part is --ink (≥ 3:1 everywhere). */
+  --track: #d4d4d8;
+  /* Modal backdrop. A token so dark mode darkens instead of washing the
+     page in near-white (bg-fg/40 did). */
+  --scrim: rgba(24, 24, 27, 0.4);
 
   /* Brand — ink is the ONLY brand color */
   --ink: #18181b;
@@ -40,7 +52,8 @@
   --shadow-card: 0 10px 30px rgba(24, 24, 27, 0.06);
   --shadow-float: 0 16px 48px rgba(24, 24, 27, 0.16);
 
-  /* Tints — surface + ink pairs. Identical in dark. */
+  /* Tints — surface + ink pairs. Identical in dark. The *-ink colour is
+     ONLY for text/icons ON its own tint surface. */
   --mint: #dcf5e6;
   --mint-ink: #14532d;
   --sky: #e0eafe;
@@ -51,6 +64,17 @@
   --peach-ink: #9a3412;
   --lemon: #fbf3c4;
   --lemon-ink: #713f12;
+
+  /* Tint TEXT — the state colour for text, icons and dots on a PLAIN
+     surface (--bg / --card / --card-alt), where there is no tint behind it.
+     Light = the *-ink value (≥ 6.6:1 on every surface); dark = a light
+     shade (≥ 7:1 on every dark surface). Guarded by
+     src/design-system-contrast.test.js. */
+  --mint-text: #14532d;
+  --sky-text: #1e3a8a;
+  --lav-text: #3b1d8f;
+  --peach-text: #9a3412;
+  --lemon-text: #713f12;
 
   /* Radii */
   --radius-xl: 20px;
@@ -71,8 +95,16 @@
   --card-alt: #202024;
   --fg: #f4f4f5;
   --muted-fg: #a1a1aa;
-  --dim-fg: #62626b;
+  --dim-fg: #6b6b74;
   --line: rgba(255, 255, 255, 0.08);
+  --field-line: #6b6b74;
+  --track: #3f3f46;
+  --scrim: rgba(0, 0, 0, 0.6);
+  --mint-text: #86efac;
+  --sky-text: #93c5fd;
+  --lav-text: #c4b5fd;
+  --peach-text: #fdba74;
+  --lemon-text: #fde047;
   --ink: #f4f4f5;
   --ink-on: #18181b;
   --shadow-card: none;
@@ -88,8 +120,16 @@
     --card-alt: #202024;
     --fg: #f4f4f5;
     --muted-fg: #a1a1aa;
-    --dim-fg: #62626b;
+    --dim-fg: #6b6b74;
     --line: rgba(255, 255, 255, 0.08);
+    --field-line: #6b6b74;
+    --track: #3f3f46;
+    --scrim: rgba(0, 0, 0, 0.6);
+    --mint-text: #86efac;
+    --sky-text: #93c5fd;
+    --lav-text: #c4b5fd;
+    --peach-text: #fdba74;
+    --lemon-text: #fde047;
     --ink: #f4f4f5;
     --ink-on: #18181b;
     --shadow-card: none;
@@ -108,10 +148,10 @@
   --accent: var(--ink);
   --accent-on: var(--ink-on);
   --accent-dim: var(--card-alt);
-  --accent-2: var(--mint-ink);
-  --good: var(--mint-ink);
-  --warn: var(--lemon-ink);
-  --bad: var(--peach-ink);
+  --accent-2: var(--mint-text);
+  --good: var(--mint-text);
+  --warn: var(--lemon-text);
+  --bad: var(--peach-text);
   --good-bg: var(--mint);
   --warn-bg: var(--lemon);
   --bad-bg: var(--peach);
@@ -151,6 +191,16 @@
   --color-lemon: var(--lemon);
   --color-lemon-ink: var(--lemon-ink);
 
+  /* Tint text on plain surfaces: text-peach-text, bg-peach-text (dots)… */
+  --color-mint-text: var(--mint-text);
+  --color-sky-text: var(--sky-text);
+  --color-lav-text: var(--lav-text);
+  --color-peach-text: var(--peach-text);
+  --color-lemon-text: var(--lemon-text);
+  --color-field-line: var(--field-line);
+  --color-track: var(--track);
+  --color-scrim: var(--scrim);
+
   /* Compatibility color utilities (bg-accent, text-good, border-border …). */
   --color-accent: var(--accent);
   --color-accent-on: var(--accent-on);
@@ -186,30 +236,48 @@
   --font-serif: var(--font-sans);
 }
 
-* {
-  border-color: var(--line);
-  box-sizing: border-box;
+/* Layered, so a `border-*` colour utility (border-field-line, border-ink…)
+   wins over this default. Unlayered, it silently beat every one of them. */
+@layer base {
+  * {
+    border-color: var(--line);
+    box-sizing: border-box;
+  }
 }
 
 /* Native controls + focus rings follow ink, not the OS blue. */
 :root {
   accent-color: var(--ink);
 }
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 0;
+/* In @layer base so a utility (`focus-visible:outline-none`, a component's
+   own ring) wins, and with NO border-radius — the outline follows the
+   element's own radius, so a pill stays a pill while focused. */
+@layer base {
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 0;
+  }
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible,
+  [role="checkbox"]:focus-visible,
+  [role="radio"]:focus-visible,
+  [role="tab"]:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+  }
 }
-button:focus-visible,
-a:focus-visible,
-[role="button"]:focus-visible,
-[role="checkbox"]:focus-visible,
-[role="tab"]:focus-visible,
-[tabindex]:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
-  border-radius: var(--radius-md);
+
+/* A standalone text link / text button: at least a 24px-tall target
+   (WCAG 2.5.8) without changing how the text sits in its line. */
+@utility link-target {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding-block: 2px;
 }
 
 select {
@@ -263,6 +331,44 @@ em.accent {
 }
 *::-webkit-scrollbar-thumb:hover {
   background: var(--dim-fg);
+}
+
+/* Entrance reveal — CSS-driven so content can never be left invisible
+   (a JS tween that stalls, e.g. in a throttled tab, would). `backwards`
+   fill starts the element hidden until its delay elapses, then it settles
+   at its normal styles with no leftover inline state. */
+@keyframes ui-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.ui-reveal {
+  animation: ui-reveal 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--reveal-delay, 0ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-reveal {
+    animation: none;
+  }
+  /* Global: no slides, fades or smooth scrolls for people who asked the OS
+     for less motion. Durations collapse rather than vanish so transitionend /
+     animationend listeners still fire. */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  html {
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Print — used by evidence export to PDF */

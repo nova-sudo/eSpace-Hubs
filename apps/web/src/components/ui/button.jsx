@@ -2,9 +2,27 @@ import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 const SIZES = {
-  sm: { h: "h-9", text: "text-[13px]", pad: "px-4", circle: 28, arrowPad: "pl-5 pr-1.5" },
-  md: { h: "h-10", text: "text-[13.5px]", pad: "px-5", circle: 32, arrowPad: "pl-5 pr-1.5" },
-  lg: { h: "h-11", text: "text-[14px]", pad: "px-6", circle: 32, arrowPad: "pl-5 pr-1.5" },
+  sm: {
+    h: "h-9",
+    text: "text-[13px]",
+    pad: "px-4",
+    circle: 28,
+    arrowPad: "pl-5 pr-1.5",
+  },
+  md: {
+    h: "h-10",
+    text: "text-[13.5px]",
+    pad: "px-5",
+    circle: 32,
+    arrowPad: "pl-5 pr-1.5",
+  },
+  lg: {
+    h: "h-11",
+    text: "text-[14px]",
+    pad: "px-6",
+    circle: 32,
+    arrowPad: "pl-5 pr-1.5",
+  },
 };
 
 const TONE_TINT = {
@@ -26,8 +44,13 @@ const VARIANTS = {
  * The single Button primitive. Pill-shaped, sentence case, Manrope.
  * Legacy `variant="primary"` / `"solid"` map to `ink` so old callers
  * keep working.
+ *
+ * `as` renders the same pill as another element — pass `as={Link}` with an
+ * `href` for navigation. Never wrap a Button in a Link: a <button> inside
+ * an <a> is invalid HTML and gives keyboard users two tab stops.
  */
 export function Button({
+  as: Component = "button",
   children,
   variant = "ink",
   size = "md",
@@ -42,18 +65,30 @@ export function Button({
     variant === "primary" || variant === "solid" ? "ink" : variant;
   const sz = SIZES[size] || SIZES.md;
   const variantClass =
-    resolvedVariant === "tint" ? (TONE_TINT[tone] || TONE_TINT.mint) + " font-semibold hover:opacity-90" : VARIANTS[resolvedVariant] || VARIANTS.ink;
+    resolvedVariant === "tint"
+      ? (TONE_TINT[tone] || TONE_TINT.mint) + " font-semibold hover:opacity-90"
+      : VARIANTS[resolvedVariant] || VARIANTS.ink;
 
+  const isButton = Component === "button";
   return (
-    <button
+    <Component
       {...rest}
-      disabled={disabled}
+      {...(isButton
+        ? { disabled }
+        : disabled
+          ? {
+              "aria-disabled": true,
+              tabIndex: -1,
+              onClick: (e) => e.preventDefault(),
+            }
+          : {})}
       className={cn(
         "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-pill)] transition-colors disabled:cursor-not-allowed disabled:opacity-50",
         sz.h,
         sz.text,
         iconOnly ? "aspect-square p-0" : arrow ? sz.arrowPad : sz.pad,
         variantClass,
+        !isButton && disabled && "pointer-events-none opacity-50",
         className,
       )}
     >
@@ -67,6 +102,6 @@ export function Button({
           <ArrowRight size={14} />
         </span>
       ) : null}
-    </button>
+    </Component>
   );
 }

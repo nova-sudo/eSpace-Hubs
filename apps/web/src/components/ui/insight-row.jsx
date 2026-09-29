@@ -15,18 +15,18 @@ export function InsightRow({ children, action, tone = "neutral", className }) {
         className,
       )}
     >
-      <Sparkles size={16} className="shrink-0 text-lav-ink" />
+      <Sparkles size={16} className={cn("shrink-0", tone === "lav" ? "text-lav-ink" : "text-lav-text")} />
       <span className="min-w-0 flex-1">{children}</span>
       {action ? (
         action.href ? (
-          <Link href={action.href} className="whitespace-nowrap text-[12.5px] font-bold text-fg">
+          <Link href={action.href} className={cn("link-target whitespace-nowrap text-[12.5px] font-bold", tone === "lav" ? "text-lav-ink" : "text-fg")}>
             {action.label}
           </Link>
         ) : (
           <button
             type="button"
             onClick={action.onClick}
-            className="whitespace-nowrap text-[12.5px] font-bold text-fg"
+            className={cn("link-target whitespace-nowrap text-[12.5px] font-bold", tone === "lav" ? "text-lav-ink" : "text-fg")}
           >
             {action.label}
           </button>

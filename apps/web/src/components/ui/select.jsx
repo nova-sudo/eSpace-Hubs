@@ -25,7 +25,7 @@ const enc = (v) => (v === "" || v == null ? EMPTY : String(v));
 const dec = (v) => (v === EMPTY ? "" : v);
 
 const TRIGGER_TONES = {
-  default: "bg-card-alt text-fg",
+  default: "border border-field-line bg-card-alt text-fg",
   inverse: "bg-ink text-ink-on",
   bare: "bg-transparent text-inherit",
 };

@@ -33,8 +33,11 @@ explicitly named as such.
 | `--card-alt` | `#f7f7f8` | `#202024` | `bg-card-alt` | inset panels, soft buttons, resting inputs, chips on a card |
 | `--fg` | `#18181b` | `#f4f4f5` | `text-fg` | primary text |
 | `--muted-fg` | `#6d6d76` | `#a1a1aa` | `text-muted-fg` | secondary text, labels (4.66:1 on the canvas — AA) |
-| `--dim-fg` | `#a1a1aa` | `#62626b` | `text-dim-fg` | placeholders ONLY — 2.56:1, below the AA body-text bar |
+| `--dim-fg` | `#8a8a93` | `#6b6b74` | `text-dim-fg` | placeholders (`placeholder:`), disabled text, decorative separators (`·`, a "—" no-value) ONLY. ≥ 3:1 on every surface, below the 4.5:1 body-text bar — never for text a reader has to read (the guard test enforces it) |
 | `--line` | `rgba(24,24,27,.07)` | `rgba(255,255,255,.08)` | `border-line` | dividers INSIDE cards only |
+| `--field-line` | `#8a8a93` | `#6b6b74` | `border-field-line` | the resting 1px boundary of an input / select / textarea (≥ 3:1 on bg, card and the card-alt fill) |
+| `--track` | `#d4d4d8` | `#3f3f46` | `bg-track` | the EMPTY part of a progress bar / fill strip / ring (≈ 1.5:1 on a card; filled part is ink, ≥ 3:1 against it) |
+| `--scrim` | `rgba(24,24,27,.4)` | `rgba(0,0,0,.6)` | `bg-scrim` | modal / drawer backdrop (darkens in both themes) |
 | `--ink` | `#18181b` | `#f4f4f5` | `bg-ink` | the brand: primary buttons, active nav pill, filled progress |
 | `--ink-on` | `#ffffff` | `#18181b` | `text-ink-on` | text on ink |
 | `--shadow-card` | soft | none | (style) | resting card shadow in light only |
@@ -43,6 +46,8 @@ explicitly named as such.
 ### Tints (state and category)
 
 Each tint is a surface + ink pair. Values are IDENTICAL in light and dark.
+The `-ink` colour is ONLY for text and icons sitting ON its own tint
+surface (a Badge, a tinted row, `Card tone=…`).
 
 | Tint | Surface | Ink | Tailwind | Meaning |
 |---|---|---|---|---|
@@ -52,9 +57,25 @@ Each tint is a surface + ink pair. Values are IDENTICAL in light and dark.
 | peach | `--peach #ffe4d6` | `--peach-ink #9a3412` | `bg-peach text-peach-ink` | behind, overdue, not achieved, danger, negative delta |
 | lemon | `--lemon #fbf3c4` | `--lemon-ink #713f12` | `bg-lemon text-lemon-ink` | waiting, not logged, needs setup, pending |
 
+**Tint text on a plain surface.** When a state colour has no tint behind it
+(an inline error line, a destructive menu item, a status dot, a starred
+glyph, a diff line) use the theme-aware `-text` token — `text-peach-text`,
+`bg-mint-text` for a dot, `fill-lemon-text` for an icon. In light it equals
+the ink; in dark it is a light shade that stays ≥ 4.5:1 on `--bg`,
+`--card` and `--card-alt` (the ink collapses to 1.5–2.5:1 there).
+
+| Token | Light | Dark | Tailwind |
+|---|---|---|---|
+| `--mint-text` | `#14532d` | `#86efac` | `text-mint-text` |
+| `--sky-text` | `#1e3a8a` | `#93c5fd` | `text-sky-text` |
+| `--lav-text` | `#3b1d8f` | `#c4b5fd` | `text-lav-text` |
+| `--peach-text` | `#9a3412` | `#fdba74` | `text-peach-text` |
+| `--lemon-text` | `#713f12` | `#fde047` | `text-lemon-text` |
+
 Semantic aliases exist so old code keeps resolving, but NEW code uses
 the tint names directly: `--good` = mint-ink, `--warn` = lemon-ink,
-`--bad` = peach-ink, `--good-bg` = mint, `--warn-bg` = lemon,
+`--bad` = peach-ink (now resolving to the `-text` tokens, since they
+are text colours), `--good-bg` = mint, `--warn-bg` = lemon,
 `--bad-bg` = peach, `--accent` = ink, `--accent-on` = ink-on,
 `--accent-dim` = card-alt, `--accent-2` = mint-ink, `--border` = line.
 
@@ -120,18 +141,39 @@ inline in the feature and note it in your report.
 | `Delta` | `value`, `invert` | Renders as a mint (good) / peach (bad) / neutral `Badge` with `+`/`−` sign. No arrows. |
 | `PageHeader` | `crumb`, `title`, `subtitle`, `right` | Crumb = Label. Title = Display recipe. `italicWord` is accepted and ignored. Optional GSAP reveal kept. |
 | `Section` | `title`, `right`, `children`, `className` | Section-title recipe with `mb-3.5`. No rule line. `num` is accepted and ignored. |
-| `SegmentedControl` | `options: [{value,label,count?}]`, `value`, `onChange`, `size` = sm · md | Pill track in `bg-card` (or `bg-card-alt` on a card), active item = ink pill. |
+| `SegmentedControl` | `options: [{value,label,count?}]`, `value`, `onChange`, `size` = sm · md, `onCard`, `as` = `tablist` (default) · `radiogroup`, `ariaLabel`, `controls` (panel id or `value => id`), `idBase` | Pill track in `bg-card` (or `bg-card-alt` on a card), active item = ink pill. `tablist` for view switchers (tab + aria-selected), `radiogroup` for filters / settings / one-of-N (radio + aria-checked). Both: roving tabindex, ←/→/Home/End. Always pass `ariaLabel`. Overflow scrolls with a fade on the hidden edge(s); the active option is scrolled into view. |
 | `FilterChip` | `label`, `value`, `icon`, `onClick`, `active`, `count` | 40px pill: `Label: Value ▾`. |
 | `InsightRow` | `children`, `action: {label, href?, onClick?}`, `tone` = neutral · lav | Sparkle icon (lavender ink) + one line + one link. Sits at the bottom of a card. |
-| `FillStrip` | `cells: [{state: filled · owed · current · future · settled, label?}]`, `size` = sm (6px) · md (10px) · row (8×16 cells) | filled = ink, owed = peach-ink at 55%, current = card-alt with a dashed dim outline, future = card-alt, settled = card-alt at 60%. |
-| `Input`, `Field`, `Select`, `Checkbox` | as today | Filled `bg-card-alt`, `--radius-lg`, 44px, no border at rest, 2px ink ring on focus. Field label = `<Label>`. Select popup = card with `--shadow-float`. |
+| `FillStrip` | `cells: [{state: filled · owed · current · future · settled · before, label?}]`, `size` = sm (6px) · md (10px) · row (8×16 cells) | filled = ink, owed = peach-text, current = track with a dashed muted outline, future = track, settled = track at 60%, before = a track-coloured outline only. |
+| `Input`, `Field`, `Select`, `Checkbox` | as today | Filled `bg-card-alt`, `--radius-lg`, 44px, a 1px `border-field-line` at rest (see "Inputs are the exception to borderless" below), 2px ink ring on focus. Field label = `<Label>`, hint = 12px `text-muted-fg`. Select popup = card with `--shadow-float`. |
 | `IconButton` | `label` (aria), `size` = sm (32) · md (38); `children` = a lucide icon | Circle, `bg-card` on the canvas, `bg-card-alt` on a card. |
 | `Loader`, `Loading`, `TileState` | as today | Loader is a plain 3-dot pulse or ring in currentColor. No dot-matrix library. |
 | `Bars`, `Sparkline`, `LineSpark`, `ContributionHeatmap` | as today | Bars: rounded 8/8/4/4 tops, highlighted bar = lav with the value printed on it. Lines: ink stroke, soft gradient fill. Colors only from tokens. |
 | `Reveal`, `useFocusTrap`, `StarGlyph`, `ItemEvidence` | as today | Restyled to tokens. |
 
+**Inputs are the exception to borderless.** A filled field on a card is
+1.07:1 (light) / 1.10:1 (dark) against it — invisible as a boundary, which
+fails WCAG 1.4.11 (3:1 for the visual boundary of a control). Every input,
+select trigger and textarea therefore carries a resting
+`border border-field-line` (≥ 3:1 on `--bg`, `--card` and its own
+`--card-alt` fill). This applies ONLY to form fields — cards, panels, chips
+and buttons stay borderless. A bare field inside an already-bounded control
+(the command palette row, a `tone="bare"` Select) doesn't need one.
+
+**Text links as targets.** A standalone text link or text button (History,
+Edit note, Manage…) takes the `link-target` utility: inline-flex, 24px
+minimum height (WCAG 2.5.8) without changing its type.
+
 Removed and must not be imported anywhere: `DitherField`, `DitherDisc`,
 `DitherBars`, `Grain`, `GlyphAgent`.
+
+### Focus and motion
+
+The global focus ring (2px ink, 2px offset; 0 offset on fields) lives in
+`@layer base` with no `border-radius` of its own, so the outline follows
+the element's radius (a pill stays a pill) and a component's own
+`focus-visible:` utility wins. `prefers-reduced-motion: reduce` collapses
+every transition, animation and smooth scroll globally.
 
 ## 4. Shell (`apps/web/src/components/shell`)
 
@@ -139,7 +181,7 @@ Removed and must not be imported anywhere: `DitherField`, `DitherDisc`,
   rounded square + "DevHub" 17px 800. Center: nav as pills, active =
   `bg-ink text-ink-on`, inactive = `text-fg` with `hover:bg-card`.
   Right: circular `IconButton`s (search opens the command palette, bell
-  with a peach-ink dot) and the user chip as a `bg-card` pill with a
+  with a peach-text dot) and the user chip as a `bg-card` pill with a
   lavender avatar, name, hub badge and chevron. Theme toggle stays as a
   circular icon button. Mobile: hamburger + stacked pill list.
 - No version tag in the header. No `⌘K` chip (the search button is the
@@ -166,8 +208,10 @@ live status, no dot for grade/tier.
 **Insight row.** At the bottom of a card: sparkle + one sentence + one
 link. AI text is always marked with the sparkle.
 
-**Fill strip.** Cadence windows as rounded pills or 8×16 cells. Ink =
-filled, peach = owed, dashed = current. Labels in 11.5px dim under it.
+**Fill strip / progress.** Cadence windows as rounded pills or 8×16 cells.
+Ink = filled, peach-text = owed, dashed = current, `--track` = empty.
+Progress bars: ink fill on a `bg-track` track. Labels in 11.5px
+`text-muted-fg` under it.
 
 **Buttons.** One ink button per view. Secondary actions are `soft`.
 Destructive actions are `danger` (peach tint), never red-outlined.
@@ -176,7 +220,8 @@ Destructive actions are `danger` (peach tint), never red-outlined.
 one soft or ink button. No dashed border.
 
 **Dialogs / modals / drawers.** `bg-card`, `--radius-xl`, `--shadow-float`,
-`p-6`, backdrop `bg-fg/40`. Title = Section-title recipe.
+`p-6`, backdrop `bg-scrim` (not `bg-fg/40`, which turns into a white wash
+in dark). Title = Section-title recipe.
 
 **Tables.** Header row = Label recipe (sentence case) with
 `border-b border-line`; rows `border-t border-line`; no zebra.
@@ -195,7 +240,11 @@ labels printed on the bar (11px 700). No dot fields, no dither.
 | `border-dashed`, `border-b border-border` rules under titles | no rule, or `border-t border-line` inside a card |
 | `border border-border` around a card | no border |
 | `bg-accent-dim`, `text-accent`, `border-accent`, `var(--accent)` | `bg-card-alt` for surfaces; `text-fg` for links (700 weight); `bg-lav text-lav-ink` for AI/highlight; `bg-ink` for the primary |
-| `text-good` / `text-warn` / `text-bad` as text colors | a Badge, or `text-mint-ink` / `text-lemon-ink` / `text-peach-ink` ONLY on a matching tint surface. Semantic color on white text is not used; the surface carries the state |
+| `text-good` / `text-warn` / `text-bad` as text colors | a Badge, or `text-mint-ink` / `text-lemon-ink` / `text-peach-ink` ONLY on a matching tint surface. On a plain surface (inline error, destructive menu item, dot) use `text-peach-text` / `bg-peach-text` etc. |
+| `text-{tint}-ink` / `bg-{tint}-ink` on `bg-card` / `bg-bg` / `bg-card-alt` | `text-{tint}-text` / `bg-{tint}-text` |
+| `text-dim-fg` on readable text (hints, timestamps, empty-state copy, axis labels) | `text-muted-fg`. Dim is for `placeholder:`, disabled and decorative separators only |
+| `bg-fg/40` backdrop | `bg-scrim` |
+| `bg-card-alt` as an empty progress track | `bg-track` |
 | `rounded-md`, `rounded-[4px]`, `rounded-[6px]`, `rounded-lg` (8px) | `rounded-[var(--radius-md)]` or larger |
 | `DitherField`, `DitherDisc`, `DitherBars`, `Grain`, `GlyphAgent`, dot-grid `radial-gradient` textures | delete |
 | Raw hex outside `pdf/` and named chart palettes | tokens |
@@ -232,7 +281,15 @@ labels printed on the bar (11px 700). No dot fields, no dither.
 `DitherBars`, `<Grain`, `GlyphAgent`, `italicWord=`, `border-dashed`,
 inline `fontFamily:`, `text-[9px]`, `text-[10px]`, `text-[10.5px]`,
 and raw 6-digit hex outside `features/evidence/pdf/` and
-`*-palette.js`. Run it with:
+`*-palette.js`. It also fails on a bare `text-dim-fg` used for readable
+text (allowed: `placeholder:`/`disabled:` variants, `·`/`—` separators,
+aria-hidden glyphs, dimmed cells, plus a short per-file allow-list), and on
+a `{text,bg,fill,…}-<tint>-ink` with no `bg-<tint>` / `tone="<tint>"`
+surface on the same element or within the 16 lines above.
+`src/design-system-contrast.test.js` computes every text pair (fg,
+muted-fg, each `-text` on bg / card / card-alt; each `-ink` on its tint)
+at ≥ 4.5:1 and field-line / dim-fg / track at their non-text bars, in both
+themes. Run it with:
 
 ```
 npx tsx --test src/design-system-guard.test.js

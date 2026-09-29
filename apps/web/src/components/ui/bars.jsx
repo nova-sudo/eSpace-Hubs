@@ -41,7 +41,7 @@ export function Bars({
             {showValues ? (
               <span
                 className="font-bold leading-none"
-                style={{ fontSize: 11, color: d.highlight ? "var(--lav-ink)" : "var(--fg)" }}
+                style={{ fontSize: 11, color: d.highlight ? "var(--lav-text)" : "var(--fg)" }}
               >
                 {v}
               </span>

@@ -51,13 +51,13 @@ export function TileState({
       <div className="flex items-baseline gap-2">
         <span
           aria-hidden="true"
-          className={cn("inline-block h-1.5 w-1.5 rounded-full", isError ? "bg-peach-ink" : "bg-dim-fg")}
+          className={cn("inline-block h-1.5 w-1.5 rounded-full", isError ? "bg-peach-text" : "bg-dim-fg")}
         />
-        <span className={cn("text-[13px]", isError ? "text-peach-ink" : "text-muted-fg")}>
+        <span className={cn("text-[13px]", isError ? "text-peach-text" : "text-muted-fg")}>
           {message || (isError ? "Couldn't load." : "No data in this window.")}
         </span>
       </div>
-      {sub ? <div className="mt-1.5 max-w-[28ch] text-[12px] leading-[1.45] text-dim-fg">{sub}</div> : null}
+      {sub ? <div className="mt-1.5 max-w-[28ch] text-[12px] leading-[1.45] text-muted-fg">{sub}</div> : null}
     </div>
   );
 }
