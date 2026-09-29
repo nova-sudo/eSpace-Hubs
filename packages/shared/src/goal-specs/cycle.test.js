@@ -16,16 +16,23 @@ import {
  * the length that produced it.
  */
 
-test("weekly: 13 windows from a Tuesday start end the day before week 14", () => {
-  assert.equal(cycleEndForCount("2026-09-01", "weekly", 13), "2026-11-30");
-  assert.equal(windowCountForCycle("2026-09-01", "weekly", "2026-11-30"), 13);
+// Weekly grids are Sunday-anchored work weeks (Sun→Sat): a Tuesday start's
+// first window is the clipped Tue–Sat stub of its week, and the 13th window
+// ends on the Saturday 13 Sundays later — not cycleStart + 91 days (the old
+// fixed-stride rule, which ran to Mon 30 Nov).
+test("weekly: 13 windows from a Tuesday start end on the 13th week's Saturday", () => {
+  assert.equal(cycleEndForCount("2026-09-01", "weekly", 13), "2026-11-28");
+  assert.equal(windowCountForCycle("2026-09-01", "weekly", "2026-11-28"), 13);
+  // A Sunday start is 13 whole weeks.
+  assert.equal(cycleEndForCount("2026-08-30", "weekly", 13), "2026-11-28");
 });
 
 test("daily and biweekly strides", () => {
   assert.equal(cycleEndForCount("2026-09-01", "daily", 1), "2026-09-01");
   assert.equal(cycleEndForCount("2026-09-01", "daily", 10), "2026-09-10");
-  assert.equal(cycleEndForCount("2026-09-01", "biweekly", 3), "2026-10-12");
-  assert.equal(windowCountForCycle("2026-09-01", "biweekly", "2026-10-12"), 3);
+  // Biweekly pairs Sunday-weeks from the week containing the start (Sun 30 Aug).
+  assert.equal(cycleEndForCount("2026-09-01", "biweekly", 3), "2026-10-10");
+  assert.equal(windowCountForCycle("2026-09-01", "biweekly", "2026-10-10"), 3);
 });
 
 test("monthly snaps a mid-month start back to the 1st, then counts calendar months", () => {
@@ -41,7 +48,7 @@ test("quarterly snaps to the quarter's first month", () => {
 });
 
 test("a partial trailing window still counts as a window", () => {
-  // 10 days on a weekly cadence = 2 windows (the second is 3 days long).
+  // Tue 1 – Thu 10 Sep on a weekly cadence = 2 windows (Tue–Sat, Sun–Thu).
   assert.equal(windowCountForCycle("2026-09-01", "weekly", "2026-09-10"), 2);
 });
 
@@ -57,11 +64,12 @@ test("rejects garbage rather than guessing", () => {
 
 test("snapCycleStart lands on the period's first day", () => {
   const wed = Date.UTC(2026, 8, 16); // Wednesday 16 Sep 2026
-  assert.equal(snapCycleStart("weekly", wed), "2026-09-14");
-  assert.equal(snapCycleStart("biweekly", wed), "2026-09-14");
+  // Weekly plans start on the Sunday that opens the work week.
+  assert.equal(snapCycleStart("weekly", wed), "2026-09-13");
+  assert.equal(snapCycleStart("biweekly", wed), "2026-09-13");
   assert.equal(snapCycleStart("daily", wed), "2026-09-16");
   assert.equal(snapCycleStart("monthly", wed), "2026-09-01");
   assert.equal(snapCycleStart("quarterly", wed), "2026-07-01");
-  // A Monday stays put.
-  assert.equal(snapCycleStart("weekly", Date.UTC(2026, 8, 14)), "2026-09-14");
+  // A Sunday stays put.
+  assert.equal(snapCycleStart("weekly", Date.UTC(2026, 8, 13)), "2026-09-13");
 });

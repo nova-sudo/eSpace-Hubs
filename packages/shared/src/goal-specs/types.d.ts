@@ -486,6 +486,13 @@ export interface SpecApproval {
   reviewedByName?: string;
   reviewedAt?: number;
   note?: string;
+  /** Who a pending/rejected submission is routed to (displayName || email). */
+  managerName?: string;
+  /** Pending, but the submitter has no manager on file. Read-time flag. */
+  noManager?: boolean;
+  /** Went live without a review because the gate had no one to route to. */
+  autoApproved?: boolean;
+  autoApprovedReason?: "no_manager";
 }
 
 export interface ValidatedSpec {

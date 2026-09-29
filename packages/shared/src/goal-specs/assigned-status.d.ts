@@ -1,4 +1,4 @@
-export type AssignedPeriodStatus = "upcoming" | "open" | "on_time" | "late" | "missing";
+export type AssignedPeriodStatus = "upcoming" | "open" | "on_time" | "late" | "missing" | "before";
 
 export interface AssignedWindow {
   index: number;
@@ -29,6 +29,8 @@ export interface AssignedStatusSummary {
   missing: number;
   open: number;
   upcoming: number;
+  /** Windows that ended before the assignee's tracker started, unsubmitted. */
+  before: number;
   due: number;
   completionRate: number | null;
   onTimeRate: number | null;
@@ -41,6 +43,7 @@ export declare function periodStatuses(args: {
   now?: number;
   graceMs?: number;
   timeZone?: string;
+  trackingStart?: number | null;
 }): AssignedPeriodCell[];
 export declare function localMidnight(isoDay: string, timeZone?: string): number | null;
 export declare function summarizeStatuses(cells: AssignedPeriodCell[]): AssignedStatusSummary;

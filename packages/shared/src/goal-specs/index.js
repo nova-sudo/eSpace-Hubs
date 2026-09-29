@@ -88,8 +88,26 @@ export {
   currentPeriodKey,
   deriveCycleEndIso,
   enumerateWindows,
+  specTrackingStart,
   toIsoDay,
+  windowKeyAliases,
 } from "./windows.js";
+
+// The Sunday-anchored work week (UTC) — the one week model shared by cadence
+// windows, snapshots and the API scheduler.
+export {
+  sundayOnOrBeforeUtc,
+  sunWeekNumberUtc,
+  weekKeyUtc,
+  weekLabelUtc,
+} from "./weeks.js";
+
+// RECURRING_MILESTONE checklist period keys — one rule for the Goals-page
+// widget and the check-in editor.
+export {
+  recurringPeriodKey,
+  previousRecurringPeriodKey,
+} from "./recurring-period.js";
 
 // Assigned ("shared") goals: the synthetic id scheme + per-period status.
 export {
@@ -105,3 +123,20 @@ export {
   periodStatuses,
   summarizeStatuses,
 } from "./assigned-status.js";
+
+// The ONE goal status model — every surface (Home, Goals, Evidence, the
+// review packet, the manager board) maps its goals through this.
+export {
+  GOAL_STATUS,
+  STATUS_META,
+  SEVERITY,
+  countStatuses,
+  goalStatus,
+  isMeasurable,
+  loggedSoFar,
+  objectiveStatus,
+  periodWords,
+  quietWindows,
+  statusMeta,
+  worstStatus,
+} from "./goal-status.js";

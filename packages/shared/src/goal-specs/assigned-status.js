@@ -18,6 +18,9 @@
  *   on_time   submitted at or before the deadline
  *   late      submitted after the deadline
  *   missing   deadline passed, nothing submitted
+ *   before    the window ended before the goal was assigned (`trackingStart`)
+ *             and nothing was submitted — optional backfill, never late or
+ *             missing, and excluded from every rate
  */
 
 import { buildCycleWindows, composedCycleBounds } from "./windows.js";
@@ -127,6 +130,9 @@ function entryInWindow(entry, w) {
  * @param {Array}  args.entries  ONE assignee's goal_inputs rows for this goal
  * @param {number} [args.now]
  * @param {number} [args.graceMs]
+ * @param {number} [args.trackingStart] when this assignee's tracker started
+ *   counting (the assignment's creation) — windows ending on/before it are
+ *   "before", not "missing".
  */
 export function periodStatuses({
   spec,
@@ -134,7 +140,10 @@ export function periodStatuses({
   now = Date.now(),
   graceMs = 0,
   timeZone = "UTC",
+  trackingStart = null,
 }) {
+  const tracking =
+    typeof trackingStart === "number" && Number.isFinite(trackingStart) ? trackingStart : null;
   const list = Array.isArray(entries) ? entries : [];
   const grace = Number.isFinite(graceMs) && graceMs > 0 ? graceMs : 0;
   return assignedWindows(spec, now).map((w) => {
@@ -177,6 +186,7 @@ export function periodStatuses({
 
     let status;
     if (submittedAt != null) status = submittedAt <= deadline ? "on_time" : "late";
+    else if (tracking != null && w.end <= tracking) status = "before";
     else if (now < w.start) status = "upcoming";
     else if (now <= deadline) status = "open";
     else status = "missing";
@@ -205,11 +215,13 @@ export function summarizeStatuses(cells) {
   let missing = 0;
   let open = 0;
   let upcoming = 0;
+  let before = 0;
   for (const c of cells || []) {
     if (c.status === "on_time") onTime += 1;
     else if (c.status === "late") late += 1;
     else if (c.status === "missing") missing += 1;
     else if (c.status === "open") open += 1;
+    else if (c.status === "before") before += 1;
     else upcoming += 1;
   }
   const due = onTime + late + missing;
@@ -219,6 +231,7 @@ export function summarizeStatuses(cells) {
     missing,
     open,
     upcoming,
+    before,
     due,
     completionRate: due ? (onTime + late) / due : null,
     onTimeRate: due ? onTime / due : null,

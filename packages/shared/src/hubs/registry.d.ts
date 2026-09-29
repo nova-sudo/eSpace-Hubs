@@ -33,7 +33,10 @@ export type HubPageSlot =
   | "approvals"
   | "tierpolicies"
   // Every hub
-  | "sharedgoals";
+  | "sharedgoals"
+  | "notifications"
+  // Admin-specific
+  | "orgchart";
 
 export interface HubDefinition {
   id: string;
@@ -42,7 +45,8 @@ export interface HubDefinition {
   theme: HubTheme;
   allowedIntegrations: readonly string[];
   pages: Readonly<Partial<Record<HubPageSlot, string>>>;
-  widgets: readonly string[];
+  /** Only the QA hub still declares one (its placeholder prints it). */
+  widgets?: readonly string[];
   departments: readonly string[];
   /**
    * Capabilities a user must hold (intersection — must satisfy every
