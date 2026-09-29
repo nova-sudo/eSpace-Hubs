@@ -18,7 +18,8 @@ export function useGitlabMergedSince(since) {
       : typeof since === "number"
         ? isoDaysAgo(since)
         : since;
-  return useSwrIf(isConnected("gitlab"), `gitlab:merged:${iso}`, () =>
+  // `since = null` means "not needed" — skip rather than fetch with no date.
+  return useSwrIf(isConnected("gitlab") && Boolean(iso), `gitlab:merged:${iso}`, () =>
     gitlabApi.myMergedSince(iso).then(normalizeGitlabMerged),
   );
 }

@@ -6,6 +6,8 @@ import { useDataSource } from "../data-sources/use-data-source";
 import { evalTarget } from "./merged-count-widget";
 import { ComplianceLine } from "../compliance-line";
 import { usePublishGoalReading } from "../use-publish-reading";
+import { useProviderLinks, githubMergedPrsUrl, gitlabMergedMrsUrl, jiraIssuesUrl, mrJiraKeys } from "@/features/integrations";
+import { SourceLinks } from "../source-links";
 
 /**
  * Ticket-type share — merged PRs whose linked Jira ticket is a Bug (or any
@@ -21,6 +23,7 @@ import { usePublishGoalReading } from "../use-publish-reading";
  */
 export function TicketTypeShareWidget({ spec, goal, variant = "light", className, onRetry }) {
   const { data, isLoading, error, windowLabel, provenance } = useDataSource(spec.source);
+  const hosts = useProviderLinks();
   const mode = data?.mode === "count" ? "count" : "share";
   const pct = data?.pct ?? null;
   const matched = data?.matched ?? 0;
@@ -34,6 +37,27 @@ export function TicketTypeShareWidget({ spec, goal, variant = "light", className
   const unit = mode === "count" ? "PRs" : "%";
   const meets = target && headline != null ? evalTarget(headline, target) : null;
   const noneMatched = headline === 0 && total > 0;
+
+  // Where to look: the merged PRs the number is drawn from, and the tickets
+  // they reference filtered to the watched types (newest merges first, capped
+  // in the link builder).
+  const provider = spec.source?.provider || "combined";
+  const repoScope = spec.source?.filter?.repo || null;
+  const keys = [];
+  for (const mr of Array.isArray(data?.rawMrs) ? data.rawMrs : []) {
+    for (const k of mrJiraKeys(mr)) if (!keys.includes(k)) keys.push(k);
+  }
+  const checkLinks = [
+    (provider === "github" || provider === "combined") && hosts.github.connected
+      ? { label: "PRs on GitHub", href: githubMergedPrsUrl({ repo: repoScope, author: hosts.github.username }) }
+      : null,
+    (provider === "gitlab" || provider === "combined") && hosts.gitlab.connected
+      ? { label: "MRs on GitLab", href: gitlabMergedMrsUrl({ baseUrl: hosts.gitlab.baseUrl, repo: repoScope, author: hosts.gitlab.username }) }
+      : null,
+    hosts.jira.connected && keys.length
+      ? { label: "Tickets in Jira", href: jiraIssuesUrl({ baseUrl: hosts.jira.baseUrl, keys, types: watched }) }
+      : null,
+  ];
 
   usePublishGoalReading(
     goal?.id,
@@ -65,6 +89,7 @@ export function TicketTypeShareWidget({ spec, goal, variant = "light", className
       rightChip={<TargetChip target={target} unit={unit} variant={variant} />}
       onRetry={onRetry}
       className={className}
+      footer={<SourceLinks links={checkLinks} />}
     >
       <div className="flex h-full flex-col justify-between gap-2">
         <div className="flex items-baseline gap-2">

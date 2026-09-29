@@ -29,6 +29,7 @@ export {
   buildPassRate,
 } from "./build-events";
 export { mrRepo, filterMrsByRepo, listReposFromMrs } from "./repo-filter";
+export { githubMergedPrsUrl, gitlabMergedMrsUrl, jiraIssuesUrl } from "./provider-links";
 export {
   ticketTypeSharePct,
   parseTicketTypes,

@@ -345,6 +345,40 @@ function sinceDay(ctx) {
   return `${new Date().getUTCFullYear()}-01-01`;
 }
 
+/**
+ * Web-page counterparts of the API bindings — where a person can go and SEE
+ * the thing a field counted. Same params, same scoping (author + year), but
+ * a URL for a browser rather than a path for the proxy. Kept beside the API
+ * binding so the two can't drift: whoever changes what a template counts
+ * changes what its link shows.
+ *
+ * `ctx.author` is the provider login to scope by ("@me" on GitHub when it is
+ * unknown, which works because the viewer is signed in there); `ctx.gitlabBaseUrl`
+ * is the host, since GitLab is self-hosted here and the registry knows no hosts.
+ */
+const GITHUB_WEB = "https://github.com";
+function githubSearchUrl(repo, q) {
+  return repo
+    ? `${GITHUB_WEB}/${repo}/pulls?q=${enc(q)}`
+    : `${GITHUB_WEB}/search?type=pullrequests&q=${enc(q)}`;
+}
+function gitlabBase(ctx) {
+  const raw = typeof ctx?.gitlabBaseUrl === "string" ? ctx.gitlabBaseUrl.trim() : "";
+  return raw ? raw.replace(/\/+$/, "") : null;
+}
+function gitlabMrsUrl(ctx, repo, params) {
+  const base = gitlabBase(ctx);
+  if (!base) return null;
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v != null && v !== "") qs.append(k, String(v));
+  const author = typeof ctx?.author === "string" && ctx.author && ctx.author !== "@me" ? ctx.author : null;
+  if (author) qs.append("author_username", author);
+  return `${base}/${repo}/-/merge_requests?${qs.toString()}`;
+}
+function ghAuthor(ctx) {
+  return typeof ctx?.author === "string" && ctx.author ? ctx.author : "@me";
+}
+
 export const QUERY_TEMPLATES = Object.freeze({
   repo_file_exists: Object.freeze({
     id: "repo_file_exists",
@@ -363,6 +397,13 @@ export const QUERY_TEMPLATES = Object.freeze({
         ctx?.ref || "HEAD",
       )}`,
     }),
+    web: Object.freeze({
+      github: ({ repo, path }) => `${GITHUB_WEB}/${repo}/blob/HEAD/${path}`,
+      gitlab: ({ repo, path }, ctx) => {
+        const base = gitlabBase(ctx);
+        return base ? `${base}/${repo}/-/blob/HEAD/${path}` : null;
+      },
+    }),
     describe: ({ repo, path }) => `Checks that ${path} exists in ${repo}`,
   }),
 
@@ -380,6 +421,13 @@ export const QUERY_TEMPLATES = Object.freeze({
       path: `projects/${gitlabProject(repo)}/repository/commits?path=${enc(
         path,
       )}&per_page=1`,
+    }),
+    web: Object.freeze({
+      github: ({ repo, path }) => `${GITHUB_WEB}/${repo}/commits/HEAD/${path}`,
+      gitlab: ({ repo, path }, ctx) => {
+        const base = gitlabBase(ctx);
+        return base ? `${base}/${repo}/-/commits/HEAD/${path}` : null;
+      },
     }),
     describe: ({ repo, path }) =>
       `Reads when ${path} was last changed in ${repo}`,
@@ -419,6 +467,12 @@ export const QUERY_TEMPLATES = Object.freeze({
         sinceDay(ctx),
       )}&search=${enc(q)}&per_page=${GITLAB_COUNT_PAGE}`,
     }),
+    web: Object.freeze({
+      github: ({ repo, search_query: q }, ctx) =>
+        githubSearchUrl(repo, `is:pr author:${ghAuthor(ctx)} created:>=${sinceDay(ctx)} ${q}`),
+      gitlab: ({ repo, search_query: q }, ctx) =>
+        gitlabMrsUrl(ctx, repo, { state: "all", search: q }),
+    }),
     describe: ({ repo, search_query: q }) =>
       `Counts your pull requests in ${repo} this year matching “${q}”`,
   }),
@@ -442,6 +496,15 @@ export const QUERY_TEMPLATES = Object.freeze({
         sinceDay(ctx),
       )}&labels=${enc(label)}&per_page=${GITLAB_COUNT_PAGE}`,
     }),
+    web: Object.freeze({
+      github: ({ repo, label }, ctx) =>
+        githubSearchUrl(
+          repo,
+          `is:pr is:merged author:${ghAuthor(ctx)} merged:>=${sinceDay(ctx)} label:"${label}"`,
+        ),
+      gitlab: ({ repo, label }, ctx) =>
+        gitlabMrsUrl(ctx, repo, { state: "merged", "label_name[]": label }),
+    }),
     describe: ({ repo, label }) =>
       `Counts your merged pull requests in ${repo} this year labelled “${label}”`,
   }),
@@ -459,6 +522,10 @@ export const QUERY_TEMPLATES = Object.freeze({
       path: `projects/${gitlabProject(
         repo,
       )}/merge_requests?scope=all&state=opened&per_page=${GITLAB_COUNT_PAGE}`,
+    }),
+    web: Object.freeze({
+      github: ({ repo }) => githubSearchUrl(repo, "is:pr is:open"),
+      gitlab: ({ repo }, ctx) => gitlabMrsUrl(ctx, repo, { state: "opened" }),
     }),
     describe: ({ repo }) => `Counts the open pull requests in ${repo}`,
   }),
@@ -689,6 +756,40 @@ export function buildProviderRequest(source, provider, ctx = {}) {
 
   const built = template[provider](params, ctx);
   return { method: "GET", path: assertSafePath(built?.path) };
+}
+
+/**
+ * The page a person can open to see what a source counted, or null.
+ *
+ * Same param resolution as buildProviderRequest (declared value or the
+ * `{{ctx:id}}` answer, re-validated as a literal) but nothing here throws:
+ * a link is a courtesy, and a field whose answer is missing simply has none.
+ * A multi-valued answer (the repo picker) links its FIRST value — a URL can
+ * show one place, while the count summed several; the caption says so.
+ */
+export function queryWebLink(source, provider, ctx = {}) {
+  const template = getQueryTemplate(source?.query);
+  if (!template || !CONCRETE_PROVIDERS.includes(provider)) return null;
+  const web = template.web?.[provider];
+  if (typeof web !== "function") return null;
+  const answers = ctx.answers && typeof ctx.answers === "object" ? ctx.answers : {};
+  const params = {};
+  for (const [name, kind] of Object.entries(template.params)) {
+    const declared = source?.params?.[name];
+    if (typeof declared !== "string" || declared.length === 0) return null;
+    const questionId = contextPlaceholderId(declared);
+    let value = questionId == null ? declared : answers[questionId];
+    if (Array.isArray(value)) value = value[0];
+    if (typeof value !== "string" || value.length === 0) return null;
+    if (!PARAM_VALIDATORS[kind](value)) return null;
+    params[name] = kind === "repo_slug" ? value.toLowerCase() : value;
+  }
+  try {
+    const url = web(params, ctx);
+    return typeof url === "string" && /^https:\/\//.test(url) ? url : null;
+  } catch {
+    return null;
+  }
 }
 
 // ─── extraction ──────────────────────────────────────────────────────

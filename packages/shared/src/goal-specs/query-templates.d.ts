@@ -104,6 +104,13 @@ export function describeQuerySource(source: unknown): string;
  * provider, a missing/invalid param (including a substituted context answer),
  * or an unsafe path.
  */
+/** The web page that shows what a source counted, or null when it cannot be built. */
+export function queryWebLink(
+  source: unknown,
+  provider: string,
+  ctx?: { answers?: Record<string, unknown>; author?: string | null; gitlabBaseUrl?: string | null; sinceDay?: string },
+): string | null;
+
 export function buildProviderRequest(
   source: QuerySource,
   provider: ConcreteQueryProvider,
