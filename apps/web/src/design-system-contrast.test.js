@@ -126,30 +126,69 @@ for (const theme of ["light", "dark"]) {
   });
 }
 
-/**
- * KNOWN DEBT, recorded rather than asserted away.
- *
- * `--dim-fg` is the system's tertiary tone and it does NOT reach the
- * body-text bar: 2.56:1 in light, 2.96:1 in dark. That is fine for a
- * placeholder, which is what the design doc scopes it to, and wrong for
- * anything a reader has to read. The goal-widgets field body was moved off
- * it for exactly that reason.
- *
- * This ratchets the current values so the token cannot quietly get lighter
- * still. Raising dim-fg to clear 4.5:1 app-wide is a design decision, not a
- * test fix — when it happens, tighten this to BODY_TEXT and delete the note.
- */
-test("dim-fg is placeholder-only and may not get any lighter", () => {
-  const floors = { light: 2.5, dark: 2.9 };
-  for (const theme of ["light", "dark"]) {
-    const got = ratio(THEMES[theme]["dim-fg"], THEMES[theme].card);
-    assert.ok(
-      got >= floors[theme],
-      `${theme}: --dim-fg on --card is ${got.toFixed(2)}:1, below the recorded floor of ${floors[theme]}:1`,
-    );
-    assert.ok(
-      got < BODY_TEXT,
-      `${theme}: --dim-fg now clears ${BODY_TEXT}:1 — tighten this test to BODY_TEXT and drop the exception`,
-    );
+const TINTS = ["mint", "sky", "lav", "peach", "lemon"];
+
+for (const theme of ["light", "dark"]) {
+  test(`${theme}: every tint TEXT token reads on every plain surface`, () => {
+    // B1 of the a11y review: tint inks were used as text on plain cards and
+    // fell to 1.5–2.45:1 in dark. `--<tint>-text` is the plain-surface tone
+    // (text, icons, status dots).
+    for (const tint of TINTS) {
+      for (const surface of SURFACES) {
+        check(theme, `${tint}-text`, surface, BODY_TEXT, `${tint} text on a plain surface`);
+      }
+    }
+  });
+
+  test(`${theme}: a form field boundary is visible (WCAG 1.4.11)`, () => {
+    // M5: inputs are the exception to borderless. The 1px --field-line ring
+    // has to separate the field from whatever it sits on AND from its own
+    // --card-alt fill.
+    for (const surface of SURFACES) {
+      check(theme, "field-line", surface, NON_TEXT, "field boundary");
+    }
+  });
+
+  test(`${theme}: dim-fg clears the non-text bar but stays below body text`, () => {
+    // --dim-fg is for placeholders, disabled text and decorative separators.
+    // 3:1 so those are still perceivable; NOT 4.5:1, so the guard test keeps
+    // it off readable copy (design-system-guard.test.js).
+    for (const surface of SURFACES) {
+      check(theme, "dim-fg", surface, NON_TEXT, "placeholder / disabled / separator");
+      const got = ratio(THEMES[theme]["dim-fg"], THEMES[theme][surface]);
+      assert.ok(
+        got < BODY_TEXT,
+        `${theme}: --dim-fg now clears ${BODY_TEXT}:1 on --${surface} — fold it into muted-fg and drop the exception`,
+      );
+    }
+  });
+
+  test(`${theme}: progress tracks — filled reads against empty, empty reads against the card`, () => {
+    // Minor 9: tracks were card-alt on card (1.07:1). The filled part (ink)
+    // must clear 3:1 against the empty --track; the empty track must be
+    // perceptibly different from the card it sits on.
+    check(theme, "ink", "track", NON_TEXT, "filled progress vs empty track");
+    check(theme, "peach-text", "track", NON_TEXT, "owed cell vs empty track");
+    for (const surface of ["card", "card-alt"]) {
+      check(theme, "track", surface, 1.3, "empty track on a card");
+    }
+  });
+}
+
+test("light: each tint TEXT token is the tint INK (one colour per state in light)", () => {
+  for (const tint of TINTS) {
+    assert.equal(THEMES.light[`${tint}-text`], THEMES.light[`${tint}-ink`], `--${tint}-text should equal --${tint}-ink in light`);
   }
+});
+
+test("the prefers-color-scheme dark block matches [data-theme=dark]", () => {
+  // Two copies of the dark tokens exist (explicit toggle + OS preference);
+  // a token added to one and forgotten in the other only breaks for half
+  // the users. Pin them together.
+  const start = CSS.indexOf(":root:not([data-theme=\"light\"])");
+  assert.ok(start > 0, "OS-preference dark block should exist");
+  const media = tokensFrom(CSS.slice(start, CSS.indexOf("}", start)));
+  const darkStart = CSS.indexOf('[data-theme="dark"]');
+  const explicit = tokensFrom(CSS.slice(darkStart, CSS.indexOf("}", darkStart)));
+  assert.deepEqual(media, explicit);
 });

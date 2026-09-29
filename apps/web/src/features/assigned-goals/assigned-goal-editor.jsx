@@ -166,7 +166,7 @@ export function AssignedGoalEditor({ initial = null, tierCodes = [], onDone, onC
             rows={3}
             maxLength={4000}
             placeholder="Why this matters and what a good entry looks like."
-            className="w-full rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-3 text-[14px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
+            className="w-full rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-3 text-[14px] text-fg border border-field-line outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
           />
         </Field>
       </section>
@@ -233,7 +233,7 @@ export function AssignedGoalEditor({ initial = null, tierCodes = [], onDone, onC
           <select
             value={timeZone}
             onChange={(e) => setTimeZone(e.target.value)}
-            className="h-11 w-full rounded-[var(--radius-lg)] bg-card-alt px-3.5 text-[14px] text-fg outline-none focus:ring-2 focus:ring-ink"
+            className="h-11 w-full rounded-[var(--radius-lg)] bg-card-alt px-3.5 text-[14px] text-fg border border-field-line outline-none focus:ring-2 focus:ring-ink"
           >
             {[...new Set([timeZone, ...TIME_ZONES])].map((tz) => (
               <option key={tz} value={tz}>

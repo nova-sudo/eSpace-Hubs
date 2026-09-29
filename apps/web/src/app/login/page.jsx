@@ -22,9 +22,14 @@ function LoginInner() {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") || "/";
+  // `?reason=expired` is appended by lib/api-client when a request came
+  // back 401 mid-session — the form explains the bounce instead of
+  // dropping the user on a bare sign-in screen.
+  const expired = params.get("reason") === "expired";
 
   return (
     <LoginForm
+      expired={expired}
       onSuccess={() => {
         // Hard-replace so the address bar reflects the destination.
         router.replace(next);

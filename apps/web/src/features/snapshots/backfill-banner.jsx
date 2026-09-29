@@ -25,7 +25,7 @@ export function BackfillBanner() {
           <span className="text-[13px] font-semibold">
             {isRunning && progress
               ? `Building week ${progress.done} of ${progress.total}…`
-              : `${missingWeeks} week${missingWeeks === 1 ? "" : "s"} missing — backfill to unlock year-to-date compliance`}
+              : `${missingWeeks} week${missingWeeks === 1 ? "" : "s"} of check-ins missing — backfill to complete your year-to-date record`}
           </span>
         </div>
         <Button size="sm" variant="soft" onClick={() => run()} disabled={isRunning}>

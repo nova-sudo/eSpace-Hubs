@@ -292,7 +292,7 @@ export function AdminHubConfig() {
         title="What each hub exposes."
         subtitle="A checkbox per hub and page. Overrides merge on top of the shipped defaults, so an unchecked box means this org hid the page — not that it never existed. Changes land on each member's next page load."
         right={
-          <SegmentedControl
+          <SegmentedControl ariaLabel="Group by"
             size="sm"
             options={LENSES}
             value={lens}
@@ -488,7 +488,7 @@ function MatrixCell({ hub, slot, saving, onToggle }) {
   if (!available) {
     return (
       <span
-        className="text-[13px] text-dim-fg"
+        className="text-[13px] text-muted-fg"
         title={`${hub.label} doesn't ship ${pageLabel(slot)}.`}
         aria-label={`${pageLabel(slot)} is not part of ${hub.label}`}
       >

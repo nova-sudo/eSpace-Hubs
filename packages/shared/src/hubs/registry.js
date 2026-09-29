@@ -5,7 +5,7 @@
  *
  * Design contract:
  *   - Hubs are DATA, not modules. Adding a hub = one entry here +
- *     a folder under apps/web/src/hubs/<id>/. Pages and widgets
+ *     a folder under apps/web/src/hubs/<id>/. Pages
  *     reference symbolic ids the rest of the app resolves to React
  *     components.
  *   - Forward-compatible with admin overrides (M10.5): a future
@@ -25,7 +25,8 @@
  *              Required cap: hub.dev.access (dev role).
  *   qa       — QA performance & defect tracking (placeholder UI).
  *              Required cap: hub.qa.access (qa role).
- *   manager  — Manager hub with team/employee picker (placeholder UI).
+ *   manager  — Manager hub: team roster, per-report goal boards, grading,
+ *              delegated verdicts, BYO approvals, tier policies.
  *              Required cap: hub.manager.access (manager role).
  *
  * Adding a hub:
@@ -77,6 +78,10 @@ export const PAGE_SLOTS = Object.freeze([
   "tierpolicies",
   // Every hub: shared goals whose analytics were shared with you (viewers).
   "sharedgoals",
+  // Every hub: the full notifications inbox (the bell's "View all").
+  "notifications",
+  // Admin: the reporting tree built from users.managerId.
+  "orgchart",
 ]);
 
 // ─── hub definitions ─────────────────────────────────────────────────
@@ -86,8 +91,8 @@ const ADMIN_HUB = Object.freeze({
   label: "Admin",
   description: "Org configuration, user management, audit trail.",
   theme: freezeTheme({
-    // Slate/charcoal — visually distinct from Dev's green, QA's
-    // orange, Manager's blue. Signals "you're in admin land".
+    // Informational only — design system v2 retired per-hub accents
+    // (ink is the one brand colour), so no hub's `theme` is applied.
     primary: "#1f2937",
     accent: "#475569",
     accentSurface: "rgba(71,85,105,0.10)",
@@ -101,13 +106,12 @@ const ADMIN_HUB = Object.freeze({
     audit: "admin:audit",
     settings: "admin:settings",
     sharedgoals: "admin:shared-goals",
+    // BYO approvals from people with no (active) manager — the approval
+    // gate routes them to the org's admins instead of auto-approving.
+    approvals: "admin:approvals",
+    orgchart: "admin:org-chart",
+    notifications: "admin:notifications",
   }),
-  widgets: Object.freeze([
-    // Admin widgets land alongside the UI in PR 2.
-    "org-overview",
-    "recent-audit",
-    "user-counts",
-  ]),
   /** Admins are assigned by role, not department mapping. */
   departments: Object.freeze([]),
   /** Required capabilities to access this hub. */
@@ -134,16 +138,8 @@ const DEV_HUB = Object.freeze({
     settings: "dev:settings",
     analyst: "dev:analyst",
     sharedgoals: "dev:shared-goals",
+    notifications: "dev:notifications",
   }),
-  widgets: Object.freeze([
-    "pr-rounds",
-    "cycle-time",
-    "merged-count",
-    "review-turnaround",
-    "linkage",
-    "ticket-cycle",
-    "code-rubric",
-  ]),
   departments: Object.freeze([
     "engineering",
     "platform",
@@ -172,7 +168,13 @@ const QA_HUB = Object.freeze({
     evidence: "qa:evidence",
     settings: "qa:settings",
     sharedgoals: "qa:shared-goals",
+    notifications: "qa:notifications",
   }),
+  // The only `widgets` list left (hub-audit §2.5): the other hubs' lists
+  // were dead data and were removed. This one is still READ — the QA
+  // "coming soon" placeholder (apps/web/src/hubs/qa/qa-placeholder.jsx)
+  // prints it. No widget resolver consumes it; don't add lists elsewhere
+  // until one does.
   widgets: Object.freeze([
     "defect-leakage",
     "test-cycle-time",
@@ -194,9 +196,8 @@ const MANAGER_HUB = Object.freeze({
   label: "Manager Hub",
   description: "Team-level visibility and employee performance review.",
   theme: freezeTheme({
-    // Warm white + orange identity — applied via the [data-hub="manager"]
-    // token scope in globals.css (these registry values are informational;
-    // the live accent comes from the CSS tokens).
+    // Informational only — design system v2 retired per-hub accents
+    // (ink is the one brand colour), so this theme is never applied.
     primary: "#7a3d0a",
     accent: "#d2540a",
     accentSurface: "rgba(210,84,10,0.10)",
@@ -213,12 +214,8 @@ const MANAGER_HUB = Object.freeze({
     tierpolicies: "manager:tier-policies",
     settings: "manager:settings",
     sharedgoals: "manager:shared-goals",
+    notifications: "manager:notifications",
   }),
-  widgets: Object.freeze([
-    "team-overview",
-    "employee-list",
-    "review-cadence",
-  ]),
   departments: Object.freeze([]),
   requires: Object.freeze([CAPABILITIES.HUB_MANAGER_ACCESS]),
 });

@@ -313,6 +313,9 @@ function validateDelegated(delegated, errors) {
 }
 
 const APPROVAL_STATUSES = ["pending", "approved", "rejected"];
+const APPROVAL_AUTO_REASONS = ["no_manager"];
+/** Who an open approval waits on: the manager, or (no active manager) the org's admins. */
+const APPROVER_SCOPES = ["manager", "admins"];
 
 /**
  * Validate the optional `approval` block — the manager-approval gate for
@@ -338,6 +341,27 @@ function validateApproval(approval) {
   }
   if (isNonEmptyString(approval.note)) {
     out.note = approval.note.trim().slice(0, 2000);
+  }
+  // Who the submission was routed to — the server stamps it on the submit
+  // response and resolves it again on every read (the CURRENT manager).
+  if (isNonEmptyString(approval.managerName)) {
+    out.managerName = approval.managerName.trim().slice(0, 200);
+  }
+  // Read-time flag: pending, but no (active) manager is on file — the
+  // org's admins review it instead (`approverScope: "admins"`).
+  if (approval.noManager === true) out.noManager = true;
+  if (APPROVER_SCOPES.includes(approval.approverScope)) {
+    out.approverScope = approval.approverScope;
+  }
+  // LEGACY: before the gate routed no-manager submissions to admins, the
+  // server went live without a review. Nothing writes this any more; kept
+  // so those old rows still read (and the UI never implies a manager saw
+  // them).
+  if (approval.autoApproved === true) {
+    out.autoApproved = true;
+    if (APPROVAL_AUTO_REASONS.includes(approval.autoApprovedReason)) {
+      out.autoApprovedReason = approval.autoApprovedReason;
+    }
   }
   return out;
 }

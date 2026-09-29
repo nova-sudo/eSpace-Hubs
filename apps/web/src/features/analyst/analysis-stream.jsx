@@ -5,6 +5,7 @@ import { Badge, Button } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { ANALYSIS } from "./ai/analysis-events";
 import { SPEC_KIND_META } from "@/features/goal-specs";
+import { aiErrorMessage } from "./ai-error-copy";
 
 /**
  * Streaming log of AnalysisEvents — the "process reveal" UX.
@@ -18,7 +19,14 @@ import { SPEC_KIND_META } from "@/features/goal-specs";
  * classified · N widgets live") at the top so the user always sees the
  * run's overall progress without having to scroll.
  */
-export function AnalysisStream({ events, phase, error, onSwitchToGrid }) {
+export function AnalysisStream({
+  events,
+  phase,
+  error,
+  onSwitchToGrid,
+  unclassifiedCount = 0,
+  onClassify,
+}) {
   const scrollerRef = useRef(null);
 
   const { summary, goalBlocks, startedAt } = useMemo(
@@ -31,6 +39,33 @@ export function AnalysisStream({ events, phase, error, onSwitchToGrid }) {
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [events.length]);
+
+  // Nothing has streamed yet. Idle and error each get a real state instead
+  // of a big "0 · Idle" over "Warming up…" while nothing is running
+  // (review-ui-polish M7); "Warming up" is kept for the connecting moment.
+  if (goalBlocks.length === 0 && phase !== "running" && phase !== "complete") {
+    return phase === "error" ? (
+      <StreamState
+        title="The analyst couldn't start."
+        body={error || "Something went wrong before any goal was read."}
+        action={onClassify ? "Try again" : null}
+        onAction={onClassify}
+        tone="error"
+      />
+    ) : unclassifiedCount > 0 ? (
+      <StreamState
+        title={`${unclassifiedCount} ${unclassifiedCount === 1 ? "goal still needs" : "goals still need"} a tracker`}
+        body="The analyst reads each one and picks how to measure it."
+        action={onClassify ? `Classify ${unclassifiedCount} ${unclassifiedCount === 1 ? "goal" : "goals"}` : null}
+        onAction={onClassify}
+      />
+    ) : (
+      <StreamState
+        title="Every goal has a tracker."
+        body="Re-analyze from the left rail when your goals change."
+      />
+    );
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
@@ -121,7 +156,7 @@ function SummaryStrip({ summary, phase, error, startedAt, onSwitchToGrid }) {
       <div className="flex items-baseline gap-3">
         <span className="text-[38px] font-extrabold leading-none tracking-[-0.03em] tabular-nums text-fg">
           {summary.classified}
-          <span className="text-dim-fg">
+          <span className="text-muted-fg">
             {summary.totalGoals > 0 ? ` / ${summary.totalGoals}` : ""}
           </span>
         </span>
@@ -132,7 +167,7 @@ function SummaryStrip({ summary, phase, error, startedAt, onSwitchToGrid }) {
         </Badge>
       </div>
       {error ? (
-        <div className="max-w-[420px] truncate text-[13px] text-peach-ink" title={error}>
+        <div className="max-w-[420px] truncate text-[13px] text-peach-text" title={error}>
           {error}
         </div>
       ) : null}
@@ -149,11 +184,11 @@ function GoalBlock({ block, first }) {
   const meta = block.spec ? SPEC_KIND_META[block.spec.widget] : null;
   const dotClass =
     block.state === "classified"
-      ? "bg-mint-ink"
+      ? "bg-mint-text"
       : block.state === "failed"
-        ? "bg-peach-ink"
+        ? "bg-peach-text"
         : block.state === "reasoning" || block.state === "reading"
-          ? "bg-lemon-ink"
+          ? "bg-lemon-text"
           : "bg-dim-fg";
 
   return (
@@ -163,7 +198,7 @@ function GoalBlock({ block, first }) {
           <span aria-hidden="true" className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", dotClass)} />
           {block.parentL1 ? (
             <span
-              className="truncate font-mono text-[12px] text-dim-fg"
+              className="truncate font-mono text-[12px] text-muted-fg"
               title={`Parent L1: ${block.parentL1}`}
             >
               {truncate(block.parentL1, 38)} /
@@ -195,12 +230,12 @@ function GoalBlock({ block, first }) {
       ) : null}
       {block.spec?.reasoning ? (
         <div className="ml-3.5 rounded-[var(--radius-lg)] bg-card-alt px-3 py-2 text-[12px] leading-[1.5] text-muted-fg">
-          <span className="font-bold text-dim-fg">Why · </span>
+          <span className="font-bold text-muted-fg">Why · </span>
           {block.spec.reasoning}
         </div>
       ) : null}
       {block.error ? (
-        <div className="pl-3.5 text-[13px] text-peach-ink">Failed: {block.error}</div>
+        <div className="pl-3.5 text-[13px] text-peach-text">Failed: {aiErrorMessage(block.error)}</div>
       ) : null}
     </div>
   );
@@ -223,9 +258,28 @@ function StatusBadge({ state, widgetLabel }) {
   return <Badge tone="lemon">Classifying…</Badge>;
 }
 
+function StreamState({ title, body, action, onAction, tone }) {
+  return (
+    <div
+      role={tone === "error" ? "alert" : undefined}
+      className="flex flex-1 flex-col items-center justify-center gap-2.5 rounded-[var(--radius-lg)] bg-card-alt p-8 text-center"
+    >
+      <p className={cn("text-[15px] font-bold", tone === "error" ? "text-peach-text" : "text-fg")}>
+        {title}
+      </p>
+      <p className="max-w-[440px] text-[13px] leading-[1.55] text-muted-fg">{body}</p>
+      {action && onAction ? (
+        <Button variant="ink" size="sm" className="mt-1.5" onClick={onAction}>
+          {action}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 function EmptyPlaceholder() {
   return (
-    <div className="flex flex-1 items-center justify-center rounded-[var(--radius-lg)] bg-card-alt p-6 text-center text-[13px] text-dim-fg">
+    <div className="flex flex-1 items-center justify-center rounded-[var(--radius-lg)] bg-card-alt p-6 text-center text-[13px] text-muted-fg">
       Warming up the analyst — hang tight.
     </div>
   );

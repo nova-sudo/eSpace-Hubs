@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { X, ArrowRight } from "lucide-react";
-import { Button, IconButton, Select, Field, Label, Badge } from "@/components/ui";
+import { Button, IconButton, Select, Field, Label, Badge, useFocusTrap } from "@/components/ui";
 import { ComposeWidgetModal, GoalWidgetsGrid, useGoalWidgetItems } from "@/features/goal-widgets";
-import { clearSpecs, removeSpec } from "@/features/goal-specs";
+import { useHubLink } from "@/features/hubs";
 import { useAnalyst, ANALYST_MODES } from "./analyst-provider";
 import { AnalysisStream } from "./analysis-stream";
 import { ReviewPane } from "./review-pane";
@@ -45,6 +46,8 @@ export function AnalystPage() {
     discardSpec,
     discardAllPending,
     updatePendingSpec,
+    pendingCommitImpact,
+    pendingCommitImpactAll,
   } = useClassifyGoals();
 
   // Auto-switch to analysis while running; flip to review when a run finishes
@@ -69,22 +72,24 @@ export function AnalystPage() {
     start();
   }
 
+  // Re-analysis NEVER deletes the current trackers up front. The new
+  // proposals land in the Review buffer and only replace a tracker when the
+  // user saves that card — so an aborted or failed run leaves everything as
+  // it was, instead of a goals page with no trackers at all.
   function handleReAnalyzeAll() {
     if (
       typeof window !== "undefined" &&
       !window.confirm(
-        "Re-analyze every goal? This discards existing widget classifications.",
+        "Re-analyze every goal? Your current trackers stay in place until you save the new proposals from the Review tab.",
       )
     )
       return;
-    clearSpecs();
     reset();
     setMode(ANALYST_MODES.ANALYSIS);
     start();
   }
 
   function handleReAnalyzeGoal(goal) {
-    removeSpec(goal.id);
     setMode(ANALYST_MODES.ANALYSIS);
     reset();
     start([
@@ -127,11 +132,33 @@ export function AnalystPage() {
 
   const total = items.length + unclassifiedGoals.length;
 
+  // Dialog a11y: trap Tab inside while open (initial focus lands on the
+  // first control — the close button) and Escape closes. Focus goes back to
+  // whatever opened the overlay via useFocusTrap itself: it captures the
+  // opener BEFORE moving focus in (capturing it here, after the trap ran,
+  // saved the close button) and retries a frame later while the shell is
+  // still `inert`.
+  const trapRef = useFocusTrap(open);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      // A nested dialog (compose, goal widget) portals to <body> and handles
+      // its own Escape — don't close the whole overlay underneath it.
+      const owner = e.target instanceof Element ? e.target.closest('[aria-modal="true"]') : null;
+      if (owner && owner !== trapRef.current) return;
+      close();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, close, trapRef]);
+
   return (
     <div
+      ref={trapRef}
       role="dialog"
       aria-modal="true"
-      aria-label="Analyst"
+      aria-labelledby="analyst-dialog-title"
       aria-hidden={!open}
       className="fixed inset-0 z-[50] flex flex-col bg-bg text-fg"
       style={{
@@ -145,7 +172,9 @@ export function AnalystPage() {
       }}
     >
       <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-4 sm:px-10">
-        <h1 className="text-[18px] font-bold tracking-[-0.01em] text-fg">Analyst</h1>
+        <h1 id="analyst-dialog-title" className="text-[18px] font-bold tracking-[-0.01em] text-fg">
+          Analyst
+        </h1>
         <IconButton label="Close analyst" onClick={close}>
           <X size={18} />
         </IconButton>
@@ -164,6 +193,8 @@ export function AnalystPage() {
           pendingCount={pendingCount}
           onAnalyzeAll={handleAnalyzeAll}
           onReAnalyzeAll={handleReAnalyzeAll}
+          unclassifiedCount={unclassifiedGoals.length}
+          onAnalyzeRemaining={handleAnalyzeRemaining}
           classified={`${items.length}/${total || 0}`}
           lastRun={lastAnalyzedAt > 0 ? relativeTs(lastAnalyzedAt) : "—"}
         />
@@ -178,6 +209,14 @@ export function AnalystPage() {
                 events={events}
                 phase={phase}
                 error={error}
+                unclassifiedCount={unclassifiedGoals.length}
+                onClassify={
+                  unclassifiedGoals.length > 0
+                    ? handleAnalyzeRemaining
+                    : hasGoals
+                      ? handleAnalyzeAll
+                      : undefined
+                }
                 onSwitchToGrid={() => {
                   if (pendingCount > 0) setMode(ANALYST_MODES.REVIEW);
                   else setMode(ANALYST_MODES.WIDGETS);
@@ -192,6 +231,8 @@ export function AnalystPage() {
                 discardSpec={discardSpec}
                 discardAllPending={discardAllPending}
                 updatePendingSpec={updatePendingSpec}
+                pendingCommitImpact={pendingCommitImpact}
+                pendingCommitImpactAll={pendingCommitImpactAll}
                 onSwitchToGrid={() => setMode(ANALYST_MODES.WIDGETS)}
                 onRetryGoal={handleRetryGoalById}
               />
@@ -236,6 +277,8 @@ function AnalystSidebar({
   pendingCount,
   onAnalyzeAll,
   onReAnalyzeAll,
+  unclassifiedCount = 0,
+  onAnalyzeRemaining,
   classified,
   lastRun,
 }) {
@@ -282,9 +325,16 @@ function AnalystSidebar({
           Run analysis
         </Button>
       ) : hasSpecs ? (
-        <Button variant="ink" size="sm" onClick={onReAnalyzeAll}>
-          Re-analyze
-        </Button>
+        <>
+          {unclassifiedCount > 0 ? (
+            <Button variant="ink" size="sm" onClick={onAnalyzeRemaining}>
+              Classify remaining {unclassifiedCount}
+            </Button>
+          ) : null}
+          <Button variant={unclassifiedCount > 0 ? "soft" : "ink"} size="sm" onClick={onReAnalyzeAll}>
+            Re-analyze all
+          </Button>
+        </>
       ) : null}
 
       <div className="flex flex-col gap-1">
@@ -331,9 +381,9 @@ function WidgetsMode({
     return (
       <Launch
         title="Add goals first"
-        body="Head to Settings and paste in your L1/L2 performance goals, then come back here to let the analyst classify them into trackable widgets."
-        ctaLabel="Open Settings"
-        ctaHref="/settings"
+        body="Add your L1/L2 performance goals in Settings (by hand or from a Zoho export), then come back here to let the analyst classify them into trackers."
+        ctaLabel="Add or import goals"
+        ctaHref="/settings?tab=goals"
       />
     );
   }
@@ -342,7 +392,7 @@ function WidgetsMode({
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto">
         <Launch
           title="Classify your goals"
-          body="The analyst reads every L1 and L2 goal and assigns each a live dashboard widget — automatic where your code hosts can measure it, manual where you self-report. You review everything before it lands. Already have a plan for one of these? Skip straight to Build my own below instead of waiting on the classifier."
+          body="The analyst reads every L1 and L2 goal and assigns each a tracker — automatic where your code hosts can measure it, manual where you self-report. You review everything before it lands. Already have a plan for one of these? Skip straight to Build my own below instead of waiting on the classifier."
           ctaLabel="Analyze my goals"
           onCta={onAnalyzeAll}
           showSteps
@@ -404,7 +454,7 @@ function UnclassifiedGoals({ goals, onAnalyzeRemaining, onBuildOwn }) {
           >
             <div className="min-w-0">
               {g.parentL1Title ? (
-                <div className="truncate text-[12px] text-dim-fg" title={g.parentL1Title}>
+                <div className="truncate text-[12px] text-muted-fg" title={g.parentL1Title}>
                   {g.parentL1Title}
                 </div>
               ) : null}
@@ -432,6 +482,8 @@ function UnclassifiedGoals({ goals, onAnalyzeRemaining, onBuildOwn }) {
  * three-step "how it works" row (shown pre-analysis).
  */
 function Launch({ title, body, ctaLabel, ctaHref, onCta, showSteps }) {
+  // Hub-prefixed: a bare "/settings" is not a route in this app.
+  const link = useHubLink();
   const STEPS = [
     { n: "1", title: "Read goals", body: "Parses every L1 + L2 title and rubric." },
     { n: "2", title: "Match a widget", body: "Auto metric, manual check-in, or hybrid." },
@@ -447,11 +499,9 @@ function Launch({ title, body, ctaLabel, ctaHref, onCta, showSteps }) {
             {ctaLabel}
           </Button>
         ) : (
-          <a href={ctaHref}>
-            <Button variant="ink" size="sm">
+          <Button as={Link} href={link(ctaHref)} variant="ink" size="sm">
               {ctaLabel}
             </Button>
-          </a>
         )}
       </div>
 

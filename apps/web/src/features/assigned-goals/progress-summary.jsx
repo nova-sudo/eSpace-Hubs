@@ -12,11 +12,12 @@ import { cn } from "@/lib/cn";
 import { fmtDay, pct } from "./progress-grid";
 
 const SEGMENTS = [
-  { key: "onTime", label: "On time", cls: "bg-mint-ink" },
+  { key: "onTime", label: "On time", cls: "bg-mint-text" },
   { key: "late", label: "Late", cls: "bg-peach" },
-  { key: "missing", label: "Missing", cls: "bg-peach-ink" },
+  { key: "missing", label: "Missing", cls: "bg-peach-text" },
   { key: "open", label: "Open", cls: "bg-lemon" },
   { key: "upcoming", label: "Upcoming", cls: "bg-card-alt" },
+  { key: "before", label: "Before assigned", cls: "bg-card-alt opacity-60" },
 ];
 
 export function ProgressSummary({ totals, windows }) {

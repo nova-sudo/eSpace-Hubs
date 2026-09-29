@@ -163,7 +163,7 @@ export function ContributionHeatmap({
   const totalHeight = gridHeight + headerHeight;
 
   const labelColor = isLight ? "rgba(255,255,255,0.55)" : "var(--muted-fg)";
-  const dimLabelColor = isLight ? "rgba(255,255,255,0.4)" : "var(--dim-fg)";
+  const dimLabelColor = isLight ? "rgba(255,255,255,0.4)" : "var(--muted-fg)";
 
   return (
     <div className={`flex flex-col gap-1 ${className}`}>

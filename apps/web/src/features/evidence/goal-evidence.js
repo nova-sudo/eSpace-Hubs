@@ -8,20 +8,18 @@
  * per-item / per-field evidence, links).
  */
 
-const LINK_RE = /https?:\/\/\S+/;
+import {
+  countStatuses,
+  isMeasurable,
+  loggedPercent,
+  loggedTotals,
+  objectiveProgress,
+  objectiveStatus,
+  statusMeta,
+  weightedProgress,
+} from "@/features/goal-inputs";
 
-/**
- * Coarse reading tone → summary bucket. Note the reading `accent` tone is
- * overloaded in goal-readings.js — it means "tracked / tracking / in progress"
- * for healthy states, NOT "drifting" — so it buckets as `inProgress`, never a
- * scary drift count that would contradict the goal cards' own "tracked" pill.
- */
-const TONE_BUCKET = {
-  ok: "onTrack",
-  accent: "inProgress",
-  warn: "behind",
-  muted: "awaiting",
-};
+const LINK_RE = /https?:\/\/\S+/;
 
 /** Extract the first URL in a string, or null. */
 function urlIn(s) {
@@ -91,17 +89,22 @@ export function extractEvidenceItems(entries, cutoff, cap = 5) {
 /**
  * Group already-enriched per-goal readings into L1 shelves. Each L2 row is
  * enriched upstream (useGoalReadings) with its achievement verdict, its logged
- * evidence, and check-in timing — this only shelves them by L1 and tallies the
- * status summary. Keeping enrichment in ONE place means the board and the
- * PDF/markdown export never diverge on what a goal achieved.
+ * evidence, check-in timing and its SHARED status (`row.status`, from
+ * goal-inputs' goalStatus) — this only shelves them by L1 and rolls up.
  *
- * @param {Array} readings  useGoalReadings() output — L2 rows carry
- *   { goal, spec, reading, verdict, evidence, checkinDays, lastTs }.
+ * The roll-up is the same one Home and Goals print: each goal's "logged so
+ * far" percent (due windows only), averaged per objective, weighted across
+ * objectives; each objective's chip is its weakest MEASURED child. Goals
+ * that aren't measured (no tracker, still in setup, auto-tracked) are
+ * counted separately so the page can say they're not in the number.
+ *
+ * @param {Array} readings  useGoalReadings() output.
+ * @param {Array} [untrackedGoals]  goals with no tracker at all
+ *        (useGoalWidgetItems().unclassifiedGoals) — listed, never scored.
  */
-export function buildGoalEvidenceGroups(readings) {
+export function buildGoalEvidenceGroups(readings, untrackedGoals = []) {
   const groups = [];
   let active = null;
-  const summary = { total: 0, onTrack: 0, inProgress: 0, behind: 0, awaiting: 0 };
 
   const ensureGroup = (l1) => {
     if (active && active.l1?.id === l1?.id) return active;
@@ -110,6 +113,7 @@ export function buildGoalEvidenceGroups(readings) {
     return active;
   };
 
+  const statuses = [];
   for (const r of readings || []) {
     if (r.level === "L1") {
       const g = ensureGroup(r.goal);
@@ -120,17 +124,36 @@ export function buildGoalEvidenceGroups(readings) {
         goal: r.goal,
         spec: r.spec,
         reading: r.reading || null,
+        status: r.status || null,
         verdict: r.verdict || null,
         evidence: r.evidence || [],
         checkinDays: r.checkinDays || 0,
         lastTs: r.lastTs || null,
       });
-      summary.total += 1;
-      const bucket = TONE_BUCKET[r.reading?.statusTone] || "awaiting";
-      summary[bucket] += 1;
+      if (r.status) statuses.push(r.status);
     }
   }
 
+  const shelves = groups.filter((g) => g.goals.length > 0);
+  for (const g of shelves) {
+    const list = g.goals.map((row) => row.status).filter(Boolean);
+    const key = objectiveStatus(list.map((st) => st.status));
+    g.status = key ? { status: key, ...statusMeta(key) } : null;
+    g.pct = objectiveProgress(list.map((st) => loggedPercent({ goal: st })));
+  }
+
+  const untracked = (untrackedGoals || []).filter((goal) => goal && goal.kind !== "L1");
+  const unmeasuredTracked = statuses.filter((st) => !isMeasurable(st.status)).length;
+  const summary = {
+    total: statuses.length,
+    counts: countStatuses(statuses.map((st) => st.status)),
+    pct: weightedProgress(shelves.map((g) => ({ pct: g.pct, weight: g.l1?.weightage }))),
+    logged: loggedTotals(statuses),
+    // Not in the number: no tracker at all + trackers that can't be scored.
+    unmeasured: untracked.length + unmeasuredTracked,
+    untracked: untracked.map((goal) => ({ id: goal.id, title: goal.title })),
+  };
+
   // Drop L1 shelves that ended up with no classified L2 goals.
-  return { groups: groups.filter((g) => g.goals.length > 0), summary };
+  return { groups: shelves, summary };
 }

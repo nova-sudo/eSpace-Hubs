@@ -14,8 +14,10 @@ import { cn } from "@/lib/cn";
 import { updateSpecTiers } from "@/features/goal-specs";
 import { isAssignedGoalId } from "@espace-devhub/shared/goal-specs";
 import { useGoalTier, TIER_ORDER, TIER_LABELS, TIER_FIELD } from "./use-goal-tier";
+import { readTierPolicy } from "./tier-policy-store";
 import { tierTone } from "./tier-colors";
 import { TierDeltaBadge } from "./tier-move";
+import { ManagerGradeAck } from "./manager-grade-ack";
 
 /** Ladder cell background/ink for the currently-reached tier. */
 const CELL_TONE_CLASS = {
@@ -91,13 +93,16 @@ export function GoalTierBadge({ goalId, spec }) {
  * for back-compat with callers that used to pick a light/dark tile skin;
  * the ladder now renders the same token-based surface either way.
  */
-export function GoalTierLadder({ spec, variant: _variant = "light" }) {
+export function GoalTierLadder({ spec, rubric = null, variant: _variant = "light" }) {
   const { hasTiers, tiers, tierGoverned, verdict, loading, regrade } = useGoalTier(
     spec?.goalId,
     spec,
   );
   const [editing, setEditing] = useState(false);
   const [regrading, setRegrading] = useState(false);
+  // The Goal Code whose manager policy governs this ladder (the tier
+  // store is already hydrated + subscribed by useGoalTier above).
+  const governingCode = tierGoverned ? readTierPolicy(spec?.goalId)?.code || null : null;
   // Same gap as the badge above: a classified goal with no tiers rendered an
   // empty space where the ladder belongs. Explain it and name the action.
   if (!hasTiers) {
@@ -108,7 +113,19 @@ export function GoalTierLadder({ spec, variant: _variant = "light" }) {
         style={{ boxShadow: "var(--shadow-card)" }}
       >
         <Label>Achievement levels</Label>
-        {isAssignedGoalId(spec?.goalId) ? (
+        {rubric && rubric.trim() ? (
+          // No scored levels — but the goal sheet's own rubric still says
+          // what "good" looks like, and it's the only "why" a grade has.
+          <>
+            <p className="whitespace-pre-line text-[13px] leading-[1.55] text-fg">
+              {rubric.trim()}
+            </p>
+            <p className="text-[12px] leading-[1.5] text-muted-fg">
+              From your goal sheet. There are no scored levels yet — re-analyzing
+              the goal writes them from this rubric.
+            </p>
+          </>
+        ) : isAssignedGoalId(spec?.goalId) ? (
           <p className="text-[13px] leading-[1.5] text-muted-fg">
             This shared goal has no levels of its own. The person who shared it
             (or your line manager) grades it, or a tier policy for its code does.
@@ -145,14 +162,33 @@ export function GoalTierLadder({ spec, variant: _variant = "light" }) {
   }
 
   const isManager = verdict?.source === "manager";
+  const gradedAgo = relativeAgo(verdict?.gradedAt);
 
   return (
     <div className="mt-3 flex flex-col gap-2.5">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Label>Achievement tier</Label>
-          {tierGoverned ? <Badge tone="sky">Manager-governed</Badge> : null}
-          {isManager ? <Badge tone="sky">Manager verdict</Badge> : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <Label>Achievement levels</Label>
+          {tierGoverned ? (
+            // "How you're graded" (hub-audit §5): name the policy that sets
+            // the bar, not just that one exists.
+            <Badge
+              tone="sky"
+              title="A manager's level policy for this goal's code sets these criteria. Only a manager can change them — from the Manager Hub's Goals & policies."
+            >
+              {governingCode
+                ? `Set by your manager's policy: ${governingCode}`
+                : "Set by your manager's policy"}
+            </Badge>
+          ) : null}
+          {isManager ? (
+            <Badge tone="sky" title="Your manager graded this goal directly; it outranks the AI grade.">
+              Manager verdict
+            </Badge>
+          ) : null}
+          {gradedAgo ? (
+            <span className="text-[11.5px] text-muted-fg">Last graded {gradedAgo}</span>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-3">
           {/* Manual re-grade — grading is throttled to once a day, so this is
@@ -180,8 +216,8 @@ export function GoalTierLadder({ spec, variant: _variant = "light" }) {
               className="text-[12px] font-semibold text-muted-fg hover:text-fg"
               title={
                 spec?.tiersLocked
-                  ? "Criteria locked — re-analysis won't overwrite. Click to edit or unlock."
-                  : "Edit the achievement-tier criteria for this goal"
+                  ? "Criteria kept on re-analyze — click to edit or let re-analysis regenerate them."
+                  : "Edit the achievement-level criteria for this goal"
               }
             >
               Edit
@@ -209,10 +245,10 @@ export function GoalTierLadder({ spec, variant: _variant = "light" }) {
               <div
                 className={cn(
                   "mt-0.5 text-[11.5px]",
-                  isCurrent ? "opacity-80" : "text-dim-fg",
+                  isCurrent ? "opacity-80" : "text-muted-fg",
                 )}
               >
-                {criterion || "—"}
+                {criterion || "Not described"}
               </div>
             </div>
           );
@@ -226,6 +262,8 @@ export function GoalTierLadder({ spec, variant: _variant = "light" }) {
         <div className="rounded-[var(--radius-lg)] bg-sky p-3.5 text-[13px] text-sky-ink">
           Graded by {verdict.gradedByName || "your manager"}
           {verdict.reasoning ? ` — ${verdict.reasoning}` : ""}
+          {/* The report's acknowledgement + grade history. */}
+          <ManagerGradeAck goalId={spec?.goalId} />
         </div>
       ) : verdict?.reasoning ? (
         <InsightRow
@@ -254,6 +292,7 @@ function TierEditor({ spec, tiers, onClose }) {
     roleModel: tiers.roleModel || "",
   }));
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
   const locked = spec?.tiersLocked === true;
 
   function draftTiers() {
@@ -265,29 +304,36 @@ function TierEditor({ spec, tiers, onClose }) {
     };
   }
 
-  // Save + LOCK: the user owns these criteria now, so re-analysis won't
-  // overwrite them. Updates the spec → the goal re-grades on the new tiers.
-  function save() {
+  // `updateSpecTiers` validates synchronously and returns `{ ok, errors }`;
+  // an ignored `ok:false` closed the editor as if it had saved.
+  function commit(keepOnReanalyze) {
     setSaving(true);
-    updateSpecTiers(spec.goalId, draftTiers(), true);
+    setError(null);
+    const res = updateSpecTiers(spec.goalId, draftTiers(), keepOnReanalyze);
     setSaving(false);
+    if (!res?.ok) {
+      setError((res?.errors || []).join(", ") || "Couldn't save these criteria.");
+      return;
+    }
     onClose?.();
   }
 
-  // Drop the lock so a future re-analysis may regenerate the criteria
+  // Save + KEEP: the user owns these criteria now, so re-analysis won't
+  // overwrite them. Updates the spec → the goal re-grades on the new tiers.
+  const save = () => commit(true);
+  // Drop the keep flag so a future re-analysis may regenerate the criteria
   // (keeps the current edits as the spec's tiers until then).
-  function unlock() {
-    setSaving(true);
-    updateSpecTiers(spec.goalId, draftTiers(), false);
-    setSaving(false);
-    onClose?.();
-  }
+  const unlock = () => commit(false);
 
   return (
     <div className="mt-3 flex flex-col gap-3 rounded-[var(--radius-lg)] bg-card-alt p-3.5">
       <div className="flex items-center gap-2">
-        <Label>Edit achievement-tier criteria</Label>
-        {locked ? <Badge tone="neutral">Locked</Badge> : null}
+        <Label>Edit achievement-level criteria</Label>
+        {locked ? (
+          <Badge tone="neutral" title="These criteria survive a re-analysis.">
+            Kept on re-analyze
+          </Badge>
+        ) : null}
       </div>
       <div className="flex flex-col gap-2.5">
         {TIER_ORDER.map((t) => {
@@ -301,19 +347,31 @@ function TierEditor({ spec, tiers, onClose }) {
                 rows={2}
                 value={draft[field]}
                 onChange={(e) => setDraft((d) => ({ ...d, [field]: e.target.value }))}
-                className="w-full resize-y rounded-[var(--radius-lg)] bg-card p-3 text-[13px] leading-[1.4] text-fg outline-none focus:ring-2 focus:ring-ink"
+                className="w-full resize-y rounded-[var(--radius-lg)] bg-card p-3 text-[13px] leading-[1.4] text-fg border border-field-line outline-none focus:ring-2 focus:ring-ink"
               />
             </label>
           );
         })}
       </div>
-      <div className="flex items-center gap-2">
-        <Button size="sm" onClick={save} disabled={saving}>
-          {saving ? "Saving…" : "Save & lock"}
+      {error ? <div className="text-[12.5px] leading-[1.4] text-peach-text">{error}</div> : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          onClick={save}
+          disabled={saving}
+          title="Save these criteria and keep them when the goal is re-analyzed"
+        >
+          {saving ? "Saving…" : "Save & keep on re-analyze"}
         </Button>
         {locked ? (
-          <Button size="sm" variant="soft" onClick={unlock} disabled={saving}>
-            Unlock
+          <Button
+            size="sm"
+            variant="soft"
+            onClick={unlock}
+            disabled={saving}
+            title="Save, but let the next re-analysis regenerate these criteria"
+          >
+            Save & allow regenerate
           </Button>
         ) : null}
         <Button size="sm" variant="ghost" onClick={onClose}>
@@ -322,4 +380,15 @@ function TierEditor({ spec, tiers, onClose }) {
       </div>
     </div>
   );
+}
+
+function relativeAgo(ts) {
+  const n = typeof ts === "string" ? Date.parse(ts) : ts;
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const min = Math.floor((Date.now() - n) / 60_000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  return `${Math.floor(hr / 24)}d ago`;
 }

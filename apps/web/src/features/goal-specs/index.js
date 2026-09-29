@@ -64,6 +64,7 @@ export {
   removeSpec,
   replaceSpecs,
   saveSpec,
+  specShapeChanged,
   updateSpecTiers,
   SPECS_CHANGE_EVENT,
   SPECS_STORAGE_KEY,

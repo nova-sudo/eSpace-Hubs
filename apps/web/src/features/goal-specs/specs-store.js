@@ -24,6 +24,17 @@
  *   GET         /          → { specs: {[goalId]: spec}, lastAnalyzedAt }
  *   PUT         /:goalId    → { spec, generatedAt }
  *   DELETE      /:goalId
+ * Backend: /api/v1/goal-spec-meta
+ *   GET         /          → { createdAt: {[goalId]: iso}, hireDate: iso|null }
+ *
+ * Tracking start (Decision 2 — a tracker counts from the day it was
+ * created): the server's per-goal creation time and the user's hire date are
+ * kept BESIDE the specs, not inside them — `validateSpec` strips unknown
+ * fields, and they are facts about the row, not the plan. The read surfaces
+ * (`readValidSpecs`, `useGoalSpecs`) stamp them onto each validated spec as
+ * `spec.createdAt` / `spec.hireDate`, which the shared window model
+ * (`composedCycleBounds` → `trackingStart`) reads. Never sent back: a save
+ * re-validates, which drops them again.
  */
 
 import { isAssignedGoalId, validateSpec } from "@espace-devhub/shared/goal-specs";
@@ -55,6 +66,10 @@ const INITIAL_STATE = Object.freeze({
   specs: {},
   /** Epoch ms of the latest spec generation (server's max generatedAt). */
   lastAnalyzedAt: 0,
+  /** `{ [goalId]: iso }` — when each tracker was created (server). */
+  createdAt: {},
+  /** The user's hire date (ISO) or null — a later floor for tracking. */
+  hireDate: null,
 });
 
 let state = INITIAL_STATE;
@@ -113,6 +128,27 @@ if (typeof window !== "undefined") {
 /* ─────────────────────── reads ─────────────────────── */
 
 /**
+ * `spec` with its tracking-start facts stamped on (`createdAt`, `hireDate`)
+ * when known. Returns the same object when there's nothing to add.
+ */
+export function withTrackingMeta(goalId, spec) {
+  if (!spec || typeof spec !== "object") return spec;
+  const createdAt = state.createdAt?.[goalId] ?? null;
+  const hireDate = state.hireDate ?? null;
+  if (!createdAt && !hireDate) return spec;
+  return {
+    ...spec,
+    ...(createdAt ? { createdAt } : {}),
+    ...(hireDate ? { hireDate } : {}),
+  };
+}
+
+/** The tracking-meta maps — a memo dependency for readers that stamp specs. */
+export function readTrackingMeta() {
+  return { createdAt: state.createdAt, hireDate: state.hireDate };
+}
+
+/**
  * Synchronous read of the whole store: `{ specs, lastAnalyzedAt }`.
  * Empty before hydration completes — pair with useGoalSpecs() to drive
  * the fetch.
@@ -129,7 +165,7 @@ export function readValidSpecs() {
   const out = {};
   for (const [goalId, value] of Object.entries(state.specs)) {
     const res = validateSpec(value);
-    if (res.ok) out[goalId] = res.spec;
+    if (res.ok) out[goalId] = withTrackingMeta(goalId, res.spec);
   }
   return out;
 }
@@ -145,7 +181,10 @@ export async function fetchSpecs() {
   if (inflightFetch) return inflightFetch;
   setState({ loading: true, error: null });
   inflightFetch = (async () => {
-    const r = await apiGet("/goal-specs");
+    const [r, meta] = await Promise.all([
+      apiGet("/goal-specs"),
+      apiGet("/goal-spec-meta").catch(() => null),
+    ]);
     inflightFetch = null;
     if (!r.ok) {
       const isAuth =
@@ -158,12 +197,29 @@ export async function fetchSpecs() {
       r.data?.specs && typeof r.data.specs === "object" ? r.data.specs : {};
     const lastAnalyzedAt =
       typeof r.data?.lastAnalyzedAt === "number" ? r.data.lastAnalyzedAt : 0;
+    // Tracking meta is best-effort: an older API without the endpoint just
+    // means every tracker counts from its cycle start, as before.
+    const metaOk = meta?.ok && meta.data && typeof meta.data === "object";
+    const createdAt = { ...state.createdAt };
+    if (metaOk && meta.data.createdAt && typeof meta.data.createdAt === "object") {
+      for (const [id, iso] of Object.entries(meta.data.createdAt)) {
+        if (typeof iso === "string" && iso) createdAt[id] = iso;
+      }
+    }
+    const hireDate =
+      metaOk && typeof meta.data.hireDate === "string" && meta.data.hireDate
+        ? meta.data.hireDate
+        : metaOk
+          ? null
+          : state.hireDate;
     setState({
       loading: false,
       fetched: true,
       error: null,
       specs,
       lastAnalyzedAt,
+      createdAt,
+      hireDate,
     });
     return specs;
   })();
@@ -208,9 +264,17 @@ export function saveSpec(spec, { replace = false } = {}) {
   if (!res.ok) return res;
   const goalId = res.spec.goalId;
   const prior = state.specs[goalId];
-  setState({ specs: { ...state.specs, [goalId]: res.spec }, error: null });
-  void putSpecRemote(goalId, res.spec, prior);
-  return res;
+  // A tracker created now counts from now — mirror the row the PUT is about
+  // to insert so the windows before today read "before" immediately, not
+  // only after the next hydration. Never overwrites a known creation time.
+  const createdAt = state.createdAt?.[goalId]
+    ? state.createdAt
+    : { ...state.createdAt, [goalId]: new Date().toISOString() };
+  setState({ specs: { ...state.specs, [goalId]: res.spec }, createdAt, error: null });
+  // `persisted` resolves true once the server has the row — a caller that
+  // must act on the STORED spec next (submit-approval) awaits it.
+  const persisted = putSpecRemote(goalId, res.spec, prior);
+  return { ...res, persisted };
 }
 
 /**
@@ -239,13 +303,27 @@ async function putSpecRemote(goalId, spec, prior) {
     if (genTs && genTs > state.lastAnalyzedAt) {
       setState({ lastAnalyzedAt: genTs });
     }
-    return;
+    // Server owns `approval` too: a new COMPOSED tracker is stored pending
+    // even when this client didn't ask (the hard BYO gate), and a forged
+    // block is dropped. Adopt what was stored so the UI shows the pending
+    // shell now, not after the next reload.
+    const storedApproval = r.data?.spec ? r.data.spec.approval ?? null : undefined;
+    if (
+      storedApproval !== undefined &&
+      state.specs[goalId] === spec &&
+      JSON.stringify(storedApproval) !== JSON.stringify(spec.approval ?? null)
+    ) {
+      const { approval: _local, ...rest } = spec;
+      const adopted = storedApproval ? { ...rest, approval: storedApproval } : rest;
+      setState({ specs: { ...state.specs, [goalId]: adopted } });
+    }
+    return true;
   }
   if (
     r.error?.code === "unauthenticated" ||
     r.error?.code === "totp_required"
   ) {
-    return;
+    return false;
   }
   // Targeted rollback — and only if a concurrent save didn't overwrite
   // it in the meantime. Restore the spec that was there BEFORE the
@@ -264,6 +342,7 @@ async function putSpecRemote(goalId, spec, prior) {
   }
   // eslint-disable-next-line no-console
   console.warn("[goal-specs] save failed:", r.error?.code, r.error?.message);
+  return false;
 }
 
 /** Remove a single spec by goalId. No-op when absent. */
@@ -285,7 +364,7 @@ async function removeSpecRemote(goalId, removed) {
     r.error?.code === "unauthenticated" ||
     r.error?.code === "totp_required"
   ) {
-    return;
+    return false;
   }
   // Rollback the removal if nothing re-created the entry meanwhile.
   if (!state.specs[goalId]) {
@@ -318,6 +397,18 @@ export function clearSpecs() {
 }
 
 /**
+ * Would replacing `prev` with `next` change the SHAPE of what gets logged?
+ * Widget kind or variant changing means the goal's entries belong to a
+ * different tracker and must be wiped; a same-shape re-analysis (new
+ * reasoning, new tiers, tweaked target) keeps them. Also true when there
+ * is no prior spec to compare — nothing to wipe then anyway.
+ */
+export function specShapeChanged(prev, next) {
+  if (!prev || !next) return true;
+  return prev.widget !== next.widget || prev.kind !== next.kind;
+}
+
+/**
  * Record the completion timestamp of the latest full-tree analysis.
  *
  * Local marker only — the server derives lastAnalyzedAt from each
@@ -347,7 +438,10 @@ export function replaceSpecs(map) {
   const shared = Object.fromEntries(
     Object.entries(state.specs).filter(([id]) => isAssignedGoalId(id)),
   );
-  setState({ specs: { ...specs, ...shared }, lastAnalyzedAt: Date.now(), error: null });
+  const nowIso = new Date().toISOString();
+  const createdAt = { ...state.createdAt };
+  for (const goalId of Object.keys(specs)) if (!createdAt[goalId]) createdAt[goalId] = nowIso;
+  setState({ specs: { ...specs, ...shared }, lastAnalyzedAt: Date.now(), createdAt, error: null });
   void Promise.all(
     Object.entries(specs).map(([goalId, spec]) =>
       apiPut(`/goal-specs/${encodeURIComponent(goalId)}`, spec).catch(

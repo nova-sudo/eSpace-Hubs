@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore, useCallback } from "react";
+import { mutate as mutateSwr } from "swr";
 import { apiGet, apiPost } from "@/lib/api-client";
 import {
   getSession,
@@ -22,6 +23,33 @@ const SERVER_SNAPSHOT = Object.freeze({
   needsTotp: false,
   error: null,
 });
+
+/**
+ * Drop every SWR cache entry without refetching. SWR keys in this app
+ * are mostly NOT user-scoped ("my-manager-notes", "/notifications", …),
+ * so a second user signing in on the same tab without a reload would
+ * briefly see the first user's cached data. Called on logout and
+ * whenever the signed-in user id changes.
+ */
+function clearSwrCache() {
+  try {
+    mutateSwr(() => true, undefined, { revalidate: false });
+  } catch {
+    // SWR not initialised yet — nothing cached to clear.
+  }
+}
+
+/** Promote `user` into the session, clearing SWR when the id changes. */
+function setSessionUser(patch) {
+  const prevId = getSession().user?.id ?? null;
+  const nextId = patch.user?.id ?? null;
+  // Only a real hand-over (A → B, or A → signed out) can leak; the
+  // first null → A on page load has nothing cached worth dropping.
+  if (prevId !== null && prevId !== nextId) {
+    clearSwrCache();
+  }
+  setSession(patch);
+}
 
 function serverSnapshot() {
   // SSR returns the "loading" state — the client will hydrate after
@@ -45,6 +73,9 @@ function serverSnapshot() {
  *   logout()                      — destroys server session + clears state
  *   refresh()                     — refetch /me (used on app mount, after
  *                                   integrations changes, etc.)
+ *   refreshSilent()               — same, without flipping `loading` (use
+ *                                   after an in-page save so AuthGuard
+ *                                   doesn't blank the page)
  */
 export function useSession() {
   const state = useSyncExternalStore(
@@ -53,11 +84,17 @@ export function useSession() {
     serverSnapshot,
   );
 
-  const refresh = useCallback(async () => {
-    setSession({ loading: true, error: null });
+  // `silent` keeps `loading` untouched so AuthGuard doesn't swap a
+  // mounted page for the "Authenticating…" placeholder while a
+  // post-save refetch of /me is in flight (Account tab save, TOTP
+  // enrolment, onboarding submit, approval polling). The loud variant
+  // is for the initial mount / auth transitions where a placeholder is
+  // the right thing to show.
+  const runRefresh = useCallback(async ({ silent = false } = {}) => {
+    setSession(silent ? { error: null } : { loading: true, error: null });
     const result = await apiGet("/auth/me");
     if (result.ok) {
-      setSession({
+      setSessionUser({
         user: result.data?.user ?? null,
         loading: false,
         needsTotp: false,
@@ -68,7 +105,7 @@ export function useSession() {
     // 401 totp_required means there IS a partial session — surface
     // that distinctly so the UI shows the TOTP step.
     if (result.error.code === "totp_required") {
-      setSession({
+      setSessionUser({
         user: null,
         loading: false,
         needsTotp: true,
@@ -79,7 +116,7 @@ export function useSession() {
     // 401 unauthenticated → not logged in, but that's a normal state,
     // not an error to display.
     if (result.error.code === "unauthenticated") {
-      setSession({
+      setSessionUser({
         user: null,
         loading: false,
         needsTotp: false,
@@ -87,7 +124,7 @@ export function useSession() {
       });
       return;
     }
-    setSession({
+    setSessionUser({
       user: null,
       loading: false,
       needsTotp: false,
@@ -95,11 +132,17 @@ export function useSession() {
     });
   }, []);
 
+  const refresh = useCallback(() => runRefresh(), [runRefresh]);
+  const refreshSilent = useCallback(
+    () => runRefresh({ silent: true }),
+    [runRefresh],
+  );
+
   const login = useCallback(async ({ email, password }) => {
     setSession({ loading: true, error: null });
     const result = await apiPost("/auth/login", { email, password });
     if (!result.ok) {
-      setSession({
+      setSessionUser({
         user: null,
         loading: false,
         needsTotp: false,
@@ -114,7 +157,8 @@ export function useSession() {
     // user's real data from the API; wiping first ensures they don't
     // race against (or upload via MigrateOnce) the prior user's data.
     clearAllUserScopedStorage();
-    setSession({
+    clearSwrCache();
+    setSessionUser({
       user: needsTotp ? null : user,
       loading: false,
       needsTotp,
@@ -123,9 +167,15 @@ export function useSession() {
     return { ok: true, needsTotp };
   }, []);
 
-  const verifyTotp = useCallback(async ({ code }) => {
+  // Step 2 of login: either a 6-digit authenticator `code` or a
+  // single-use `backupCode`. The server answers with how many backup
+  // codes are left so the form can warn when they run low.
+  const verifyTotp = useCallback(async ({ code, backupCode }) => {
     setSession({ loading: true, error: null });
-    const result = await apiPost("/auth/totp/verify", { code });
+    const result = await apiPost(
+      "/auth/totp/verify",
+      backupCode ? { backupCode } : { code },
+    );
     if (!result.ok) {
       setSession((prev) => prev); // no-op; re-emit
       setSession({
@@ -140,13 +190,19 @@ export function useSession() {
     // `needsTotp:true` and leaves user=null, then step 2 here flips
     // user to the real user. The flip is the dangerous transition.
     clearAllUserScopedStorage();
-    setSession({
+    clearSwrCache();
+    setSessionUser({
       user: result.data?.user ?? null,
       loading: false,
       needsTotp: false,
       error: null,
     });
-    return { ok: true };
+    return {
+      ok: true,
+      user: result.data?.user ?? null,
+      usedBackupCode: !!result.data?.usedBackupCode,
+      backupCodesRemaining: result.data?.backupCodesRemaining ?? null,
+    };
   }, []);
 
   const logout = useCallback(async () => {
@@ -156,7 +212,8 @@ export function useSession() {
     // doesn't matter here — there's no new user about to mount, just
     // the bare /login screen.
     clearAllUserScopedStorage();
-    setSession({
+    clearSwrCache();
+    setSessionUser({
       user: null,
       loading: false,
       needsTotp: false,
@@ -168,6 +225,7 @@ export function useSession() {
   return {
     ...state,
     refresh,
+    refreshSilent,
     login,
     verifyTotp,
     logout,

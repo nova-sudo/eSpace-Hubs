@@ -159,6 +159,22 @@ export interface User {
    */
   totpSecret: string | null;
   totpEnrolledAt: Date | null;
+  /**
+   * Single-use 2FA backup codes — keyed hashes only (see
+   * modules/auth/backup-codes.ts), each with the time it was spent.
+   * Optional: missing/null on rows that enrolled before backup codes
+   * existed, and cleared by every 2FA reset / disable path.
+   */
+  totpBackupCodes?: { hash: string; usedAt: Date | null }[] | null;
+  totpBackupCodesGeneratedAt?: Date | null;
+  /**
+   * Self-service "move to a new phone": a NEW secret waiting for its
+   * first code (see modules/auth/totp-reenrol.ts). Envelope-encrypted
+   * like `totpSecret`; the live secret keeps working until confirm.
+   * Ignored once `totpPendingExpiresAt` has passed.
+   */
+  totpPendingSecret?: string | null;
+  totpPendingExpiresAt?: Date | null;
 
   // ─ Zoho-fed fields. All nullable until the M9 Zoho integration lands.
   zohoEmployeeId: string | null;
@@ -334,6 +350,13 @@ export interface Session {
    * `mintSession` calls always write it.
    */
   totpEnrolled?: boolean;
+  /**
+   * When this session cleared login step 2 with a BACKUP code (null /
+   * absent for an authenticator code). Lets the lost-phone path start
+   * a re-enrolment within a short window without spending a second
+   * backup code — see BACKUP_CODE_SESSION_WINDOW_MS.
+   */
+  verifiedWithBackupCodeAt?: Date | null;
 }
 
 // ─── goals (L1 / L2 tree) ────────────────────────────────────────────
@@ -764,7 +787,16 @@ export type NotificationKind =
   | "assigned_goal_updated"
   | "assigned_goal_due_soon"
   | "assigned_goal_overdue"
-  | "assigned_goal_period_report";
+  | "assigned_goal_period_report"
+  // An admin moved the recipient to a new manager (sent to the report and
+  // to the incoming manager) — see modules/admin.
+  | "manager_changed"
+  // Scheduler: the recipient's BYO approval queue has an item waiting
+  // more than 3 days (manager queue, or the admins' no-manager queue).
+  | "approval_queue_stale"
+  // A report acknowledged a manager grade with "I disagree" — sent to the
+  // manager who set the grade (see notifyVerdictDisputed).
+  | "verdict_disputed";
 
 export const ALL_NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "manager_graded",
@@ -784,6 +816,9 @@ export const ALL_NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "assigned_goal_due_soon",
   "assigned_goal_overdue",
   "assigned_goal_period_report",
+  "manager_changed",
+  "approval_queue_stale",
+  "verdict_disputed",
 ] as const;
 
 // ─── assigned (shared) goals ─────────────────────────────────────────
@@ -865,6 +900,23 @@ export interface Notification {
   readAt: Date | null;
 }
 
+/**
+ * Per-user notification preferences (hub-audit §3.4) — one row per user
+ * in `notification_prefs`. Absent row = defaults (nothing muted, email
+ * on). `muted` kinds are never written to the inbox at all; `email:
+ * false` suppresses every email the app would send this user (weekly
+ * digest, admin alerts). Security mail (password reset, invites) is not
+ * a notification and ignores this.
+ */
+export interface NotificationPrefs {
+  _id: ObjectId;
+  orgId: ObjectId;
+  userId: ObjectId;
+  muted: NotificationKind[];
+  email: boolean;
+  updatedAt: Date;
+}
+
 // ─── manager goal verdicts (a manager's authoritative tier grade) ────
 
 /**
@@ -889,6 +941,50 @@ export interface ManagerGoalVerdict {
   gradedByName: string;
   gradedAt: Date;
   updatedAt: Date;
+  /**
+   * The grading period this grade is for ("2026", or a finer "2026-Q1"
+   * when the grading UI supplies one). Absent on legacy rows — read those
+   * as the calendar year of `gradedAt` (see `verdictPeriodKey`).
+   */
+  periodKey?: string;
+  /** The `manager_goal_verdict_events` row this projection mirrors. */
+  eventId?: ObjectId | null;
+  /** The report's acknowledgement of THIS grade; reset on every re-grade. */
+  ack?: ManagerVerdictAck | null;
+}
+
+/** A report's "I've seen this" (and optional "I disagree") on a grade. */
+export interface ManagerVerdictAck {
+  at: Date;
+  disagree: boolean;
+  /** Only meaningful with `disagree`; may be empty. */
+  note: string;
+}
+
+/**
+ * Append-only grade log — one row per manager grade ever set, keyed by
+ * (orgId, subjectUserId, goalId, periodKey). `manager_goal_verdicts` stays
+ * the "current grade" projection every reader already uses; this is the
+ * history behind it. A re-grade in the same period stamps `supersededAt`
+ * on the previous row — rows are never rewritten or deleted otherwise
+ * (`ack` is the one field a report may add to the grade they saw).
+ */
+export interface ManagerGoalVerdictEvent {
+  _id: ObjectId;
+  orgId: ObjectId;
+  subjectUserId: ObjectId;
+  goalId: string;
+  periodKey: string;
+  tier: GoalTier;
+  note: string;
+  gradedBy: ObjectId;
+  gradedByName: string;
+  gradedAt: Date;
+  /** Set when a later grade for the same (subject, goal, period) lands. */
+  supersededAt: Date | null;
+  /** True for a row backfilled from a pre-history `manager_goal_verdicts` row. */
+  legacy: boolean;
+  ack: ManagerVerdictAck | null;
 }
 
 // ─── manager tier policies (a manager's authored criteria, by Goal Code) ──
@@ -1203,5 +1299,30 @@ export interface HubConfig {
   /** Replaces the registry default. */
   departments?: string[] | null;
   updatedBy: ObjectId | null;
+  updatedAt: Date;
+}
+
+// ─── manager 1:1 notes ───────────────────────────────────────────────
+
+/** Who can read a manager's note about a report. */
+export type ManagerReportNoteVisibility = "private" | "shared-with-report";
+
+/**
+ * A manager's running 1:1 / check-in journal about one direct report
+ * (`manager_report_notes`). Private notes are readable by their author
+ * only; "shared-with-report" notes are also readable by the report via
+ * GET /api/v1/my-manager-notes. Written through
+ * /api/v1/manager/reports/:userId/notes (resolveReport-guarded).
+ */
+export interface ManagerReportNote {
+  _id: ObjectId;
+  orgId: ObjectId;
+  managerId: ObjectId;
+  reportId: ObjectId;
+  /** Author's display name at write time — the report sees who wrote it. */
+  managerName: string;
+  body: string;
+  visibility: ManagerReportNoteVisibility;
+  createdAt: Date;
   updatedAt: Date;
 }

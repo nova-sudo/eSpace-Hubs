@@ -134,7 +134,7 @@ function Body({ jobName }) {
         <Label>Suite</Label>
         <div className="mt-1.5 font-mono text-[12px]">{jobName}</div>
         {stats.completed < LOW_SIGNAL_THRESHOLD ? (
-          <div className="mt-2 text-[11px] text-dim-fg">
+          <div className="mt-2 text-[11px] text-muted-fg">
             Low signal — fewer than {LOW_SIGNAL_THRESHOLD} builds in window
           </div>
         ) : null}

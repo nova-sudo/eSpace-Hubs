@@ -29,6 +29,7 @@ import {
   type AnalysisEvent,
   type GoalForClassification,
 } from "./classifier/index.js";
+import { aiUnconfigured } from "./unconfigured.js";
 
 // ─── input schema ────────────────────────────────────────────────────
 
@@ -86,13 +87,7 @@ export async function classifyGoalsHandler(
       bodyProvider: parsed.provider ?? null,
     });
   } catch (err) {
-    return next(
-      new HttpError(
-        500,
-        "ai_provider_unconfigured",
-        err instanceof Error ? err.message : String(err),
-      ),
-    );
+    return next(aiUnconfigured(err instanceof Error ? err.message : String(err)));
   }
 
   // Past this point we OWN the response — write the NDJSON headers and

@@ -135,3 +135,58 @@ export const listAuditQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 export type ListAuditQuery = z.infer<typeof listAuditQuerySchema>;
+
+// ─── GET /api/v1/admin/users ─────────────────────────────────────────
+
+/**
+ * Paginated roster (hub-audit §2.3). Keyset on (createdAt desc, _id
+ * desc); `cursor` is the previous page's `nextCursor`, opaque to callers.
+ *
+ *   q         — case-insensitive substring of displayName or email
+ *   status    — one account state, or "all" (default)
+ *   flag      — "no_manager": non-disabled devs/QA with no manager;
+ *               "disabled_manager": non-disabled people whose manager is
+ *               disabled (the admin overview links to both)
+ *   managerId — only this manager's direct reports
+ */
+export const listUsersQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  cursor: z.string().min(3).max(100).optional(),
+  q: z
+    .string()
+    .max(200)
+    .transform((s) => s.trim())
+    .optional(),
+  status: z
+    .union([statusEnum, z.literal("all")])
+    .default("all"),
+  flag: z.enum(["no_manager", "disabled_manager"]).optional(),
+  managerId: z
+    .string()
+    .regex(/^[0-9a-f]{24}$/i, "managerId must be a hex ObjectId")
+    .optional(),
+});
+export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
+
+// ─── POST /api/v1/admin/users/:id/reassign-reports ───────────────────
+
+/** Move every report of :id to `toManagerId` (null = unassign them). */
+export const reassignReportsSchema = z.object({
+  toManagerId: z
+    .string()
+    .regex(/^[0-9a-f]{24}$/i, "toManagerId must be a hex ObjectId")
+    .nullable(),
+});
+
+// ─── POST /api/v1/admin/approvals/:userId/:goalId ────────────────────
+
+/** Same vocabulary as the manager's decision endpoint. */
+export const approvalDecisionSchema = z.object({
+  decision: z.enum(["approve", "request_changes"]),
+  note: z.string().max(2_000).optional(),
+});
+
+// ─── GET /api/v1/admin/audit/export.csv ──────────────────────────────
+
+/** The feed's filters, without paging — the export takes every match. */
+export const exportAuditQuerySchema = listAuditQuerySchema.omit({ limit: true });

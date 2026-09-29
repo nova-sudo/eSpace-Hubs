@@ -1,56 +1,58 @@
 "use client";
 
 /**
- * Reveal — a tiny GSAP entrance wrapper. Fades + lifts its content (or, with
+ * Reveal — a tiny entrance wrapper. Fades + lifts its content (or, with
  * `stagger`, its direct children one-by-one) on mount. Respects
- * prefers-reduced-motion (renders static). Re-runs when `deps` change, so it
- * can re-animate on a view/mode switch.
+ * prefers-reduced-motion (the CSS animation is disabled). Re-runs when
+ * `deps` change (the key remounts the wrapper), so it can re-animate on a
+ * view/mode switch.
  *
- * Motivated motion only (see the design-taste skill): use for content entering
- * the viewport on navigation / mode change, not as decoration on every node.
+ * Implemented as a CSS animation (`.ui-reveal` in globals.css) rather than a
+ * JS tween: a tween that stalls (throttled tab, interrupted effect) leaves
+ * content invisible; a CSS animation always settles at the normal styles.
+ *
+ * Motivated motion only: use for content entering the viewport on
+ * navigation / mode change, not as decoration on every node.
  */
 
-import { useRef } from "react";
-import { gsap } from "gsap";
-import { useGSAP } from "@gsap/react";
-
-gsap.registerPlugin(useGSAP);
+import { Children, cloneElement, isValidElement } from "react";
+import { cn } from "@/lib/cn";
 
 export function Reveal({
   children,
   className,
   stagger = false,
-  y = 18,
-  duration = 0.6,
+  y: _y = 18,
+  duration: _duration = 0.6,
   delay = 0,
   deps = [],
 }) {
-  const ref = useRef(null);
-  useGSAP(
-    () => {
-      const reduce =
-        typeof window !== "undefined" &&
-        window.matchMedia &&
-        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      if (reduce || !ref.current) return;
-      const targets = stagger
-        ? gsap.utils.toArray(ref.current.children)
-        : ref.current;
-      gsap.from(targets, {
-        y,
-        opacity: 0,
-        duration,
-        delay,
-        ease: "power3.out",
-        stagger: stagger ? 0.08 : 0,
-        clearProps: "transform,opacity",
-      });
-    },
-    { scope: ref, dependencies: deps, revertOnUpdate: true },
-  );
+  const key = deps.map((d) => String(d)).join("|");
+  const base = Math.round(delay * 1000);
+  if (!stagger) {
+    return (
+      <div
+        key={key}
+        className={cn("ui-reveal", className)}
+        style={{ "--reveal-delay": `${base}ms` }}
+      >
+        {children}
+      </div>
+    );
+  }
   return (
-    <div ref={ref} className={className}>
-      {children}
+    <div key={key} className={className}>
+      {Children.map(children, (child, i) => {
+        if (!isValidElement(child)) return child;
+        const style = {
+          ...(child.props.style || {}),
+          "--reveal-delay": `${base + i * 80}ms`,
+        };
+        return cloneElement(child, {
+          className: cn("ui-reveal", child.props.className),
+          style,
+        });
+      })}
     </div>
   );
 }

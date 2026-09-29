@@ -34,12 +34,18 @@ import {
   type Snapshot,
   type User,
 } from "../db/types.js";
-import { createNotification } from "../lib/notifications.js";
+import { createNotification, emailAllowed } from "../lib/notifications.js";
 import { effectiveRoles } from "../lib/user-roles.js";
 import { sendEmail } from "../lib/email.js";
 import { logger } from "../lib/logger.js";
 import { ObjectId as OID } from "mongodb";
 import { assignedPeriodsOwed } from "./assigned-goals-job.js";
+import { deadlineNudgeSkip, formatDueDay } from "./deadline-nudges.js";
+import {
+  activeAdmins,
+  notifyStaleApprovalQueues,
+  pendingApprovals,
+} from "./approval-queue-job.js";
 
 const DAY_MS = 86_400_000;
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -120,6 +126,20 @@ async function doneGoalIds(
   );
 }
 
+/** Stored specs for these goals, keyed by goalId (missing → no tracker). */
+async function specsByGoal(
+  orgId: ObjectId,
+  userId: ObjectId,
+  goalIds: string[],
+): Promise<Map<string, unknown>> {
+  if (goalIds.length === 0) return new Map();
+  const col = await getGoalSpecsCollection();
+  const rows = await col
+    .find({ orgId, userId, goalId: { $in: goalIds } }, { projection: { goalId: 1, spec: 1 } })
+    .toArray();
+  return new Map(rows.map((r) => [r.goalId, r.spec as unknown]));
+}
+
 /**
  * Job 1 — due-soon (≤7 days out) and overdue nudges. Stamped per
  * (user, goal, dueDate), so editing the due date re-arms the nudge and
@@ -138,9 +158,18 @@ export async function notifyGoalDeadlines(now: Date): Promise<void> {
         tree.userId,
         actionable.map((d) => d.goalId),
       );
+      const specs = await specsByGoal(
+        tree.orgId,
+        tree.userId,
+        actionable.map((d) => d.goalId),
+      );
       for (const d of actionable) {
         if (done.has(d.goalId)) continue;
         const overdue = d.daysUntil < 0;
+        // Never nag about a goal the user can't act on (no tracker yet,
+        // delegated, awaiting approval) or a recurring tracker's cycle end.
+        if (deadlineNudgeSkip(specs.get(d.goalId), overdue)) continue;
+        const due = formatDueDay(d.dueDate, now);
         const key = `${overdue ? "overdue" : "due_soon"}:${tree.userId}:${d.goalId}:${d.dueDate}`;
         if (!(await claimStamp(key))) continue;
         void createNotification({
@@ -151,8 +180,8 @@ export async function notifyGoalDeadlines(now: Date): Promise<void> {
             ? `Overdue: ${d.title}`.slice(0, 200)
             : `Due ${d.daysUntil === 0 ? "today" : `in ${d.daysUntil}d`}: ${d.title}`.slice(0, 200),
           body: overdue
-            ? `This goal was due ${d.dueDate} (${Math.abs(d.daysUntil)} day${Math.abs(d.daysUntil) === 1 ? "" : "s"} ago) and isn't graded as achieved yet. Log what happened, or update the due date if the plan changed.`
-            : `This goal is due ${d.dueDate}. A quick fill now keeps the window from closing empty.`,
+            ? `This goal was due ${due} (${Math.abs(d.daysUntil)} day${Math.abs(d.daysUntil) === 1 ? "" : "s"} ago) and isn't graded as achieved yet. Log what happened, or update the due date if the plan changed.`
+            : `This goal is due ${due}. A quick fill now keeps the window from closing empty.`,
           data: { goalId: d.goalId, dueDate: d.dueDate },
         });
       }
@@ -193,8 +222,13 @@ export async function notifyStaleGoals(now: Date): Promise<void> {
       if (spec.untrackable || spec.delegated) continue;
       const approval = spec.approval as { status?: string } | undefined;
       if (approval?.status === "pending") continue; // not active yet
-      const last =
-        lastByGoal.get(`${rec.userId}:${rec.goalId}`) ?? rec.generatedAt.getTime();
+      // A tracker counts from the day it was created (its row's ObjectId
+      // time): entries backfilled into earlier windows carry past `ts`, and
+      // must not make a days-old tracker read "no updates in 3 weeks".
+      const last = Math.max(
+        lastByGoal.get(`${rec.userId}:${rec.goalId}`) ?? rec.generatedAt.getTime(),
+        rec._id.getTimestamp().getTime(),
+      );
       if (now.getTime() - last < STALE_AFTER_MS) continue;
       const key = `stale:${rec.userId}:${rec.goalId}:${bucket}`;
       if (!(await claimStamp(key))) continue;
@@ -218,60 +252,64 @@ export async function notifyStaleGoals(now: Date): Promise<void> {
   }
 }
 
-async function activeManagers(orgId: ObjectId): Promise<User[]> {
-  const users = await getUsersCollection();
-  const rows = await users.find({ orgId, status: "active" }).toArray();
-  return rows.filter((u) => effectiveRoles(u).includes("manager"));
-}
-
 /**
- * Job 3 — a BYO widget approval that's been waiting on a manager for
- * more than 24h. Stamped per spec record id, so each submission alerts
- * once; managers who miss it still see it in the digest.
+ * Job 3 — a BYO widget approval that's been waiting more than 24h.
+ * Stamped per spec record id, so each submission alerts once. Routed to
+ * the approver who can actually act (hub-audit §1.3): the owner's active
+ * manager, else the org's admins — it used to go to every manager in the
+ * org. A manager who misses it gets the >3-day queue nudge
+ * (approval-queue-job.ts) and the digest line.
  */
 export async function notifyWaitingApprovals(now: Date): Promise<void> {
-  const cutoff = new Date(now.getTime() - DAY_MS);
-  const specs = await getGoalSpecsCollection();
-  const managersByOrg = new Map<string, User[]>();
-  const pending = specs.find({
-    "spec.approval.status": "pending",
-    generatedAt: { $lte: cutoff },
-  });
-  for await (const rec of pending) {
+  const cutoff = now.getTime() - DAY_MS;
+  const adminsByOrg = new Map<string, User[]>();
+  for (const item of await pendingApprovals()) {
     try {
-      const key = `approval:${rec._id}`;
+      if (item.submittedAt > cutoff) continue;
+      const key = `approval:${item.specId}`;
       if (!(await claimStamp(key))) continue;
-      const orgKey = String(rec.orgId);
-      let managers = managersByOrg.get(orgKey);
-      if (!managers) {
-        managers = await activeManagers(rec.orgId);
-        managersByOrg.set(orgKey, managers);
+      let recipients: ObjectId[];
+      if (item.approver.scope === "manager") {
+        recipients = [new OID(item.approver.managerId)];
+      } else {
+        const orgKey = String(item.orgId);
+        let admins = adminsByOrg.get(orgKey);
+        if (!admins) {
+          admins = await activeAdmins(item.orgId);
+          adminsByOrg.set(orgKey, admins);
+        }
+        recipients = admins.map((a) => a._id);
       }
-      const users = await getUsersCollection();
-      const owner = await users.findOne(
-        { _id: rec.userId },
-        { projection: { email: 1 } },
-      );
-      const spec = rec.spec as Record<string, unknown>;
-      const title = typeof spec?.title === "string" && spec.title ? spec.title : rec.goalId;
-      for (const m of managers) {
-        if (String(m._id) === String(rec.userId)) continue;
+      for (const to of recipients) {
+        if (String(to) === String(item.ownerId)) continue;
         void createNotification({
-          orgId: rec.orgId,
-          userId: m._id,
+          orgId: item.orgId,
+          userId: to,
           kind: "approval_waiting",
-          title: `Approval waiting >24h: ${title}`.slice(0, 200),
-          body: `${owner?.email || "A report"} submitted a self-built tracker over a day ago and it's still pending your review.`,
-          data: { goalId: rec.goalId, ownerUserId: String(rec.userId) },
+          title: `Approval waiting >24h: ${item.title}`.slice(0, 200),
+          body:
+            item.approver.scope === "manager"
+              ? `${item.ownerName} submitted a self-built tracker over a day ago and it's still pending your review.`
+              : `${item.ownerName} has no manager, so their self-built tracker is waiting on the org's admins — it's been over a day.`,
+          data: {
+            goalId: item.goalId,
+            ownerUserId: String(item.ownerId),
+            approverScope: item.approver.scope,
+          },
         });
       }
     } catch (err) {
       logger.warn(
-        { specId: String(rec._id), err: err instanceof Error ? err.message : String(err) },
+        { specId: item.specId, err: err instanceof Error ? err.message : String(err) },
         "[scheduler] approval scan failed for one spec",
       );
     }
   }
+}
+
+/** Job 3b — see approval-queue-job.ts. Bound to this module's stamp ledger. */
+export async function notifyStaleApprovals(now: Date): Promise<void> {
+  await notifyStaleApprovalQueues(now, claimStamp);
 }
 
 /* ─── weekly server-side snapshots (#229, F4's second half) ─────────── */
@@ -475,8 +513,10 @@ export async function sendWeeklyDigests(now: Date): Promise<void> {
 
   const users = await getUsersCollection();
   const goals = await getGoalsCollection();
-  const specs = await getGoalSpecsCollection();
   const notifications = await getNotificationsCollection();
+  // One scan of the pending approvals for the whole digest run.
+  let queue: Awaited<ReturnType<typeof pendingApprovals>> | null = null;
+  const pendingQueue = async () => (queue ??= await pendingApprovals());
 
   for await (const user of users.find({ status: "active", passwordHash: { $ne: null } })) {
     try {
@@ -484,7 +524,16 @@ export async function sendWeeklyDigests(now: Date): Promise<void> {
       if (!(await claimStamp(key))) continue;
 
       const tree = await goals.findOne({ orgId: user.orgId, userId: user._id });
-      const dued = tree ? flattenDueDates(tree, todayMs) : [];
+      const allDued = tree ? flattenDueDates(tree, todayMs) : [];
+      // Same rule as the bell: nothing the user can't act on.
+      const digestSpecs = await specsByGoal(
+        user.orgId,
+        user._id,
+        allDued.filter((d) => d.daysUntil <= 7).map((d) => d.goalId),
+      );
+      const dued = allDued.filter(
+        (d) => !deadlineNudgeSkip(digestSpecs.get(d.goalId), d.daysUntil < 0),
+      );
       const dueSoon = dued.filter((d) => d.daysUntil >= 0 && d.daysUntil <= 7);
       const overdue = dued.filter((d) => d.daysUntil < 0);
       const unread = await notifications.countDocuments({
@@ -492,13 +541,17 @@ export async function sendWeeklyDigests(now: Date): Promise<void> {
         userId: user._id,
         readAt: null,
       });
-      const isManager = effectiveRoles(user).includes("manager");
-      const pendingApprovals = isManager
-        ? await specs.countDocuments({
-            orgId: user.orgId,
-            "spec.approval.status": "pending",
-          })
-        : 0;
+      // Only approvals THIS person can decide: their reports' (manager),
+      // or the no-manager queue (admin). It used to count every pending
+      // approval in the org for every manager.
+      const mine = String(user._id);
+      const isAdmin = effectiveRoles(user).includes("admin");
+      const pendingApprovals = (await pendingQueue()).filter(
+        (p) =>
+          String(p.orgId) === String(user.orgId) &&
+          ((p.approver.scope === "manager" && p.approver.managerId === mine) ||
+            (p.approver.scope === "admins" && isAdmin)),
+      ).length;
 
       const sharedOwed = await assignedPeriodsOwed(user.orgId, user._id, now);
 
@@ -510,14 +563,14 @@ export async function sendWeeklyDigests(now: Date): Promise<void> {
         ...(overdue.length
           ? [
               `OVERDUE (${overdue.length}):`,
-              ...overdue.slice(0, 10).map((d) => `  - ${d.title} — was due ${d.dueDate}`),
+              ...overdue.slice(0, 10).map((d) => `  - ${d.title} — was due ${formatDueDay(d.dueDate, now)}`),
               "",
             ]
           : []),
         ...(dueSoon.length
           ? [
               `DUE THIS WEEK (${dueSoon.length}):`,
-              ...dueSoon.slice(0, 10).map((d) => `  - ${d.title} — due ${d.dueDate}`),
+              ...dueSoon.slice(0, 10).map((d) => `  - ${d.title} — due ${formatDueDay(d.dueDate, now)}`),
               "",
             ]
           : []),
@@ -530,6 +583,9 @@ export async function sendWeeklyDigests(now: Date): Promise<void> {
         ...(unread ? [`Unread notifications: ${unread}`, ""] : []),
         "Open your Dev Hub to act on any of these.",
       ];
+      // Settings → Notifications "Email me" off: the digest is the one
+      // routine email, so honour it here.
+      if (!(await emailAllowed(user.orgId, user._id))) continue;
       void sendEmail({
         to: user.email,
         subject: `Dev Hub weekly — ${overdue.length ? `${overdue.length} overdue, ` : ""}${dueSoon.length} due this week`,

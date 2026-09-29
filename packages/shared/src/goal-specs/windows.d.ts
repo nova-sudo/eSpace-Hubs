@@ -19,7 +19,21 @@ export declare function currentPeriodKey(
 export declare function cadenceConsistency(cycle: unknown):
   | { satisfied: number; missed: number; due: number; ratio: number }
   | null;
-export declare function composedCycleBounds(spec: unknown): { cycleStart?: number; cycleEnd?: number };
+export declare function composedCycleBounds(spec: unknown): {
+  cycleStart?: number;
+  cycleEnd?: number;
+  trackingStart?: number;
+};
+export declare function specTrackingStart(
+  spec: unknown,
+  cycleStart?: number | null,
+  opts?: { hireDate?: unknown },
+): number | null;
+export declare function windowKeyAliases(
+  cadence: string,
+  w: { start: number; end: number; key: string },
+  cycleKeys?: Set<string> | null,
+): string[];
 export declare function toIsoDay(value: unknown): string | null;
 export declare function deriveCycleEndIso(
   cycleStartIso: string,
@@ -33,4 +47,5 @@ export declare function buildCycleWindows(args: {
   cycleStart?: number;
   cycleEnd?: number;
   lockedKeys?: Set<string>;
+  trackingStart?: number | null;
 }): any;

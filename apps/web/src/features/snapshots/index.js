@@ -8,7 +8,12 @@
  * `<SnapshotsSync />` lifecycle component — the hook handles
  * hydration itself, gated on the active session.
  */
-export { useSnapshots, useSnapshotNow } from "./use-snapshots";
+export {
+  useSnapshots,
+  useSnapshotNow,
+  useSnapshotReadiness,
+  lacksProviderMetrics,
+} from "./use-snapshots";
 export {
   readSnapshots,
   saveSnapshot,
@@ -30,3 +35,4 @@ export { useComplianceSummary } from "./use-compliance-summary";
 export { useBackfill } from "./use-backfill";
 export { synthesiseWeek } from "./synthesise-week";
 export { BackfillBanner } from "./backfill-banner";
+export { hasSnapshotThisWeek } from "./this-week";

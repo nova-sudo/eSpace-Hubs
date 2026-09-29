@@ -18,8 +18,8 @@ import { EmptyCard } from "./manager-ui";
 export function TeamQueueView({ rows, link }) {
   if (rows.length === 0) {
     return (
-      <EmptyCard>
-        Nothing is waiting on you. When a report leaves a goal ungraded,
+      <EmptyCard title="Nothing waiting on you">
+        When a report leaves a goal ungraded,
         composes a tracker, or delegates a goal to your judgement, they show
         up here.
       </EmptyCard>
@@ -41,11 +41,12 @@ export function TeamQueueView({ rows, link }) {
                 {report.goals != null ? ` · ${report.goals} goals` : ""}
               </div>
             </div>
-            {/* One ink action per card — it opens whatever is most
-                overdue for this person, which is the first row below. */}
+            {/* Soft, not ink: a queue of six people is six of these, and
+                the design contract allows one ink button per view. It
+                opens whatever is most overdue — the first row below. */}
             <Link
               href={link(actions[0]?.href ?? `/employees/${report.id}`)}
-              className="inline-flex h-9 shrink-0 items-center rounded-[var(--radius-pill)] bg-ink px-5 text-[13px] font-bold text-ink-on transition-opacity hover:opacity-90"
+              className="inline-flex h-9 shrink-0 items-center rounded-[var(--radius-pill)] bg-card-alt px-5 text-[13px] font-semibold text-fg transition-opacity hover:opacity-80"
             >
               Start
             </Link>

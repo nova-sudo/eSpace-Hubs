@@ -21,6 +21,7 @@ import {
   View,
   StyleSheet,
 } from "@react-pdf/renderer";
+import { documentTitle, goalCountLine } from "../markdown-export";
 import { formatExpected } from "../format-expected";
 
 const INK = "#0b0b0e";
@@ -208,20 +209,21 @@ export function EvidencePdfDocument({
   rangeLabel,
   narrative,
   goalReadings = [],
+  untracked = [],
   starred = [],
   include = { narrative: true, goals: true },
 }) {
+  const title = documentTitle(name, level);
+  const untrackedRows = include.goals ? (untracked || []).filter(Boolean) : [];
   const groups = include.goals ? goalGroups(goalReadings) : [];
   const starredRows =
     include.starred !== false && Array.isArray(starred) ? starred : [];
   const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
   return (
-    <Document title={`${name || "Performance review"} — ${level || ""}`.trim()}>
+    <Document title={title}>
       <Page size="A4" style={s.page}>
-        <Text style={s.mastheadName}>
-          {name || "—"} — {level || "Performance review"}
-        </Text>
+        <Text style={s.mastheadName}>{title}</Text>
         <Text style={s.mastheadSub}>
           {[team, rangeLabel].filter(Boolean).join(" · ")}
         </Text>
@@ -235,7 +237,7 @@ export function EvidencePdfDocument({
 
         {groups.length ? (
           <View>
-            <Text style={s.sectionHead}>02 · Performance goals</Text>
+            <Text style={s.sectionHead}>02 · Performance goals · {goalCountLine(goalReadings)}</Text>
             {groups.map((g, gi) => (
               <View key={gi}>
                 <View wrap={false}>
@@ -245,16 +247,28 @@ export function EvidencePdfDocument({
                   </Text>
                   {g.reading ? (
                     <Text style={s.l1Reading}>
-                      {g.reading.value} — {g.reading.statusLabel}
+                      {g.reading.value}
                     </Text>
                   ) : null}
                 </View>
                 {g.rows.length === 0 ? (
-                  <Text style={s.l1Reading}>No L2s classified yet for this L1.</Text>
+                  <Text style={s.l1Reading}>No goals with a tracker under this objective yet.</Text>
                 ) : (
                   g.rows.map((r, ri) => <GoalBlock key={ri} r={r} />)
                 )}
               </View>
+            ))}
+          </View>
+        ) : null}
+
+        {untrackedRows.length ? (
+          <View>
+            <Text style={s.sectionHead}>Not yet tracked ({untrackedRows.length})</Text>
+            <Text style={s.l1Reading}>No tracker yet — these goals aren&apos;t in any number above.</Text>
+            {untrackedRows.map((g, i) => (
+              <Text key={i} style={s.para}>
+                {`• ${g.title || "(untitled goal)"}`}
+              </Text>
             ))}
           </View>
         ) : null}

@@ -2,10 +2,8 @@
 
 import { ExternalLink } from "lucide-react";
 import { Badge, Card, Label } from "@/components/ui";
-import { useIntegrations } from "@/features/integrations";
 import { formatExpected } from "./format-expected";
-
-const STATUS_TONE = { ok: "mint", accent: "lav", warn: "peach", muted: "neutral" };
+import { documentTitle, goalCountLine } from "./markdown-export";
 
 const TIER_SHORT = {
   not_achieved: "Not met",
@@ -21,7 +19,10 @@ function fmtDate(ts) {
 }
 
 export function DocumentPreview({
-  format,
+  name,
+  team,
+  untracked = [],
+  filename = "performance-review",
   level,
   narrative,
   setNarrative,
@@ -30,15 +31,13 @@ export function DocumentPreview({
   starred,
   rangeLabel,
 }) {
-  const { me } = useIntegrations();
-
-  const filename = `performance-review-ytd.${format === "markdown" ? "md" : "pdf"}`;
-
+  const untrackedRows = include.goals ? (untracked || []).filter(Boolean) : [];
   const showStarred =
     include.starred !== false && Array.isArray(starred) && starred.length > 0;
   const sectionCount =
     (include.narrative ? 1 : 0) +
     (include.goals && goalReadings && goalReadings.length > 0 ? 1 : 0) +
+    (untrackedRows.length > 0 ? 1 : 0) +
     (showStarred ? 1 : 0);
 
   return (
@@ -51,11 +50,13 @@ export function DocumentPreview({
       </div>
 
       <div className="min-h-[640px] p-7">
-        <div className="text-[22px] font-bold tracking-[-0.01em] leading-[1.15] text-fg">
-          {me?.name ?? "Your name"} — {me?.team ?? "—"}
-        </div>
+        {/* The account's name (Settings → Account), not a provider login —
+            a document with no name read "Your name — —". */}
+        <h2 className="m-0 text-[22px] font-bold tracking-[-0.01em] leading-[1.15] text-fg">
+          {documentTitle(name, level)}
+        </h2>
         <div className="mt-1 text-[13px] text-muted-fg">
-          Level {level} · {rangeLabel}
+          {[team, rangeLabel].filter(Boolean).join(" · ")}
         </div>
         <div className="my-4 border-t border-line" aria-hidden="true" />
 
@@ -66,18 +67,36 @@ export function DocumentPreview({
               onChange={(e) => setNarrative(e.target.value)}
               rows={5}
               placeholder="A few sentences on what this window meant for your goals — what moved, what stalled, what's next. The per-goal readings below are the receipts; this is the throughline."
-              className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt p-3 text-[14.5px] leading-[1.6] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
+              className="w-full resize-y rounded-[var(--radius-lg)] bg-card-alt p-3 text-[14.5px] leading-[1.6] text-fg border border-field-line outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
             />
-            <div className="mt-1 text-[12px] text-dim-fg">Click to edit · your words, not ours</div>
+            <div className="mt-1 text-[12px] text-muted-fg">
+              Your words, not ours · Draft saved on this device only
+            </div>
           </DocSection>
         ) : null}
 
         {include.goals && goalReadings && goalReadings.length > 0 ? (
           <DocSection
-            title={`Performance goals · ${countL1(goalReadings)} L1 · ${countL2(goalReadings)} L2`}
-            rangeLabel="AI-classified · live"
+            title={`Performance goals · ${goalCountLine(goalReadings)}`}
+            rangeLabel="Live"
           >
             <GoalReadingsBlock readings={goalReadings} />
+          </DocSection>
+        ) : null}
+
+        {untrackedRows.length > 0 ? (
+          <DocSection title={`Not yet tracked (${untrackedRows.length})`} rangeLabel="Not in any number">
+            <p className="m-0 mb-2 text-[13px] text-muted-fg">
+              These goals have no tracker yet. The packet lists them so your manager sees the
+              whole year.
+            </p>
+            <ul className="m-0 flex list-disc flex-col gap-1 pl-5">
+              {untrackedRows.map((g) => (
+                <li key={g.id} className="text-[13px] leading-[1.45] text-fg">
+                  {g.title || "(untitled goal)"}
+                </li>
+              ))}
+            </ul>
           </DocSection>
         ) : null}
 
@@ -91,14 +110,14 @@ export function DocumentPreview({
                     {s.title || "(untitled)"}
                     {s.impact?.trim() ? <span className="text-muted-fg"> — {s.impact.trim()}</span> : null}
                   </span>
-                  {s.date ? <span className="ml-auto shrink-0 text-dim-fg">{s.date}</span> : null}
+                  {s.date ? <span className="ml-auto shrink-0 text-muted-fg">{s.date}</span> : null}
                 </li>
               ))}
             </ul>
           </DocSection>
         ) : null}
 
-        <div className="mt-10 flex justify-between border-t border-line pt-4 text-[12px] text-dim-fg">
+        <div className="mt-10 flex justify-between border-t border-line pt-4 text-[12px] text-muted-fg">
           <span>
             Generated by eSpace Hubs ·{" "}
             {new Date().toLocaleDateString("en-US", {
@@ -119,7 +138,7 @@ function DocSection({ title, rangeLabel, children }) {
     <div className="mb-3.5 mt-6">
       <div className="mb-2 flex items-baseline justify-between gap-3">
         <h3 className="m-0 text-[15px] font-bold text-fg">{title}</h3>
-        <span className="text-[12px] text-dim-fg">{rangeLabel}</span>
+        <span className="text-[12px] text-muted-fg">{rangeLabel}</span>
       </div>
       {children}
     </div>
@@ -163,18 +182,18 @@ function GoalReadingsBlock({ readings }) {
       {grouped.map((g, gi) => (
         <div key={(g.l1.goal && g.l1.goal.id) || gi}>
           <div className="flex items-baseline justify-between gap-3 border-b border-line pb-1.5">
-            <span className="min-w-0 truncate text-[14px] font-bold text-fg" title={g.l1.goal?.title}>
-              {g.l1.goal?.title || "(untitled L1)"}
+            <h4 className="m-0 min-w-0 truncate text-[14px] font-bold text-fg" title={g.l1.goal?.title}>
+              {g.l1.goal?.title || "(untitled objective)"}
               {g.l1.goal?.weightage > 0 ? (
-                <span className="ml-2 text-[12px] font-normal text-dim-fg">{g.l1.goal.weightage}% weight</span>
+                <span className="ml-2 text-[12px] font-normal text-muted-fg">Weight {g.l1.goal.weightage}%</span>
               ) : null}
-            </span>
+            </h4>
             {g.l1.reading ? (
               <span className="shrink-0 text-[12px] text-muted-fg">{g.l1.reading.value}</span>
             ) : null}
           </div>
           {g.items.length === 0 ? (
-            <div className="mt-2 text-[13px] text-dim-fg">No L2s classified yet for this L1.</div>
+            <div className="mt-2 text-[13px] text-muted-fg">No goals with a tracker under this objective yet.</div>
           ) : (
             <div className="mt-2.5 flex flex-col gap-3">
               {g.items.map((r) => (
@@ -202,33 +221,35 @@ function PreviewGoalBlock({ r }) {
     <div className="border-l-2 border-line pl-3">
       <div className="flex items-start justify-between gap-2">
         <span className="min-w-0 text-[13.5px] font-semibold text-fg" title={r.goal.title}>
-          {r.goal.title || "(untitled L2)"}
+          {r.goal.title || "(untitled goal)"}
         </span>
         <div className="flex shrink-0 items-center gap-1.5">
           {tier ? <Badge tone="lav">{tier}</Badge> : null}
           {r.reading?.statusLabel ? (
-            <Badge tone={STATUS_TONE[r.reading.statusTone] || "neutral"}>{r.reading.statusLabel}</Badge>
+            <Badge tone={r.reading.statusTone || "neutral"} title={r.reading.statusReason || undefined}>
+              {r.reading.statusLabel}
+            </Badge>
           ) : null}
         </div>
       </div>
       <div className="mt-1 text-[12.5px] text-muted-fg">
-        <span className="text-dim-fg">Target </span>
+        <span className="text-muted-fg">Target </span>
         {expected || "—"}
-        <span className="text-dim-fg">  →  Achieved </span>
+        <span className="text-muted-fg">  →  Achieved </span>
         {r.reading?.value || "—"}
       </div>
       {reasoning ? (
         <div className="mt-1 text-[12.5px] leading-[1.45] text-fg">
-          <span className="text-dim-fg">Assessment </span>
+          <span className="text-muted-fg">Assessment </span>
           {reasoning}
-          {v.confidence === "low" ? <span className="text-dim-fg"> · low confidence</span> : null}
+          {v.confidence === "low" ? <span className="text-muted-fg"> · low confidence</span> : null}
         </div>
       ) : null}
       {evidence.length ? (
         <ul className="mt-1.5 flex flex-col gap-1">
           {evidence.map((ev, i) => (
             <li key={i} className="flex items-start gap-2 text-[12px] leading-[1.4] text-fg">
-              <span className="mt-px shrink-0 text-dim-fg" style={{ width: 40 }}>
+              <span className="mt-px shrink-0 text-muted-fg" style={{ width: 40 }}>
                 {fmtDate(ev.ts)}
               </span>
               <span className="min-w-0">
@@ -240,9 +261,11 @@ function PreviewGoalBlock({ r }) {
                       href={ev.url}
                       target="_blank"
                       rel="noreferrer"
+                      aria-label="Open the linked evidence in a new tab"
+                      title="Open the linked evidence"
                       className="inline-flex items-center gap-1 font-bold text-fg hover:underline"
                     >
-                      <ExternalLink size={11} />
+                      <ExternalLink size={11} aria-hidden="true" />
                     </a>
                   </>
                 ) : null}
@@ -255,9 +278,3 @@ function PreviewGoalBlock({ r }) {
   );
 }
 
-function countL1(readings) {
-  return readings.filter((r) => r.level === "L1").length;
-}
-function countL2(readings) {
-  return readings.filter((r) => r.level === "L2").length;
-}

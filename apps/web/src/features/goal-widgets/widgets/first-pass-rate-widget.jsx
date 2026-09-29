@@ -92,7 +92,7 @@ export function FirstPassRateWidget({
           </span>
         </div>
         {/* Single-segment bar — same chrome as LinkageWidget. */}
-        <div className="flex h-2 w-full overflow-hidden rounded-full bg-card-alt">
+        <div className="flex h-2 w-full overflow-hidden rounded-full bg-track">
           <div className="bg-ink" style={{ width: `${pct ?? 0}%` }} />
         </div>
         <ComplianceLine goalId={goal?.id} variant={variant} />

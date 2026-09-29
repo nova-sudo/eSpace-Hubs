@@ -41,7 +41,7 @@ export function UntrackableCard({ spec, goal, className, onRetry, onClearUntrack
         {reason ? (
           <div className="text-[12px] italic text-muted-fg">&ldquo;{reason}&rdquo;</div>
         ) : (
-          <div className="text-[12px] italic text-dim-fg">No reason recorded.</div>
+          <div className="text-[12px] italic text-muted-fg">No reason recorded.</div>
         )}
       </div>
     </WidgetShell>

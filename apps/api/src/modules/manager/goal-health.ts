@@ -19,7 +19,18 @@
  * parts in.
  */
 
-import { SPEC_KIND_META, SPEC_VARIANTS } from "@espace-devhub/shared/goal-specs";
+import {
+  SPEC_KIND_META,
+  SPEC_VARIANTS,
+  buildCycleWindows,
+  composedCycleBounds,
+  goalStatus,
+  isSingleRecordWidget,
+  specCadence,
+} from "@espace-devhub/shared/goal-specs";
+
+/** The shared status keys ("behind" · "on-pace" · …). */
+export type GoalStatusKey = ReturnType<typeof goalStatus>["status"];
 import type { ContextAnswer } from "../../db/types.js";
 
 export type Readiness =
@@ -140,4 +151,78 @@ export function deriveStatus(
       if (variant === SPEC_VARIANTS.AUTO) return "auto";
       return hasEntries ? "tracking" : "no_data";
   }
+}
+
+// ─── the shared status model ─────────────────────────────────────────
+
+/**
+ * One goal's status in the SAME vocabulary the dev sees on Home, Goals and
+ * Evidence — `goalStatus` from the shared package over the same cadence
+ * windows (`buildCycleWindows` with the goal's settle locks and tracking
+ * start). The server used to stop at "tracking", which showed a manager a
+ * slipping goal as green while the dev's own Home said "Behind".
+ */
+export interface SharedGoalStatus {
+  status: GoalStatusKey;
+  label: string;
+  tone: string;
+  reason: string | null;
+  quiet: number;
+  logged: { done: number; due: number; owed: number } | null;
+}
+
+export function sharedGoalStatus(args: {
+  spec: Spec | null;
+  readiness: Readiness;
+  /** `ts` (epoch ms) of every entry for this goal. */
+  entryTs: number[];
+  /** Window keys the report settled ("nothing to report") for this goal. */
+  lockedKeys: Set<string>;
+  /** When the tracker started counting (creation / approval), or null. */
+  createdAt: Date | null;
+  hireDate: Date | null;
+  /** The displayed tier — the manager's verdict over the AI's. */
+  tier: string | null;
+  now?: number;
+}): SharedGoalStatus {
+  const { spec, readiness } = args;
+  const now = args.now ?? Date.now();
+  const variant = specVariant(spec);
+  const auto =
+    variant === SPEC_VARIANTS.AUTO && (spec as { kind?: unknown } | null)?.kind !== SPEC_VARIANTS.HYBRID;
+  let cycle: unknown = null;
+  let cadence: string | null = null;
+  if (spec && readiness === "ready" && !auto) {
+    const widget = typeof spec.widget === "string" ? spec.widget : "";
+    cadence = isSingleRecordWidget(widget) ? null : specCadence(spec);
+    const stamped = {
+      ...spec,
+      createdAt: args.createdAt ? args.createdAt.toISOString() : undefined,
+      hireDate: args.hireDate ? args.hireDate.toISOString() : undefined,
+    };
+    cycle = buildCycleWindows({
+      entries: args.entryTs.map((ts) => ({ ts })),
+      cadence,
+      now,
+      ...composedCycleBounds(stamped),
+      lockedKeys: args.lockedKeys,
+    });
+  }
+  const s = goalStatus({
+    hasTracker: Boolean(spec),
+    ready: readiness === "ready",
+    auto,
+    cycle,
+    hasData: args.entryTs.length > 0,
+    tier: args.tier,
+    cadence,
+  });
+  return {
+    status: s.status,
+    label: s.label,
+    tone: s.tone,
+    reason: s.reason,
+    quiet: s.quiet,
+    logged: s.logged,
+  };
 }

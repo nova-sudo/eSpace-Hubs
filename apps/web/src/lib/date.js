@@ -77,6 +77,58 @@ export function weekLabel(date = new Date()) {
 }
 
 /**
+ * "Wnn-YYYY" — the year-qualified week KEY every snapshot row is stored
+ * under. `weekLabel` alone ("W02") collides across years: next January's
+ * W02 would overwrite this year's. The API scheduler already stamps
+ * "W36-2026"; this is the client-side producer of the same shape.
+ *
+ * The year is the calendar year of `date` itself (a mid-week day for
+ * week ranges), so a week that straddles New Year files under whichever
+ * year its Wednesday falls in — same rule the scheduler applies.
+ */
+export function weekKey(date = new Date()) {
+  const d = date instanceof Date ? date : new Date(date);
+  return `${weekLabel(d)}-${d.getFullYear()}`;
+}
+
+/**
+ * Parse "W09", "W9-2026" or "W09-2026" into `{ week, year }`. Legacy
+ * year-less labels resolve to `fallbackYear` (defaults to the current
+ * calendar year — the only year they could have been written in before
+ * keys carried a year). Null when the label can't be parsed.
+ */
+export function parseWeekLabel(label, fallbackYear = new Date().getFullYear()) {
+  if (typeof label !== "string") return null;
+  const m = label.trim().match(/^W(\d{1,2})(?:-(\d{4}))?$/i);
+  if (!m) return null;
+  const week = Number(m[1]);
+  if (!Number.isFinite(week) || week < 1 || week > 53) return null;
+  return { week, year: m[2] ? Number(m[2]) : fallbackYear };
+}
+
+/**
+ * Canonical "Wnn-YYYY" form of any week label. Legacy "Wnn" rows (written
+ * before keys carried a year) are read as the current year. Unparseable
+ * input is returned unchanged so callers never lose a key.
+ */
+export function normaliseWeekLabel(label, fallbackYear = new Date().getFullYear()) {
+  const p = parseWeekLabel(label, fallbackYear);
+  if (!p) return label;
+  return `W${String(p.week).padStart(2, "0")}-${p.year}`;
+}
+
+/** True when `label` is a legacy year-less "Wnn" key. */
+export function isLegacyWeekLabel(label) {
+  return typeof label === "string" && /^W\d{1,2}$/i.test(label.trim());
+}
+
+/** "W36-2026" → "W36" — for tight chart ticks; the year lives in the tooltip. */
+export function shortWeekLabel(label) {
+  const p = parseWeekLabel(label);
+  return p ? `W${String(p.week).padStart(2, "0")}` : label || "";
+}
+
+/**
  * Calendar-day difference between two LOCAL dates, immune to DST: the
  * naive `(b - a) / DAY_MS` is off by an hour across a transition, and a
  * floor over that mislabelled every DST-period Sunday with the previous
@@ -150,15 +202,16 @@ export function fullDate(iso) {
 }
 
 /**
- * Resolve a Sun → Thu work-week from a Wnn label (current year).
+ * Resolve a Sun → Thu work-week from a Wnn label.
  *
  * Inputs: "W17" or "W17-2026" — the year suffix is optional and
- * defaults to the current calendar year (matches how the snapshot
- * store keys its rows today).
+ * defaults to the current calendar year (legacy snapshot rows were
+ * keyed without one).
  *
- * Returns `{ start, end, weekLabel }` — the same triple the
- * auto-snapshotter and backfill enumerator produce. Suitable for
- * direct hand-off to `synthesiseWeek`.
+ * Returns `{ start, end, weekLabel, weekKey }` — `weekLabel` is the
+ * short "Wnn" form, `weekKey` the year-qualified store key. The
+ * auto-snapshotter and backfill enumerator key their triples by
+ * `weekKey`'s shape.
  *
  * Returns null when the label can't be parsed.
  */
@@ -192,6 +245,8 @@ export function weekRangeFromLabel(label) {
     // 28 2025), and recomputing there returned that year's W53,
     // breaking label → range → label round-trips.
     weekLabel: `W${String(weekNum).padStart(2, "0")}`,
+    // The year-qualified store key for this range (see `weekKey`).
+    weekKey: `W${String(weekNum).padStart(2, "0")}-${year}`,
   };
 }
 
@@ -217,7 +272,9 @@ export function resolveCompletedWorkWeek(now = new Date()) {
   return {
     start: sunday,
     end: friday,
-    weekLabel: weekLabel(new Date(sunday.getTime() + 3 * DAY_MS)),
+    // Year-qualified — this is what snapshot rows are keyed by and what
+    // the "already captured?" checks compare against.
+    weekLabel: weekKey(new Date(sunday.getTime() + 3 * DAY_MS)),
   };
 }
 
@@ -238,11 +295,17 @@ export function midWeekTs(label) {
 }
 
 /**
- * Compare two "Wnn" labels for sort order. Treats them as 1..53 within
- * the same year. (Year-suffixed labels compare lexicographically and
- * still order correctly across full years.)
+ * Compare two week labels for sort order — year first, then week number,
+ * so "W53-2025" < "W01-2026" (a plain localeCompare gets that backwards).
+ * Legacy "Wnn" labels sort as the current year. Unparseable labels fall
+ * back to string order after every parseable one.
  */
 export function compareWeekLabels(a, b) {
+  const pa = parseWeekLabel(a);
+  const pb = parseWeekLabel(b);
+  if (pa && pb) return pa.year - pb.year || pa.week - pb.week;
+  if (pa) return -1;
+  if (pb) return 1;
   return (a || "").localeCompare(b || "");
 }
 

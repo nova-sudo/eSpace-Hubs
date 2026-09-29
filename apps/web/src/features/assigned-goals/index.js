@@ -21,3 +21,4 @@ export { AssignedGoalProgress } from "./assigned-goal-progress";
 export { SharedGoalsList } from "./shared-goals-list";
 export { PeoplePicker } from "./people-picker";
 export { SharedWithMePage } from "./shared-with-me-page";
+export { ASSIGNED_GROUP_LABEL, AssignedBadge, assignedTooltip } from "./assigned-label";

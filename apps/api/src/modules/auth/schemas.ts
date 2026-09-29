@@ -15,14 +15,25 @@ const email = z
   .toLowerCase()
   .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "must be a valid email");
 
-const password = z
+// Two password rules on purpose:
+//   - `loginPassword` only bounds the input — accounts created before
+//     the 12-char minimum still have 8–11 char passwords and must keep
+//     signing in.
+//   - `newPassword` is the rule for SETTING a password (signup, invite
+//     accept, reset). The web forms mirror the same 12-char minimum.
+const loginPassword = z
   .string()
-  .min(8, "password must be at least 8 characters")
+  .min(1, "password is required")
+  .max(256, "password must be at most 256 characters");
+
+const newPassword = z
+  .string()
+  .min(12, "password must be at least 12 characters")
   .max(256, "password must be at most 256 characters");
 
 export const loginSchema = z.object({
   email,
-  password,
+  password: loginPassword,
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
@@ -63,7 +74,7 @@ const oneTimeToken = z
 
 export const acceptInviteSchema = z.object({
   token: oneTimeToken,
-  password,
+  password: newPassword,
   // Optional displayName override — admin's invite display might be a
   // placeholder ("Yara R."), the user can refine on accept.
   displayName: displayName.optional(),
@@ -86,7 +97,7 @@ export type PasswordResetRequestInput = z.infer<
  */
 export const signupSchema = z.object({
   email,
-  password,
+  password: newPassword,
   displayName,
   signupCode: z.string().min(4).max(64),
 });
@@ -94,7 +105,7 @@ export type SignupInput = z.infer<typeof signupSchema>;
 
 export const passwordResetSchema = z.object({
   token: oneTimeToken,
-  password,
+  password: newPassword,
 });
 export type PasswordResetInput = z.infer<typeof passwordResetSchema>;
 
@@ -148,6 +159,49 @@ export type TotpVerifyInput = z.infer<typeof totpVerifySchema>;
 export const totpDisableSchema = z.object({ code: totpCode });
 export type TotpDisableInput = z.infer<typeof totpDisableSchema>;
 
+// Backup code as typed by a human: `xxxx-xxxx`, case/spacing tolerant.
+// Loose bounds only — backup-codes.ts normalises and rejects anything
+// that can't be a code before hashing.
+const backupCode = z
+  .string()
+  .trim()
+  .min(8, "backup code is too short")
+  .max(16, "backup code is too long");
+
+/**
+ * POST /totp/verify (login step 2): exactly one of a 6-digit
+ * authenticator `code` or a single-use `backupCode`.
+ */
+export const totpLoginVerifySchema = z.union([
+  z.object({ code: totpCode, backupCode: z.undefined().optional() }),
+  z.object({ backupCode, code: z.undefined().optional() }),
+]);
+export type TotpLoginVerifyInput = z.infer<typeof totpLoginVerifySchema>;
+
+/** POST /totp/backup-codes/regenerate — proof of possession of the authenticator. */
+export const backupCodesRegenerateSchema = z.object({ code: totpCode });
+
+/**
+ * POST /totp/re-enrol/start — the password PLUS proof of the old factor:
+ * a 6-digit `code`, a single-use `backupCode`, or neither when the
+ * session itself was verified with a backup code moments ago (the
+ * handler decides; the schema only forbids sending both).
+ */
+export const totpReenrolStartSchema = z
+  .object({
+    password: loginPassword,
+    code: totpCode.optional(),
+    backupCode: backupCode.optional(),
+  })
+  .strict()
+  .refine((b) => !(b.code !== undefined && b.backupCode !== undefined), {
+    message: "send either code or backupCode, not both",
+  });
+export type TotpReenrolStartInput = z.infer<typeof totpReenrolStartSchema>;
+
+/** POST /totp/re-enrol/confirm — a code from the NEW authenticator. */
+export const totpReenrolConfirmSchema = z.object({ code: totpCode });
+
 /**
  * Public-facing user shape. Strips passwordHash, totpSecret, and any
  * field a client has no business knowing. The login + me endpoints
@@ -178,6 +232,14 @@ export interface PublicUser {
   status: string;
   displayName: string;
   totpEnrolled: boolean;
+  /** Unused 2FA backup codes left (count only — never the codes). */
+  backupCodesRemaining: number;
+  /**
+   * Who this user reports to (active managers only) — set on GET /me only,
+   * so first-run copy can name them ("Your manager is Mona"). Absent on
+   * other endpoints; null when no active manager is on file.
+   */
+  manager?: { id: string; displayName: string } | null;
   createdAt: string;
   lastLoginAt: string | null;
   /**

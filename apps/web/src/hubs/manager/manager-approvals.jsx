@@ -30,6 +30,7 @@ import { Avatar, Badge, Button, Card, Label, PageHeader } from "@/components/ui"
 import { apiPost } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
 import { useApprovalsQueue } from "./use-approvals-queue";
+import { revalidateManagerData } from "./use-fetch-once";
 import { EmptyCard } from "./manager-ui";
 import { daysWaiting, plural, waitedFor } from "./manager-format";
 
@@ -77,6 +78,12 @@ export function ManagerApprovals() {
           ? `Approved — live for ${item.user.displayName.split(" ")[0]}`
           : `Sent back to ${item.user.displayName.split(" ")[0]} with your notes`,
       );
+      void revalidateManagerData(item.user.id);
+    } else if (r.error?.code === "not_pending") {
+      // Decided elsewhere (another tab, a double-click) — drop it from the list.
+      toast.message("Already decided", {
+        description: "This tracker isn't waiting for approval any more.",
+      });
       refresh();
     } else {
       toast.error("Couldn't submit", {
@@ -88,7 +95,7 @@ export function ManagerApprovals() {
   return (
     <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-7 sm:px-10">
       <PageHeader
-        crumb="Build-Your-Own goals · pending your approval"
+        crumb="Build-your-own goals · pending your approval"
         title="Custom trackers, on hold."
         subtitle="When a report composes their own tracker, it stays inactive until you approve the fields and tiers. Nothing goes live behind your back."
         right={
@@ -108,9 +115,9 @@ export function ManagerApprovals() {
       ) : loading ? (
         <EmptyCard>Loading…</EmptyCard>
       ) : items.length === 0 ? (
-        <EmptyCard>
-          Nothing&apos;s waiting on you. When a report builds their own tracker,
-          it shows up here for approval before it goes live.
+        <EmptyCard title="Nothing waiting on you">
+          When a report builds their own tracker, it shows up here for approval
+          before it goes live.
         </EmptyCard>
       ) : (
         <div className="grid items-start gap-4 lg:grid-cols-[270px_minmax(0,1fr)]">
@@ -242,7 +249,7 @@ function ApprovalDetail({
               onChange={(e) => onNote(e.target.value)}
               placeholder="What should they change before this goes live?"
               autoFocus
-              className="w-full rounded-[var(--radius-lg)] bg-card p-3.5 text-[13px] leading-relaxed outline-none focus:ring-2 focus:ring-ink"
+              className="w-full rounded-[var(--radius-lg)] bg-card p-3.5 text-[13px] leading-relaxed border border-field-line outline-none focus:ring-2 focus:ring-ink"
               style={{ minHeight: 72, resize: "vertical" }}
             />
             <div className="mt-2.5 flex gap-2">
@@ -263,7 +270,7 @@ function ApprovalDetail({
         ) : null}
 
         <div className="flex flex-wrap gap-2">
-          <Badge tone="lav">Build-Your-Own tracker</Badge>
+          <Badge tone="lav">Build-your-own tracker</Badge>
           {item.cadence ? (
             <Badge>
               {item.cadence}
@@ -379,7 +386,7 @@ function ApprovalDetail({
                   <div className="text-[11px] font-bold text-fg">
                     {String(i + 1).padStart(2, "0")}
                     {p.dueAt ? (
-                      <span className="ml-1.5 font-semibold text-dim-fg">
+                      <span className="ml-1.5 font-semibold text-muted-fg">
                         {p.dueAt}
                       </span>
                     ) : null}

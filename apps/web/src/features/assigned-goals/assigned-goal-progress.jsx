@@ -7,10 +7,10 @@
  * viewers (read-only).
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
-import { Badge, Button, Card, Label, SegmentedControl } from "@/components/ui";
+import { Badge, Button, Card, Label, SegmentedControl, useFocusTrap } from "@/components/ui";
 import { setAssignedVerdict, useAssignedProgress } from "./api";
 import { CellDetailDialog } from "./cell-detail-dialog";
 import { ProgressGrid, TIER_META, fmtDay, fmtStamp } from "./progress-grid";
@@ -117,12 +117,31 @@ const TIER_OPTIONS = ["not_achieved", "achieved", "over_achieved", "role_model"]
 
 /** The creator's grade for one assignee — a manager verdict of record. */
 function GradeDialog({ goal, user, current, onClose }) {
-  const [tier, setTier] = useState(current?.tier ?? "achieved");
+  // No default tier: an ungraded assignee starts ungraded, so Save can't
+  // record an "Achieved" grade of record nobody picked.
+  const [tier, setTier] = useState(current?.tier ?? null);
   const [note, setNote] = useState(current?.note ?? "");
   const [saving, setSaving] = useState(false);
+  // Trap focus while open; the opener gets it back on close.
+  const trapRef = useFocusTrap(true);
+  // Escape closes (not mid-save). Refs keep the listener bound once.
+  const closeRef = useRef(onClose);
+  const savingRef = useRef(saving);
+  useEffect(() => {
+    closeRef.current = onClose;
+    savingRef.current = saving;
+  });
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape" && !savingRef.current) closeRef.current?.();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   if (typeof document === "undefined") return null;
 
   async function save() {
+    if (!tier) return;
     setSaving(true);
     try {
       await setAssignedVerdict(goal.id, user.id, { tier, note });
@@ -143,9 +162,10 @@ function GradeDialog({ goal, user, current, onClose }) {
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-fg/40 p-5"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-scrim p-5"
     >
       <div
+        ref={trapRef}
         className="flex w-full max-w-[560px] flex-col gap-4 rounded-[var(--radius-xl)] bg-card p-6"
         style={{ boxShadow: "var(--shadow-float)" }}
       >
@@ -158,22 +178,23 @@ function GradeDialog({ goal, user, current, onClose }) {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <SegmentedControl options={TIER_OPTIONS} value={tier} onChange={setTier} size="sm" onCard />
+          <SegmentedControl as="radiogroup" ariaLabel="Grade" options={TIER_OPTIONS} value={tier} onChange={setTier} size="sm" onCard />
         </div>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={3}
           maxLength={4000}
+          aria-label={`Why this grade for ${user.displayName} (optional) — they'll see it`}
           placeholder="Why (optional) — they'll see this."
-          className="w-full rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-3 text-[14px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
+          className="w-full rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-3 text-[14px] text-fg border border-field-line outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
         />
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button type="button" variant="ink" onClick={save} disabled={saving}>
-            {saving ? "Saving…" : "Save grade"}
+          <Button type="button" variant="ink" onClick={save} disabled={saving || !tier}>
+            {saving ? "Saving…" : tier ? "Save grade" : "Pick a tier"}
           </Button>
         </div>
       </div>

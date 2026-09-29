@@ -151,11 +151,11 @@ export function LabelShareWidget({
           </span>
         </div>
 
-        <div className="flex h-2 w-full overflow-hidden rounded-full bg-card-alt">
+        <div className="flex h-2 w-full overflow-hidden rounded-full bg-track">
           <div className="bg-ink" style={{ width: `${pct ?? 0}%` }} />
         </div>
 
-        <p className="text-[11.5px] leading-snug text-dim-fg">
+        <p className="text-[11.5px] leading-snug text-muted-fg">
           {needsLabels
             ? "No labels chosen yet. Pick which PR labels this goal should count — edit setup, or answer the label question."
             : noneMatched

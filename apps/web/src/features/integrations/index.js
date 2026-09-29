@@ -1,6 +1,7 @@
 // Public surface of the integrations feature.
 // Dashboard / evidence / snapshots import exclusively from here.
-export { PROVIDERS, PROVIDER_IDS } from "./providers";
+export { PROVIDERS, PROVIDER_IDS, providerDescription } from "./providers";
+export { describeConnectionError } from "./connection-errors";
 export {
   DASHBOARD_PROVIDER_DEPENDENCIES,
   dependencyIsSatisfied,

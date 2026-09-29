@@ -40,7 +40,7 @@ export function ConfirmDialog({
 
   return createPortal(
     <>
-      <div className="fixed inset-0 z-[70] bg-fg/40" onClick={onClose} aria-hidden="true" />
+      <div className="fixed inset-0 z-[70] bg-scrim" onClick={onClose} aria-hidden="true" />
       <div
         ref={trapRef}
         role="dialog"

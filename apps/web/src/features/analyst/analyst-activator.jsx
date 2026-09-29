@@ -9,11 +9,11 @@ import { useGoals } from "@/features/goals";
 /**
  * Header button that opens the analyst page.
  *
- * Status dot:
- *   - no goals yet             → neutral, "AI Analyst"
- *   - goals but no specs       → neutral, "Analyze my goals"
- *   - goals partially analyzed → lemon, "Resume analysis"
- *   - goals ≤ specs (all done) → mint, "Goals analyzed"
+ * One name, "AI analyst", with a status suffix (it used to change name
+ * between states — review-ux-flows R9):
+ *   - no goals yet             → neutral, "AI analyst"
+ *   - some goals unclassified  → neutral / lemon, "AI analyst · N to classify"
+ *   - goals ≤ specs (all done) → mint, "AI analyst · all set"
  */
 export function AnalystActivator() {
   const { requestOpen } = useAnalyst();
@@ -26,10 +26,10 @@ export function AnalystActivator() {
   const partial = hasGoals && count > 0 && count < totalGoals;
   const dotTone = allClassified ? "mint" : partial ? "lemon" : "neutral";
 
-  let label = "AI Analyst";
-  if (allClassified) label = "Goals analyzed";
-  else if (partial) label = "Resume analysis";
-  else if (hasGoals) label = "Analyze my goals";
+  const remaining = Math.max(0, totalGoals - count);
+  let label = "AI analyst";
+  if (allClassified) label = "AI analyst · all set";
+  else if (hasGoals) label = `AI analyst · ${remaining} to classify`;
 
   return (
     <Button
@@ -41,7 +41,9 @@ export function AnalystActivator() {
           allClassified ? ANALYST_MODES.WIDGETS : ANALYST_MODES.ANALYSIS,
         )
       }
-      aria-label="Open AI Analyst"
+      // No aria-label: the accessible name is the visible label (WCAG 2.5.3
+      // label-in-name), so voice users can say what they see.
+      aria-haspopup="dialog"
     >
       <Sparkles size={14} />
       {label}

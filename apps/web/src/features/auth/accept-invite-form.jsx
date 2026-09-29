@@ -93,7 +93,7 @@ export function AcceptInviteForm({ onSuccess }) {
   return (
     <AuthCard
       title="Activate account"
-      lead="Pick a password. We'll set up your profile in the next step."
+      lead="Pick a password. Next you'll set up two-factor authentication, then a short profile."
     >
       <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
         <Field label="Password">
@@ -109,7 +109,7 @@ export function AcceptInviteForm({ onSuccess }) {
         </Field>
         <Field
           label="Confirm password"
-          hint={`${MIN_PASSWORD_LENGTH}+ characters · stored as an argon2id hash`}
+          hint={`${MIN_PASSWORD_LENGTH}+ characters · stored securely, never in plain text`}
         >
           <Input
             type="password"

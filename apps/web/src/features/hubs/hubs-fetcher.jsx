@@ -16,10 +16,10 @@
  *     briefly see the prior user's hubs.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiGet } from "@/lib/api-client";
 import { useSession } from "@/features/auth";
-import { resetHubsStore, setHubsState, getHubsState } from "./hubs-store";
+import { onHubsRefetch, resetHubsStore, setHubsState, getHubsState } from "./hubs-store";
 import { clearActivePick } from "./hub-pick-store.js";
 
 const LOG_PREFIX = "[hubs-fetcher]";
@@ -29,6 +29,17 @@ export function HubsFetcher() {
   // Track who we last fetched for so a sign-out/sign-in cycle (or
   // an admin impersonating a different user) refetches.
   const lastUserIdRef = useRef(null);
+  // Bumped by refetchHubs() / resetHubsStore() — re-runs the effect below
+  // for the SAME user (the ref alone only refetched on a user change).
+  const [refetchTick, setRefetchTick] = useState(0);
+  useEffect(
+    () =>
+      onHubsRefetch(() => {
+        lastUserIdRef.current = null;
+        setRefetchTick((t) => t + 1);
+      }),
+    [],
+  );
 
   useEffect(() => {
     if (loading) return;
@@ -93,7 +104,8 @@ export function HubsFetcher() {
     return () => {
       cancelled = true;
     };
-  }, [user, loading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, loading, refetchTick]);
 
   // Suppress unused-var warning when getHubsState is only consumed
   // indirectly via the store subscribers — keep the import live so the

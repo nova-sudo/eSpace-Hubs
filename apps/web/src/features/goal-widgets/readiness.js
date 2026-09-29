@@ -44,8 +44,61 @@ export function isGoalReady(spec, contextComplete) {
   return goalReadiness(spec, contextComplete) === GOAL_READINESS.READY;
 }
 
-/** Short, user-facing reason for a not-ready goal (for the "finish setup" row). */
-export function readinessLabel(status) {
+/** Two-or-three-word badge text for a not-ready goal. The sentence that
+ *  explains it (`readinessLabel`) belongs next to the control, not in the
+ *  badge. */
+export function readinessShortLabel(status) {
+  switch (status) {
+    case GOAL_READINESS.PENDING_APPROVAL:
+      return "Awaiting approval";
+    case GOAL_READINESS.REJECTED:
+      return "Changes requested";
+    case GOAL_READINESS.NEEDS_CONTEXT:
+      return "Needs setup";
+    case GOAL_READINESS.DELEGATED:
+      return "Delegated";
+    case GOAL_READINESS.UNTRACKABLE:
+      return "Untrackable";
+    case GOAL_READINESS.UNCLASSIFIED:
+      return "No tracker yet";
+    default:
+      return "";
+  }
+}
+
+/**
+ * The sentence for a not-ready goal, written for the Goals page where the
+ * tracker sits DIRECTLY BELOW — so it points down, never "in Goals".
+ */
+export function readinessHint(status) {
+  switch (status) {
+    case GOAL_READINESS.PENDING_APPROVAL:
+      return "Waiting on your manager's approval before you can log — the tracker below is read-only until then.";
+    case GOAL_READINESS.REJECTED:
+      return "Your manager asked for changes — use “Revise & resubmit” on the tracker below.";
+    case GOAL_READINESS.NEEDS_CONTEXT:
+      return "Answer the setup questions on the tracker below to start logging.";
+    case GOAL_READINESS.DELEGATED:
+      return "Judged by someone else — nothing to log here. Use “Self-track” below to take it back.";
+    case GOAL_READINESS.UNTRACKABLE:
+      return "Marked untrackable — use “Track it” below to unflag it.";
+    case GOAL_READINESS.UNCLASSIFIED:
+      return "Not classified yet — classify it below.";
+    default:
+      return "";
+  }
+}
+
+/**
+ * Short reason for a not-ready goal (for the "finish setup" row).
+ *
+ * `opts.audience: "manager"` words it for the person who CAN'T fix it —
+ * the report's manager reading their board — naming who can:
+ * "Dana hasn't set up a tracker for this yet." The default is the dev's own
+ * copy, which tells them what to do.
+ */
+export function readinessLabel(status, opts = {}) {
+  if (opts.audience === "manager") return managerReadinessLabel(status, opts.name);
   switch (status) {
     case GOAL_READINESS.PENDING_APPROVAL:
       return "Waiting on your manager's approval before it goes live.";
@@ -59,6 +112,26 @@ export function readinessLabel(status) {
       return "Marked untrackable — no widget to fill yet.";
     case GOAL_READINESS.UNCLASSIFIED:
       return "Not classified yet — run the analyst in Goals.";
+    default:
+      return "";
+  }
+}
+
+function managerReadinessLabel(status, name) {
+  const who = (name || "They").split(" ")[0];
+  switch (status) {
+    case GOAL_READINESS.PENDING_APPROVAL:
+      return "Waiting on your approval before it goes live.";
+    case GOAL_READINESS.REJECTED:
+      return `You asked for changes — ${who} is revising it.`;
+    case GOAL_READINESS.NEEDS_CONTEXT:
+      return `${who} hasn't answered this tracker's setup questions yet.`;
+    case GOAL_READINESS.DELEGATED:
+      return "Judged by a reviewer, not self-tracked.";
+    case GOAL_READINESS.UNTRACKABLE:
+      return `${who} marked this untrackable for now.`;
+    case GOAL_READINESS.UNCLASSIFIED:
+      return `${who} hasn't set up a tracker for this yet.`;
     default:
       return "";
   }

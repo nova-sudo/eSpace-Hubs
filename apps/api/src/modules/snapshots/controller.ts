@@ -4,11 +4,23 @@
  * Manual-wins-over-auto precedence (the headline rule):
  *   When an INCOMING snapshot has capturedBy:"auto" AND the existing
  *   snapshot for the same week has capturedBy:"manual", the
- *   controller returns the existing record unchanged. The frontend's
- *   saveSnapshot() applies the same rule locally; this server check
- *   protects against direct API writes (e.g. a stale auto-snapshotter
- *   running in another tab while the user manually captured the
- *   week with a note).
+ *   controller keeps the manual record (`precedence: "manual_kept"`).
+ *   The one thing an auto capture may add is `goalReadings` the manual
+ *   row never had — a "Snapshot now" click carries no per-goal
+ *   readings, and refusing them outright left the week without any.
+ *
+ * Manual merges, not replaces:
+ *   A manual capture that arrives with an empty `goalReadings` or an
+ *   empty `note` keeps the existing row's values for those fields, so a
+ *   mid-week / weekend "Snapshot now" doesn't erase the completed
+ *   week's readings or the user's note.
+ *
+ * Week keys:
+ *   Rows are keyed "W36-2026" (year-qualified — the scheduler and the
+ *   client agree on this shape). Rows written before the client
+ *   carried a year are keyed "W36"; reads, patches and deletes for the
+ *   current year fall back to that legacy key, and an upsert migrates
+ *   the legacy row onto the qualified key.
  */
 
 import type { NextFunction, Request, Response } from "express";
@@ -73,6 +85,25 @@ const weekParam = (req: Request): string => {
   return week;
 };
 
+/**
+ * Every key a request for `week` may match, most specific first: the
+ * key itself, then — for a year-qualified key in the CURRENT year — the
+ * legacy year-less form rows carried before keys had a year. (Only the
+ * current year: a legacy "W36" could only have been written this year,
+ * since older years were never stored without a suffix.)
+ */
+function weekKeyCandidates(week: string, now = new Date()): string[] {
+  const m = /^W([0-9]{1,2})-([0-9]{4})$/.exec(week);
+  if (!m) return [week];
+  const year = Number(m[2]);
+  if (year !== now.getUTCFullYear()) return [week];
+  return [week, `W${m[1]}`];
+}
+
+function hasReadings(readings: Record<string, GoalReading> | undefined): boolean {
+  return !!readings && Object.keys(readings).length > 0;
+}
+
 // ─── GET /api/v1/snapshots ───────────────────────────────────────────
 
 export async function listSnapshotsHandler(
@@ -127,23 +158,45 @@ export async function upsertSnapshotHandler(
     const payload = upsertSnapshotSchema.parse(req.body);
     const col = await getSnapshotsCollection();
 
-    // Manual-wins-over-auto: if incoming is auto, check first whether a
-    // manual capture already exists for this week. If so, return it
-    // unchanged — the auto-snapshotter shouldn't clobber a hand-
-    // captured note.
-    const existing = await col.findOne({
-      orgId: session.orgId,
-      userId: session.userId,
-      week: payload.week,
-    });
+    // Find the row this write lands on — the qualified key first, then
+    // a legacy year-less row for the same week (migrated below).
+    const candidates = weekKeyCandidates(payload.week);
+    let existing: Snapshot | null = null;
+    for (const key of candidates) {
+      existing = await col.findOne({
+        orgId: session.orgId,
+        userId: session.userId,
+        week: key,
+      });
+      if (existing) break;
+    }
 
+    // Manual-wins-over-auto: keep the hand-captured row. The auto
+    // capture may only contribute goalReadings the manual row lacks.
     if (
       existing &&
       existing.capturedBy === "manual" &&
       payload.capturedBy === "auto"
     ) {
+      const needsReadings =
+        !hasReadings(existing.goalReadings) && hasReadings(payload.goalReadings);
+      const needsRename = existing.week !== payload.week;
+      let kept: Snapshot = existing;
+      if (needsReadings || needsRename) {
+        const patched = await col.findOneAndUpdate(
+          { _id: existing._id },
+          {
+            $set: {
+              ...(needsRename ? { week: payload.week } : {}),
+              ...(needsReadings ? { goalReadings: payload.goalReadings } : {}),
+            },
+          },
+          { returnDocument: "after" },
+        );
+        if (patched) kept = patched;
+      }
       res.status(200).json({
-        snapshot: toPublic(existing),
+        snapshot: toPublic(kept),
         precedence: "manual_kept",
       });
       return;
@@ -153,14 +206,28 @@ export async function upsertSnapshotHandler(
       ? new Date(payload.capturedAt)
       : new Date();
 
+    // Merge, don't blank: a manual "Snapshot now" carries no per-goal
+    // readings and usually no note — keep what the row already has.
+    const goalReadings =
+      hasReadings(payload.goalReadings) || !existing
+        ? payload.goalReadings
+        : existing.goalReadings;
+    const note = payload.note || existing?.note || "";
+
+    const filter = existing
+      ? { _id: existing._id }
+      : {
+          orgId: session.orgId,
+          userId: session.userId,
+          week: payload.week,
+        };
+
     const result = await col.findOneAndUpdate(
-      {
-        orgId: session.orgId,
-        userId: session.userId,
-        week: payload.week,
-      },
+      filter,
       {
         $set: {
+          // Migrates a legacy "W36" row onto "W36-2026" in passing.
+          week: payload.week,
           capturedAt,
           capturedBy: payload.capturedBy,
           merged: payload.merged,
@@ -168,15 +235,14 @@ export async function upsertSnapshotHandler(
           turnaround: payload.turnaround,
           linkage: payload.linkage,
           rounds: payload.rounds,
-          note: payload.note,
-          goalReadings: payload.goalReadings,
+          note,
+          goalReadings,
           partial: payload.partial,
           gaps: payload.gaps,
         },
         $setOnInsert: {
           orgId: session.orgId,
           userId: session.userId,
-          week: payload.week,
         },
       },
       { upsert: true, returnDocument: "after" },
@@ -234,15 +300,19 @@ export async function patchSnapshotHandler(
     }
 
     const col = await getSnapshotsCollection();
-    const result = await col.findOneAndUpdate(
-      {
-        orgId: session.orgId,
-        userId: session.userId,
-        week,
-      },
-      { $set },
-      { returnDocument: "after" },
-    );
+    let result: Snapshot | null = null;
+    for (const key of weekKeyCandidates(week)) {
+      result = await col.findOneAndUpdate(
+        {
+          orgId: session.orgId,
+          userId: session.userId,
+          week: key,
+        },
+        { $set },
+        { returnDocument: "after" },
+      );
+      if (result) break;
+    }
 
     if (!result) {
       throw new HttpError(404, "not_found", `No snapshot for week ${week}.`);
@@ -279,10 +349,11 @@ export async function deleteSnapshotHandler(
     }
     const week = weekParam(req);
     const col = await getSnapshotsCollection();
-    const result = await col.deleteOne({
+    // Deletes every key this week may live under (qualified + legacy).
+    const result = await col.deleteMany({
       orgId: session.orgId,
       userId: session.userId,
-      week,
+      week: { $in: weekKeyCandidates(week) },
     });
 
     if (result.deletedCount > 0) {

@@ -4,7 +4,7 @@ export function StarGlyph({ on }) {
   return (
     <Star
       size={12}
-      className={on ? "fill-lemon-ink text-lemon-ink" : "fill-none text-dim-fg"}
+      className={on ? "fill-lemon-text text-lemon-text" : "fill-none text-muted-fg"}
       strokeWidth={2}
       aria-hidden="true"
     />

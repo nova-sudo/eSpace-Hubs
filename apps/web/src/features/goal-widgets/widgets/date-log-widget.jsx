@@ -1,11 +1,13 @@
 "use client";
 
+import { fmtTarget, plural } from "@/lib/fmt";
 import { useState } from "react";
 import { X } from "lucide-react";
 import { Button, IconButton, Input, Label } from "@/components/ui";
 import { WidgetShell } from "../widget-shell";
 import { useGoalInputs } from "@/features/goal-inputs";
 import { fullDate } from "@/lib/date";
+import { SavedNote, useSavedFlash } from "../saved-note";
 
 /**
  * "Date log" — pin a date (past or future) against an optional note.
@@ -17,6 +19,7 @@ export function DateLogWidget({ spec, goal, variant = "light", className, onRetr
     new Date().toISOString().slice(0, 10),
   );
   const [note, setNote] = useState("");
+  const [saved, flash] = useSavedFlash();
 
   function logEntry() {
     if (!date) return;
@@ -24,6 +27,7 @@ export function DateLogWidget({ spec, goal, variant = "light", className, onRetr
     if (Number.isNaN(t.getTime())) return;
     append(t.toISOString(), note || undefined);
     setNote("");
+    flash(`Saved · ${fullDate(t.toISOString())} · ${plural(entries.length + 1, "entry", "entries")} logged`);
   }
 
   const target = spec.manual?.target;
@@ -34,7 +38,7 @@ export function DateLogWidget({ spec, goal, variant = "light", className, onRetr
     <WidgetShell
       spec={spec}
       variant={variant}
-      label={`Date log · ${entries.length} entries`}
+      label={`Date log · ${plural(entries.length, "entry", "entries")}`}
       title={goal?.title || spec.title}
       onRetry={onRetry}
       className={className}
@@ -46,7 +50,7 @@ export function DateLogWidget({ spec, goal, variant = "light", className, onRetr
           </div>
           <span className="text-[13px] text-muted-fg">
             {spec.manual?.unit || "events"}
-            {target ? ` · target ${target.op} ${target.value}` : ""}
+            {target ? ` · target ${fmtTarget({ op: target.op, value: target.value })}` : ""}
             {reachedTarget ? " · reached" : ""}
           </span>
         </div>
@@ -74,6 +78,7 @@ export function DateLogWidget({ spec, goal, variant = "light", className, onRetr
             Log
           </Button>
         </div>
+        <SavedNote message={saved} />
         <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1 text-[13px]">
           {entries.slice().reverse().map((e) => (
             <li

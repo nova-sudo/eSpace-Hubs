@@ -8,35 +8,89 @@
  * ContextCollector (setup questions); a tracked goal shows the widget body +
  * the cadence stepper (fill / backfill missing periods).
  *
- * Backdrop click + ESC close. Body click stops propagation so the widget's own
- * controls keep working. Mirrors ScorecardComponentModal's shell.
+ * Backdrop click + ESC + ✕ close — but never over a typed, unsaved entry
+ * (review-ux-flows bug 3): the modal is a guard-only draft host, and asks
+ * "Keep editing / Discard / Save & close" first. Body click stops
+ * propagation so the widget's own controls keep working. Mirrors
+ * ScorecardComponentModal's shell.
  */
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
-import { IconButton, useFocusTrap } from "@/components/ui";
+import { Button, IconButton, useFocusTrap } from "@/components/ui";
+import { DraftFlushProvider, useDraftRegistry } from "@/features/goal-editors";
 import { GoalWidget } from "./goal-widget";
+
+/**
+ * Text the user TYPED (this session) into a field that is NOT a registered
+ * draft — e.g. the journal widget's own "Log" box — and that still holds
+ * it. Such text can't be flushed from here, only kept or discarded.
+ * Skipped: registered editors (`data-draft-registered`, handled by the
+ * registry) and fields inside a <form> (setup questions save on blur).
+ */
+function unregisteredText(typed) {
+  for (const el of typed) {
+    if (!el.isConnected || el.closest("form") || el.hasAttribute("data-draft-registered")) continue;
+    if (el.value.trim()) return true;
+  }
+  return false;
+}
+
+function isTextField(el) {
+  if (el instanceof HTMLTextAreaElement) return true;
+  return el instanceof HTMLInputElement && (el.type === "text" || el.type === "");
+}
 
 export function GoalWidgetModal({ open, onClose, spec, goal }) {
   const trapRef = useFocusTrap(open && !!spec);
+  // Guard-only host: editors keep their own Log/Save buttons, but Esc / ✕ /
+  // backdrop now see a typed draft instead of silently dropping it.
+  const drafts = useDraftRegistry();
+  const [confirming, setConfirming] = useState(null); // null | { canSave }
+  // Fields the user typed into since the modal opened.
+  const typed = useRef(new Set());
+
+  useEffect(() => {
+    if (!open) {
+      setConfirming(null);
+      typed.current = new Set();
+    }
+  }, [open]);
+
+  const requestClose = useCallback(() => {
+    const registered = drafts.anyDirty();
+    const loose = unregisteredText(typed.current);
+    if (!registered && !loose) {
+      onClose?.();
+      return;
+    }
+    setConfirming({ canSave: registered && !loose });
+  }, [drafts, onClose]);
+
+  const saveAndClose = useCallback(() => {
+    const { ok, failed } = drafts.flushAll();
+    if (!ok) {
+      setConfirming(null);
+      failed[0]?.focus?.();
+      return;
+    }
+    setConfirming(null);
+    onClose?.();
+  }, [drafts, onClose]);
+
   useEffect(() => {
     if (!open) return undefined;
-    // #239: remember who opened us and hand focus back on close, so a
-    // keyboard user isn't dropped at the top of the document.
-    const opener =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
+    // #239: focus goes back to whoever opened us — useFocusTrap restores it.
     const onKey = (e) => {
-      if (e.key === "Escape") onClose?.();
+      if (e.key !== "Escape") return;
+      // Esc on the confirm bar = keep editing; otherwise ask before closing.
+      if (confirming) setConfirming(null);
+      else requestClose();
     };
     window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      opener?.focus?.();
-    };
-  }, [open, onClose]);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, confirming, requestClose]);
 
   if (!open || !spec) return null;
   if (typeof document === "undefined") return null;
@@ -64,9 +118,9 @@ export function GoalWidgetModal({ open, onClose, spec, goal }) {
       role="dialog"
       aria-modal="true"
       aria-label={`${title} — fill`}
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-fg/40 p-4"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-scrim p-4"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose?.();
+        if (e.target === e.currentTarget) requestClose();
       }}
     >
       <div
@@ -79,14 +133,54 @@ export function GoalWidgetModal({ open, onClose, spec, goal }) {
           <span className="min-w-0 truncate text-[18px] font-bold tracking-[-0.01em] text-fg" title={title}>
             {title}
           </span>
-          <IconButton label="Close" onCard onClick={onClose}>
+          <IconButton label="Close" onCard onClick={requestClose}>
             <X size={16} />
           </IconButton>
         </div>
+        {confirming ? (
+          <div
+            role="alertdialog"
+            aria-label="Unsaved entry"
+            className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-line bg-peach px-5 py-3"
+          >
+            <span className="text-[13px] font-semibold text-peach-text">
+              {confirming.canSave
+                ? "You have an entry you haven't saved."
+                : "You have a note you haven't logged. Discard it?"}
+            </span>
+            <span className="flex items-center gap-2">
+              <Button variant="soft" size="sm" onClick={() => setConfirming(null)} autoFocus>
+                Keep editing
+              </Button>
+              <Button
+                variant="soft"
+                size="sm"
+                onClick={() => {
+                  setConfirming(null);
+                  onClose?.();
+                }}
+              >
+                Discard
+              </Button>
+              {confirming.canSave ? (
+                <Button size="sm" onClick={saveAndClose}>
+                  Save &amp; close
+                </Button>
+              ) : null}
+            </span>
+          </div>
+        ) : null}
         {/* Plain block scroll body — the widget renders at natural height and
             THIS scrolls it. No flex bounding on the widget (see note above). */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
-          <GoalWidget spec={spec} goal={goal} onRetry={null} />
+        <div
+          className="min-h-0 flex-1 overflow-y-auto p-5"
+          onInput={(e) => {
+            if (isTextField(e.target)) typed.current.add(e.target);
+          }}
+        >
+          <DraftFlushProvider registry={drafts} hosting={false}>
+            <GoalWidget spec={spec} goal={goal} onRetry={null} />
+          </DraftFlushProvider>
         </div>
       </div>
     </div>,

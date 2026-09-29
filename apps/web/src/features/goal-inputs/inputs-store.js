@@ -31,6 +31,7 @@
  *   DELETE /:entryId                   → { ok, deleted }
  */
 
+import { toast } from "sonner";
 import { validateInput } from "./schema";
 import { apiDelete, apiGet, apiPost } from "@/lib/api-client";
 import { isAssignedGoalId } from "@espace-devhub/shared/goal-specs";
@@ -231,21 +232,63 @@ async function appendEntryRemote(optimistic) {
   } else {
     setState({ error: r.error });
   }
+  // The rollback is silent on screen — the entry the user just typed simply
+  // vanishes. Say so, and offer the same write again.
+  notifyAppendFailed(optimistic, r.error);
   // eslint-disable-next-line no-console
   console.warn("[goal-inputs] append failed:", r.error?.code, r.error?.message);
 }
 
+function notifyAppendFailed(entry, error) {
+  if (typeof window === "undefined") return;
+  const when = new Date(entry.ts);
+  const day = Number.isNaN(when.getTime())
+    ? ""
+    : ` for ${when.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+  try {
+    toast.error(`Couldn't save your entry${day}`, {
+      description: error?.message || "The server didn't respond.",
+      action: {
+        label: "Retry",
+        onClick: () =>
+          appendEntry({
+            goalId: entry.goalId,
+            value: entry.value,
+            note: entry.note,
+            ts: entry.ts,
+          }),
+      },
+    });
+  } catch {
+    /* toaster not mounted (tests) */
+  }
+}
+
 /**
- * Remove a specific entry. (goalId, ts) is the local primary key.
+ * Remove a specific entry. Pass the entry object itself (matched by
+ * reference, then by server id) — or, for legacy callers, a bare ts, which
+ * picks the LAST entry at that timestamp. Backfilled entries share the
+ * window's midpoint ts, so a ts-only remove can hit the wrong row; prefer
+ * the object.
+ *
  * Optimistic: the entry disappears immediately; rollback re-inserts on
  * failure. A 404 means the server already lacks it — keep the removal.
  */
-export function removeEntry(goalId, ts) {
+export function removeEntry(goalId, entryOrTs) {
   // Shared goals: entries can be superseded, never deleted (the server
   // 403s) — the first save is the manager's "submitted at".
   if (!goalId || isAssignedGoalId(goalId)) return;
   const list = state.byGoal[goalId] || [];
-  const target = list.find((e) => e.ts === ts);
+  let target = null;
+  if (entryOrTs && typeof entryOrTs === "object") {
+    target =
+      list.find((e) => e === entryOrTs) ||
+      (entryOrTs.id ? list.find((e) => e.id === entryOrTs.id) : null) ||
+      null;
+  } else {
+    const matches = list.filter((e) => e.ts === entryOrTs);
+    target = matches[matches.length - 1] || null;
+  }
   if (!target) return;
   const nextList = list.filter((e) => e !== target);
   const nextByGoal = { ...state.byGoal };

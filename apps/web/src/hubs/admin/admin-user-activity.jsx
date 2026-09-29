@@ -98,7 +98,7 @@ export function UserActivity({ user, usersById }) {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2.5">
         <Label>Everything that touched this account</Label>
-        <SegmentedControl
+        <SegmentedControl as="radiogroup" ariaLabel="Time window"
           size="sm"
           onCard
           options={WINDOWS}
@@ -143,7 +143,7 @@ export function UserActivity({ user, usersById }) {
       )}
 
       {!state.loading && state.entries.length >= PAGE_SIZE ? (
-        <p className="mt-2 text-[12px] text-dim-fg">
+        <p className="mt-2 text-[12px] text-muted-fg">
           Showing the most recent {PAGE_SIZE} of each stream. Narrow the window,
           or use the audit log for the full history.
         </p>

@@ -7,9 +7,9 @@
  * inputs (we sniff `e.target.tagName` and bail). Cmd+K / `?` are owned by
  * the palette itself; this module covers the rest:
  *
- *   1..N   Jump to section N within the current tab (Performance or Goals)
+ *   1..N   Jump to section N within the current tab (Intelligence or Goals)
  *   j / k  Next / previous section (only on / or /goals)
- *   g p    Go to Performance (the dashboard)
+ *   g p    Go to Intelligence (the home page)
  *   g g    Go to Goals
  *   g e    Go to Evidence
  *   g t    Go to Settings   (cog/tweak)
@@ -35,7 +35,7 @@ const CHORD_TIMEOUT_MS = 1200;
 // whichever one it is.
 const CHORD_NAV = {
   // Top-level tabs first (mirrors the header order).
-  p: "",          // Performance — bare hub root
+  p: "",          // Intelligence (home) — bare hub root
   g: "/goals",    // Goals — `g g` (double tap) goes to Goals
   e: "/evidence",
   t: "/settings",
@@ -104,7 +104,7 @@ export function useGlobalShortcuts() {
 
       // ── Single-key shortcuts ────────────────────────────────────────
       // Section jumps + j/k only meaningful on routes that own a
-      // scroll-shell — Performance (/) and Goals (/goals). Other routes
+      // scroll-shell — Intelligence (/) and Goals (/goals). Other routes
       // don't have data-section-id targets to jump between.
       if (pathname === link("") || pathname?.startsWith(link("/goals"))) {
         if (/^[1-9]$/.test(e.key)) {

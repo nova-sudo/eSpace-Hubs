@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { fetchGoals, getGoalsState, resetGoals, updateL1 } from "./goals-store.js";
+import {
+  fetchGoals,
+  flushPendingGoalsSave,
+  getGoalsState,
+  resetGoals,
+  updateL1,
+} from "./goals-store.js";
 import { saveSpec, removeSpec } from "../goal-specs/specs-store.js";
 
 /**
@@ -53,16 +59,21 @@ test("PUT /goals never carries the shared-goals L1; a 409 keeps `assigned`", asy
     assert.equal(getGoalsState().assigned.length, 1);
     assert.equal(getGoalsState().l1s.length, 1);
 
+    // Field edits coalesce into one PUT ~600ms after the last keystroke;
+    // flushing sends it now. Local state is already updated either way.
     updateL1("l1", { title: "Own renamed" });
-    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(getGoalsState().l1s[0].title, "Own renamed", "edit applied locally at once");
+    assert.equal(calls.filter((c) => c.method === "PUT").length, 0, "no PUT per keystroke");
+    await flushPendingGoalsSave();
     const put = calls.find((c) => c.method === "PUT");
     assert.ok(put, "a PUT was sent");
     assert.deepEqual(put.body.l1s.map((l1) => l1.id), ["l1"]);
 
     putStatus = 409;
     updateL1("l1", { title: "Again" });
-    await new Promise((r) => setTimeout(r, 0));
+    await flushPendingGoalsSave();
     assert.equal(getGoalsState().assigned[0].id, "asg__root");
+    assert.equal(getGoalsState().error?.code, "goals_conflict", "the 409 is surfaced for the banner");
   } finally {
     globalThis.fetch = original;
     resetGoals();

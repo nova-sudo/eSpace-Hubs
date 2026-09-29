@@ -20,8 +20,10 @@
  * the widget component itself.
  */
 
-import { useState } from "react";
+import { opLabel } from "@/lib/fmt";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { ChevronDown } from "lucide-react";
 import { Badge, Button, Label } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { useWidgetControls } from "./widget-controls-context";
@@ -61,6 +63,8 @@ export function WidgetShell({
     onEditPlan,
     // Set only for a SHARED goal — renders the "Shared by X · due …" strip.
     assigned,
+    // Host already shows the title + a card (see GoalWidget `bare`).
+    bare = false,
   } = useWidgetControls();
   // Readiness gate for the cadence stepper. The state shells (ContextCollector
   // / Delegated / Untrackable) also render through WidgetShell, so gating the
@@ -94,8 +98,12 @@ export function WidgetShell({
 
   return (
     <div
-      className={`relative flex min-h-[180px] min-w-0 flex-col overflow-hidden rounded-[var(--radius-xl)] bg-card p-5 ${className}`}
-      style={{ boxShadow: "var(--shadow-card)", ...style }}
+      className={
+        bare
+          ? `relative flex min-w-0 flex-col ${className}`
+          : `relative flex min-h-[180px] min-w-0 flex-col overflow-hidden rounded-[var(--radius-xl)] bg-card p-5 ${className}`
+      }
+      style={bare ? style : { boxShadow: "var(--shadow-card)", ...style }}
     >
       {(label || rightChip) ? (
         <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
@@ -108,7 +116,7 @@ export function WidgetShell({
 
       {assigned ? <AssignedStatusChip spec={spec} assigned={assigned} /> : null}
 
-      {title ? (
+      {title && !bare ? (
         <div
           className="mb-1.5 text-[15px] font-bold leading-[1.3] text-fg"
           style={{
@@ -154,6 +162,9 @@ export function WidgetShell({
       {(spec?.reasoning || onRetry || onReanalyze || footer || onMarkDelegated || onEditContext || onComposeOwn || onEditSetup || onEditPlan) ? (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            {/* Primary: the two things people do most. Everything else
+                (plan, definitions, delegate, build my own) lives under
+                "More" — seven chips in a row was a wall. */}
             {spec?.reasoning ? (
               <Button
                 type="button"
@@ -169,27 +180,36 @@ export function WidgetShell({
                 Edit setup
               </Button>
             ) : null}
-            {onEditPlan ? (
-              <Button type="button" variant="ghost" size="sm" onClick={onEditPlan}>
-                Edit plan
-              </Button>
-            ) : null}
-            {onEditContext ? (
-              <Button type="button" variant="ghost" size="sm" onClick={onEditContext}>
-                Edit truths
-              </Button>
-            ) : null}
-            {onMarkDelegated ? (
-              <Button type="button" variant="ghost" size="sm" onClick={onMarkDelegated}>
-                Delegate
-              </Button>
-            ) : null}
-            {onComposeOwn ? (
-              <Button type="button" variant="ghost" size="sm" onClick={onComposeOwn}>
-                Build my own
-              </Button>
-            ) : null}
             {footer}
+            <MoreMenu
+              items={[
+                onEditPlan ? { key: "plan", label: "Edit plan", onClick: onEditPlan } : null,
+                onEditContext
+                  ? { key: "definitions", label: "Edit definitions", onClick: onEditContext }
+                  : null,
+                onComposeOwn
+                  ? { key: "compose", label: "Build my own tracker", onClick: onComposeOwn }
+                  : null,
+                onMarkDelegated
+                  ? {
+                      key: "delegate",
+                      label: "Delegate…",
+                      onClick: () => {
+                        // One click used to hand the goal to "someone else"
+                        // and hide the tracker with no way to know why.
+                        if (
+                          typeof window === "undefined" ||
+                          window.confirm(
+                            "Mark this goal as judged by someone else? Its tracker is hidden and you stop logging on it. You can take it back with “Self-track” later.",
+                          )
+                        ) {
+                          onMarkDelegated();
+                        }
+                      },
+                    }
+                  : null,
+              ].filter(Boolean)}
+            />
           </div>
           {canReanalyze ? (
             <Button type="button" variant="soft" size="sm" onClick={handleReanalyze}>
@@ -209,6 +229,69 @@ export function WidgetShell({
 }
 
 /**
+ * A "More" disclosure holding the secondary footer actions. Plain buttons in
+ * a popover — closes on outside click, Escape, or after picking an item.
+ * Renders nothing when there are no items.
+ */
+function MoreMenu({ items }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  if (!items || items.length === 0) return null;
+  return (
+    <div ref={ref} className="relative">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        More
+        <ChevronDown size={12} aria-hidden="true" />
+      </Button>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute bottom-full left-0 z-20 mb-1 flex min-w-[190px] flex-col gap-0.5 rounded-[var(--radius-lg)] bg-card p-1.5"
+          style={{ boxShadow: "var(--shadow-float)" }}
+        >
+          {items.map((it) => (
+            <button
+              key={it.key}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                it.onClick?.();
+              }}
+              className="rounded-[var(--radius-md)] px-2.5 py-1.5 text-left text-[12.5px] font-semibold text-fg hover:bg-card-alt focus-visible:bg-card-alt focus-visible:outline-none"
+            >
+              {it.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * Tiny helper component: the "target X" chip that auto widgets show when
  * a source has a target. Exported so widgets can opt-in inline. `variant`
  * is accepted for back-compat and unused — the badge tone carries the
@@ -218,7 +301,7 @@ export function TargetChip({ target, unit, variant: _variant = "light" }) {
   if (!target) return null;
   return (
     <Badge tone="lav">
-      Target {target.op} {target.value}
+      Target {opLabel(target.op)} {target.value}
       {unit ? ` ${unit}` : ""}
     </Badge>
   );

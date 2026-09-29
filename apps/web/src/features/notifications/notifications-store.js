@@ -11,7 +11,9 @@
  * on their next load / bell open.
  */
 
+import { toast } from "sonner";
 import { apiGet, apiPost } from "@/lib/api-client";
+import { revalidateInbox } from "./inbox-keys";
 
 let state = { loading: true, items: [], unread: 0, error: null };
 let tick = 0;
@@ -66,25 +68,69 @@ export function ensureNotifications() {
   void fetchNotifications();
 }
 
+/**
+ * Optimistic mark-read with rollback. Until now a failed POST left the row
+ * looking read while the server still counted it unread — the badge came
+ * back on the next poll with no explanation. Roll back to the pre-write
+ * state (unless a later fetch already replaced it) and say so.
+ */
+function isAuthError(err) {
+  return err?.code === "unauthenticated" || err?.code === "totp_required";
+}
+
 export async function markNotificationRead(id) {
+  const prev = state;
   const wasUnread = state.items.some((n) => n.id === id && !n.read);
+  if (!wasUnread) return;
   state = {
     ...state,
     items: state.items.map((n) => (n.id === id ? { ...n, read: true } : n)),
-    unread: wasUnread ? Math.max(0, state.unread - 1) : state.unread,
+    unread: Math.max(0, state.unread - 1),
   };
   notify();
-  await apiPost(`/notifications/${id}/read`, {});
+  const r = await apiPost(`/notifications/${id}/read`, {});
+  if (r.ok) revalidateInbox();
+  if (r.ok || isAuthError(r.error)) return;
+  if (state.items.some((n) => n.id === id && n.read)) {
+    state = {
+      ...state,
+      items: state.items.map((n) => (n.id === id ? { ...n, read: false } : n)),
+      unread: state.unread + 1,
+    };
+    notify();
+  }
+  toast.error("Couldn't mark the notification as read", {
+    description: r.error?.message,
+    action: { label: "Retry", onClick: () => void markNotificationRead(id) },
+  });
+}
+
+function sameIds(a, b) {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every((n, i) => n.id === b[i].id);
 }
 
 export async function markAllNotificationsRead() {
-  state = {
-    ...state,
-    items: state.items.map((n) => ({ ...n, read: true })),
-    unread: 0,
-  };
+  const prev = state;
+  if (state.unread === 0 && state.items.every((n) => n.read)) return;
+  const optimisticItems = state.items.map((n) => ({ ...n, read: true }));
+  state = { ...state, items: optimisticItems, unread: 0 };
   notify();
-  await apiPost("/notifications/read-all", {});
+  const r = await apiPost("/notifications/read-all", {});
+  if (r.ok) revalidateInbox();
+  if (r.ok || isAuthError(r.error)) return;
+  // Only roll back if nothing refreshed the list in the meantime. Compare
+  // ids, not counts: a same-size poll result is still a different list,
+  // and restoring `prev` over it would resurrect stale rows.
+  if (sameIds(state.items, optimisticItems)) {
+    state = { ...state, items: prev.items, unread: prev.unread };
+    notify();
+  }
+  toast.error("Couldn't mark all notifications as read", {
+    description: r.error?.message,
+    action: { label: "Retry", onClick: () => void markAllNotificationsRead() },
+  });
 }
 
 export function resetNotifications() {

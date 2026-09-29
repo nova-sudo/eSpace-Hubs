@@ -8,19 +8,22 @@ import { cn } from "@/lib/cn";
  * span (not an <input>), a wrapping <label> does NOT name it. Every
  * call site passes the row's own text.
  */
-export function Checkbox({ checked, onChange, id, label }) {
+export function Checkbox({ checked, onChange, id, label, disabled = false }) {
+  // `disabled` blocks mouse AND keyboard (a pointer-events wrapper only
+  // stopped the mouse) and announces as dimmed via aria-disabled.
   return (
     <span
       id={id}
       role="checkbox"
       aria-checked={checked}
       aria-label={label}
+      aria-disabled={disabled || undefined}
       tabIndex={0}
-      onClick={onChange}
+      onClick={disabled ? undefined : onChange}
       onKeyDown={(e) => {
         if (e.key === " " || e.key === "Enter") {
           e.preventDefault();
-          onChange?.();
+          if (!disabled) onChange?.();
         }
       }}
       className={cn(
@@ -41,6 +44,7 @@ export function Checkbox({ checked, onChange, id, label }) {
         checked
           ? "bg-ink text-ink-on"
           : "bg-card-alt text-transparent ring-2 ring-inset ring-muted-fg",
+        disabled && "cursor-not-allowed opacity-60",
       )}
     >
       <Check size={12} strokeWidth={2.5} />

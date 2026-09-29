@@ -14,7 +14,10 @@
  * weekly windows for a 13-week plan).
  *
  * Contract, matching `enumerateWindows`:
- *   - daily / weekly / biweekly: fixed strides from `cycleStart` itself.
+ *   - daily: fixed one-day strides from `cycleStart` itself.
+ *   - weekly / biweekly: Sunday-anchored work weeks (weeks.js) — window i is
+ *     the i-th week (pair of weeks) from the Sunday on/before `cycleStart`,
+ *     the first one clipped to start at `cycleStart`.
  *   - monthly / quarterly: `cycleStart` is snapped BACK to the first day of
  *     its calendar month / quarter, then N whole calendar periods follow.
  *
@@ -26,6 +29,12 @@ const DAY = 86_400_000;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const STRIDE_DAYS = Object.freeze({ daily: 1, weekly: 7, biweekly: 14 });
+
+/** UTC midnight of the Sunday on/before `ms` (weekly grids anchor here). */
+function strideAnchor(cadence, ms) {
+  if (cadence !== "weekly" && cadence !== "biweekly") return ms;
+  return ms - new Date(ms).getUTCDay() * DAY;
+}
 const CALENDAR_MONTHS = Object.freeze({ monthly: 1, quarterly: 3 });
 
 /** Hard ceiling on windows in one cycle — mirrors COMPOSED_MAX_PERIODS. */
@@ -49,7 +58,7 @@ export function cycleEndForCount(cycleStartIso, cadence, count) {
   if (Number.isNaN(startMs)) return null;
 
   if (STRIDE_DAYS[cadence]) {
-    return isoDay(startMs + count * STRIDE_DAYS[cadence] * DAY - DAY);
+    return isoDay(strideAnchor(cadence, startMs) + count * STRIDE_DAYS[cadence] * DAY - DAY);
   }
   const months = CALENDAR_MONTHS[cadence];
   if (!months) return null;
@@ -81,7 +90,7 @@ export function windowCountForCycle(cycleStartIso, cadence, cycleEndIso) {
   if (Number.isNaN(start) || Number.isNaN(endExclusive) || endExclusive <= start) return null;
 
   if (STRIDE_DAYS[cadence]) {
-    return Math.ceil((endExclusive - start) / (STRIDE_DAYS[cadence] * DAY));
+    return Math.ceil((endExclusive - strideAnchor(cadence, start)) / (STRIDE_DAYS[cadence] * DAY));
   }
   const months = CALENDAR_MONTHS[cadence];
   if (!months) return null;
@@ -97,7 +106,7 @@ export function windowCountForCycle(cycleStartIso, cadence, cycleEndIso) {
 /**
  * The first day of the cadence period containing `nowMs` — the sensible
  * default start for a plan whose document named no date: a weekly plan
- * accepted on a Wednesday starts that Monday, a monthly one on the 1st, a
+ * accepted on a Wednesday starts that Sunday (the work week's first day), a monthly one on the 1st, a
  * quarterly one at the quarter's first day. ISO "YYYY-MM-DD".
  */
 export function snapCycleStart(cadence, nowMs) {
@@ -107,7 +116,8 @@ export function snapCycleStart(cadence, nowMs) {
   if (cadence === "monthly") return isoDay(Date.UTC(y, m, 1));
   if (cadence === "quarterly") return isoDay(Date.UTC(y, Math.floor(m / 3) * 3, 1));
   if (cadence === "daily") return isoDay(Date.UTC(y, m, d.getUTCDate()));
-  // weekly / biweekly → the Monday of this week (UTC).
-  const dow = (d.getUTCDay() + 6) % 7; // Monday = 0
+  // weekly / biweekly → the Sunday that starts this work week (UTC), so the
+  // plan's first window is a whole Sun→Sat week, not a clipped stub.
+  const dow = d.getUTCDay(); // Sunday = 0
   return isoDay(Date.UTC(y, m, d.getUTCDate()) - dow * DAY);
 }

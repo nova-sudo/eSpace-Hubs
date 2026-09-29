@@ -16,24 +16,66 @@
  */
 
 import { getAiProvider } from "./use-ai-provider";
-import { markAnalyzedAt, saveSpec, readValidSpecs } from "@/features/goal-specs";
+import {
+  markAnalyzedAt,
+  saveSpec,
+  readValidSpecs,
+  specShapeChanged,
+} from "@/features/goal-specs";
 import { readContextFor } from "@/features/goal-context";
-import { clearGoalEntries } from "@/features/goal-inputs";
+import { clearGoalEntries, readGoalEntries } from "@/features/goal-inputs";
 import { clearGoalLocks } from "@/features/goal-locks";
 import { ANALYSIS } from "./ai/analysis-events";
+import { aiErrorMessage } from "./ai-error-copy";
 import { startJob, endJob } from "@/lib/jobs-store";
 
 /**
- * Re-analysis replaces the widget, so the goal's logged entries + settle-locks
- * belong to a (possibly) different widget shape and would corrupt the new
- * widget's reading. Wipe them on commit so the re-analyzed widget starts clean.
- * No-op when there's no history (a first-ever classification), so it's safe to
- * call on every committed spec.
+ * A re-analysis that changes the widget SHAPE (kind / variant) leaves the
+ * goal's logged entries + settle-locks belonging to a different widget, so
+ * they would corrupt the new one's reading — wipe them then. A same-shape
+ * re-analysis (fresh tiers, new reasoning, tweaked target) keeps history.
+ * No-op when there's nothing to wipe.
  */
 function wipeGoalHistory(goalId) {
   if (!goalId) return;
   clearGoalEntries(goalId);
   clearGoalLocks(goalId);
+}
+
+/**
+ * What committing this pending spec would do to the goal's history:
+ * `{ entries, wipes }` — how many logged entries exist, and whether the
+ * commit deletes them (only when the tracker shape changes). Lets the
+ * Review pane say "this deletes N logged entries" before Save.
+ */
+export function pendingCommitImpact(goalId) {
+  const pending = state.pendingSpecs[goalId];
+  const entries = goalId ? readGoalEntries(goalId).length : 0;
+  if (!pending) return { entries, wipes: false };
+  let existing = null;
+  try {
+    existing = readValidSpecs()[goalId] || null;
+  } catch {
+    existing = null;
+  }
+  // No prior spec → nothing that could be orphaned; a first classification
+  // never wipes.
+  const wipes = existing ? specShapeChanged(existing, pending) : false;
+  return { entries, wipes: wipes && entries > 0 };
+}
+
+/** Sum of `pendingCommitImpact` over every pending spec. */
+export function pendingCommitImpactAll() {
+  let entries = 0;
+  let goals = 0;
+  for (const id of Object.keys(state.pendingSpecs)) {
+    const i = pendingCommitImpact(id);
+    if (i.wipes) {
+      entries += i.entries;
+      goals += 1;
+    }
+  }
+  return { entries, goals };
 }
 
 const CHANGE_EVENT = "classify-run:change";
@@ -197,11 +239,8 @@ export async function startClassifyRun(list) {
     });
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
-      throw new Error(
-        errBody?.error?.message ||
-          errBody?.error ||
-          `Classifier responded ${res.status}`,
-      );
+      const e = typeof errBody?.error === "object" ? errBody.error : { message: errBody?.error };
+      throw new Error(aiErrorMessage(e, `The analyst couldn't start (${res.status}). Try again.`));
     }
     if (!res.body) throw new Error("Classifier returned an empty stream.");
     for await (const evt of readNdjson(res.body)) {
@@ -220,7 +259,7 @@ export async function startClassifyRun(list) {
       setState({ phase: PHASES.IDLE });
       return;
     }
-    setState({ error: err?.message || String(err), phase: PHASES.ERROR });
+    setState({ error: aiErrorMessage(err, String(err)), phase: PHASES.ERROR });
   } finally {
     ctrl = null;
     endJob(JOB_ID);
@@ -244,9 +283,10 @@ export function resetClassifyRun() {
 export function commitSpec(goalId) {
   const spec = state.pendingSpecs[goalId];
   if (!spec) return { ok: false, errors: ["spec not in pending buffer"] };
+  const impact = pendingCommitImpact(goalId);
   const result = saveSpec(spec);
   if (result.ok) {
-    wipeGoalHistory(goalId);
+    if (impact.wipes) wipeGoalHistory(goalId);
     const next = { ...state.pendingSpecs };
     delete next[goalId];
     setState({ pendingSpecs: next });
@@ -260,10 +300,11 @@ export function commitAllPending() {
   let saved = 0;
   const failed = [];
   for (const id of ids) {
+    const impact = pendingCommitImpact(id);
     const result = saveSpec(state.pendingSpecs[id]);
     if (result.ok) {
       saved += 1;
-      wipeGoalHistory(id);
+      if (impact.wipes) wipeGoalHistory(id);
     } else failed.push({ goalId: id, errors: result.errors });
   }
   const stillFailed = new Set(failed.map((f) => f.goalId));

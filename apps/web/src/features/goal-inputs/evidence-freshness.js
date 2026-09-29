@@ -120,6 +120,9 @@ export function windowEvidenceState(window, { required, files, entryEvidence, no
 
   // Nothing attached: not yet due while the window is open or still ahead.
   if (items.length === 0) {
+    // A window that ended before the tracker existed ("before") never owed
+    // proof — it's optional backfill, so it leaves every evidence count.
+    if (window.state === "before") return EVIDENCE_STATE.NOT_REQUIRED;
     if (Number.isFinite(end) && end > now) {
       return Number.isFinite(start) && start > now
         ? EVIDENCE_STATE.FUTURE

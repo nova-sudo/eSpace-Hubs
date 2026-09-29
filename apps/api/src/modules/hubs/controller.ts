@@ -9,7 +9,8 @@
  *   3. Per-(orgId, hubId) overrides — hub_configs collection (M10.5)
  *
  * Response:
- *   { hubs: HubDefinition[], primaryHubId: string, defaultHubId: string }
+ *   { hubs: HubDefinition[], primaryHubId: string | null, defaultHubId: string }
+ *   (primaryHubId is null when the user may enter no hub at all)
  *
  * Pre-M-CAP users (only `role` set, no `roles`) get a compat fallback
  * via `effectiveRoles(u)` — single-role behaviour is preserved until
@@ -24,8 +25,6 @@
 import type { NextFunction, Request, Response } from "express";
 import {
   DEFAULT_HUB_ID,
-  HUB_ORDER,
-  findHubById,
   resolveHubsForCapabilities,
 } from "@espace-devhub/shared/hubs";
 import {
@@ -35,7 +34,8 @@ import {
 import type { HubConfig } from "../../db/types.js";
 import { effectiveCapabilities } from "../../lib/user-roles.js";
 import { HttpError } from "../../middleware/error-handler.js";
-import { mergeHubOverride } from "./merge.js";
+import { logger } from "../../lib/logger.js";
+import { resolveVisibleHubs } from "./merge.js";
 
 export async function listMyHubsHandler(
   req: Request,
@@ -74,58 +74,29 @@ export async function listMyHubsHandler(
     });
 
     // Capability filter first (authoritative gate), then per-hub
-    // override merge. Hub ids stay in HUB_ORDER.
-    const capAllowedIds = new Set(
-      resolveHubsForCapabilities(userCaps).map((h) => h.id),
+    // override merge. Hub ids stay in HUB_ORDER. If overrides hid every
+    // allowed hub, `resolveVisibleHubs` falls back to the capability-
+    // allowed set with overrides ignored — never to hubs the user's roles
+    // don't reach (hub-audit §3.2).
+    const { hubs, fallback } = resolveVisibleHubs(
+      resolveHubsForCapabilities(userCaps),
+      overrideByHubId,
     );
-
-    const hubs = [];
-    for (const hubId of HUB_ORDER) {
-      if (!capAllowedIds.has(hubId)) continue;
-      const defaults = findHubById(hubId);
-      if (!defaults) continue;
-      const { hub, enabled } = mergeHubOverride(
-        defaults,
-        overrideByHubId.get(hubId) ?? null,
+    if (fallback) {
+      logger.warn(
+        { orgId: session.orgId.toHexString(), userId: session.userId.toHexString() },
+        "[hubs] every hub this user may enter is disabled by an org override — serving registry defaults",
       );
-      if (!enabled) continue; // admin disabled this hub for the org
-      hubs.push(hub);
     }
 
-    if (hubs.length === 0) {
-      // Defense in depth: a user whose roles grant nothing, or whose
-      // hubs are all admin-disabled, would otherwise see an empty
-      // list and get stuck. Falling back to the default hub keeps the
-      // app navigable while ops fixes the misconfiguration.
-      //
-      // Specifically covers the bootstrap-admin window before the
-      // M-CAP migration runs: their `role: "admin"` resolves to
-      // hub.admin.access via the compat shim, so this branch is
-      // mostly a paranoid catch-all.
-      const defaults = findHubById(DEFAULT_HUB_ID);
-      if (defaults) {
-        const merged = mergeHubOverride(
-          defaults,
-          overrideByHubId.get(DEFAULT_HUB_ID) ?? null,
-        );
-        if (merged.enabled) hubs.push(merged.hub);
-        else {
-          // Even the default is disabled — admit every registry hub
-          // ignoring overrides. Worst-case correctness.
-          for (const fallbackId of HUB_ORDER) {
-            const fb = findHubById(fallbackId);
-            if (fb) hubs.push(fb);
-          }
-        }
-      }
-    }
-
+    // No hub at all → no primary hub either. Naming DEFAULT_HUB_ID here
+    // would point the client at a hub this user can't enter.
     const primaryHubId =
       (typeof user.primaryHub === "string" &&
         hubs.some((h) => h.id === user.primaryHub) &&
         user.primaryHub) ||
       hubs[0]?.id ||
-      DEFAULT_HUB_ID;
+      null;
 
     res.json({
       hubs,

@@ -188,7 +188,14 @@ function resolveImpl(preset, now) {
     const iso = readLastReviewDate();
     const reviewDate = iso ? new Date(iso) : null;
     if (!reviewDate || Number.isNaN(reviewDate.getTime())) {
-      return resolveImpl("90d", nowDate);
+      // Keep the preset id + flag the fallback so the toolbar can SAY it
+      // is using 90 days instead of silently pretending it's since review.
+      return {
+        ...resolveImpl("90d", nowDate),
+        id: "lastreview",
+        label: "Last 90 days (no review date set)",
+        fallback: true,
+      };
     }
     reviewDate.setHours(0, 0, 0, 0);
     const start = reviewDate;

@@ -24,6 +24,12 @@ import type {
   GoalTierVerdictBody,
 } from "../../db/types.js";
 import {
+  buildCycleWindows,
+  composedCycleBounds,
+  isSingleRecordWidget,
+  specCadence,
+} from "@espace-devhub/shared/goal-specs";
+import {
   delegatedJudge,
   specKindLabel,
   specVariant,
@@ -315,6 +321,64 @@ function normalizeEntries(
   return { entries, evidence: evidence.slice(0, MAX_EVIDENCE) };
 }
 
+// ─── readings per window (not per click) ─────────────────────────────
+
+export interface WindowReading {
+  key: string;
+  /** "W40", "Sep", "Q3" — the cadence window's own label. */
+  label: string;
+  /** Sum of numeric values logged in the window, or null for non-numeric kinds. */
+  total: number | null;
+  /** How many entries landed in the window. */
+  entries: number;
+  unit: string | null;
+}
+
+/**
+ * Collapse raw entries into one row per cadence window — a counter logged
+ * with three +1 clicks reads "W40: 3 h", not "Value 1, Value 1, Value 1".
+ * Newest window first; only windows with something logged. Null for a goal
+ * without cadence windows (one-time milestones, per-incident logs).
+ */
+export function aggregateWindows(args: {
+  spec: Spec | null;
+  entries: Array<{ ts: Date | number; value: unknown }>;
+  now?: number;
+}): WindowReading[] | null {
+  const spec = args.spec;
+  if (!spec) return null;
+  const widget = typeof spec.widget === "string" ? spec.widget : "";
+  const cadence = isSingleRecordWidget(widget) ? null : specCadence(spec);
+  if (!cadence) return null;
+  const list = args.entries
+    .map((e) => ({ ts: e.ts instanceof Date ? e.ts.getTime() : Number(e.ts), value: e.value }))
+    .filter((e) => Number.isFinite(e.ts));
+  const cycle = buildCycleWindows({
+    entries: list,
+    cadence,
+    now: args.now ?? Date.now(),
+    ...composedCycleBounds(spec),
+  }) as { mode?: string; windows?: Array<{ start: number; end: number; key: string; label: string }> };
+  if (!cycle || cycle.mode === "pip" || !Array.isArray(cycle.windows)) return null;
+  const unit = str(asObj(spec.manual)?.unit);
+  const out: WindowReading[] = [];
+  for (const w of cycle.windows) {
+    const inside = list.filter((e) => e.ts >= w.start && e.ts < w.end);
+    if (inside.length === 0) continue;
+    const numeric = inside.every((e) => typeof e.value === "number" && Number.isFinite(e.value));
+    out.push({
+      key: w.key,
+      label: w.label,
+      total: numeric
+        ? Math.round(inside.reduce((a, e) => a + (e.value as number), 0) * 100) / 100
+        : null,
+      entries: inside.length,
+      unit,
+    });
+  }
+  return out.reverse();
+}
+
 // ─── the assembled detail payload ────────────────────────────────────
 
 export interface GoalDetail {
@@ -332,10 +396,16 @@ export interface GoalDetail {
     note: string;
     gradedByName: string;
     gradedAt: string;
+    /** The report's "seen" / "I disagree" on this grade, if any. */
+    ack: { at: string; disagree: boolean; note: string } | null;
   } | null;
   entries: ReviewEntry[];
   evidence: EvidencePoint[];
   entryCount: number;
+  /** Readings grouped per cadence window, newest first (null: not windowed). */
+  windows: WindowReading[] | null;
+  /** The goal tree's written rubric (the L2's, else its objective's). */
+  rubric: string | null;
 }
 
 export function buildGoalDetail(args: {
@@ -348,9 +418,13 @@ export function buildGoalDetail(args: {
     note: string;
     gradedByName: string;
     gradedAt: Date;
+    ack?: { at: Date; disagree: boolean; note: string } | null;
   } | null;
   inputs: GoalInputEntry[];
   totalEntryCount: number;
+  /** Every entry's ts + value, for the per-window readings. */
+  allEntries?: Array<{ ts: Date | number; value: unknown }>;
+  rubric?: string | null;
 }): GoalDetail {
   const spec = projectSpec(args.spec);
   const { entries, evidence } = normalizeEntries(args.inputs, spec?.fields ?? null);
@@ -373,10 +447,19 @@ export function buildGoalDetail(args: {
           note: args.managerVerdict.note,
           gradedByName: args.managerVerdict.gradedByName,
           gradedAt: args.managerVerdict.gradedAt.toISOString(),
+          ack: args.managerVerdict.ack
+            ? {
+                at: args.managerVerdict.ack.at.toISOString(),
+                disagree: args.managerVerdict.ack.disagree,
+                note: args.managerVerdict.ack.note,
+              }
+            : null,
         }
       : null,
     entries,
     evidence,
     entryCount: args.totalEntryCount,
+    windows: aggregateWindows({ spec: args.spec, entries: args.allEntries ?? args.inputs }),
+    rubric: str(args.rubric),
   };
 }

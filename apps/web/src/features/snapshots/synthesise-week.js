@@ -52,6 +52,7 @@ import {
 } from "@/features/integrations";
 import { captureGoalReadings } from "./capture-readings";
 import { readSnapshots, saveSnapshot } from "./snapshots-store";
+import { compareWeekLabels } from "@/lib/date";
 
 const DAY = 24 * 60 * 60 * 1000;
 const EVENTS_HORIZON_DAYS = 90;
@@ -108,12 +109,12 @@ export function synthesiseWeek({
 
   // priorReadings: pick up the most recent snapshot already in the
   // store whose week sits BEFORE this one so monthly/quarterly
-  // cumulatives chain through correctly. Sorting by weekLabel is fine
-  // within a year — "W17" < "W18" lexicographically.
+  // cumulatives chain through correctly. Keys are "Wnn-YYYY", so compare
+  // by (year, week) — plain string order breaks across New Year.
   const existing = readSnapshots();
   const prior = existing
-    .filter((s) => s.week && s.week < range.weekLabel)
-    .sort((a, b) => b.week.localeCompare(a.week))[0] || null;
+    .filter((s) => s.week && compareWeekLabels(s.week, range.weekLabel) < 0)
+    .sort((a, b) => compareWeekLabels(b.week, a.week))[0] || null;
   // synthesise is the ONLY writer of the headline metrics + goalReadings,
   // so recomputing them is always safe. The `note`, however, is hand-typed
   // by the user and must survive a re-capture (backfill refresh or a

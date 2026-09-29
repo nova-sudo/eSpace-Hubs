@@ -24,6 +24,7 @@ import { logger } from "../lib/logger.js";
 import {
   captureWeeklySnapshots,
   notifyGoalDeadlines,
+  notifyStaleApprovals,
   notifyStaleGoals,
   notifyWaitingApprovals,
   sendWeeklyDigests,
@@ -44,6 +45,9 @@ async function tick(): Promise<void> {
     ["deadlines", notifyGoalDeadlines],
     ["stale", notifyStaleGoals],
     ["approvals", notifyWaitingApprovals],
+    // An approver's queue with an item > 3 days old — one nudge per
+    // approver per week (hub-audit §3.4).
+    ["stale-approvals", notifyStaleApprovals],
     ["shared-goals", notifyAssignedGoalWindows],
     ["digest", sendWeeklyDigests],
     // Snapshots BEFORE digest would be nicer (the digest could mention

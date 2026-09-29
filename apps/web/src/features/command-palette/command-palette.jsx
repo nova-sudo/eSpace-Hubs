@@ -40,11 +40,11 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowDown, ArrowUp, Command, CornerDownLeft, Search } from "lucide-react";
-import { Badge, Label } from "@/components/ui";
+import { Badge, Label, useFocusTrap } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { useAiProvider, AI_PROVIDERS } from "@/features/analyst";
-import { useSnapshotNow } from "@/features/snapshots";
-import { useHubLink } from "@/features/hubs";
+import { useAiProvider, AI_PROVIDERS, getAiProvider } from "@/features/analyst";
+import { useSnapshotNow, useSnapshots } from "@/features/snapshots";
+import { useActiveHub, useHubLink } from "@/features/hubs";
 import { buildCommands } from "./commands";
 
 const PALETTE_OPEN_EVENT = "command-palette:open";
@@ -69,29 +69,28 @@ export function CommandPalette() {
   const pathname = usePathname();
   const { provider, setProvider } = useAiProvider();
   const snapshotNow = useSnapshotNow();
+  const { fetched: snapshotsFetched } = useSnapshots();
   const link = useHubLink();
+  // Only offer routes this hub actually has (review-ui-polish m8).
+  const pages = useActiveHub()?.pages ?? null;
 
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlighted, setHighlighted] = useState(0);
   const inputRef = useRef(null);
   const listRef = useRef(null);
-  const previouslyFocused = useRef(null);
+  // Keep Tab inside the dialog while it's open (#239 pattern); the trap
+  // also hands focus back to whatever was focused before opening.
+  const trapRef = useFocusTrap(isOpen);
 
   // ── Open/close lifecycle ────────────────────────────────────────────
   const open = useCallback(() => {
-    previouslyFocused.current = document.activeElement;
     setQuery("");
     setHighlighted(0);
     setIsOpen(true);
   }, []);
   const close = useCallback(() => {
     setIsOpen(false);
-    // Restore focus to whatever was focused before opening.
-    queueMicrotask(() => {
-      const el = previouslyFocused.current;
-      if (el && typeof el.focus === "function") el.focus();
-    });
   }, []);
 
   // Global keydown — open on ⌘/Ctrl+K (most apps) AND on `?` for the
@@ -142,11 +141,16 @@ export function CommandPalette() {
         pathname,
         router,
         provider,
+        providers: AI_PROVIDERS,
         setProvider,
+        getProvider: getAiProvider,
         snapshotNow,
+        snapshotReady: snapshotsFetched,
         link,
+        toast,
+        pages,
       }),
-    [pathname, router, provider, setProvider, snapshotNow, link],
+    [pathname, router, provider, setProvider, snapshotNow, snapshotsFetched, link, pages],
   );
 
   // Filtered + ranked. Ranking is deliberate-and-tiny: fuzzy by token match,
@@ -183,7 +187,12 @@ export function CommandPalette() {
     (cmd) => {
       if (!cmd) return;
       try {
-        cmd.run();
+        // Async commands (snapshot, provider switch) report through their
+        // own toasts; a rejected promise still gets one generic line here.
+        const out = cmd.run();
+        if (out && typeof out.then === "function") {
+          out.catch((err) => toast.error(`Action failed: ${err?.message || err}`));
+        }
       } catch (err) {
         toast.error(`Action failed: ${err?.message || err}`);
       }
@@ -234,19 +243,22 @@ export function CommandPalette() {
       role="dialog"
       aria-modal="true"
       aria-label="Command palette"
-      className="fixed inset-0 z-[100] flex items-start justify-center bg-fg/40 px-4 pt-[12vh]"
+      className="fixed inset-0 z-[100] flex items-start justify-center bg-scrim px-4 pt-[12vh]"
       onClick={(e) => {
         // Click on the backdrop (not the dialog) closes.
         if (e.target === e.currentTarget) close();
       }}
     >
       <div
+        ref={trapRef}
         className="w-full max-w-[640px] overflow-hidden rounded-[var(--radius-xl)] bg-card"
         style={{ boxShadow: "var(--shadow-float)" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search input */}
-        <div className="flex items-center gap-2.5 border-b border-line px-4 py-2">
+        {/* The input itself draws no outline (a square box inside the
+            rounded sheet); the visible focus is this row's own ring. */}
+        <div className="flex items-center gap-2.5 rounded-t-[var(--radius-xl)] border-b border-line px-4 py-2 focus-within:ring-2 focus-within:ring-inset focus-within:ring-ink">
           <Search size={17} className="shrink-0 text-muted-fg" />
           <input
             ref={inputRef}
@@ -255,7 +267,12 @@ export function CommandPalette() {
             onKeyDown={onInputKeyDown}
             placeholder="Jump to anywhere · search actions, sections, providers"
             aria-label="Search commands"
-            className="h-12 flex-1 bg-transparent text-[15px] text-fg outline-none placeholder:text-dim-fg"
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="command-palette-listbox"
+            aria-autocomplete="list"
+            aria-activedescendant={flat.length > 0 ? `command-palette-option-${highlighted}` : undefined}
+            className="h-12 flex-1 bg-transparent text-[15px] text-fg outline-none focus:outline-none focus-visible:outline-none placeholder:text-dim-fg"
           />
           <Badge tone="neutral" className="font-mono">
             Esc
@@ -263,23 +280,41 @@ export function CommandPalette() {
         </div>
 
         {/* Results */}
-        <div ref={listRef} className="max-h-[60vh] overflow-y-auto p-2">
+        <div
+          ref={listRef}
+          id="command-palette-listbox"
+          role="listbox"
+          aria-label="Commands"
+          // Options are reached with the arrow keys (aria-activedescendant
+          // on the input); -1 stops Chrome making the scroller a Tab stop.
+          tabIndex={-1}
+          className="max-h-[60vh] overflow-y-auto p-2"
+        >
           {flat.length === 0 ? (
             <div className="px-3 py-6 text-center text-[13px] text-muted-fg">
               No matches for “{query}”.
             </div>
           ) : (
             grouped.map(([category, items]) => (
-              <div key={category} className="mb-2 last:mb-0">
-                <Label className="block px-2 py-1">{category}</Label>
+              <div key={category} role="group" aria-label={category} className="mb-2 last:mb-0">
+                <Label className="block px-2 py-1" aria-hidden="true">
+                  {category}
+                </Label>
                 <ul className="flex flex-col">
                   {items.map((cmd) => {
                     const flatIdx = flat.indexOf(cmd);
                     const isHi = flatIdx === highlighted;
                     return (
-                      <li key={cmd.id} data-cmd-index={flatIdx}>
+                      <li
+                        key={cmd.id}
+                        id={`command-palette-option-${flatIdx}`}
+                        role="option"
+                        aria-selected={isHi}
+                        data-cmd-index={flatIdx}
+                      >
                         <button
                           type="button"
+                          tabIndex={-1}
                           onMouseMove={() => setHighlighted(flatIdx)}
                           onClick={() => activate(cmd)}
                           className={cn(

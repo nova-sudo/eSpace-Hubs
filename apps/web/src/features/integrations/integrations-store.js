@@ -163,14 +163,19 @@ export async function fetchIntegrations() {
  *   - payload carries accessToken/apiToken → POST (connect / replace).
  *   - identity-only payload               → PATCH (profile, no tokens).
  *
- * Returns the network promise so token-validation flows can await the
- * write before hitting the proxy (which needs the encrypted credential
- * persisted server-side first). The promise never rejects — failures
- * roll back the optimistic local change and are logged.
+ * Returns a promise of `{ ok: true } | { ok: false, error }` so
+ * token-validation flows can await the write before hitting the proxy
+ * (which needs the encrypted credential persisted server-side first)
+ * AND stop with the real reason when the save itself failed. The
+ * promise never rejects — failures roll back the optimistic local
+ * change, are logged, and come back in the envelope.
  */
 export function saveConnection(providerId, payload) {
   if (!providerId || !payload || typeof payload !== "object") {
-    return Promise.resolve();
+    return Promise.resolve({
+      ok: false,
+      error: { code: "invalid_payload", message: "Nothing to save." },
+    });
   }
   const prev = state.byProvider[providerId];
   const hasToken = Boolean(payload.accessToken || payload.apiToken);
@@ -209,37 +214,41 @@ export function saveConnection(providerId, payload) {
 async function saveConnectionRemote(providerId, payload, prev) {
   const body = buildUpsertBody(providerId, payload);
   // Defensive: the connect-path guard already proved a token exists.
-  if (!body.accessToken && !body.apiToken) return;
+  if (!body.accessToken && !body.apiToken) {
+    return { ok: false, error: { code: "invalid_payload", message: "No token to save." } };
+  }
   const r = await apiPost("/integrations", body);
   if (r.ok) {
     reconcile(providerId, r.data);
-    return;
+    return { ok: true };
   }
-  if (isAuthError(r.error)) return;
+  if (isAuthError(r.error)) return { ok: false, error: r.error };
   rollback(providerId, prev, r.error);
   warn("save", r.error);
+  return { ok: false, error: r.error };
 }
 
 async function updateProfileRemote(providerId, payload, prev) {
   const body = buildProfileBody(payload);
-  if (Object.keys(body).length === 0) return;
+  if (Object.keys(body).length === 0) return { ok: true };
   const r = await apiPatch(
     `/integrations/${encodeURIComponent(providerId)}`,
     body,
   );
   if (r.ok) {
     reconcile(providerId, r.data);
-    return;
+    return { ok: true };
   }
-  if (isAuthError(r.error)) return;
+  if (isAuthError(r.error)) return { ok: false, error: r.error };
   if (r.error?.code === "not_found" || r.status === 404) {
     // No live server row to attach the profile to (e.g. an identity-only
     // save before any token was persisted). Keep the optimistic local
     // entry; a subsequent connect POST will create the row.
-    return;
+    return { ok: true };
   }
   rollback(providerId, prev, r.error);
   warn("profile", r.error);
+  return { ok: false, error: r.error };
 }
 
 export function disconnectProvider(providerId) {

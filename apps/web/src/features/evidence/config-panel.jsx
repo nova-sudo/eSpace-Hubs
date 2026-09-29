@@ -1,35 +1,17 @@
 "use client";
 
-import { Card, Checkbox, Field, Input, Label, SegmentedControl } from "@/components/ui";
-
-const FORMATS = [
-  { value: "markdown", label: ".md" },
-  { value: "pdf", label: ".pdf" },
-];
+import { Card, Checkbox, Field, Input, Label } from "@/components/ui";
 
 const SECTION_TOGGLES = [
   ["narrative", "Summary narrative"],
   ["goals", "Goal readings"],
 ];
 
-export function ConfigPanel({
-  format,
-  setFormat,
-  level,
-  setLevel,
-  include,
-  setInclude,
-  rangeLabel,
-}) {
+export function ConfigPanel({ level, setLevel, include, setInclude, rangeLabel }) {
   return (
     <div className="sticky top-20 flex flex-col gap-4">
       <Card className="flex flex-col gap-4">
         <div className="text-[15px] font-bold text-fg">Configure bundle</div>
-
-        <div>
-          <Label className="mb-1.5 block">Format</Label>
-          <SegmentedControl options={FORMATS} value={format} onChange={setFormat} onCard size="sm" />
-        </div>
 
         <Field label="Window">
           <div className="flex h-11 items-center rounded-[var(--radius-lg)] bg-card-alt px-3.5 text-[13.5px] text-muted-fg">
@@ -37,11 +19,14 @@ export function ConfigPanel({
           </div>
         </Field>
 
-        <Field label="Level">
+        <Field
+          label="Your career level"
+          hint="Printed in the document title. Leave blank to omit it."
+        >
           <Input
             value={level}
             onChange={(e) => setLevel(e.target.value)}
-            placeholder="L1 → L2"
+            placeholder="e.g. Senior engineer"
           />
         </Field>
 
@@ -63,9 +48,10 @@ export function ConfigPanel({
       </Card>
 
       <div className="px-1 text-[12px] leading-[1.6] text-muted-fg">
-        <div className="mb-1 text-[12px] font-bold text-fg">Privacy first</div>
-        {rangeLabel} bundle generated in your browser. Nothing is uploaded. You paste
-        the output wherever you want it to go.
+        <div className="mb-1 text-[12px] font-bold text-fg">Where this goes</div>
+        Download .md / Export PDF build the file in your browser — nothing is sent
+        anywhere. Submit packet uploads a frozen copy to eSpace Hubs for your manager.
+        Starred proof and goal readings are already stored in your account.
       </div>
     </div>
   );

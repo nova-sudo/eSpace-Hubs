@@ -12,7 +12,8 @@
  *
  * Authenticated, partial session OK (requireTotp: false):
  *   POST /totp/verify              step 2 of two-step login; flips
- *                                  session.totpVerified=true on a valid code
+ *                                  session.totpVerified=true on a valid
+ *                                  6-digit `code` OR an unused `backupCode`
  *
  * Authenticated, full session (requireTotp: true is the default):
  *   GET  /me                       returns the current user
@@ -21,6 +22,13 @@
  *   POST /totp/enrol               start a new enrolment (rejects if already enrolled)
  *   POST /totp/verify-enrolment    confirm enrolment with a fresh code
  *   POST /totp/disable             turn TOTP off, requires current code
+ *   POST /totp/backup-codes/regenerate  replace all backup codes, requires
+ *                                  current code; returns the new ones once
+ *   POST /totp/re-enrol/start      move 2FA to a new phone: password + (code |
+ *                                  backupCode | session verified by a backup
+ *                                  code < 10 min ago) → pending {secret, otpauthUrl}
+ *   POST /totp/re-enrol/confirm    code from the NEW app → swap secrets,
+ *                                  { ok, backupCodes } (old codes invalidated)
  *
  * Admin-only:
  *   POST /invite                   creates an invited user, sends accept link
@@ -39,6 +47,7 @@ import {
 } from "../../middleware/rate-limit.js";
 import {
   acceptInviteHandler,
+  backupCodesRegenerateHandler,
   companionTunnelClearHandler,
   companionTunnelRegisterHandler,
   inviteHandler,
@@ -52,6 +61,8 @@ import {
   signupHandler,
   totpDisableHandler,
   totpEnrolHandler,
+  totpReenrolConfirmHandler,
+  totpReenrolStartHandler,
   totpVerifyEnrolmentHandler,
   totpVerifyLoginHandler,
   updateMeHandler,
@@ -134,6 +145,30 @@ authRouter.post(
 
 // ─── authenticated, full session + enrolment required ────────────────
 authRouter.post("/totp/disable", requireAuth(), totpDisableHandler);
+// Same limiter as /totp/verify — the body carries a 6-digit code, so it
+// is as guessable as the login step.
+authRouter.post(
+  "/totp/backup-codes/regenerate",
+  totpLimiter,
+  requireAuth(),
+  backupCodesRegenerateHandler,
+);
+
+// Move two-factor to a new phone without an admin. Both steps carry a
+// guessable 6-digit code (start may also carry a backup code), so both
+// sit behind the TOTP limiter.
+authRouter.post(
+  "/totp/re-enrol/start",
+  totpLimiter,
+  requireAuth(),
+  totpReenrolStartHandler,
+);
+authRouter.post(
+  "/totp/re-enrol/confirm",
+  totpLimiter,
+  requireAuth(),
+  totpReenrolConfirmHandler,
+);
 
 // ─── admin-only ──────────────────────────────────────────────────────
 authRouter.post(

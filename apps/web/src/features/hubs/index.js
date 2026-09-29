@@ -40,7 +40,7 @@ export {
   useQaHubConfig,
   DEFAULT_QA_CONFIG,
 } from "./use-qa-hub-config.js";
-export { resetHubsStore } from "./hubs-store.js";
+export { resetHubsStore, refetchHubs } from "./hubs-store.js";
 export {
   getActivePick,
   getValidPick,

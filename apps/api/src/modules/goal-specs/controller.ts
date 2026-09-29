@@ -13,14 +13,21 @@
 import type { NextFunction, Request, Response } from "express";
 import {
   getGoalSpecsCollection,
-  getGoalsCollection,
   getUsersCollection,
 } from "../../db/collections.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
-import { createNotification } from "../../lib/notifications.js";
 import { effectiveSpecDocs } from "../../lib/assigned-goals.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import { isAssignedGoalId, validateSpec } from "@espace-devhub/shared/goal-specs";
+import {
+  applyComposedGate,
+  hasOpenApproval,
+  isActiveManager,
+  managerLabel,
+  resolveStoredApproval,
+  withApprovalRouting,
+} from "./approval.js";
+import { notifyApprovalRoute, resolveApprovalRoute } from "./route-approval.js";
 import type { ValidatedSpec } from "@espace-devhub/shared/goal-specs";
 
 const goalIdParam = (req: Request): string => {
@@ -48,11 +55,22 @@ function assertNotAssigned(goalId: string): void {
 /**
  * POST /:goalId/submit-approval — a dev submits their just-composed
  * Build-Your-Own tracker (already saved with approval.status="pending")
- * for manager review.
+ * for review. The gate is HARD (hub-audit §1.3): nothing is auto-approved.
  *
- *   - Has a manager  → notify them; the tracker stays pending. → {status:"pending"}
- *   - No manager     → nothing to route to; tell the client to activate it
- *                       immediately. → {status:"approved"}
+ *   - Active manager      → notify them; the tracker stays pending.
+ *       → {status:"pending", approverScope:"manager", managerId,
+ *          managerName, noManager:false, submittedAt, approval}
+ *   - No manager, or the  → the tracker stays pending and is routed to the
+ *     manager is disabled    org's admins, who decide it on the admin hub's
+ *                            Approvals page; every active admin is notified.
+ *       → {status:"pending", approverScope:"admins", managerId:null,
+ *          managerName:null, noManager:true, submittedAt, approval}
+ *
+ * `approval` is the block the client persists onto the spec (see
+ * ./approval.ts). The stored pending spec gets the routing stamped
+ * best-effort here; reads re-resolve it from the CURRENT manager
+ * regardless. Legacy `autoApproved` rows (pre-§1.3) are still read, never
+ * written.
  *
  * The spec itself is written by the normal PUT /goal-specs path; this
  * endpoint only routes the approval + notifies.
@@ -70,57 +88,59 @@ export async function submitApprovalHandler(
     const goalId = goalIdParam(req);
     assertNotAssigned(goalId);
 
-    const users = await getUsersCollection();
-    const me = await users.findOne({
-      _id: session.userId,
-      orgId: session.orgId,
-    });
-    const managerId = me?.managerId ?? null;
-
-    if (!managerId) {
-      // The approval gate silently no-ops without a managerId — that's a
-      // governance bypass an admin must be able to find after the fact,
-      // and the client must be able to tell the user no review happened.
-      await writeAudit({
-        orgId: session.orgId,
-        actorUserId: session.userId,
-        actorRole: session.role,
-        action: "goal_spec.approval.auto_approved",
-        targetType: "goal_spec",
-        targetId: goalId,
-        after: { reason: "no_manager_on_file" },
-        ...networkMeta(req),
-      });
-      res.json({ status: "approved", autoApproved: true });
-      return;
-    }
-
-    const tree = await getGoalsCollection().then((c) =>
-      c.findOne({ orgId: session.orgId, userId: session.userId }),
+    const specs = await getGoalSpecsCollection();
+    const stored = await specs.findOne(
+      { orgId: session.orgId, userId: session.userId, goalId },
+      { projection: { "spec.approval": 1 } },
     );
-    let goalTitle = "a goal";
-    for (const l1 of tree?.l1s ?? []) {
-      for (const l2 of l1.l2s ?? []) {
-        if (l2.id === goalId) goalTitle = l2.title;
+    // Nothing to approve: the tracker is saved (PUT) BEFORE it is submitted.
+    // Without this a stray submit notified a manager about a goal that has
+    // no tracker at all.
+    if (!stored) {
+      throw new HttpError(
+        400,
+        "no_tracker",
+        "Save a tracker for this goal before sending it for approval.",
+      );
+    }
+    const storedSubmittedAt = (
+      stored.spec?.approval as { submittedAt?: unknown } | undefined
+    )?.submittedAt;
+
+    const route = await resolveApprovalRoute(session, storedSubmittedAt);
+    const { response, managerName } = route;
+    await notifyApprovalRoute({ req, session, goalId, route });
+
+    // Best-effort: stamp the routing onto the stored pending spec so it's on
+    // the row itself, not just resolved at read time. Only while still
+    // pending — never over a decision someone already made.
+    {
+      const set: Record<string, unknown> = {
+        "spec.approval.submittedAt": response.submittedAt,
+        "spec.approval.approverScope": response.approverScope,
+      };
+      const unset: Record<string, ""> = {};
+      if (response.noManager) {
+        set["spec.approval.noManager"] = true;
+        unset["spec.approval.managerName"] = "";
+      } else {
+        unset["spec.approval.noManager"] = "";
+        if (managerName) set["spec.approval.managerName"] = managerName;
       }
+      await specs
+        .updateOne(
+          {
+            orgId: session.orgId,
+            userId: session.userId,
+            goalId,
+            "spec.approval.status": "pending",
+          },
+          { $set: set, $unset: unset },
+        )
+        .catch(() => undefined);
     }
 
-    void createNotification({
-      orgId: session.orgId,
-      userId: managerId,
-      kind: "goal_submitted",
-      title: "A goal needs your approval",
-      body: `${me?.displayName ?? "A report"} submitted "${goalTitle}" for your approval.`,
-      data: {
-        goalId,
-        goalTitle,
-        subjectUserId: session.userId.toHexString(),
-        subjectName: me?.displayName ?? "",
-      },
-      createdBy: session.userId,
-    });
-
-    res.json({ status: "pending" });
+    res.json(response);
   } catch (err) {
     next(err);
   }
@@ -146,11 +166,41 @@ export async function listGoalSpecsHandler(
     // `assignedGoalIds` lets the client treat them as read-only.
     const records = await effectiveSpecDocs(session.orgId, session.userId, own);
 
+    // Open approvals name who they're routed to — resolved from the user's
+    // CURRENT manager on every read (one lookup, only when something is
+    // open), so the pending card never says "your manager" when there is
+    // none on file.
+    let routing: { managerName: string | null; hasManager: boolean } | null = null;
+    if (records.some((r) => !isAssignedGoalId(r.goalId) && hasOpenApproval(r.spec))) {
+      const users = await getUsersCollection();
+      const me = await users.findOne(
+        { _id: session.userId, orgId: session.orgId },
+        { projection: { managerId: 1 } },
+      );
+      const managerId = me?.managerId ?? null;
+      const manager = managerId
+        ? await users.findOne(
+            { _id: managerId, orgId: session.orgId },
+            { projection: { displayName: 1, email: 1, status: 1 } },
+          )
+        : null;
+      // A disabled manager can't act — their reports' approvals are the
+      // admins' (same rule as submit-approval).
+      const hasManager = Boolean(managerId) && isActiveManager(manager);
+      routing = {
+        managerName: hasManager ? managerLabel(manager) : null,
+        hasManager,
+      };
+    }
+
     const specs: Record<string, unknown> = {};
     const assignedGoalIds: string[] = [];
     let lastAnalyzedAt = 0;
     for (const r of records) {
-      specs[r.goalId] = r.spec;
+      specs[r.goalId] =
+        routing && !isAssignedGoalId(r.goalId)
+          ? withApprovalRouting(r.spec, routing.managerName, routing.hasManager)
+          : r.spec;
       if (isAssignedGoalId(r.goalId)) {
         assignedGoalIds.push(r.goalId);
         continue;
@@ -212,7 +262,6 @@ export async function putGoalSpecHandler(
       );
     }
 
-    const spec: ValidatedSpec = result.spec;
     const now = new Date();
     const classifierVersion =
       typeof candidate.classifierVersion === "string"
@@ -220,22 +269,83 @@ export async function putGoalSpecHandler(
         : null;
 
     const col = await getGoalSpecsCollection();
-    const upserted = await col.findOneAndUpdate(
+
+    // `approval` is server-owned (see resolveStoredApproval): the client may
+    // only (re)submit — never approve, reject, or revert a decision.
+    const stored = await col.findOne(
       { orgId: session.orgId, userId: session.userId, goalId },
-      {
-        $set: {
-          spec: spec as unknown as Record<string, unknown>,
-          generatedAt: now,
-          classifierVersion,
-        },
-        $setOnInsert: {
+      { projection: { "spec.approval": 1, "spec.widget": 1 } },
+    );
+    const resolved = resolveStoredApproval(
+      stored?.spec?.approval,
+      (result.spec as { approval?: unknown }).approval,
+      now.getTime(),
+    );
+    // Hard BYO gate (see applyComposedGate for the per-flow exemptions): a
+    // NEW COMPOSED tracker is stored pending whatever the body says, and —
+    // because the client skipped the hand-off — routed here.
+    const gate = applyComposedGate({
+      widget: result.spec.widget,
+      storedWidget: stored?.spec?.widget,
+      storedExists: Boolean(stored),
+      resolved,
+      now: now.getTime(),
+    });
+    let approval = gate.approval;
+    const forcedRoute = gate.forced ? await resolveApprovalRoute(session) : null;
+    if (forcedRoute && approval) {
+      approval = { ...forcedRoute.response.approval, submittedAt: approval.submittedAt };
+    }
+    const { approval: _clientApproval, ...withoutApproval } =
+      result.spec as ValidatedSpec & { approval?: unknown };
+    const spec = (
+      approval ? { ...withoutApproval, approval } : withoutApproval
+    ) as ValidatedSpec;
+
+    // Compare-and-set on the approval status we resolved against, so a
+    // decision landing between the read above and this write isn't
+    // overwritten. A mismatch on an existing row makes the upsert collide
+    // with the unique (org,user,goal) index → 409, and the client refetches.
+    const storedStatus = (stored?.spec?.approval as { status?: unknown } | undefined)
+      ?.status;
+    let upserted;
+    try {
+      upserted = await col.findOneAndUpdate(
+        {
           orgId: session.orgId,
           userId: session.userId,
           goalId,
+          "spec.approval.status":
+            typeof storedStatus === "string" ? storedStatus : { $exists: false },
         },
-      },
-      { upsert: true, returnDocument: "after" },
-    );
+        {
+          $set: {
+            spec: spec as unknown as Record<string, unknown>,
+            generatedAt: now,
+            classifierVersion,
+          },
+          $setOnInsert: {
+            orgId: session.orgId,
+            userId: session.userId,
+            goalId,
+          },
+        },
+        { upsert: true, returnDocument: "after" },
+      );
+    } catch (err) {
+      if ((err as { code?: number })?.code === 11000) {
+        throw new HttpError(
+          409,
+          "approval_changed",
+          "This goal's approval changed while you were editing. Reload and try again.",
+        );
+      }
+      throw err;
+    }
+
+    if (forcedRoute) {
+      await notifyApprovalRoute({ req, session, goalId, route: forcedRoute });
+    }
 
     await writeAudit({
       orgId: session.orgId,
@@ -244,7 +354,11 @@ export async function putGoalSpecHandler(
       action: "goal_specs.upsert",
       targetType: "goal_spec",
       targetId: goalId,
-      after: { widget: spec.widget, kind: spec.kind },
+      after: {
+        widget: spec.widget,
+        kind: spec.kind,
+        ...(gate.forced ? { approvalForced: true } : {}),
+      },
       ...networkMeta(req),
     });
 

@@ -64,6 +64,28 @@ export const usersValidator: Document = {
       status: { enum: [...ALL_USER_STATUSES] },
       totpSecret: { bsonType: ["string", "null"] },
       totpEnrolledAt: { bsonType: ["date", "null"] },
+      // 2FA backup codes. Optional/nullable so rows that enrolled
+      // before backup codes existed still validate. Hash is hex
+      // HMAC-SHA256 — never a plaintext code.
+      totpBackupCodes: {
+        bsonType: ["array", "null"],
+        maxItems: 20,
+        items: {
+          bsonType: "object",
+          required: ["hash", "usedAt"],
+          additionalProperties: false,
+          properties: {
+            hash: { bsonType: "string", pattern: "^[0-9a-f]{64}$" },
+            usedAt: { bsonType: ["date", "null"] },
+          },
+        },
+      },
+      totpBackupCodesGeneratedAt: { bsonType: ["date", "null"] },
+      // Pending secret of a self-service re-enrolment (move to a new
+      // phone). Encrypted envelope, cleared on confirm; optional so
+      // existing rows validate.
+      totpPendingSecret: { bsonType: ["string", "null"] },
+      totpPendingExpiresAt: { bsonType: ["date", "null"] },
       zohoEmployeeId: { bsonType: ["string", "null"] },
       managerId: { bsonType: ["objectId", "null"] },
       level: { bsonType: ["string", "null"] },

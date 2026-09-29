@@ -179,7 +179,7 @@ export function OverflowMenu({ items = [], label = "More actions" }) {
         onClick={toggle}
         className={cn(
           "inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-card-alt",
-          open ? "bg-card-alt text-fg" : "text-dim-fg",
+          open ? "bg-card-alt text-fg" : "text-muted-fg",
         )}
       >
         <MoreHorizontal size={16} />
@@ -212,7 +212,7 @@ export function OverflowMenu({ items = [], label = "More actions" }) {
                   className={cn(
                     "block w-full rounded-[var(--radius-md)] px-3 py-2 text-left text-[13px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-45",
                     item.danger
-                      ? "text-peach-ink hover:bg-peach"
+                      ? "text-peach-text hover:bg-peach hover:text-peach-ink"
                       : "text-fg hover:bg-card-alt",
                   )}
                 >
@@ -267,20 +267,15 @@ function ConfirmDialog({
   onConfirm,
   onClose,
 }) {
+  // Focus returns to the opener on unmount via useFocusTrap.
   const trapRef = useFocusTrap(true);
-  const restoreRef = useRef(null);
 
   useEffect(() => {
-    restoreRef.current =
-      typeof document !== "undefined" ? document.activeElement : null;
     const onKey = (e) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      restoreRef.current?.focus?.();
-    };
+    return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
   if (typeof document === "undefined") return null;
@@ -291,7 +286,7 @@ function ConfirmDialog({
   // the top of the document instead of the middle of the screen.
   return createPortal(
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-fg/40 p-4"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-scrim p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

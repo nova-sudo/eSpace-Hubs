@@ -16,7 +16,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Button, Label } from "@/components/ui";
+import { Badge, Button, Label } from "@/components/ui";
 import { TIER_LABELS, tierDelta } from "@/features/goal-tiers";
 import { cn } from "@/lib/cn";
 import { EmptyCard, TierBadge, TierSpreadBar } from "./manager-ui";
@@ -40,7 +40,7 @@ function DeltaCell({ aiTier, managerTier }) {
       title={move.label}
       className={cn(
         "text-[12.5px] font-extrabold tabular-nums",
-        move.direction === "up" ? "text-sky-ink" : "text-peach-ink",
+        move.direction === "up" ? "text-sky-text" : "text-peach-text",
       )}
     >
       {signed}
@@ -124,8 +124,11 @@ export function EmployeeConsistencyView({ user, summary, groups, userId, onGrade
                 <span>
                   <TierBadge tier={goal.aiTier} fallback="Not graded" />
                 </span>
-                <span>
+                <span className="flex flex-wrap items-center gap-1.5">
                   <TierBadge tier={managerTier} fallback="Not set" />
+                  {managerTier && goal.tier?.ack?.disagree ? (
+                    <Badge tone="peach">Disputed</Badge>
+                  ) : null}
                 </span>
                 <DeltaCell aiTier={goal.aiTier} managerTier={managerTier} />
                 <div className="flex justify-end gap-2">
@@ -142,7 +145,7 @@ export function EmployeeConsistencyView({ user, summary, groups, userId, onGrade
                   ) : null}
                   <Button
                     type="button"
-                    variant={managerTier ? "soft" : "ink"}
+                    variant="soft"
                     size="sm"
                     onClick={() => onGrade(goal)}
                   >

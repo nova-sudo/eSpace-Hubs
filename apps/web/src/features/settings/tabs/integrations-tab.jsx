@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { toast } from "sonner";
 import { Badge, Button, Card, Section } from "@/components/ui";
 import {
   DASHBOARD_PROVIDER_DEPENDENCIES,
   disconnectProvider,
   PROVIDERS,
+  providerDescription,
   useIntegrations,
 } from "@/features/integrations";
 import {
@@ -13,7 +15,7 @@ import {
   useAllowedProviders,
 } from "@/features/hubs";
 import { startGitHubOAuth } from "@/lib/oauth-pkce";
-import { useMyEngagementConfig } from "@/features/auth";
+import { useMyEngagementConfig, useSession } from "@/features/auth";
 import {
   GitLabTokenForm,
   JenkinsTokenForm,
@@ -48,7 +50,7 @@ export function IntegrationsTab() {
         <IntegrationHealthSummary providers={allowed} />
       </Section>
 
-      <Section title="Connected providers">
+      <Section title="Providers">
         <div className="flex flex-col gap-3">
           {allowed.map((p) => (
             <ProviderCard key={p.id} provider={p} />
@@ -62,43 +64,41 @@ export function IntegrationsTab() {
             </div>
           ) : null}
         </div>
-        <LocalCallout />
+        <StorageCallout />
       </Section>
 
+      {/* Keep this honest and in sync with CLAUDE.md §4 + the Danger
+          zone copy: tokens are server-side, envelope-encrypted, and
+          decrypted only inside the API process to proxy requests. */}
       <Section title="How tokens are stored">
         <Card className="p-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <PrivacyPoint
-              title="localStorage only"
-              body="Your Jira email, GitLab PAT, and GitHub OAuth token live in your browser's localStorage — scoped to this origin. They never touch our server."
+              title="Encrypted on our server"
+              body="Your GitLab token, GitHub token and Jira credential are sent once over TLS and stored envelope-encrypted in our database. They're decrypted only inside the API process, only to proxy your own requests, and they're never logged or sent back to the browser."
             />
             <PrivacyPoint
-              title="We proxy, not persist"
-              body="When you load the dashboard, the browser sends each token to our API route, which forwards it to Jira / GitLab / GitHub to dodge CORS. We don't log the token and we don't cache the response."
+              title="Follows your account"
+              body="Because the credential lives with your account, not this browser, a new device or a cleared cache shows the same connections. Disconnecting here deletes the stored credential on every device."
             />
             <PrivacyPoint
-              title="Minimum scopes"
-              body="GitLab PAT: read_api. GitHub OAuth: repo + read:user. Jira: user-scoped API token. We never request write scopes."
+              title="Scopes"
+              body="GitLab: read_api, read_user, read_repository (read-only). Jira: your own permissions, used read-only. GitHub: repo + read:user — GitHub has no read-only scope that covers private repositories, so repo is the smallest one that lets the PR widgets see your private work. We never write."
             />
             <PrivacyPoint
-              title="Rotate any time"
-              body="Revoke a token in its source (Jira profile, GitLab preferences, GitHub settings) and the connection goes dark within 60s. No cleanup required on our side."
+              title="Revoke any time"
+              body="Revoke the token at its source (GitHub settings, GitLab access tokens, Atlassian API tokens) and the connection shows an error on its next request. Disconnecting here removes our copy but does not revoke the token there — do both."
             />
           </div>
         </Card>
       </Section>
 
-      {/* The token promise above is absolute — "they never touch our server."
-          The AI features are the honest exception: text and attached documents
-          DO leave the browser, reach our API, and go on to a third-party model.
-          Saying so plainly here is the price of making the token claim
-          believable everywhere else. */}
       <Section title="What the AI sees">
         <Card className="p-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <PrivacyPoint
               title="AI text does leave"
-              body="Unlike your tokens, what you type into the AI surfaces — goal descriptions, tracker descriptions, chat — is sent to our API and on to the provider you picked in Account (Claude, Mistral, GLM, OpenRouter). There's no on-device model; that trip is how you get an answer."
+              body="What you type into the AI surfaces — goal descriptions, tracker descriptions, chat — is sent to our API and on to the AI provider you picked under Account (Claude, Mistral, GLM, OpenRouter). There's no on-device model; that trip is how you get an answer."
             />
             <PrivacyPoint
               title="Attached documents too"
@@ -120,7 +120,7 @@ export function IntegrationsTab() {
 }
 
 function IntegrationHealthSummary({ providers }) {
-  const { isConnected } = useIntegrations();
+  const { isConnected, integrations } = useIntegrations();
   return (
     <Card className="overflow-hidden p-0">
       <table className="w-full text-left">
@@ -133,13 +133,14 @@ function IntegrationHealthSummary({ providers }) {
               Status
             </th>
             <th className="px-4 py-2.5 text-[12px] font-semibold text-muted-fg">
-              Dashboard tiles
+              Used for
             </th>
           </tr>
         </thead>
         <tbody>
           {providers.map((p) => {
             const connected = isConnected(p.id);
+            const failing = connected && Boolean(integrations[p.id]?.lastError);
             const tiles = TILES_BY_PROVIDER[p.id] ?? [];
             return (
               <tr key={p.id} className="border-t border-line first:border-t-0">
@@ -147,8 +148,8 @@ function IntegrationHealthSummary({ providers }) {
                   {p.label}
                 </td>
                 <td className="px-4 py-3">
-                  <Badge tone={connected ? "mint" : "neutral"} dot>
-                    {connected ? "Connected" : "Not connected"}
+                  <Badge tone={failing ? "peach" : connected ? "mint" : "neutral"} dot>
+                    {failing ? "Needs attention" : connected ? "Connected" : "Not connected"}
                   </Badge>
                 </td>
                 <td className="px-4 py-3">
@@ -176,8 +177,66 @@ function IntegrationHealthSummary({ providers }) {
 function ProviderCard({ provider }) {
   const { integrations, isConnected } = useIntegrations();
   const { config: engagementCfg } = useMyEngagementConfig();
+  const { user } = useSession();
   const connected = isConnected(provider.id);
   const meta = integrations[provider.id];
+  // The proxy stamps `lastError` whenever an upstream call fails
+  // (401/403/network). A green "Connected" badge on top of that was
+  // the lie the audit caught — surface it and offer the fix.
+  const lastError = connected ? meta?.lastError : null;
+  // "Reconnect" / "Replace token" re-opens the credential form on an
+  // already-connected card; it collapses again once the new token
+  // verifies (the form calls onConnected).
+  const [reconnecting, setReconnecting] = useState(false);
+  const showForm = !connected || reconnecting;
+
+  const status = lastError
+    ? { tone: "peach", label: "Needs attention" }
+    : connected
+      ? { tone: "mint", label: "Connected" }
+      : { tone: "neutral", label: "Not connected" };
+
+  async function startOAuth() {
+    const start = OAUTH_STARTERS[provider.id];
+    if (!start) {
+      toast.error(`No OAuth starter wired for ${provider.label}`);
+      return;
+    }
+    try {
+      // Pass per-user engagement config — the GitHub client id depends
+      // on whether the user is on the eSpace or Crealogix engagement.
+      // returnTo brings the user back to this tab after the callback.
+      await start({
+        clientId: engagementCfg?.githubClientId,
+        returnTo: `${window.location.pathname}?tab=integrations`,
+      });
+    } catch (e) {
+      toast.error(e.message);
+    }
+  }
+
+  function handleDisconnect() {
+    const ok = window.confirm(
+      `Disconnect ${provider.label}? The saved credential is deleted from your account on every device and the widgets that depend on it go blank until you reconnect. The token itself stays valid at ${provider.label} until you revoke it there.`,
+    );
+    if (!ok) return;
+    disconnectProvider(provider.id);
+    setReconnecting(false);
+    toast.success(`Disconnected from ${provider.label}`);
+  }
+
+  const form =
+    provider.authMode === "token" ? (
+      <JiraTokenForm onConnected={() => setReconnecting(false)} />
+    ) : provider.authMode === "pat" ? (
+      <GitLabTokenForm onConnected={() => setReconnecting(false)} />
+    ) : provider.authMode === "basic" ? (
+      <JenkinsTokenForm onConnected={() => setReconnecting(false)} />
+    ) : (
+      <Button onClick={startOAuth}>
+        {connected ? `Reconnect ${provider.label}` : `Connect ${provider.label}`}
+      </Button>
+    );
 
   return (
     <Card className="p-5">
@@ -186,8 +245,8 @@ function ProviderCard({ provider }) {
         <div>
           <div className="mb-0.5 flex items-center gap-2.5">
             <span className="text-[15px] font-bold text-fg">{provider.label}</span>
-            <Badge tone={connected ? "mint" : "neutral"} dot>
-              {connected ? "Connected" : "Not set"}
+            <Badge tone={status.tone} dot>
+              {status.label}
             </Badge>
           </div>
           {connected && meta ? (
@@ -202,12 +261,35 @@ function ProviderCard({ provider }) {
                 : ""}
             </div>
           ) : null}
-          <div className="mt-1.5 text-[11.5px] text-dim-fg">
-            {provider.description} · scopes: {provider.scopes}
+          {lastError ? (
+            <div className="mt-2 rounded-[var(--radius-lg)] bg-peach px-3 py-2 text-[12px] leading-[1.5] text-peach-ink">
+              <span className="font-bold">Last error:</span> {lastError}
+              {meta?.lastErrorAt
+                ? ` (${new Date(meta.lastErrorAt).toLocaleString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })})`
+                : ""}
+              {" · "}
+              <button
+                type="button"
+                className="font-bold underline"
+                onClick={() =>
+                  provider.authMode === "oauth" ? startOAuth() : setReconnecting(true)
+                }
+              >
+                Reconnect
+              </button>
+            </div>
+          ) : null}
+          <div className="mt-1.5 text-[11.5px] text-muted-fg">
+            {providerDescription(provider, user?.engagement)} · scopes: {provider.scopes}
           </div>
           {(TILES_BY_PROVIDER[provider.id] ?? []).length > 0 ? (
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] text-dim-fg">Affects:</span>
+              <span className="text-[11px] text-muted-fg">Affects:</span>
               {(TILES_BY_PROVIDER[provider.id] ?? []).map((t) => (
                 <Badge key={t} tone="neutral">
                   {t}
@@ -215,55 +297,42 @@ function ProviderCard({ provider }) {
               ))}
             </div>
           ) : null}
-          {!connected ? (
+          {showForm ? (
             <div className="mt-4">
-              {provider.authMode === "token" ? (
-                <JiraTokenForm />
-              ) : provider.authMode === "pat" ? (
-                <GitLabTokenForm />
-              ) : provider.authMode === "basic" ? (
-                <JenkinsTokenForm />
-              ) : (
+              {reconnecting ? (
+                <div className="mb-2 text-[12px] text-muted-fg">
+                  Paste a new credential — it replaces the saved one once it verifies.
+                </div>
+              ) : null}
+              {form}
+              {reconnecting ? (
                 <Button
-                  onClick={async () => {
-                    const start = OAUTH_STARTERS[provider.id];
-                    if (!start) {
-                      toast.error(
-                        `No OAuth starter wired for ${provider.label}`,
-                      );
-                      return;
-                    }
-                    try {
-                      // Pass per-user engagement config — the GitHub
-                      // client id depends on whether the user is on
-                      // the eSpace or Crealogix engagement.
-                      await start({
-                        clientId: engagementCfg?.githubClientId,
-                      });
-                    } catch (e) {
-                      toast.error(e.message);
-                    }
-                  }}
+                  variant="ghost"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => setReconnecting(false)}
                 >
-                  Connect {provider.label}
+                  Cancel
                 </Button>
-              )}
+              ) : null}
             </div>
           ) : null}
         </div>
         {connected ? (
           <div className="flex gap-1.5">
-            <Button variant="ghost" size="sm" disabled>
-              Rotate token
-            </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={() => {
-                disconnectProvider(provider.id);
-                toast.success(`Disconnected from ${provider.label}`);
-              }}
-            >
+            {!reconnecting ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  provider.authMode === "oauth" ? startOAuth() : setReconnecting(true)
+                }
+                title="Swap in a new token without disconnecting first"
+              >
+                {provider.authMode === "oauth" ? "Reconnect" : "Replace token"}
+              </Button>
+            ) : null}
+            <Button variant="danger" size="sm" onClick={handleDisconnect}>
               Disconnect
             </Button>
           </div>
@@ -282,15 +351,14 @@ function ProviderGlyph({ glyph }) {
   );
 }
 
-/** "100% local" privacy callout. */
-function LocalCallout() {
+/** One-line storage summary under the provider list. */
+function StorageCallout() {
   return (
     <div className="mt-[18px] flex items-center gap-3 rounded-[var(--radius-lg)] bg-card-alt px-4 py-3.5">
-      <span className="text-[22px] font-extrabold tracking-[-0.02em] text-fg">
-        100%
-      </span>
       <span className="text-[13px] text-muted-fg">
-        local — tokens never touch our servers. Clear them anytime from this tab.
+        Credentials are stored encrypted on our server and decrypted only to
+        proxy your own requests. Disconnect here to delete our copy; revoke
+        at the provider to kill the token itself.
       </span>
     </div>
   );

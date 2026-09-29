@@ -313,9 +313,12 @@ function currentDataBody(spec, entries, reading, liveReading) {
       });
       const cycleWindows = Array.isArray(cycle?.windows) ? cycle.windows : [];
       const inCycle = new Set(cycleWindows.map((w) => w.key));
+      // "before" = ended before this tracker existed and never backfilled —
+      // not a period the user owed, so not part of "elapsed".
       const elapsed = cycleWindows.filter(
-        (w) => w.state !== "future" && w.state !== "current",
+        (w) => w.state !== "future" && w.state !== "current" && w.state !== "before",
       ).length;
+      const trackedCount = Number.isFinite(cycle?.total) ? cycle.total : cycleWindows.length;
 
       // Newest period first; cap to bound the prompt for high-frequency
       // cadences (weekly/daily). Quarterly/monthly fit comfortably.
@@ -344,9 +347,13 @@ function currentDataBody(spec, entries, reading, liveReading) {
         `every required field filled; streak of consecutive complete periods ` +
         `(newest back): ${streak}.` +
         (cycleWindows.length
-          ? ` Cycle progress: ${elapsed} of ${cycleWindows.length} ${cadenceNoun} window(s) ` +
+          ? ` Cycle progress: ${elapsed} of ${trackedCount} ${cadenceNoun} window(s) ` +
             `have elapsed, so the cycle is ` +
-            `${elapsed >= cycleWindows.length ? "COMPLETE" : "STILL RUNNING"}.`
+            `${elapsed >= trackedCount ? "COMPLETE" : "STILL RUNNING"}.` +
+            (cycle.beforeCount > 0
+              ? ` ${cycle.beforeCount} earlier window(s) ended before this tracker was created — ` +
+                `optional backfill, NOT missed periods; do not count them against the user.`
+              : "")
           : "") +
         ` Judge the achievement tier across the periods below. Tiers that describe a single ` +
         `cycle (e.g. "achieved") are met when the most recent LOGGED period satisfies them ` +

@@ -4,8 +4,9 @@
  * Hub-dashboard route. Renders the active hub's dashboard component
  * picked from apps/web/src/hubs/dashboard-registry.jsx.
  *
- *   /dev   → DashboardPage (the full bento dashboard the app started as)
- *   /qa    → <QaPlaceholder slot="dashboard" />
+ *   /dev     → IntelligencePage (the Goal Intelligence Hub)
+ *   /manager → ManagerDashboard (Team) · /admin → AdminDashboard (Overview)
+ *   /qa      → QaDashboard
  *   /<new> → DefaultDashboardPlaceholder until the registry maps it
  *
  * HubProvider in app/[hub]/layout.jsx has already validated the slug

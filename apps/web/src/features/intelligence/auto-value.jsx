@@ -14,6 +14,7 @@
  * trio) fall back to the generic note rather than rendering a wrong number.
  */
 
+import { opLabel } from "@/lib/fmt";
 import { Check, X } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { useDataSource } from "@/features/goal-widgets";
@@ -81,7 +82,7 @@ export function AutoGoalValue({ spec, compact = false }) {
       </span>
       {target ? (
         <span className="flex items-center gap-1.5 text-[12px] text-muted-fg">
-          target {target.op} {target.value}
+          target {opLabel(target.op)} {target.value}
           {met != null ? (
             <Badge tone={met ? "mint" : "peach"}>{met ? <Check size={11} /> : <X size={11} />}</Badge>
           ) : null}
@@ -94,7 +95,7 @@ export function AutoGoalValue({ spec, compact = false }) {
 }
 
 function Dash() {
-  return <span className="text-dim-fg">—</span>;
+  return <span className="text-muted-fg">—</span>;
 }
 
 function GenericNote() {

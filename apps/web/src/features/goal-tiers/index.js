@@ -17,6 +17,7 @@ export {
 } from "./goal-tier-store";
 export {
   readManagerVerdict,
+  applyManagerVerdict,
   hydrateManagerVerdicts,
   resetManagerVerdicts,
   subscribeManagerVerdicts,
@@ -40,10 +41,11 @@ export {
   getGoalLiveReadingsServerSnapshot,
 } from "./live-readings-store";
 export { GoalTierBadge, GoalTierLadder } from "./goal-tier-ui";
+export { ManagerGradeAck } from "./manager-grade-ack";
 export { numericReadingFor, gradeNumericTier } from "./grade-numeric";
 // F9 — instant tier feedback.
 export { tierDelta } from "./tier-diff";
-export { TIER_COLOR, tierBadgeFg, tierTone } from "./tier-colors";
+export { TIER_COLOR, tierBadgeFg, tierTextColor, tierTone } from "./tier-colors";
 export {
   recordTierTransition,
   readTierTransition,

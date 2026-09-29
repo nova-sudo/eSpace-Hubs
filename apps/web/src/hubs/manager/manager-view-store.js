@@ -22,6 +22,9 @@ export const MANAGER_VIEW_CHANGE_EVENT = "manager-view:change";
 export const TEAM_VIEW_KEY = "espace-manager-view";
 export const BOARD_VIEW_KEY = "espace-manager-board-view";
 
+/** The team page's views — shared so the dashboard overview can switch it. */
+export const TEAM_VIEWS = ["table", "queue", "people", "calibration"];
+
 const subscribers = new Set();
 
 function notify() {

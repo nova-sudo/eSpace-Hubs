@@ -26,26 +26,55 @@
  * to the first PR.
  */
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useSWRConfig } from "swr";
+import { ExternalLink } from "lucide-react";
+import { DrillDownNav } from "@/components/shell/drill-down-nav";
 import { Badge, Button, Card, Label, PageHeader, Stat } from "@/components/ui";
 import { toast } from "sonner";
-import { useAiProvider } from "@/features/analyst";
+import { AI_PROVIDERS, useAiProvider } from "@/features/analyst";
 import { cn } from "@/lib/cn";
 import {
   fmtMs,
   usePrReviewTimings,
+  useIntegrations,
 } from "@/features/integrations";
 import { useDateRange, DateRangeToolbar, splitByRange } from "@/features/date-range";
 import { useHubLink } from "@/features/hubs";
 import { fullDate } from "@/lib/date";
 
+/** What the timing acronyms mean — shown as a legend and as tooltips. */
+const TIMING_LEGEND = {
+  TTFR: "Time to first review — from the PR opening to the first reviewer comment.",
+  ATTNR:
+    "Average time to next review — the mean gap between one review round and the next (needs two or more rounds).",
+  Idle: "Total time the PR sat waiting on reviewers: TTFR plus every later gap.",
+};
+
+/** Revalidate the review-timing SWR entries — the hook has no `mutate`,
+ *  but its keys are prefixed, so a key filter reaches them. */
+function useRetryReviewTimings() {
+  const { mutate } = useSWRConfig();
+  return useCallback(
+    () =>
+      mutate(
+        (key) => typeof key === "string" && key.startsWith("pr-review-timings:"),
+        undefined,
+        { revalidate: true },
+      ),
+    [mutate],
+  );
+}
+
 export function PrReviewsPage() {
   const { range } = useDateRange();
   const { data: timings, isLoading, error } = usePrReviewTimings(range.fetchSince);
+  const retry = useRetryReviewTimings();
   const link = useHubLink();
+  const { isConnected } = useIntegrations();
+  const hasCodeHost = isConnected("github") || isConnected("gitlab");
   const inWindow = useMemo(
     () =>
       splitByRange(timings || [], range, (t) => t.pr?.mergedAt || t.pr?.createdAt)
@@ -53,24 +82,41 @@ export function PrReviewsPage() {
     [timings, range],
   );
 
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
-  const requestedId = searchParams.get("pr");
   const [selectedId, setSelectedId] = useState(null);
+  // `?pr=` is applied ONCE, on mount — it used to lock the selection so
+  // every click snapped back to the deep-linked PR.
+  const initialRequestRef = useRef(searchParams.get("pr"));
 
-  // Default to the first PR when none picked, or honour the deep-link.
+  // Default to the first PR when none picked, or honour the deep-link once.
   useEffect(() => {
     if (inWindow.length === 0) {
       setSelectedId(null);
       return;
     }
-    if (requestedId && inWindow.some((t) => String(t.pr.id) === String(requestedId))) {
-      setSelectedId(requestedId);
+    const requested = initialRequestRef.current;
+    if (requested && inWindow.some((t) => String(t.pr.id) === String(requested))) {
+      initialRequestRef.current = null;
+      setSelectedId(requested);
       return;
     }
     if (selectedId == null || !inWindow.some((t) => String(t.pr.id) === String(selectedId))) {
       setSelectedId(inWindow[0].pr.id);
     }
-  }, [inWindow, requestedId, selectedId]);
+  }, [inWindow, selectedId]);
+
+  // Clicking a PR keeps the URL shareable: `?pr=` follows the selection.
+  const selectPr = useCallback(
+    (id) => {
+      setSelectedId(id);
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("pr", String(id));
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [router, pathname, searchParams],
+  );
 
   const selected = inWindow.find((t) => String(t.pr.id) === String(selectedId));
 
@@ -83,26 +129,37 @@ export function PrReviewsPage() {
             : "Review log · no PRs in this window"
         }
         title="Where review time goes."
-        subtitle="Every reviewed PR in the window, with TTFR, ATTNR, total idle, and the comment threads that drove each round. Click a comment with a file path to see the exact code snippet it was left on."
-        right={
-          <Link href={link("")}>
-            <Button variant="ghost">
-              <ArrowLeft size={14} /> Dashboard
-            </Button>
-          </Link>
-        }
+        subtitle="Every reviewed PR in the window — time to first review, the gap between rounds, total idle time, and the comment threads that drove each round. Line comments show the code they were left on."
       />
+      <DrillDownNav className="-mt-2 mb-7" />
 
-      <div className="-mx-10 mb-5">
+      <div className="-mx-4 mb-5 sm:-mx-10">
         <DateRangeToolbar />
       </div>
 
-      {isLoading && inWindow.length === 0 ? (
+      {!hasCodeHost ? (
+        <Empty
+          label="Connect GitHub or GitLab to see your review log."
+          body="Review timings come from your merged PRs' comment threads — there's nothing to read until a code host is connected."
+          action={
+            <Button as={Link} href={link("/settings?tab=integrations")}>Connect GitHub or GitLab</Button>
+          }
+        />
+      ) : isLoading && inWindow.length === 0 ? (
         <Empty label="Loading review timings…" />
       ) : error ? (
-        <Empty label={`Couldn't load review data: ${error.message || error}`} />
+        <Empty
+          label="Couldn't load review data."
+          body={error.message || String(error)}
+          action={
+            <Button onClick={() => void retry()}>Retry</Button>
+          }
+        />
       ) : inWindow.length === 0 ? (
-        <Empty label="No reviewed PRs in this window. Try widening the date range." />
+        <Empty
+          label="No reviewed PRs in this window."
+          body="Only PRs that were merged (or opened) inside the selected range appear here — try a wider range."
+        />
       ) : (
         <div
           className="grid gap-4"
@@ -111,24 +168,32 @@ export function PrReviewsPage() {
           <PrList
             items={inWindow}
             selectedId={selectedId}
-            onSelect={setSelectedId}
+            onSelect={selectPr}
           />
-          {selected ? <PrDetail item={selected} /> : null}
+          {selected ? <PrDetail item={selected} onRetry={retry} /> : null}
         </div>
       )}
     </main>
   );
 }
 
-function Empty({ label }) {
+function Empty({ label, body, action }) {
   return (
     <Card className="px-4 sm:px-10 py-16 text-center">
       <Label>Review log</Label>
       <h2 className="mx-auto mt-3 max-w-[520px] text-[18px] font-bold tracking-[-0.01em] text-fg">
         {label}
       </h2>
+      {body ? (
+        <p className="mx-auto mt-2 max-w-[480px] text-[13px] leading-[1.5] text-muted-fg">{body}</p>
+      ) : null}
+      {action ? <div className="mt-5 flex justify-center">{action}</div> : null}
     </Card>
   );
+}
+
+function providerName(source) {
+  return source === "gitlab" ? "GitLab" : "GitHub";
 }
 
 /* ─────────────────────────── PR list ─────────────────────────── */
@@ -188,8 +253,18 @@ function PrListItem({ item, active, onSelect }) {
 
 /* ─────────────────────────── PR detail ─────────────────────────── */
 
-function PrDetail({ item }) {
+function PrDetail({ item, onRetry }) {
   const { pr, details, timing } = item;
+  const [retrying, setRetrying] = useState(false);
+  async function retryDetails() {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await onRetry?.();
+    } finally {
+      setRetrying(false);
+    }
+  }
   // Comments sorted by timestamp so the timeline reads chronologically.
   const orderedComments = useMemo(() => {
     const arr = (details?.comments || [])
@@ -226,21 +301,32 @@ function PrDetail({ item }) {
             rel="noopener noreferrer"
             className="inline-flex shrink-0 items-center gap-1.5 text-[12.5px] font-bold text-fg hover:underline"
           >
-            View on GitHub <ExternalLink size={13} />
+            View on {providerName(pr.source)} <ExternalLink size={13} />
           </a>
         ) : null}
       </div>
 
       {/* Timing summary band */}
-      <div className="grid grid-cols-4 gap-3 border-b border-line px-5 py-4">
-        <Stat label="TTFR" value={fmtMs(timing?.ttfr)} />
-        <Stat label="ATTNR" value={fmtMs(timing?.attnr)} />
-        <Stat label="Idle (Σ)" value={fmtMs(timing?.idle || 0)} />
-        <Stat
-          label="Reviewers"
-          value={timing?.reviewers?.length ? `${timing.reviewers.length}` : "0"}
-          sub={(timing?.reviewers || []).slice(0, 3).join(", ")}
-        />
+      <div className="border-b border-line px-5 py-4">
+        <div className="grid grid-cols-4 gap-3">
+          <div title={TIMING_LEGEND.TTFR}>
+            <Stat label="TTFR" value={fmtMs(timing?.ttfr)} sub="time to first review" />
+          </div>
+          <div title={TIMING_LEGEND.ATTNR}>
+            <Stat label="ATTNR" value={fmtMs(timing?.attnr)} sub="avg. gap between rounds" />
+          </div>
+          <div title={TIMING_LEGEND.Idle}>
+            <Stat label="Idle (Σ)" value={fmtMs(timing?.idle || 0)} sub="total waiting on review" />
+          </div>
+          <Stat
+            label="Reviewers"
+            value={timing?.reviewers?.length ? `${timing.reviewers.length}` : "0"}
+            sub={(timing?.reviewers || []).slice(0, 3).join(", ")}
+          />
+        </div>
+        <p className="mt-3 text-[11.5px] leading-[1.5] text-muted-fg">
+          TTFR — {TIMING_LEGEND.TTFR} ATTNR — {TIMING_LEGEND.ATTNR}
+        </p>
       </div>
 
       {/* Per-round breakdown */}
@@ -257,8 +343,17 @@ function PrDetail({ item }) {
 
       {/* Comment thread */}
       <div className="px-5 py-4">
-        <Label>Comments · {orderedComments.length}</Label>
-        {orderedComments.length === 0 ? (
+        <Label>Comments{details ? ` · ${orderedComments.length}` : ""}</Label>
+        {!details ? (
+          // `details: null` means the per-PR fetch failed, not that the PR
+          // is comment-free — say so and offer a way back.
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-[13px] text-muted-fg">
+            <span>Couldn&apos;t load this PR&apos;s comments.</span>
+            <Button size="sm" variant="soft" onClick={() => void retryDetails()} disabled={retrying}>
+              {retrying ? "Retrying…" : "Retry"}
+            </Button>
+          </div>
+        ) : orderedComments.length === 0 ? (
           <div className="mt-3 text-[13px] text-muted-fg">
             No comments on this PR.
           </div>
@@ -302,7 +397,7 @@ function RoundBreakdown({ timing }) {
               style={{ gridTemplateColumns: "60px 1fr 60px" }}
             >
               <span className="text-[11.5px] font-bold text-fg">{s.label}</span>
-              <div className="h-1.5 overflow-hidden rounded-full bg-card-alt">
+              <div className="h-1.5 overflow-hidden rounded-full bg-track">
                 <div className="h-full rounded-full bg-ink" style={{ width: `${widthPct}%` }} />
               </div>
               <span className="text-right text-[11.5px] text-muted-fg">{fmtMs(s.ms)}</span>
@@ -389,6 +484,8 @@ const QUICK_RUBRIC = [
 
 function GradeBlock({ pr, details }) {
   const { provider, aiHeaders } = useAiProvider();
+  const providerLabel =
+    AI_PROVIDERS.find((p) => p.id === provider)?.label || provider;
   const [verdict, setVerdict] = useState(null);
   const [grading, setGrading] = useState(false);
   // Reset verdict when the user moves to a different PR.
@@ -441,30 +538,31 @@ function GradeBlock({ pr, details }) {
       <div className="flex items-baseline justify-between gap-3">
         <Label>Quick AI grade</Label>
         <Button size="sm" variant={verdict ? "soft" : "ink"} onClick={handleGrade} disabled={grading}>
-          {grading ? "Grading…" : verdict ? "Re-grade" : `Grade with ${provider}`}
+          {grading ? "Grading…" : verdict ? "Re-grade" : `Grade with ${providerLabel}`}
         </Button>
       </div>
       {verdict ? (
         <div className="mt-3">
           <div className="flex items-baseline gap-2">
-            <Badge tone={verdict.pass ? "mint" : "peach"}>{verdict.pass ? "Pass" : "Review"}</Badge>
+            <Badge tone={verdict.pass ? "mint" : "peach"}>{verdict.pass ? "Pass" : "Needs work"}</Badge>
             <span className="text-[13.5px] text-fg">{verdict.reasoning}</span>
           </div>
           {Array.isArray(verdict.violations) && verdict.violations.length > 0 ? (
-            <ul className="mt-2 flex flex-col gap-1 text-[12px] text-peach-ink">
+            <ul className="mt-2 flex flex-col gap-1 text-[12px] text-peach-text">
               {verdict.violations.map((v, i) => (
                 <li key={i}>· {v}</li>
               ))}
             </ul>
           ) : null}
           <div className="mt-2 text-[11.5px] text-muted-fg">
-            Rubric: {QUICK_RUBRIC.length} criteria — set your own at the
-            CODE_RUBRIC widget on the dashboard for goal-tracking grades.
+            Rubric: {QUICK_RUBRIC.length} built-in criteria. For grades that count
+            toward a goal, set your own criteria on the goal&apos;s code-quality
+            tracker on the Goals page.
           </div>
         </div>
       ) : (
         <p className="mt-2 text-[12.5px] leading-[1.45] text-muted-fg">
-          Runs the PR body + every review comment through {provider} against a
+          Runs the PR body + every review comment through {providerLabel} against a
           tiny built-in rubric (description clarity · concerns addressed ·
           no orphan threads). Useful for deciding if a PR belongs in your
           evidence packet.
@@ -484,8 +582,8 @@ function renderDiffHunk(hunk) {
   const lines = hunk.split("\n");
   return lines.map((line, i) => {
     let cls = "text-fg";
-    if (line.startsWith("+") && !line.startsWith("+++")) cls = "text-mint-ink";
-    else if (line.startsWith("-") && !line.startsWith("---")) cls = "text-peach-ink";
+    if (line.startsWith("+") && !line.startsWith("+++")) cls = "text-mint-text";
+    else if (line.startsWith("-") && !line.startsWith("---")) cls = "text-peach-text";
     else if (line.startsWith("@@")) cls = "text-muted-fg";
     return (
       <span key={i} className={cn("block", cls)}>

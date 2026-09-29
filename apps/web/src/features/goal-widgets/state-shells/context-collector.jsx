@@ -31,6 +31,11 @@ export function ContextCollector({
   onSaved,
   onReclassify,
   onCompose,
+  // Present when the collector was opened OVER a working widget ("Edit
+  // definitions") — a way back that saves nothing.
+  onCancel,
+  // Logged entries a re-analysis may delete; said out loud before it runs.
+  historyCount = 0,
 }) {
   const { answers, setAnswers } = useGoalContext(spec.goalId);
   const questions = spec.context?.questions || [];
@@ -56,6 +61,14 @@ export function ContextCollector({
     setDraft((d) => ({ ...d, [id]: value }));
   }
 
+  // Blank answers used to save silently and count as "answered". The active
+  // question must have something in it before Next / Save is enabled.
+  const activeQuestion = questions[activeStep] || null;
+  const activeAnswered = activeQuestion
+    ? isAnswered(draft[activeQuestion.id], activeQuestion.kind)
+    : true;
+  const unansweredCount = questions.filter((q) => !isAnswered(draft[q.id], q.kind)).length;
+
   /**
    * Persist the draft. Called on blur (silent — the user is still
    * editing) AND on explicit submit (the "Save answers" button — the
@@ -71,6 +84,18 @@ export function ContextCollector({
 
   async function handleReclassify() {
     if (!onReclassify || busy) return;
+    // A re-analysis can swap the tracker and delete everything logged on
+    // it. Say the number before it happens; the answers stay in the draft
+    // if the user backs out.
+    if (
+      historyCount > 0 &&
+      typeof window !== "undefined" &&
+      !window.confirm(
+        `Re-analyzing may replace this tracker and delete its ${historyCount} logged ${historyCount === 1 ? "entry" : "entries"} (history is kept if the tracker kind stays the same). Continue?`,
+      )
+    ) {
+      return;
+    }
     setReclassifyError(null);
     setBusy(true);
     try {
@@ -115,6 +140,7 @@ export function ContextCollector({
         onSubmit={(e) => {
           e.preventDefault();
           // Wizard: advance to the next question until the last, then submit.
+          if (!activeAnswered) return;
           if (!onLastStep) {
             // Persist progress between steps only when we're NOT going to
             // re-analyze — on the reclassify path the draft is the source of
@@ -123,6 +149,7 @@ export function ContextCollector({
             setStep(activeStep + 1);
             return;
           }
+          if (unansweredCount > 0) return;
           // Final step. With a reclassify path wired, saving re-runs the
           // classifier so the freshly-defined truths re-scope the spec/tiers.
           // Without one (Review pane), just persist and hand control back.
@@ -137,7 +164,10 @@ export function ContextCollector({
         <div className="flex items-center justify-between gap-2">
           <Label>Define before tracking</Label>
           {questions.length > 1 ? (
-            <Label>{activeStep + 1} / {questions.length}</Label>
+            <Label>
+              {activeStep + 1} / {questions.length}
+              {unansweredCount > 0 ? ` · ${unansweredCount} unanswered` : ""}
+            </Label>
           ) : null}
         </div>
         <div className="flex flex-1 flex-col gap-2.5 overflow-y-auto pr-1">
@@ -152,7 +182,7 @@ export function ContextCollector({
           ) : null}
         </div>
         {reclassifyError ? (
-          <div className="text-[12.5px] leading-[1.4] text-peach-ink">
+          <div className="text-[12.5px] leading-[1.4] text-peach-text">
             Re-analyze failed: {reclassifyError}
           </div>
         ) : null}
@@ -166,11 +196,15 @@ export function ContextCollector({
             type="submit"
             variant="ink"
             size="sm"
-            disabled={busy}
+            disabled={busy || !activeAnswered || (onLastStep && unansweredCount > 0)}
             title={
-              onReclassify
-                ? "Save your answers and re-run the AI classifier so it re-scopes this goal to your definitions (it may even pick a different widget)."
-                : undefined
+              !activeAnswered
+                ? "Answer this question first"
+                : onLastStep && unansweredCount > 0
+                  ? `${unansweredCount} question${unansweredCount === 1 ? "" : "s"} still unanswered — go back and fill them in`
+                  : onReclassify
+                    ? "Save your answers and re-run the AI classifier so it re-scopes this goal to your definitions (it may pick a different tracker)."
+                    : undefined
             }
           >
             {!onLastStep
@@ -181,6 +215,11 @@ export function ContextCollector({
                   : "Save & re-analyze"
                 : "Save answers"}
           </Button>
+          {onCancel ? (
+            <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+              Cancel
+            </Button>
+          ) : null}
         </div>
         {onCompose ? (
           <Button
@@ -222,6 +261,16 @@ function buildAnswerPairs(questions, normalizedAnswers) {
   return out;
 }
 
+/** Does this draft value count as an answer? Mirrors `normalizeAnswers`. */
+function isAnswered(value, kind) {
+  if (isListKind(kind)) {
+    if (Array.isArray(value)) return value.some((s) => String(s).trim());
+    return typeof value === "string" && value.trim().length > 0;
+  }
+  if (kind === "number") return typeof value === "number" && !Number.isNaN(value);
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 /** Question kinds whose answer is a string array. */
 function isListKind(kind) {
   return (
@@ -248,7 +297,7 @@ function serializeAnswer(value, kind) {
 }
 
 const FIELD_CLASS =
-  "w-full rounded-[var(--radius-lg)] bg-card-alt px-3 py-2 text-[13.5px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink";
+  "w-full rounded-[var(--radius-lg)] bg-card-alt px-3 py-2 text-[13.5px] text-fg border border-field-line outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink";
 
 function QuestionField({ question: q, value, onChange, onBlur }) {
   return (

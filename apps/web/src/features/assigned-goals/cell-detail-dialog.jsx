@@ -5,11 +5,11 @@
  * evidence, and the submission / last-edit times. Read-only.
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { resolvePeriodContent } from "@espace-devhub/shared/goal-specs";
-import { Badge, IconButton, Label } from "@/components/ui";
+import { Badge, IconButton, Label, useFocusTrap } from "@/components/ui";
 import { useProgressCell } from "./api";
 import { STATUS_META, fmtStamp } from "./progress-grid";
 
@@ -23,12 +23,20 @@ function formatValue(v, kind) {
 
 export function CellDetailDialog({ goal, user, cell, onClose }) {
   const { cell: data, loading, error } = useProgressCell(goal?.id, user?.id, cell?.key ?? null);
+  // Trap focus while open; the opener (the grid cell) gets it back on close.
+  const trapRef = useFocusTrap(Boolean(cell));
 
+  // Escape closes. A ref keeps the listener bound once — the parent passes
+  // an inline onClose, which would otherwise re-bind it every render.
+  const closeRef = useRef(onClose);
   useEffect(() => {
-    const onKey = (e) => e.key === "Escape" && onClose?.();
+    closeRef.current = onClose;
+  });
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && closeRef.current?.();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, []);
 
   if (typeof document === "undefined" || !cell) return null;
   const fields = resolvePeriodContent(goal?.spec, cell.index)?.fields ?? [];
@@ -42,9 +50,10 @@ export function CellDetailDialog({ goal, user, cell, onClose }) {
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose?.();
       }}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-fg/40 p-5"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-scrim p-5"
     >
       <div
+        ref={trapRef}
         className="flex max-h-[86vh] w-full max-w-[520px] flex-col overflow-hidden rounded-[var(--radius-xl)] bg-card"
         style={{ boxShadow: "var(--shadow-float)" }}
       >

@@ -151,7 +151,7 @@ signed-out visitor to `/login`.
 ### 1. Features are the boundary
 
 A feature slice owns its page, its components, its hooks, and its local store.
-Don't cross-import `features/evidence` from `features/dashboard`; if something
+Don't cross-import `features/evidence` from `features/goals-flow`; if something
 is shared, it lives in `features/integrations` (data) or `components/ui`
 (presentation).
 
@@ -236,16 +236,17 @@ npm run dev                  # http://localhost:3000
 | CI/CD widgets (deploy freq, lead time, pass rate) | ⚠️ last 100 | Jenkins / GitHub Actions, capped at 100 builds |
 | Labelled PRs (`LABEL_SHARE`, and `ASSISTED_SHARE` as its assistant preset) | ✅ | Labels already on the merged-PR feed; `source.labels` + `labelMode` (share/count), or a `label_select` context answer picked from labels seen on the user's own PRs (`useLabelOptions`). Always a floor — unlabelled work is invisible |
 | Ticket-type PRs (`TICKET_TYPE_SHARE`) | ✅ | Merged PRs whose Jira key (title / description / branch) resolves to `filter.ticketType` (Bug by default); issue types hydrated in JQL batches of 50, capped at 200 keys. Unlinked PRs are reported as unresolved — a floor |
-| Manual widgets (counter, scale, date log, incidents, composed…) | ✅ | `goal_inputs` via API, cadence windows from `goal-inputs/cadence-windows.js` |
+| Manual widgets (counter, scale, date log, incidents, composed…) | ✅ | `goal_inputs` via API, cadence windows from `goal-inputs/cadence-windows.js` (impl: `packages/shared/src/goal-specs/windows.js`). Weekly windows are the Sun–Thu work week (`weeks.js`, same W## as snapshots); windows before a tracker's creation (or hire date) are state `before` — optional backfill, never counted as missed. Checklist period keys: `recurring-period.js` |
 | Plan cycle on a COMPOSED spec | ✅ | `composed.cycleStart` + `cycleEnd`, or `periodCount` for a flat plan. The composer stamps them from the document's stated length (shared `cycleEndForCount`); `goal-widgets/plan-editor/` is where a user reviews or fixes them. Without a length a cycle still falls back to the calendar year — that is what the plan step exists to catch. |
 | Period detail + risks on a COMPOSED spec | ✅ | `composed.periods[].detail` (focus / activities / deliverables with format + criteria) and `.notes` / `composed.notes` (risks with likelihood + mitigation). Display-only — never graded. |
 | Evidence FILES per period | ✅ | GridFS (`goal_evidence` bucket) via `/api/v1/goal-evidence`; 10 MB, allow-listed types, always served as a download |
 | Management plan half | ✅ | `composed.management` — a second composed block for a lead's team-facing track, plus a roster read from `/api/v1/my-reports` |
-| Tier grading | ✅ | AI verdicts (`goal_tier_verdicts`) · manager verdicts outrank · manager tier POLICIES by Goal Code, scoped per year |
+| Tier grading | ✅ | AI verdicts (`goal_tier_verdicts`, with `gradedAt`) · manager verdicts outrank and are append-only per `periodKey` (`manager_goal_verdict_events`; reports can acknowledge or dispute) · manager tier POLICIES by Goal Code, scoped per year |
 | Shared (assigned) goals | ✅ | `assigned_goals` + `/api/v1/assigned-goals`. A manager authors one COMPOSED goal on Goals & policies (`/[hub]/tier-policies`), assigns it org-wide and shares analytics with viewers (`/[hub]/shared-goals`). Merged into each assignee's tree at READ time as a read-only `asg_<id>` L2 under `asg__root` (weight 0) via `lib/assigned-goals.ts` — never stored in their `goals`/`goal_specs`. Lateness = first `goal_inputs.createdAt` vs end of due day in the goal's time zone + grace (`periodStatuses` in shared). |
 | Snapshots | ✅ server-persisted | Captured on dashboard visit + "Snapshot now"; the API scheduler freezes unvisited weeks (manual trackers only, `partial: true`) |
 | Scheduler | ✅ | `apps/api/src/scheduler/` — hourly: due/overdue/stale nudges, approval waits, Monday digest email, weekly snapshots |
-| Notifications | ✅ | Inbox rows + 90s bell poll + email (Resend, log-mode without a key); rows deep-link |
+| Notifications | ✅ | Inbox rows + 90s bell poll + email (Resend, log-mode without a key); rows deep-link; cursor-paged inbox page `/[hub]/notifications`; per-kind mute + email opt-out (`notification_prefs`, Settings → Notifications) |
+| Goal approvals | ✅ | BYO trackers wait for the submitter's manager; with no (or a disabled) manager they route to org admins (`approverScope: "admins"`, admin hub → Approvals) — never auto-approved |
 | Review packets | ✅ | Frozen markdown per submission; managers read + download; latest headline shows on the team board |
 | Cycle archives | ✅ | Replace-import freezes the tree + a per-goal report card (`goal_cycles`); "Past cycles" viewer |
 | Evidence export (.md / .pdf) | ✅ | Client renderer → blob; `@react-pdf/renderer` (dynamic import) |

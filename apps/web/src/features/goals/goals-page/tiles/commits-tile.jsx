@@ -50,7 +50,7 @@ export function CommitsTile() {
               {latest.msg}
             </span>
           </div>
-          <div className="text-[11px] text-dim-fg">
+          <div className="text-[11px] text-muted-fg">
             {latest.repo} · {latest.when} ago
           </div>
         </div>

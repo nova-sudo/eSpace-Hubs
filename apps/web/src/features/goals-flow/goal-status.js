@@ -21,14 +21,18 @@ import {
   readGoalEntries,
   GOAL_STATUS,
   STATUS_META,
-  goalProgress,
+  goalStatus,
+  loggedPercent,
   objectiveProgress,
+  objectiveStatus,
   weightedProgress as weightedProgressCanonical,
-  worstStatus,
   countStatuses,
 } from "@/features/goal-inputs";
 import { readLocks } from "@/features/goal-locks";
+import { isContextComplete } from "@/features/goal-context";
 import { readCappedGoalTier, numericReadingFor } from "@/features/goal-tiers";
+import { SPEC_KINDS, SPEC_KIND_META, SPEC_VARIANTS } from "@/features/goal-specs";
+import { isGoalReady } from "@/features/goal-widgets";
 import { cadenceWindowsFor, tierColor } from "./flow-row-meta";
 
 // The status vocabulary, the severity order and the roll-up maths are
@@ -67,13 +71,38 @@ function clampPercent(n) {
  * cadenced goal counts its logged windows; a numeric one is measured against
  * its own "achieved" threshold, which is the only target the app stores.
  */
-function progressPercent(spec, entries, cyc, status) {
-  // The cadence-window share is canonical. Only when a goal has no window
-  // model at all do we fall back to reading its value against the achieved
-  // threshold — a ratio the Intelligence page has no equivalent for, so it
-  // stays local rather than being promoted.
-  const canonical = goalProgress({ status, cycle: cyc, hasData: entries.length > 0 });
-  if (cyc && cyc.total > 0) return canonical;
+/**
+ * A checklist's done ÷ total, from its latest snapshot — or null when this
+ * isn't a checklist goal / nothing is logged. Recurring checklists reset per
+ * period, so the latest entry is still the honest read for "right now".
+ */
+function checklistFraction(spec, entries) {
+  const kind = spec?.widget;
+  if (kind !== SPEC_KINDS.MILESTONE && kind !== SPEC_KINDS.RECURRING_MILESTONE) return null;
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    const items = entries[i]?.value?.items;
+    if (Array.isArray(items) && items.length > 0) {
+      return items.filter((it) => it && it.done).length / items.length;
+    }
+  }
+  return null;
+}
+
+function progressPercent(spec, entries, goal) {
+  // "Logged so far" is canonical — the same number Home and Evidence show.
+  // Only a goal with no window model AND no checklist falls back to reading
+  // its value against the achieved threshold (a ratio with no equivalent
+  // elsewhere, so it stays local).
+  const fraction = checklistFraction(spec, entries);
+  const canonical = loggedPercent({
+    goal,
+    hasData: entries.length > 0,
+    ...(fraction != null ? { fraction } : {}),
+  });
+  if (goal?.logged || fraction != null) return canonical;
+  if (goal && goal.status !== GOAL_STATUS.ON_PACE && goal.status !== GOAL_STATUS.BEHIND) {
+    return canonical;
+  }
   const scale = spec?.tierScale;
   const achieved = scale?.achieved;
   if (!scale || !Number.isFinite(achieved)) return canonical;
@@ -88,15 +117,14 @@ function progressPercent(spec, entries, cyc, status) {
 }
 
 /**
- * `{ status, tone, label, tier, cyc, pct, owed }` for one goal.
- * An unclassified goal (no spec) has no tracker at all, so it reports
- * `unclassified` and nothing else.
+ * `{ status, tone, label, description, reason, logged, tier, cyc, pct, owed }`
+ * for one goal — the shared `goalStatus` (goal-inputs), fed from this page's
+ * stores: the cadence windows with locks applied and the capped tier.
  */
 export function goalStatusFor(goalId, spec) {
   if (!goalId || !spec) {
     return {
-      status: GOAL_STATUS.UNCLASSIFIED,
-      ...STATUS_META[GOAL_STATUS.UNCLASSIFIED],
+      ...goalStatus({ hasTracker: false }),
       tier: null,
       cyc: null,
       pct: null,
@@ -105,53 +133,62 @@ export function goalStatusFor(goalId, spec) {
   }
 
   const entries = readGoalEntries(goalId);
-  const verdict = readCappedGoalTier(goalId, spec, entries, lockedKeysFor(goalId), null);
-  const tier = verdict?.tier || null;
-  const cyc = cadenceWindowsFor(goalId, spec);
-  const owed = cyc ? (cyc.windows || []).some((w) => w.state === "owed") : false;
 
-  let status;
-  if (tier === "over_achieved" || tier === "role_model") {
-    status = GOAL_STATUS.EXCEEDING;
-  } else if (cyc) {
-    if (owed) status = GOAL_STATUS.BEHIND;
-    else if (cyc.filledCount === 0) status = GOAL_STATUS.NOT_LOGGED;
-    else status = GOAL_STATUS.ON_PACE;
-  } else if (tier === "not_achieved") {
-    status = GOAL_STATUS.BEHIND;
-  } else if (tier) {
-    status = GOAL_STATUS.ON_PACE;
-  } else if (entries.length > 0) {
-    status = GOAL_STATUS.ON_PACE;
-  } else {
-    status = GOAL_STATUS.NOT_LOGGED;
+  // A goal that can't be logged yet — awaiting approval, delegated, needs
+  // its setup questions, untrackable — is not "behind"; it needs setup.
+  if (!isGoalReady(spec, isContextComplete(spec))) {
+    return {
+      ...goalStatus({ hasTracker: true, ready: false }),
+      tier: null,
+      cyc: null,
+      pct: null,
+      owed: false,
+    };
   }
 
-  const pct = progressPercent(spec, entries, cyc, status);
-  return { status, ...STATUS_META[status], tier, cyc, pct, owed };
+  const verdict = readCappedGoalTier(goalId, spec, entries, lockedKeysFor(goalId), null);
+  const tier = verdict?.tier || null;
+
+  // AUTO widgets read from the code hosts — there is nothing to log.
+  const auto =
+    SPEC_KIND_META[spec.widget]?.variant === SPEC_VARIANTS.AUTO && spec.kind !== SPEC_VARIANTS.HYBRID;
+  const cyc = auto ? null : cadenceWindowsFor(goalId, spec);
+  const goal = goalStatus({
+    hasTracker: true,
+    auto,
+    cycle: cyc,
+    hasData: entries.length > 0,
+    tier,
+    cadence: cyc?.cadence ?? null,
+  });
+  const owed = goal.logged ? goal.logged.owed > 0 : false;
+  const pct = auto ? null : progressPercent(spec, entries, goal);
+  return { ...goal, tier, cyc, pct, expected: pct == null ? null : 100, owed };
 }
 
-/** The dot color for a goal's tier — the tint's ink, or dim when ungraded. */
+/** The dot color for a goal's tier on a plain surface — the tint's `-text`
+ *  token, or muted when ungraded. */
 export function tierDotColor(tier) {
-  return tierColor(tier) || "var(--dim-fg)";
+  return tierColor(tier) || "var(--muted-fg)";
 }
 
 /**
- * Rollup for one objective: the average of its goals' progress (the ring's
- * number) plus its weakest child's status (the tile's badge).
+ * Rollup for one objective: the mean of its goals' "logged so far" (the
+ * ring's number) plus its weakest MEASURED child's status (the tile's badge)
+ * — the same `objectiveStatus` rule Home, Evidence and the manager use.
  */
 export function objectiveRollup(statuses) {
   const list = statuses || [];
   // null, not 0, when nothing under the objective is measurable — an
   // auto-tracked objective is not a failed one.
   const pct = objectiveProgress(list.map((s) => s.pct));
-  const worstKey = worstStatus(list.map((s) => s.status)) || GOAL_STATUS.UNCLASSIFIED;
-  return { pct, status: worstKey, ...STATUS_META[worstKey] };
+  const worstKey = objectiveStatus(list.map((s) => s.status)) || GOAL_STATUS.UNCLASSIFIED;
+  return { pct, expected: pct == null ? null : 100, status: worstKey, ...STATUS_META[worstKey] };
 }
 
 /**
- * Weighted progress across the whole cycle — each objective's rolled-up
- * percentage times its share of the year. Falls back to a flat average when
+ * Weighted "logged so far" across the whole tree — each objective's rolled-up
+ * percentage times its weight. Falls back to a flat average when
  * the imported tree carries no weightages.
  */
 export function weightedProgress(rows) {

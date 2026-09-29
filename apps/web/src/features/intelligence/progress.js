@@ -9,51 +9,31 @@
  * objectives, the other scored them zero.
  */
 
-import { HEALTH } from "./status";
 import {
   GOAL_STATUS,
   STATUS_META,
-  goalProgress,
+  loggedPercent,
+  loggedTotals,
   objectiveProgress,
+  objectiveStatus,
   weightedProgress,
-  worstStatus,
   countStatuses,
+  windowCellTitle,
 } from "@/features/goal-inputs";
 
-/**
- * One goal's cadence completion, 0–100, or null when it has no windows to
- * complete.
- *
- * @param {{ health: object }} card  a useGoalHealth() card
- */
-
-/** A `useGoalHealth()` card's health, in the shared status vocabulary. */
+/** A `useGoalHealth()` card's status key, from the ONE shared model. */
 export function statusOf(card) {
-  const h = card?.health;
-  if (!h) return GOAL_STATUS.UNCLASSIFIED;
-  const tier = card?.tier;
-  if (tier === "over_achieved" || tier === "role_model") return GOAL_STATUS.EXCEEDING;
-  switch (h.status) {
-    case HEALTH.UNCLASSIFIED:
-      return GOAL_STATUS.UNCLASSIFIED;
-    case HEALTH.NEEDS_SETUP:
-      return GOAL_STATUS.NEEDS_SETUP;
-    case HEALTH.AUTO:
-      return GOAL_STATUS.AUTO;
-    case HEALTH.NO_DATA:
-      return GOAL_STATUS.NOT_LOGGED;
-    case HEALTH.STALE:
-    case HEALTH.BEHIND:
-      return GOAL_STATUS.BEHIND;
-    default:
-      return GOAL_STATUS.ON_PACE;
-  }
+  return card?.status?.status ?? GOAL_STATUS.UNCLASSIFIED;
 }
 
+/**
+ * One goal's "logged so far", 0–100 — of the check-ins that were due, how
+ * many were logged — or null when nothing about it is due yet / it isn't
+ * measured. The same number the Goals page shows.
+ */
 export function goalProgressPercent(card) {
-  return goalProgress({
-    status: statusOf(card),
-    cycle: card?.health?.fill,
+  return loggedPercent({
+    goal: card?.status,
     hasData: Boolean(card?.health?.fill?.hasData),
   });
 }
@@ -67,10 +47,9 @@ export function objectiveProgressPercent(cards) {
 }
 
 /**
- * Progress across the whole tree, weighted by each objective's KRA
- * weightage. Objectives with no weightage set fall back to equal weights, so
- * a user who never filled the weightage column still gets an honest average
- * instead of a zero.
+ * "Logged so far" across the whole tree, weighted by each objective's KRA
+ * weightage. Objectives with nothing measured drop out (their weight goes
+ * with them); no weightages at all → a flat mean.
  */
 export function weightedProgressPercent(groups) {
   return weightedProgress(
@@ -81,23 +60,33 @@ export function weightedProgressPercent(groups) {
   );
 }
 
+/** `{ done, due }` check-ins across every measured goal — the sub-line. */
+export function loggedCheckIns(groups) {
+  return loggedTotals((groups || []).flatMap((g) => (g.cards || []).map((c) => c.status)));
+}
+
+/** Goals that aren't in the headline number (no tracker, setup, auto, nothing due). */
+export function unmeasuredCount(groups, unclassified = 0) {
+  let n = unclassified || 0;
+  for (const g of groups || []) for (const c of g.cards || []) if (goalProgressPercent(c) == null) n += 1;
+  return n;
+}
 
 /**
- * The weakest child's status chip for an objective's band header.
+ * An objective's chip: its weakest MEASURED child (the same rule on every
+ * surface — goal-inputs `objectiveStatus`).
  * @returns {{ label: string, tone: string } | null}
  */
 export function worstChildStatus(cards) {
-  const key = worstStatus((cards || []).map((c) => statusOf(c)));
+  const key = objectiveStatus((cards || []).map((c) => statusOf(c)));
   return key ? { label: STATUS_META[key].label, tone: STATUS_META[key].tone } : null;
 }
 
 /**
- * The four counts the summary strip carries. Auto-tracked goals sit under
- * "on pace" (they are meeting their target or they aren't — there is nothing
- * for the user to do either way), and goals still awaiting setup sit under
- * "not logged", which is what they are from the user's side. `unclassified`
- * isn't derivable from the health groups (an unclassified goal never reaches
- * them), so it is passed in from useGoalWidgetItems().
+ * The status badges, worst first — the shared buckets over the shared
+ * per-goal statuses, so Home and Goals can't tally the same goals
+ * differently. Goals with no tracker never reach the health groups, so their
+ * count is passed in from useGoalWidgetItems().
  */
 export function statusCounts(groups, unclassified = 0) {
   const statuses = (groups || []).flatMap((g) => (g.cards || []).map((c) => statusOf(c)));
@@ -127,9 +116,8 @@ export function cadenceCells(fill, { cap = 10, endAtCurrent = false } = {}) {
     endAtCurrent || windows.length > cap
       ? windows.slice(Math.max(0, idx - cap + 1), idx + 1)
       : windows;
-  return slice.map((w) => ({ key: w?.key, label: w?.label, state: w?.state || "future" }));
-}
-
-function clampPct(n) {
-  return Math.round(Math.max(0, Math.min(100, Number(n) || 0)));
+  return slice.map((w) => {
+    const state = w?.state || "future";
+    return { key: w?.key, label: w?.label, state, title: windowCellTitle(w, state) };
+  });
 }

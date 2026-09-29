@@ -1,20 +1,32 @@
 /**
  * /api/v1/manager/* router.
  *
- *   GET /reports              list the authenticated manager's direct reports
- *   GET /tier-policies        list org-wide manager tier-criteria policies
- *   PUT /tier-policies/:code  set a Goal Code's final/cadence tier criteria
- *   DELETE /tier-policies/:code   clear a Goal Code's policy
+ *   GET    /reports                                     direct reports
+ *   GET    /team-summary                                every report's rollup
+ *   GET    /reports/:userId/goal-health                 one report's board
+ *   GET    /reports/:userId/goals/:goalId/detail        one goal, read-only
+ *   GET    /reports/:userId/goals/:goalId/verdicts      grade history + ack
+ *   PUT    /reports/:userId/goals/:goalId/verdict       grade (append-only)
+ *   POST   /reports/:userId/goals/:goalId/approval      approve / request changes
+ *   GET    /reports/:userId/review-packets              submitted evidence docs
+ *   GET    /reports/:userId/snapshots                   weekly headline series
+ *   GET    /reports/:userId/notes                       my 1:1 notes on them
+ *   POST   /reports/:userId/notes                       add a note
+ *   PATCH  /reports/:userId/notes/:noteId               edit a note
+ *   DELETE /reports/:userId/notes/:noteId               delete a note
+ *   GET    /grading-progress                            graded N of M, per report
+ *   GET    /team-trends                                 every report's series
+ *   GET    /delegated-queue · /approvals                work queues
+ *   GET    /tier-policies · /goal-codes                 org-wide criteria
+ *   PUT    /tier-policies/:code                         set criteria
+ *   DELETE /tier-policies/:code                         clear criteria
  *
  * Authorization: a full session (`requireAuth`) plus the
- * `manager.team.view` capability (`requireCapability`). The controller
- * additionally scopes every read to `managerId === session.userId`, so
- * holding the capability without actually being someone's manager just
- * returns an empty list.
- *
- * This is the foundation module for the Manager hub; grading, delegated
- * verdicts, approvals, and notifications land in later drops
- * (docs/manager-hub-plan.md).
+ * `manager.team.view` capability (`requireCapability`). Every per-report
+ * route additionally goes through resolveReport (./resolve-report.ts):
+ * managerId === session.userId inside the session's org, else 404 — so
+ * holding the capability without being someone's manager returns
+ * nothing. Every mutation writes an audit row (`manager.*`).
  */
 
 import { Router } from "express";
@@ -31,11 +43,21 @@ import {
   listReportReviewPacketsHandler,
   listReportsHandler,
   listGoalCodesHandler,
+  listGoalVerdictHistoryHandler,
   listTierPoliciesHandler,
   putApprovalDecisionHandler,
   putGoalVerdictHandler,
   putTierPolicyHandler,
 } from "./controller.js";
+import {
+  createReportNoteHandler,
+  deleteReportNoteHandler,
+  getGradingProgressHandler,
+  getReportSnapshotsHandler,
+  getTeamTrendsHandler,
+  listReportNotesHandler,
+  updateReportNoteHandler,
+} from "./surfaces-controller.js";
 
 export const managerRouter: Router = Router();
 
@@ -96,6 +118,13 @@ managerRouter.post(
   putApprovalDecisionHandler,
 );
 
+managerRouter.get(
+  "/reports/:userId/goals/:goalId/verdicts",
+  requireAuth(),
+  requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
+  listGoalVerdictHistoryHandler,
+);
+
 managerRouter.put(
   "/reports/:userId/goals/:goalId/verdict",
   requireAuth(),
@@ -135,3 +164,15 @@ managerRouter.delete(
   requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW),
   deleteTierPolicyHandler,
 );
+
+// §1.5 surfaces (./report-surfaces.ts). Team-level reads are scoped to
+// the caller's active reports; per-report reads go through resolveReport.
+const gate = [requireAuth(), requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW)];
+
+managerRouter.get("/grading-progress", ...gate, getGradingProgressHandler);
+managerRouter.get("/team-trends", ...gate, getTeamTrendsHandler);
+managerRouter.get("/reports/:userId/snapshots", ...gate, getReportSnapshotsHandler);
+managerRouter.get("/reports/:userId/notes", ...gate, listReportNotesHandler);
+managerRouter.post("/reports/:userId/notes", ...gate, createReportNoteHandler);
+managerRouter.patch("/reports/:userId/notes/:noteId", ...gate, updateReportNoteHandler);
+managerRouter.delete("/reports/:userId/notes/:noteId", ...gate, deleteReportNoteHandler);

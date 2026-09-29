@@ -37,7 +37,14 @@ import { toPublicUser } from "../auth/controller.js";
 
 const submitSchema = z.object({
   displayName: z.string().trim().min(1).max(200),
-  employeeId: z.string().trim().min(1).max(64),
+  // Optional — the Account tab already treats it as such; an empty
+  // string clears it (null) rather than storing "".
+  employeeId: z
+    .string()
+    .trim()
+    .max(64)
+    .optional()
+    .transform((v) => (v ? v : null)),
   department: z.string().trim().min(1).max(200),
 });
 

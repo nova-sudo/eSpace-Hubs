@@ -31,6 +31,7 @@ import {
   type GoalForClassification,
 } from "./classifier/mistral-classifier.js";
 import type { AnalysisEvent } from "./classifier/events.js";
+import { aiUnconfigured } from "./unconfigured.js";
 
 export const ANTHROPIC_ID = "anthropic";
 
@@ -161,9 +162,7 @@ function getClient(): AnyClient {
   if (backend === "litellm") {
     const key = process.env.LITELLM_API_KEY;
     if (!key) {
-      throw new HttpError(
-        500,
-        "ai_provider_unconfigured",
+      throw aiUnconfigured(
         "Claude has no credentials. Set LITELLM_API_KEY to your LiteLLM virtual key in the API env and restart.",
       );
     }
@@ -191,9 +190,7 @@ function getClient(): AnyClient {
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    throw new HttpError(
-      500,
-      "ai_provider_unconfigured",
+    throw aiUnconfigured(
       "Claude has no credentials. Set ANTHROPIC_API_KEY, or point at the LiteLLM gateway with ANTHROPIC_BACKEND=litellm + LITELLM_API_KEY, in the API env and restart.",
     );
   }

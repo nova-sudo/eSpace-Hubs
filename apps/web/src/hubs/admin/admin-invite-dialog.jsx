@@ -84,8 +84,13 @@ export function InviteDialog({ users = [], onClose, onSuccess }) {
   const invalid = emails.filter((e) => !isEmail(e));
   const primaryHub = HUB_ORDER.find((id) => hubs.includes(id)) ?? null;
 
+  // Same rule the server enforces on PATCH: an active member who holds
+  // the manager role.
   const managerCandidates = useMemo(
-    () => users.filter((u) => u.status !== "disabled"),
+    () =>
+      users
+        .filter((u) => u.status === "active" && u.roles?.includes("manager"))
+        .sort((a, b) => a.displayName.localeCompare(b.displayName)),
     [users],
   );
 
@@ -189,7 +194,9 @@ export function InviteDialog({ users = [], onClose, onSuccess }) {
     // payload, so apply them to the rows the invites just created.
     const accessFailures = [];
     if (sent.length > 0) {
-      const roster = await apiGet("/admin/users");
+      // The lightweight directory (id + email for the whole org) — the
+      // roster endpoint itself is paginated.
+      const roster = await apiGet("/admin/users/directory");
       if (roster.ok) {
         const byEmail = new Map(
           (roster.data?.users ?? []).map((u) => [String(u.email).toLowerCase(), u]),
@@ -244,7 +251,7 @@ export function InviteDialog({ users = [], onClose, onSuccess }) {
   // make `fixed` resolve against the page instead of the viewport.
   return createPortal(
     <div
-      className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto bg-fg/40 p-4 sm:items-center"
+      className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto bg-scrim p-4 sm:items-center"
       onClick={(e) => {
         if (e.target === e.currentTarget && !submitting) onClose();
       }}
@@ -308,7 +315,7 @@ export function InviteDialog({ users = [], onClose, onSuccess }) {
                     onClick={() =>
                       setEmails((prev) => prev.filter((e) => e !== email))
                     }
-                    className="text-dim-fg transition-colors hover:text-fg"
+                    className="text-muted-fg transition-colors hover:text-fg"
                   >
                     <X size={12} />
                   </button>
@@ -327,11 +334,11 @@ export function InviteDialog({ users = [], onClose, onSuccess }) {
                 className="min-w-[160px] flex-1 bg-transparent text-[14px] text-fg outline-none placeholder:text-dim-fg"
               />
             </div>
-            <div className="mt-1 text-[12px] leading-[1.4] text-dim-fg">
+            <div className="mt-1 text-[12px] leading-[1.4] text-muted-fg">
               Comma or space separated. Everyone here gets the same role.
             </div>
             {invalid.length > 0 ? (
-              <div className="mt-1 text-[12px] text-peach-ink">
+              <div className="mt-1 text-[12px] text-peach-text">
                 {invalid.length === 1 ? "That address" : "Those addresses"} don&apos;t
                 look like email — fix or remove {invalid.length === 1 ? "it" : "them"}.
               </div>
@@ -356,7 +363,7 @@ export function InviteDialog({ users = [], onClose, onSuccess }) {
                   );
                 })}
               </div>
-              <div className="mt-1 text-[12px] leading-[1.4] text-dim-fg">
+              <div className="mt-1 text-[12px] leading-[1.4] text-muted-fg">
                 Capabilities are the union across roles.
               </div>
             </div>
@@ -465,7 +472,7 @@ function AccessPreview({ roles, hubs, primaryHub }) {
   return (
     <aside className="rounded-[var(--radius-lg)] bg-card-alt p-4">
       <div className="flex items-center gap-2">
-        <Sparkles size={14} className="shrink-0 text-lav-ink" />
+        <Sparkles size={14} className="shrink-0 text-lav-text" />
         <span className="text-[12.5px] font-bold text-fg">What they will see</span>
       </div>
       <p className="mt-1 text-[12px] leading-[1.45] text-muted-fg">
@@ -473,7 +480,7 @@ function AccessPreview({ roles, hubs, primaryHub }) {
       </p>
 
       {shown.length === 0 ? (
-        <p className="mt-3 text-[12.5px] leading-[1.5] text-peach-ink">
+        <p className="mt-3 text-[12.5px] leading-[1.5] text-peach-text">
           These roles unlock no hub at all. The invitee would sign in with
           nowhere to land.
         </p>

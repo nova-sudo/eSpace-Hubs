@@ -4,14 +4,16 @@
  * M-OB — the post-login, pre-hub onboarding form.
  *
  * Captures three fields once after first login:
- *   - displayName  (pre-filled from invite)
- *   - employeeId   (free text; informal, until Zoho lands)
- *   - department   (free text; an org-chart / profile attribute only —
- *                    post-M-CAP, hub access comes from the user's
- *                    ROLES, assigned by an admin at invite or approval
- *                    time, NOT from this field. Don't imply otherwise
- *                    in the copy below; that used to be true pre-M-CAP
- *                    and the UI drifted from the backend once it changed.)
+ *   - displayName  (pre-filled from invite) — required
+ *   - department   (free text) — required. An org-chart / profile
+ *                    attribute only — post-M-CAP, hub access comes from
+ *                    the user's ROLES, assigned by an admin at invite or
+ *                    approval time, NOT from this field. Don't imply
+ *                    otherwise in the copy below; that used to be true
+ *                    pre-M-CAP and the UI drifted from the backend once
+ *                    it changed.
+ *   - employeeId   (free text; informal, until Zoho lands) — optional,
+ *                    matching the Account tab.
  *
  * On submit the API:
  *   1. Persists the three fields on `users`.
@@ -38,6 +40,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Check } from "lucide-react";
 import { apiPost } from "@/lib/api-client";
 import { Button, Card, Field, Input, Label, Loading, PageHeader } from "@/components/ui";
 import { useSession } from "@/features/auth";
@@ -52,19 +55,51 @@ import { CompanionGateStep } from "./companion-gate-step.jsx";
 // covers the rest.
 const QUICK_PICKS = ["Engineering", "QA", "Platform", "DevOps", "Frontend"];
 
-function ProgressStrip({ filled }) {
+/**
+ * The real chain the user is walking, not a bar that's always full:
+ * Security (TOTP, already done to be here) → Profile → optional
+ * Companion (Crealogix) → Approval (self-signups only; invited users
+ * are already `active`).
+ */
+function StepChain({ steps, current }) {
   return (
-    <div className="mb-5 flex gap-1.5">
-      {Array.from({ length: 6 }, (_, i) => (
-        <span
-          key={i}
-          className={cn(
-            "h-1.5 flex-1 rounded-[var(--radius-pill)]",
-            i < filled ? "bg-ink" : "bg-card-alt",
-          )}
-        />
-      ))}
-    </div>
+    <ol className="mb-6 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[12.5px]">
+      {steps.map((s, i) => {
+        const done = i < current;
+        const active = i === current;
+        return (
+          <li key={s} className="flex items-center gap-2">
+            <span
+              className={cn(
+                "inline-flex h-5 min-w-5 items-center justify-center rounded-[var(--radius-pill)] px-1.5 text-[11px] font-bold",
+                done
+                  ? "bg-mint text-mint-ink"
+                  : active
+                    ? "bg-ink text-ink-on"
+                    : "bg-card-alt text-muted-fg",
+              )}
+              aria-hidden="true"
+            >
+              {done ? <Check size={11} /> : i + 1}
+            </span>
+            <span
+              className={cn(
+                "font-semibold",
+                active ? "text-fg" : done ? "text-muted-fg" : "text-muted-fg",
+              )}
+              aria-current={active ? "step" : undefined}
+            >
+              {s}
+            </span>
+            {i < steps.length - 1 ? (
+              <span className="text-dim-fg" aria-hidden="true">
+                →
+              </span>
+            ) : null}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -73,6 +108,7 @@ function QuickPick({ label, active, onClick }) {
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={cn(
         "rounded-[var(--radius-pill)] px-3.5 py-1.5 text-[12.5px] font-semibold transition-colors",
         active ? "bg-ink text-ink-on" : "bg-card-alt text-muted-fg hover:text-fg",
@@ -83,17 +119,43 @@ function QuickPick({ label, active, onClick }) {
   );
 }
 
+function RequiredMark() {
+  return (
+    <span className="text-peach-text" aria-hidden="true">
+      {" "}
+      *
+    </span>
+  );
+}
+
+function FieldError({ id, children }) {
+  if (!children) return null;
+  return (
+    <div id={id} role="alert" className="mt-1 text-[12px] font-semibold text-peach-text">
+      {children}
+    </div>
+  );
+}
+
 export function OnboardingPage() {
   const router = useRouter();
-  const { user, loading, refresh } = useSession();
+  const { user, loading, refreshSilent, logout } = useSession();
   const [displayName, setDisplayName] = useState("");
   const [employeeId, setEmployeeId] = useState("");
   const [department, setDepartment] = useState("");
+  const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [step, setStep] = useState("profile"); // "profile" | "companion"
   const requiresCompanion = user?.engagement === "crealogix";
-  const totalSteps = requiresCompanion ? 2 : 1;
-  const stepNum = step === "companion" ? 2 : 1;
+  const needsApproval = user?.status === "pending_admin";
+
+  const steps = [
+    "Security",
+    "Profile",
+    ...(requiresCompanion ? ["Companion"] : []),
+    ...(needsApproval ? ["Approval"] : []),
+  ];
+  const currentStep = step === "companion" ? 2 : 1;
 
   // Pre-fill displayName from the existing session user once it
   // resolves. Setting state inside an effect (not directly in the
@@ -118,8 +180,9 @@ export function OnboardingPage() {
       }
       // Refresh the session so the new onboardingCompletedAt lands
       // in useSession() — otherwise the AuthGuard would still see
-      // the stale "incomplete" state and bounce us back here.
-      await refresh();
+      // the stale "incomplete" state and bounce us back here. Silent
+      // so the guard doesn't blank the page mid-redirect.
+      await refreshSilent();
       // Wipe the hubs cache so the next /hubs/me fetch picks up the
       // new allowedHubs + primaryHub.
       resetHubsStore();
@@ -132,12 +195,17 @@ export function OnboardingPage() {
     }
   }
 
+  function validate() {
+    const next = {};
+    if (!displayName.trim()) next.displayName = "Enter the name you'd like shown.";
+    if (!department.trim()) next.department = "Pick a chip or type your department.";
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!displayName.trim() || !employeeId.trim() || !department.trim()) {
-      toast.error("All three fields are required.");
-      return;
-    }
+    if (!validate()) return;
     // Crealogix users don't get onboarded yet — the profile POST (which
     // flips onboardingCompletedAt) waits until the companion step below
     // confirms a live connection.
@@ -162,14 +230,11 @@ export function OnboardingPage() {
         <PageHeader
           crumb="One-time setup"
           title="Welcome to eSpace Hubs"
-          subtitle="A few quick fields so we know how to route you. You can change them later from your profile — there's no wrong answer here."
+          subtitle="A few quick fields so we know how to route you. You can change them later under Settings → Account — there's no wrong answer here."
         />
 
         <Card padding={28}>
-          {totalSteps > 1 ? (
-            <Label className="mb-2 block">{`Step ${stepNum} of ${totalSteps}`}</Label>
-          ) : null}
-          <ProgressStrip filled={Math.round((stepNum / totalSteps) * 6)} />
+          <StepChain steps={steps} current={currentStep} />
 
           {step === "companion" ? (
             <CompanionGateStep
@@ -178,20 +243,81 @@ export function OnboardingPage() {
               onBack={() => setStep("profile")}
             />
           ) : (
-            <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-              <Field label="Display name" hint="What we'll call you in the chrome.">
+            <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-5">
+              <div>
+                <Field
+                  label={
+                    <>
+                      Display name
+                      <RequiredMark />
+                    </>
+                  }
+                  hint="Shown in the header and to your manager."
+                >
+                  <Input
+                    type="text"
+                    value={displayName}
+                    onChange={(e) => {
+                      setDisplayName(e.target.value);
+                      if (errors.displayName) setErrors((p) => ({ ...p, displayName: null }));
+                    }}
+                    placeholder="Your name"
+                    autoComplete="name"
+                    required
+                    aria-required="true"
+                    aria-invalid={errors.displayName ? "true" : undefined}
+                    aria-describedby={errors.displayName ? "onboarding-displayName-error" : undefined}
+                  />
+                </Field>
+                <FieldError id="onboarding-displayName-error">{errors.displayName}</FieldError>
+              </div>
+
+              {/* Department: the chips live OUTSIDE the <label> on purpose.
+                  Field wraps its children in a <label>, so a click on the
+                  label text used to activate the first chip ("Engineering")
+                  instead of focusing the input. */}
+              <div>
+                <Label as="label" htmlFor="onboarding-department" className="mb-1.5 block">
+                  Department
+                  <RequiredMark />
+                </Label>
+                <div className="mb-2.5 flex flex-wrap gap-1.5" role="group" aria-label="Common departments">
+                  {QUICK_PICKS.map((q) => (
+                    <QuickPick
+                      key={q}
+                      label={q}
+                      active={department.toLowerCase() === q.toLowerCase()}
+                      onClick={() => {
+                        setDepartment(q);
+                        if (errors.department) setErrors((p) => ({ ...p, department: null }));
+                      }}
+                    />
+                  ))}
+                </div>
                 <Input
+                  id="onboarding-department"
                   type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Your name"
-                  autoComplete="name"
+                  value={department}
+                  onChange={(e) => {
+                    setDepartment(e.target.value);
+                    if (errors.department) setErrors((p) => ({ ...p, department: null }));
+                  }}
+                  placeholder="e.g. QA"
+                  required
+                  aria-required="true"
+                  aria-invalid={errors.department ? "true" : undefined}
+                  aria-describedby={errors.department ? "onboarding-department-error" : "onboarding-department-hint"}
                 />
-              </Field>
+                <div id="onboarding-department-hint" className="mt-1 text-[12px] leading-[1.4] text-muted-fg">
+                  Pick or type. For your org chart — an admin assigns which hubs
+                  you can use.
+                </div>
+                <FieldError id="onboarding-department-error">{errors.department}</FieldError>
+              </div>
 
               <Field
                 label="Employee ID"
-                hint="Whatever your HR system calls it. Zoho will overwrite this later if it differs."
+                hint="Optional. Whatever your HR system calls it — you can add it later under Settings → Account."
               >
                 <Input
                   type="text"
@@ -201,40 +327,31 @@ export function OnboardingPage() {
                 />
               </Field>
 
-              <Field
-                label="Department"
-                hint="Pick or type. For your org chart — an admin assigns which hub you land in."
-              >
-                <div className="mb-2.5 flex flex-wrap gap-1.5">
-                  {QUICK_PICKS.map((q) => (
-                    <QuickPick
-                      key={q}
-                      label={q}
-                      active={department.toLowerCase() === q.toLowerCase()}
-                      onClick={() => setDepartment(q)}
-                    />
-                  ))}
-                </div>
-                <Input
-                  type="text"
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  placeholder="e.g. QA"
-                />
-              </Field>
-
               <div className="mt-1 flex items-center gap-3">
                 <Button type="submit" size="lg" disabled={submitting}>
-                  {submitting ? "Saving…" : "Continue"}
+                  {submitting ? "Saving…" : requiresCompanion ? "Continue" : "Finish setup"}
                 </Button>
+                <span className="text-[12px] text-muted-fg">
+                  <RequiredMark /> required
+                </span>
               </div>
             </form>
           )}
         </Card>
 
-        <div className="mt-6 text-center text-[13px] text-dim-fg">
-          Signed in as {user.email}. This is a one-time setup saved to your
-          account — you won&apos;t see it again on any device.
+        <div className="mt-6 text-center text-[13px] text-muted-fg">
+          Signed in as {user.email} ·{" "}
+          <button
+            type="button"
+            onClick={() => logout()}
+            className="font-bold text-fg hover:underline"
+          >
+            Sign out
+          </button>
+          <div className="mt-1">
+            This is a one-time setup saved to your account — you won&apos;t see
+            it again on any device.
+          </div>
         </div>
       </div>
     </main>

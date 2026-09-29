@@ -150,10 +150,17 @@ test("weekly bounds still honoured and unaffected by the calendar-branch change"
     cadence: "weekly",
     now: Date.UTC(2026, 0, 15),
     cycleStart: JAN_2026,
-    cycleEnd: Date.UTC(2026, 0, 29), // exactly 4 weeks
+    cycleEnd: Date.UTC(2026, 0, 29), // Thu 1 → Wed 28 Jan
   });
-  assert.equal(cycle.total, 4);
-  assert.deepEqual(labelsOf(cycle), ["W1", "W2", "W3", "W4"]);
+  // Sunday-anchored work weeks (Decision 1): Thu 1 Jan 2026 opens a clipped
+  // W01 (Jan 1–3), then whole Sun→Sat weeks, the last one clipped to the
+  // cycle's end. Labels are the snapshot store's week numbers.
+  assert.equal(cycle.total, 5);
+  assert.deepEqual(labelsOf(cycle), ["W01", "W02", "W03", "W04", "W05"]);
+  assert.deepEqual(
+    cycle.windows.map((w) => w.key),
+    ["2026-W1", "2026-W2", "2026-W3", "2026-W4", "2026-W5"],
+  );
 });
 
 /**
@@ -190,12 +197,15 @@ test("composedCycleBounds returns {} for an absent, malformed, or inverted pair"
   );
 });
 
-test("a weekly plan anchored to composedCycleBounds numbers week 1 from ITS OWN start, not Jan 1", () => {
+test("a weekly plan anchored to composedCycleBounds keys week 1 from ITS OWN start, not Jan 1", () => {
   const spec = { composed: { cadence: "weekly", cycleStart: "2026-09-07", cycleEnd: "2026-11-29" } };
   const bounds = composedCycleBounds(spec);
   const now = Date.UTC(2026, 8, 10); // a few days into the plan's actual week 1
   const cycle = buildCycleWindows({ entries: [], cadence: "weekly", now, ...bounds });
-  assert.deepEqual(labelsOf(cycle).slice(0, 3), ["W1", "W2", "W3"]);
+  // Keys index from the plan's own start; LABELS are the calendar work-week
+  // number (Mon 7 Sep 2026 is in W37), same as the snapshot store's.
+  assert.deepEqual(cycle.windows.slice(0, 3).map((w) => w.key), ["2026-W1", "2026-W2", "2026-W3"]);
+  assert.deepEqual(labelsOf(cycle).slice(0, 3), ["W37", "W38", "W39"]);
   assert.equal(cycle.currentIndex, 0);
 
   // currentPeriodKey must agree with buildCycleWindows' own key for that same
@@ -221,9 +231,9 @@ test("a weekly plan anchored to composedCycleBounds numbers week 1 from ITS OWN 
  */
 test("deriveCycleEndIso gives a 13-week plan exactly 13 windows, not however far the goal's dueDate is", () => {
   const end = deriveCycleEndIso("2026-07-01", "weekly", 13);
-  // 13 weeks after July 1 → last (13th) window is Sep 23–30, so the stored
-  // (inclusive) end is Sep 29 — one day before that window's exclusive end.
-  assert.equal(end, "2026-09-29");
+  // Wed 1 Jul opens a clipped work week (Jul 1–4); the 13th window is the
+  // Sunday-week Sep 20–26, so the stored (inclusive) end is Sat Sep 26.
+  assert.equal(end, "2026-09-26");
 
   const cycle = buildCycleWindows({
     entries: [],

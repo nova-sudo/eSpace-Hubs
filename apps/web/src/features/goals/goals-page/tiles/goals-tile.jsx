@@ -48,11 +48,11 @@ export function GoalsTile() {
       >
         <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
           <div className="max-w-md text-[13px] text-muted-fg">
-            Paste your L1 / L2 tree into the Onboarding tab once — we&apos;ll
+            Add your L1 / L2 tree in the Goals &amp; setup tab once — we&apos;ll
             render them here at a glance.
           </div>
           <Link
-            href={link("/settings")}
+            href={link("/settings?tab=goals")}
             className="inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] bg-ink px-3.5 py-1.5 text-[12px] font-bold text-ink-on hover:opacity-90"
           >
             Add goals
@@ -72,7 +72,7 @@ export function GoalsTile() {
       titleSize={18}
       right={
         <Link
-          href={link("/settings")}
+          href={link("/settings?tab=goals")}
           className="inline-flex items-center gap-1 text-[12px] font-bold text-fg"
         >
           Edit
@@ -106,7 +106,7 @@ function L1Column({ l1, index, getSpec }) {
           {l1.weightage > 0 ? <Badge tone="lav">{l1.weightage}%</Badge> : null}
           {l1.category ? <Badge tone="neutral">{l1.category}</Badge> : null}
         </div>
-        <span className="text-[11px] text-dim-fg">{l1.l2s.length} L2</span>
+        <span className="text-[11px] text-muted-fg">{l1.l2s.length} L2</span>
       </header>
       <div
         className="mb-1 line-clamp-2 text-[12.5px] font-medium leading-[1.35]"
@@ -116,7 +116,7 @@ function L1Column({ l1, index, getSpec }) {
       </div>
       {l1.description ? (
         <div
-          className="mb-2 line-clamp-2 text-[11px] leading-[1.35] text-dim-fg"
+          className="mb-2 line-clamp-2 text-[11px] leading-[1.35] text-muted-fg"
           title={l1.description}
         >
           {l1.description}
@@ -124,20 +124,20 @@ function L1Column({ l1, index, getSpec }) {
       ) : null}
       {l1.l2s.length > 0 ? (
         <>
-          <div className="mb-2 text-[11px] text-dim-fg">Σ {l2Weight}% mapped</div>
+          <div className="mb-2 text-[11px] text-muted-fg">Σ {l2Weight}% mapped</div>
           <ul className="flex-1 space-y-1 overflow-y-auto pr-0.5">
             {l1.l2s.slice(0, 6).map((l2) => (
               <L2Row key={l2.id} l2={l2} getSpec={getSpec} />
             ))}
             {l1.l2s.length > 6 ? (
-              <li className="py-1 text-[11px] text-dim-fg">
+              <li className="py-1 text-[11px] text-muted-fg">
                 + {l1.l2s.length - 6} more…
               </li>
             ) : null}
           </ul>
         </>
       ) : (
-        <div className="flex flex-1 items-center text-[11.5px] text-dim-fg">
+        <div className="flex flex-1 items-center text-[11.5px] text-muted-fg">
           No L2s mapped yet.
         </div>
       )}
@@ -195,7 +195,7 @@ function L2MetaLine({ l2 }) {
   if (l2.category) parts.push(l2.category);
   if (l2.dueDate) parts.push(`due ${fmtDate(l2.dueDate)}`);
   if (parts.length === 0) return null;
-  return <div className="mt-0.5 text-[11px] text-dim-fg">{parts.join(" · ")}</div>;
+  return <div className="mt-0.5 text-[11px] text-muted-fg">{parts.join(" · ")}</div>;
 }
 
 function fmtDate(iso) {

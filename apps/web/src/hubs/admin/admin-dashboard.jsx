@@ -11,7 +11,12 @@
  *
  * Everything here comes from endpoints that already exist —
  *
- *   GET /admin/users                     the roster
+ *   GET /admin/users/summary             member counts, the pending
+ *                                        queue, and the reporting-line
+ *                                        gaps (no manager / disabled
+ *                                        manager) — the roster itself is
+ *                                        paginated and never loaded whole
+ *   GET /admin/approvals                 trackers waiting on admins
  *   GET /hub-configs                     which hubs an override disabled
  *   GET /admin/audit?since=<midnight>    today's events
  *   GET /admin/audit?limit=6             the latest few, for the feed
@@ -36,7 +41,8 @@ import {
   startOfTodayIso,
   waitedFor,
 } from "./admin-lib";
-import { patchUser } from "./admin-user-actions";
+import { toast } from "sonner";
+import { AdminApproveDialog } from "./admin-approve-dialog";
 import { EmptyState } from "./admin-ui";
 
 const TODAY_LIMIT = 200;
@@ -50,24 +56,27 @@ export function AdminDashboard() {
     today: null,
     todayCapped: false,
     recent: null,
+    approvals: null,
   });
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const since = startOfTodayIso();
-      const [usersR, configsR, todayR, recentR] = await Promise.all([
-        apiGet("/admin/users"),
+      const [usersR, configsR, todayR, recentR, approvalsR] = await Promise.all([
+        apiGet("/admin/users/summary"),
         apiGet("/hub-configs"),
         apiGet(
           `/admin/audit?since=${encodeURIComponent(since)}&limit=${TODAY_LIMIT}`,
         ),
         apiGet("/admin/audit?limit=6"),
+        apiGet("/admin/approvals"),
       ]);
       if (cancelled) return;
       setState({
         loading: false,
-        users: usersR.ok ? (usersR.data?.users ?? []) : null,
+        users: usersR.ok ? (usersR.data ?? null) : null,
+        approvals: approvalsR.ok ? (approvalsR.data?.items ?? []) : null,
         configs: configsR.ok ? (configsR.data?.configs ?? []) : null,
         today: todayR.ok ? (todayR.data?.entries ?? []) : null,
         todayCapped: todayR.ok ? !!todayR.data?.hasMore : false,
@@ -79,22 +88,23 @@ export function AdminDashboard() {
     };
   }, []);
 
-  const { users, configs, today, recent, loading, todayCapped } = state;
+  const { users, configs, today, recent, loading, todayCapped, approvals } = state;
 
+  // `users` is the /admin/users/summary body — counts computed
+  // server-side over the whole org, never a client-side roster scan.
   const stats = useMemo(() => {
     if (!users) return null;
-    const by = (s) => users.filter((u) => u.status === s);
-    const pending = by("pending_admin");
-    const oldestPending = [...pending].sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-    )[0];
+    const pending = users.pending ?? [];
     return {
-      total: users.length,
-      active: by("active").length,
-      invited: by("invited").length,
+      total: users.total ?? 0,
+      active: users.byStatus?.active ?? 0,
+      invited: users.byStatus?.invited ?? 0,
+      pendingCount: users.byStatus?.pending_admin ?? pending.length,
       pending,
-      oldestPending,
-      noTotp: users.filter((u) => !u.hasTotp && u.status !== "disabled"),
+      oldestPending: pending[0] ?? null,
+      noTotp: users.noTotp ?? 0,
+      noManager: users.noManager ?? 0,
+      disabledManagerReports: users.disabledManagerReports ?? 0,
     };
   }, [users]);
 
@@ -117,15 +127,31 @@ export function AdminDashboard() {
           ),
         ).length;
 
+  // Approving opens the same dialog as Members (manager + roles + home
+  // hub in one step) — a bare status flip left new members manager-less.
+  const [approving, setApproving] = useState(null);
   function approve(user) {
-    return async () => {
-      const updated = await patchUser(user, { status: "active" });
-      if (!updated) return;
-      setState((prev) => ({
+    return () => setApproving(user);
+  }
+  function onApproved(updated) {
+    setApproving(null);
+    toast.success(`Approved ${updated.displayName}.`);
+    if (!state.users) return;
+    setState((prev) => {
+      const summary = prev.users;
+      if (!summary) return prev;
+      const by = { ...(summary.byStatus ?? {}) };
+      by.pending_admin = Math.max(0, (by.pending_admin ?? 1) - 1);
+      by.active = (by.active ?? 0) + 1;
+      return {
         ...prev,
-        users: (prev.users ?? []).map((u) => (u.id === updated.id ? updated : u)),
-      }));
-    };
+        users: {
+          ...summary,
+          byStatus: by,
+          pending: (summary.pending ?? []).filter((u) => u.id !== updated.id),
+        },
+      };
+    });
   }
 
   return (
@@ -154,9 +180,9 @@ export function AdminDashboard() {
             />
             <StatTile
               label="Pending approval"
-              value={stats ? stats.pending.length : null}
+              value={stats ? stats.pendingCount : null}
               badge={
-                !stats ? null : stats.pending.length === 0 ? (
+                !stats ? null : stats.pendingCount === 0 ? (
                   <Badge tone="mint">nobody waiting</Badge>
                 ) : (
                   <Badge tone="lemon">
@@ -167,9 +193,9 @@ export function AdminDashboard() {
             />
             <StatTile
               label="Without two-factor"
-              value={stats ? stats.noTotp.length : null}
+              value={stats ? stats.noTotp : null}
               badge={
-                !stats ? null : stats.noTotp.length === 0 ? (
+                !stats ? null : stats.noTotp === 0 ? (
                   <Badge tone="mint">everyone enrolled</Badge>
                 ) : (
                   <Badge tone="peach">of {stats.total} members</Badge>
@@ -189,6 +215,31 @@ export function AdminDashboard() {
             />
           </div>
 
+          {/* Reporting-line gaps (hub-audit §1.4): a person with no manager
+              has their approvals routed to admins; a disabled manager's
+              reports have nobody reading their queue. Each links to the
+              Members list pre-filtered to exactly those people. */}
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <GapTile
+              count={stats?.noManager}
+              text={(n) => `${n} ${n === 1 ? "person has" : "people have"} no manager`}
+              hint="Devs and QA without one — their approvals come to admins."
+              href={link("/users?flag=no_manager")}
+            />
+            <GapTile
+              count={stats?.disabledManagerReports}
+              text={(n) => `${n} ${n === 1 ? "report has" : "reports have"} a disabled manager`}
+              hint="Reassign them from the manager's row on Members."
+              href={link("/users?flag=disabled_manager")}
+            />
+            <GapTile
+              count={approvals ? approvals.length : null}
+              text={(n) => `${n} ${n === 1 ? "tracker is" : "trackers are"} waiting on admins`}
+              hint="Build-Your-Own trackers from people with no manager."
+              href={link("/approvals")}
+            />
+          </div>
+
           <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
             <Panel
               title="Needs a decision"
@@ -196,17 +247,17 @@ export function AdminDashboard() {
                 stats || disabledHubs.length ? (
                   <Badge
                     tone={
-                      (stats?.pending.length ?? 0) + disabledHubs.length > 0
+                      (stats?.pendingCount ?? 0) + disabledHubs.length > 0
                         ? "lemon"
                         : "mint"
                     }
                   >
-                    {(stats?.pending.length ?? 0) + disabledHubs.length}
+                    {(stats?.pendingCount ?? 0) + disabledHubs.length}
                   </Badge>
                 ) : null
               }
             >
-              {(stats?.pending.length ?? 0) + disabledHubs.length === 0 ? (
+              {(stats?.pendingCount ?? 0) + disabledHubs.length === 0 ? (
                 <EmptyState
                   title="Nothing waiting."
                   body="No one is queued for approval and every hub is visible to the org."
@@ -270,7 +321,7 @@ export function AdminDashboard() {
                       key={e.id}
                       className={`flex flex-wrap items-center gap-2 py-2.5 ${i === 0 ? "" : "border-t border-line"}`}
                     >
-                      <span className="w-[108px] shrink-0 text-[11.5px] tabular-nums text-dim-fg">
+                      <span className="w-[108px] shrink-0 text-[11.5px] tabular-nums text-muted-fg">
                         {formatDateTime(e.ts)}
                       </span>
                       <Badge tone={actionTone(e.action)}>{e.action}</Badge>
@@ -286,14 +337,47 @@ export function AdminDashboard() {
 
           {users === null ? (
             <p className="mt-4 text-[12.5px] text-muted-fg">
-              The roster couldn&apos;t be read, so the member counts above are
-              blank. Your session may have lost the admin role — reload, or ask
+              The member summary couldn&apos;t be read, so the counts above are
+              blank. Your account may not hold user management — reload, or ask
               another admin.
             </p>
           ) : null}
         </>
       )}
+      {approving ? (
+        <AdminApproveDialog
+          user={approving}
+          onClose={() => setApproving(null)}
+          onApproved={onApproved}
+        />
+      ) : null}
     </AdminShell>
+  );
+}
+
+function GapTile({ count, text, hint, href }) {
+  const n = typeof count === "number" ? count : null;
+  const clear = n === 0;
+  const body = (
+    <>
+      <div className="flex items-center gap-2">
+        <Badge tone={n === null ? "neutral" : clear ? "mint" : "lemon"}>
+          {n === null ? "—" : clear ? "all clear" : "needs attention"}
+        </Badge>
+      </div>
+      <div className="mt-2 text-[15px] font-bold text-fg">{n === null ? "—" : text(n)}</div>
+      <div className="mt-1 text-[12px] text-muted-fg">{hint}</div>
+    </>
+  );
+  const cls = "block rounded-[var(--radius-xl)] bg-card p-5";
+  return n && href ? (
+    <Link href={href} className={`${cls} transition-colors hover:bg-card-alt`} style={{ boxShadow: "var(--shadow-card)" }}>
+      {body}
+    </Link>
+  ) : (
+    <div className={cls} style={{ boxShadow: "var(--shadow-card)" }}>
+      {body}
+    </div>
   );
 }
 

@@ -21,9 +21,11 @@ import { Badge, Card, FillStrip, Label, PacedBar } from "@/components/ui";
 import { SPEC_KIND_META, specCadence } from "@/features/goal-specs";
 import { TIER_LABELS, tierTone } from "@/features/goal-tiers";
 import { GoalWidgetModal } from "@/features/goal-widgets";
+import { ASSIGNED_GROUP_LABEL, AssignedBadge } from "@/features/assigned-goals";
+import { ASSIGNED_ROOT_ID } from "@espace-devhub/shared/goal-specs";
 import { AutoGoalValue } from "./auto-value";
 import { cadenceCells, objectiveProgressPercent, worstChildStatus } from "./progress";
-import { HEALTH } from "./status";
+import { GOAL_STATUS } from "@/features/goal-inputs";
 
 function capitalize(s) {
   return s ? s[0].toUpperCase() + s.slice(1) : s;
@@ -54,6 +56,10 @@ export function ObjectiveBands({ groups }) {
 function Band({ group, index, onOpen }) {
   const percent = objectiveProgressPercent(group.cards);
   const worst = worstChildStatus(group.cards);
+  // Goals a manager assigned you sit under a synthetic objective the server
+  // titles "Shared goals"; here they read "Assigned to you".
+  const assigned = group.l1.id === ASSIGNED_ROOT_ID;
+  const title = assigned ? ASSIGNED_GROUP_LABEL : group.l1.title;
 
   return (
     <Card padding={0}>
@@ -61,15 +67,19 @@ function Band({ group, index, onOpen }) {
         <Label className="shrink-0 tabular-nums">{String(index + 1).padStart(2, "0")}</Label>
         <h3
           className="m-0 min-w-0 flex-1 truncate text-[14.5px] font-bold tracking-[-0.01em] text-fg"
-          title={group.l1.title}
+          title={title}
         >
-          {group.l1.title}
+          {title}
         </h3>
+        {assigned ? <AssignedBadge names={group.cards.map((c) => c.goal?.assigned?.byName)} /> : null}
         {worst ? <Badge tone={worst.tone}>{worst.label}</Badge> : null}
         <span className="hidden w-[120px] shrink-0 md:block">
-          <PacedBar value={percent ?? 0} height={5} />
+          <PacedBar value={percent ?? 0} expected={100} height={5} />
         </span>
-        <span className="w-[36px] shrink-0 text-right text-[12px] font-bold tabular-nums text-muted-fg">
+        <span
+          className="w-[36px] shrink-0 text-right text-[12px] font-bold tabular-nums text-muted-fg"
+          title="Logged so far: of the check-ins due under this objective, how many are logged"
+        >
           {percent == null ? "—" : `${percent}%`}
         </span>
       </div>
@@ -110,9 +120,17 @@ function GoalRow({ card, onOpen }) {
         <GoalRowValue card={card} />
       </span>
 
-      <Badge tone={tier ? tierTone(tier) : "neutral"}>
-        {tier ? TIER_LABELS[tier] : "Not graded"}
-      </Badge>
+      <span
+        title={
+          tier
+            ? `Achievement tier: ${TIER_LABELS[tier]}`
+            : "Not graded yet — log data for this goal and it gets a tier"
+        }
+      >
+        <Badge tone={tier ? tierTone(tier) : "neutral"}>
+          {tier ? TIER_LABELS[tier] : "Not graded yet"}
+        </Badge>
+      </span>
 
       <ChevronRight size={15} className="shrink-0 text-muted-fg" aria-hidden="true" />
     </button>
@@ -120,22 +138,22 @@ function GoalRow({ card, onOpen }) {
 }
 
 /**
- * The row's one number. Manual trackers read as filled-of-due windows — the
- * same ratio the Goals page's cadence stepper shows. AUTO trackers have no
- * windows, so they show the live value their integration produced.
+ * The row's one number: logged of DUE so far — "4/5", never "4/19" (future
+ * and pre-tracker windows aren't due). AUTO trackers have no windows, so
+ * they show the live value their integration produced.
  */
 function GoalRowValue({ card }) {
-  const { spec, health } = card;
-  if (health?.status === HEALTH.AUTO) return <AutoGoalValue spec={spec} compact />;
-  const fill = health?.fill;
-  if (fill?.total > 0) {
+  const { spec, health, status } = card;
+  if (status?.status === GOAL_STATUS.AUTO) return <AutoGoalValue spec={spec} compact />;
+  const logged = status?.logged;
+  if (logged && logged.due > 0) {
     return (
-      <span>
-        {fill.filledCount}
-        <span className="text-muted-fg">/{fill.total}</span>
+      <span title={`${logged.done} of the ${logged.due} check-ins due so far are logged`}>
+        {logged.done}
+        <span className="text-muted-fg">/{logged.due}</span>
       </span>
     );
   }
-  if (fill?.hasData) return <span>Logged</span>;
-  return <span className="text-dim-fg">—</span>;
+  if (health?.fill?.hasData) return <span>Logged</span>;
+  return <span className="text-muted-fg">—</span>;
 }

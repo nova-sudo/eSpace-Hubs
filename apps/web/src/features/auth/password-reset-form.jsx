@@ -93,7 +93,7 @@ export function PasswordResetForm() {
     return (
       <AuthCard
         title="Password updated"
-        lead="Redirecting you to sign-in. Use your new password to continue."
+        lead="Every device was signed out. Taking you to sign-in — use your new password to continue."
       >
         <div className="text-[13px] text-muted-fg">
           Not redirected?{" "}
@@ -108,7 +108,7 @@ export function PasswordResetForm() {
   return (
     <AuthCard
       title="New password"
-      lead="Choose a new password. You'll be signed in on this device once it's set."
+      lead="Choose a new password. For safety this signs you out everywhere — you'll sign in again with the new password right after."
     >
       <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
         <Field label="New password">
@@ -124,7 +124,7 @@ export function PasswordResetForm() {
         </Field>
         <Field
           label="Confirm password"
-          hint={`${MIN_PASSWORD_LENGTH}+ characters · argon2id hash`}
+          hint={`${MIN_PASSWORD_LENGTH}+ characters · stored securely, never in plain text`}
         >
           <Input
             type="password"

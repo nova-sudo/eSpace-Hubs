@@ -31,6 +31,7 @@ import {
 } from "@radix-ui/react-dropdown-menu";
 import { useSession } from "./use-session.js";
 import { useIntegrations } from "@/features/integrations";
+import { useActiveHub } from "@/features/hubs";
 import { cn } from "@/lib/cn";
 
 function initialsOf(name, fallbackEmail) {
@@ -61,6 +62,7 @@ export function UserChip() {
   // no session user. Keeps the header useful in pure-localStorage mode.
   const { me: legacyMe } = useIntegrations();
   const router = useRouter();
+  const hub = useActiveHub();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
@@ -100,7 +102,7 @@ export function UserChip() {
             aria-label={`Account menu for ${displayName}`}
           >
             <Avatar initials={initials} />
-            <span className="max-w-[140px] truncate text-[13px] font-semibold text-fg">
+            <span className="hidden max-w-[140px] truncate text-[13px] font-semibold text-fg sm:inline">
               {displayName}
             </span>
             <ChevronDown size={14} className="shrink-0 text-muted-fg" />
@@ -120,6 +122,17 @@ export function UserChip() {
             <div className="text-muted-fg">{user.email}</div>
           </div>
           <DropdownMenuSeparator className="my-1 h-px bg-line" />
+          {hub?.pages?.sharedgoals ? (
+            <>
+              <DropdownMenuItem
+                asChild
+                className="cursor-pointer rounded-[var(--radius-lg)] px-3 py-2.5 text-[13px] font-semibold text-fg outline-none hover:bg-card-alt"
+              >
+                <Link href={`/${hub.id}/shared-goals`}>Shared with me</Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="my-1 h-px bg-line" />
+            </>
+          ) : null}
           <DropdownMenuItem
             disabled={isPending}
             onSelect={(e) => {
@@ -129,7 +142,7 @@ export function UserChip() {
               onLogout();
             }}
             className={cn(
-              "cursor-pointer rounded-[var(--radius-lg)] px-3 py-2.5 text-[13px] font-semibold text-peach-ink outline-none hover:bg-card-alt",
+              "cursor-pointer rounded-[var(--radius-lg)] px-3 py-2.5 text-[13px] font-semibold text-peach-text outline-none hover:bg-card-alt",
               isPending && "cursor-wait opacity-60",
             )}
           >

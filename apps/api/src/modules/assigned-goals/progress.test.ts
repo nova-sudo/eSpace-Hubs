@@ -24,7 +24,7 @@ test("rows × windows with per-window counts and totals", () => {
     ],
   });
   assert.deepEqual(p.windows.map((w) => w.key), ["2026-01", "2026-02", "2026-03"]);
-  assert.deepEqual(p.windows[0].counts, { onTime: 1, late: 1, missing: 0, open: 0, upcoming: 0 });
+  assert.deepEqual(p.windows[0].counts, { onTime: 1, late: 1, missing: 0, open: 0, upcoming: 0, before: 0 });
   assert.equal(p.windows[1].counts.open, 2);
   assert.equal(p.rows[0].cells[0].status, "on_time");
   assert.equal(p.rows[1].cells[0].status, "late");
@@ -37,4 +37,19 @@ test("no assignees still yields the window grid", () => {
   const p = buildProgress({ spec, graceHours: 0, users: [], entries: [], now: Date.UTC(2026, 1, 1) });
   assert.equal(p.windows.length, 3);
   assert.equal(p.totals.due, 0);
+});
+
+test("windows that ended before the goal was assigned are 'before', not missing", () => {
+  const p = buildProgress({
+    spec,
+    graceHours: 0,
+    now: Date.UTC(2026, 2, 15),
+    trackingStart: Date.UTC(2026, 1, 10), // assigned mid-February
+    users: [{ id: "a", displayName: "A", email: null }],
+    entries: [],
+  });
+  assert.deepEqual(p.rows[0].cells.map((c) => c.status), ["before", "missing", "open"]);
+  assert.equal(p.windows[0].counts.before, 1);
+  assert.equal(p.totals.missing, 1);
+  assert.equal(p.totals.due, 1);
 });

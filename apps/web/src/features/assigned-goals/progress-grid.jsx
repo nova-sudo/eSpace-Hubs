@@ -25,6 +25,8 @@ export const STATUS_META = {
   },
   open: { label: "Open", short: "Open", cls: "bg-lemon text-lemon-ink" },
   upcoming: { label: "Upcoming", short: "—", cls: "bg-card-alt text-muted-fg" },
+  // Ended before the goal was assigned — optional backfill, never missing.
+  before: { label: "Before assigned", short: "—", cls: "bg-card-alt text-dim-fg opacity-60" },
 };
 
 const DAY_FMT = { day: "numeric", month: "short" };
@@ -79,7 +81,7 @@ export function ProgressGrid({ windows, rows, onOpenCell, verdicts = {}, onGrade
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Legend />
-        <SegmentedControl options={SORTS} value={sort} onChange={setSort} size="sm" onCard />
+        <SegmentedControl as="radiogroup" ariaLabel="Sort by" options={SORTS} value={sort} onChange={setSort} size="sm" onCard />
       </div>
       <div className="overflow-x-auto">
         <table className="w-full border-separate border-spacing-0 text-[13px]">
@@ -127,7 +129,7 @@ export function ProgressGrid({ windows, rows, onOpenCell, verdicts = {}, onGrade
                 </th>
                 {row.cells.map((c) => {
                   const meta = STATUS_META[c.status] ?? STATUS_META.upcoming;
-                  const clickable = c.status !== "upcoming" || c.submittedAt;
+                  const clickable = (c.status !== "upcoming" && c.status !== "before") || c.submittedAt;
                   const tip =
                     c.submittedAt != null
                       ? `${meta.label} · submitted ${fmtStamp(c.submittedAt)}${c.approx ? " (approx.)" : ""}${
@@ -135,7 +137,9 @@ export function ProgressGrid({ windows, rows, onOpenCell, verdicts = {}, onGrade
                             ? ` · edited ${fmtStamp(c.lastEditedAt)}`
                             : ""
                         } · ${c.filledFields}/${c.totalFields} fields`
-                      : `${meta.label} · due ${fmtStamp(c.deadline)}`;
+                      : c.status === "before"
+                        ? `${meta.label} · ended before this goal was assigned — optional backfill`
+                        : `${meta.label} · due ${fmtStamp(c.deadline)}`;
                   return (
                     <td key={c.key ?? "once"} className="border-t border-line px-1 py-1.5">
                       <button
@@ -177,7 +181,7 @@ export function ProgressGrid({ windows, rows, onOpenCell, verdicts = {}, onGrade
 }
 
 function Legend() {
-  const items = ["on_time", "late", "missing", "open", "upcoming"];
+  const items = ["on_time", "late", "missing", "open", "upcoming", "before"];
   return (
     <div className="flex flex-wrap items-center gap-3 text-[12px] font-semibold text-muted-fg">
       {items.map((k) => (

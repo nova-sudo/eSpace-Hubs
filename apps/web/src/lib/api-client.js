@@ -44,11 +44,25 @@ function maybeToastCompanionUnreachable(message) {
     return;
   }
   lastCompanionUnreachableToastAt = now;
-  toast.error("Companion offline", {
+  // Strip the raw socket detail the proxy appends ("connect ECONNREFUSED …")
+  // — the actionable part is the sentence before it.
+  const clean = String(message || "")
+    .replace(/\s*[—:-]?\s*connect E[A-Z]+.*$/i, "")
+    .trim();
+  const hub = window.location.pathname.split("/")[1];
+  toast.error("Desktop companion offline", {
     description:
-      message ||
-      "Couldn't reach your companion. Open the desktop app to resume routing.",
-    duration: 8000,
+      (clean || "Couldn't reach the desktop companion.") +
+      " Provider data (PRs, tickets, reviews) is unavailable until the app is back.",
+    duration: 10000,
+    action: hub
+      ? {
+          label: "How to fix",
+          onClick: () => {
+            window.location.assign(`/${hub}/settings?tab=companion`);
+          },
+        }
+      : undefined,
   });
 }
 
@@ -126,14 +140,47 @@ function maybeRedirectToLogin(errorCode) {
 
   redirectingToLogin = true;
   const returnTo = path + (window.location.search || "");
-  // Existing /login page reads `?next=...` (see app/login/page.jsx).
-  const target =
-    returnTo === "/" || returnTo === ""
-      ? "/login"
-      : `/login?next=${encodeURIComponent(returnTo)}`;
+  // Existing /login page reads `?next=...` (see app/login/page.jsx) and
+  // `?reason=expired` so the form can say WHY the user is back here
+  // instead of silently dropping them on a sign-in screen mid-task.
+  const params = new URLSearchParams({ reason: "expired" });
+  if (returnTo !== "/" && returnTo !== "") params.set("next", returnTo);
+  const target = `/login?${params.toString()}`;
   // Use location.assign (not history.replace) so the back button
   // doesn't bounce the user between the expired page and login.
   window.location.replace(target);
+}
+
+/**
+ * Requests that never settle used to hang their caller forever (a spinner
+ * with no error branch to fall into). Abort after this long and report a
+ * `timeout` error the same way a network failure is reported.
+ */
+const REQUEST_TIMEOUT_MS = 20_000;
+
+/**
+ * Human copy for the transport-level failures this wrapper produces. The
+ * raw detail (`TypeError: Failed to fetch`, `HTTP 502`, …) moves to
+ * `error.detail` so a caller that renders `error.message` shows something a
+ * person can act on, and a log line can still carry the specifics.
+ */
+const HUMAN_MESSAGES = Object.freeze({
+  network_error: "Couldn't reach the server. Check your connection and try again.",
+  timeout: "The server took too long to respond. Try again in a moment.",
+  malformed_response: "The server sent an unexpected reply. Try again in a moment.",
+  http_5xx: "Something went wrong on the server. Try again in a moment.",
+});
+
+/** Build a transport error envelope with human `message` + raw `detail`. */
+function transportError(code, detail, requestId) {
+  const humanKey = /^http_5\d\d$/.test(code) ? "http_5xx" : code;
+  const message = HUMAN_MESSAGES[humanKey] || detail || "Something went wrong.";
+  return {
+    code,
+    message: requestId ? `${message} (ref ${requestId})` : message,
+    detail,
+    ...(requestId ? { requestId } : {}),
+  };
 }
 
 /**
@@ -152,6 +199,11 @@ function maybeRedirectToLogin(errorCode) {
 
 async function request(method, path, body, init = {}) {
   let res;
+  // Caller-supplied signal wins; otherwise arm the default timeout.
+  const controller = init.signal ? null : new AbortController();
+  const timer = controller
+    ? setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    : null;
   try {
     res = await fetch(`${API_BASE}${path}`, {
       method,
@@ -162,17 +214,19 @@ async function request(method, path, body, init = {}) {
         ...(init.headers || {}),
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      ...(controller ? { signal: controller.signal } : {}),
       ...init,
     });
   } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    const timedOut = controller && err?.name === "AbortError";
     return {
       ok: false,
       status: 0,
-      error: {
-        code: "network_error",
-        message: err instanceof Error ? err.message : String(err),
-      },
+      error: transportError(timedOut ? "timeout" : "network_error", detail),
     };
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 
   // 204 / empty body — uniform handling.
@@ -187,10 +241,11 @@ async function request(method, path, body, init = {}) {
       return {
         ok: false,
         status: res.status,
-        error: {
-          code: "malformed_response",
-          message: `Server returned non-JSON: ${err instanceof Error ? err.message : String(err)}`,
-        },
+        error: transportError(
+          "malformed_response",
+          `Server returned non-JSON: ${err instanceof Error ? err.message : String(err)}`,
+          res.headers.get("x-request-id") || undefined,
+        ),
       };
     }
   } else {
@@ -200,10 +255,24 @@ async function request(method, path, body, init = {}) {
   }
 
   if (!res.ok) {
-    const apiError =
-      payload && typeof payload === "object" && payload.error
-        ? payload.error
-        : { code: `http_${res.status}`, message: `HTTP ${res.status}` };
+    const requestId = res.headers.get("x-request-id") || undefined;
+    let apiError;
+    if (payload && typeof payload === "object" && payload.error) {
+      apiError = payload.error;
+      // A 5xx with a structured envelope still reads as raw server prose to
+      // a user — keep the API's wording in `detail`, lead with human copy.
+      if (res.status >= 500) {
+        apiError = {
+          ...apiError,
+          ...transportError("http_5xx", apiError.message, apiError.requestId || requestId),
+          code: apiError.code || `http_${res.status}`,
+        };
+      } else if (requestId && !apiError.requestId) {
+        apiError = { ...apiError, requestId };
+      }
+    } else {
+      apiError = transportError(`http_${res.status}`, `HTTP ${res.status}`, requestId);
+    }
     // Global 401 → login redirect (fire-and-forget). Excludes
     // continuation codes like totp_required and skips when we're
     // already on a public auth page. See PUBLIC_AUTH_PATHS above.

@@ -35,7 +35,7 @@ export function ProgressRing({
           cy={size / 2}
           r={r}
           fill="none"
-          stroke="var(--card-alt)"
+          stroke="var(--track)"
           strokeWidth={stroke}
         />
         <circle

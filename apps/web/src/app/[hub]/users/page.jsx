@@ -7,6 +7,7 @@
  * redirects users on other hubs back to their dashboard.
  */
 
+import { Suspense } from "react";
 import { AppShell } from "@/components/shell/app-shell";
 import { useHubSlotGuard } from "@/features/hubs";
 import { getAdminSlotComponent } from "@/hubs/dashboard-registry";
@@ -19,7 +20,9 @@ export default function Page() {
   const Component = getAdminSlotComponent("users");
   return (
     <AppShell>
-      {Component ? <Component /> : null}
+      {/* The members list reads its filters (?flag= / ?managerId= / ?q=)
+          from useSearchParams, which needs a Suspense boundary. */}
+      <Suspense fallback={null}>{Component ? <Component /> : null}</Suspense>
     </AppShell>
   );
 }

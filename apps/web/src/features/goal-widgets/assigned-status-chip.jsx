@@ -8,7 +8,7 @@
  */
 
 import { useMemo } from "react";
-import { periodStatuses } from "@espace-devhub/shared/goal-specs";
+import { composedCycleBounds, periodStatuses } from "@espace-devhub/shared/goal-specs";
 import { Badge } from "@/components/ui";
 import { shortDate } from "@/lib/date";
 import { useGoalInputs } from "@/features/goal-inputs";
@@ -25,6 +25,9 @@ export function AssignedStatusChip({ spec, assigned }) {
       now: Date.now(),
       graceMs: (assigned?.graceHours || 0) * HOUR_MS,
       timeZone: assigned?.timeZone || "UTC",
+      // The spec arrives stamped with the assignment's creation time
+      // (goal-specs store) — periods that ended before it aren't "missing".
+      trackingStart: composedCycleBounds(spec).trackingStart ?? null,
     });
     return (
       cells.find((c) => c.status === "missing") ||
@@ -35,8 +38,12 @@ export function AssignedStatusChip({ spec, assigned }) {
 
   return (
     <div className="mb-2 flex min-w-0 flex-wrap items-center gap-1.5">
-      <Badge tone="sky">
-        Shared{assigned?.byName ? ` by ${assigned.byName}` : ""}
+      {/* "Assigned", not "Shared" — "Shared with me" is the viewer page. */}
+      <Badge
+        tone="sky"
+        title={`Assigned by ${assigned?.byName || "your manager"} — you fill it in; it doesn't count toward your weights`}
+      >
+        Assigned{assigned?.byName ? ` by ${assigned.byName}` : ""}
       </Badge>
       {focus?.status === "missing" ? (
         <Badge tone="peach" dot>

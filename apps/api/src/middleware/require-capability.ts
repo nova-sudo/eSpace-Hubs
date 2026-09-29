@@ -1,70 +1,64 @@
 /**
- * Route guard: requires an authenticated session whose user holds ALL of
- * the given capabilities. 403 otherwise.
+ * Route guards: require an authenticated session whose user CURRENTLY
+ * holds the given capabilities. 403 otherwise.
+ *
+ *   requireCapability(a, b)     — must hold ALL of them
+ *   requireAnyCapability(a, b)  — must hold AT LEAST ONE (e.g. a
+ *                                 lightweight roster read both the
+ *                                 user-management and the audit page
+ *                                 need)
  *
  * Always pair with `requireAuth` (which establishes the session and 401s
- * when it's absent) — this guard only checks authorisation, so the
+ * when it's absent) — these guards only check authorisation, so the
  * 401-vs-403 split stays correct.
  *
- * Resolution: capabilities are computed from the user's FULL role set
- * (`effectiveCapabilities`), read fresh from the users collection by
- * `session.userId`. Deliberately NOT from `session.role` (the single
- * primary-role snapshot `requireRole` reads):
+ * Resolution: capabilities are computed from the user's FULL role set,
+ * read fresh from the users collection by `session.userId` on every
+ * request. Deliberately NOT from the session's role snapshot:
  *
  *   - Multi-role correctness: a user who is `admin` AND `manager` has
  *     `admin` as their primary role, so a primary-role check would deny
  *     them `manager.team.view` even though they hold the manager role.
- *   - Freshness: reading the current user doc means a role change takes
- *     effect on the next request — no re-login to re-mint the session.
+ *   - Freshness: a role grant or REVOCATION takes effect on the next
+ *     request — no re-login to re-mint the session (hub-audit §2.2).
+ *   - A disabled account is refused (401) even while a session lingers.
  *
- * Cost: one indexed user lookup per guarded request. Manager routes hit
- * the DB anyway, so this is negligible.
+ * Cost: one indexed user lookup per guarded request. Negligible.
+ *
+ * The allow/deny logic lives in ./capability-guard.ts (DB-free, tested).
  */
 
-import type { NextFunction, Request, Response } from "express";
-import { type Capability } from "@espace-devhub/shared/capabilities";
+import type { Capability } from "@espace-devhub/shared/capabilities";
 import { getUsersCollection } from "../db/collections.js";
-import { effectiveCapabilities } from "../lib/user-roles.js";
-import { HttpError } from "./error-handler.js";
+import {
+  capabilityGuard,
+  type LoadGuardUser,
+  type Middleware,
+} from "./capability-guard.js";
 
-export function requireCapability(...required: Capability[]) {
+/** The production loader: the user row, scoped to the session's org. */
+export const loadGuardUser: LoadGuardUser = async (userId, orgId) => {
+  const users = await getUsersCollection();
+  return users.findOne(
+    { _id: userId, orgId },
+    { projection: { role: 1, roles: 1, status: 1 } },
+  );
+};
+
+export function requireCapability(...required: Capability[]): Middleware {
   if (required.length === 0) {
     throw new Error(
       "requireCapability: at least one capability must be specified",
     );
   }
-  return async (
-    req: Request,
-    _res: Response,
-    next: NextFunction,
-  ): Promise<void> => {
-    try {
-      if (!req.session) {
-        // Defensive — `requireAuth` should run first.
-        return next(new HttpError(401, "unauthenticated", "Login required."));
-      }
-      const users = await getUsersCollection();
-      const user = await users.findOne({
-        _id: req.session.userId,
-        orgId: req.session.orgId,
-      });
-      if (!user) {
-        return next(new HttpError(401, "unauthenticated", "Login required."));
-      }
-      const held = effectiveCapabilities(user);
-      const missing = required.filter((cap) => !held.has(cap));
-      if (missing.length > 0) {
-        return next(
-          new HttpError(
-            403,
-            "forbidden",
-            `Requires capability: ${required.join(", ")}.`,
-          ),
-        );
-      }
-      next();
-    } catch (err) {
-      next(err);
-    }
-  };
+  return capabilityGuard(required, "all", loadGuardUser);
+}
+
+export function requireAnyCapability(...required: Capability[]): Middleware {
+  if (required.length === 0) {
+    throw new Error(
+      "requireAnyCapability: at least one capability must be specified",
+    );
+  }
+  return capabilityGuard(required, "any", loadGuardUser);
 }

@@ -35,8 +35,8 @@ import { ComposeWidgetModal } from "./compose-widget-modal";
 import { EditSetupModal } from "./edit-setup-modal";
 import { EditPlanModal } from "./plan-editor/edit-plan-modal";
 import { useIsContextComplete, readContextFor } from "@/features/goal-context";
-import { saveSpec } from "@/features/goal-specs";
-import { clearGoalEntries } from "@/features/goal-inputs";
+import { saveSpec, specShapeChanged } from "@/features/goal-specs";
+import { clearGoalEntries, readGoalEntries } from "@/features/goal-inputs";
 import { clearGoalLocks } from "@/features/goal-locks";
 import { isAssignedGoalId } from "@espace-devhub/shared/goal-specs";
 // analyst-page.jsx pulls GoalWidgetsGrid from @/features/goal-widgets, so
@@ -63,6 +63,10 @@ export function GoalWidget({
   // over the derived State-C controls, so `{ onReanalyze: null }` hides
   // that chip without the widget files knowing.
   controlsOverride = null,
+  // `bare`: the host already shows the goal title and its own card (Goals →
+  // Focus detail, the fill modal) — render the widget without repeating the
+  // title and without a second card surface inside the host's card.
+  bare = false,
 }) {
   // User override — force the collector to re-open even after answers exist.
   const [forceEditContext, setForceEditContext] = useState(false);
@@ -105,12 +109,19 @@ export function GoalWidget({
             goal={goal}
             className={className}
             onSaved={() => setForceEditContext(false)}
+            onCancel={forceEditContext ? () => setForceEditContext(false) : undefined}
           />
         </WidgetErrorBoundary>
       );
     }
     const def = resolveWidget(spec);
-    if (!def) return null;
+    if (!def) {
+      // A shared goal whose tracker kind this build doesn't know. Rendering
+      // nothing made the goal vanish from the grid; say what happened.
+      return (
+        <UnknownTrackerShell spec={spec} goal={goal} className={className} shared />
+      );
+    }
     const Widget = def.Component;
     const readOnlyControls = {
       onMarkDelegated: null,
@@ -120,6 +131,7 @@ export function GoalWidget({
       onEditSetup: null,
       onEditPlan: null,
       assigned: goal?.assigned ?? { byName: null, graceHours: 0 },
+      bare,
     };
     return (
       <WidgetErrorBoundary>
@@ -240,11 +252,18 @@ export function GoalWidget({
         onCompose={() => setComposeOpen(true)}
         // Save → close the override and let the actual widget take
         // back the slot. Without this, after the user clicked
-        // "edit truths" + "Save answers", the view stayed pinned to
-        // the collector forever (forceEditContext=true had no exit
+        // "edit definitions" + "Save answers", the view stayed pinned
+        // to the collector forever (forceEditContext=true had no exit
         // path), which made it look like Save did nothing AND made
         // the rubric widget's regrade button unreachable.
         onSaved={() => setForceEditContext(false)}
+        // "Edit definitions" on a working widget is a detour, so it gets a
+        // way back that changes nothing. First-time setup has no widget to
+        // go back to, so no Cancel there.
+        onCancel={forceEditContext ? () => setForceEditContext(false) : undefined}
+        // How much logged history a re-analysis could delete — the collector
+        // says the number out loud before "Save & re-analyze" runs.
+        historyCount={readGoalEntries(spec.goalId).length}
         // Phase C: opt-in "Re-analyze with these answers". Send the
         // freshly-serialised Q/A pairs to the classifier and replace
         // this goal's spec with the new one — which may pick a
@@ -284,20 +303,7 @@ export function GoalWidget({
   // ── State C ── Normal tracked widget.
   const def = resolveWidget(spec);
   if (!def) {
-    return (
-      <WidgetShell
-        spec={spec}
-        label="Unknown widget"
-        title={goal?.title || spec.title}
-        onRetry={onRetry}
-        className={className}
-      >
-        <div className="text-[13px] leading-[1.5] text-muted-fg">
-          No widget registered for <strong className="text-fg">{spec.widget}</strong>. Re-analyze
-          to let the AI pick a different classification.
-        </div>
-      </WidgetShell>
-    );
+    return <UnknownTrackerShell spec={spec} goal={goal} className={className} onRetry={onRetry} />;
   }
 
   const Widget = def.Component;
@@ -324,6 +330,16 @@ export function GoalWidget({
         analyst.requestOpen(ANALYST_MODES.REVIEW);
         return;
       }
+      const wipes = specShapeChanged(spec, result);
+      const n = readGoalEntries(spec.goalId).length;
+      if (
+        wipes &&
+        n > 0 &&
+        typeof window !== "undefined" &&
+        !window.confirm(`This replaces the tracker and deletes ${n} logged ${n === 1 ? "entry" : "entries"}. Continue?`)
+      ) {
+        return;
+      }
       const saved = saveSpec(result);
       if (!saved?.ok) {
         // Surface the validation failure through WidgetShell's catch/toast
@@ -333,8 +349,10 @@ export function GoalWidget({
           (saved?.errors || []).join(", ") || "Re-classified spec was invalid.",
         );
       }
-      clearGoalEntries(spec.goalId);
-      clearGoalLocks(spec.goalId);
+      if (wipes) {
+        clearGoalEntries(spec.goalId);
+        clearGoalLocks(spec.goalId);
+      }
     },
     // "Build my own": open the COMPOSED compose modal to replace this widget
     // with a user-described tracker (for goals the classifier keeps mis-fitting).
@@ -345,6 +363,7 @@ export function GoalWidget({
     // "Edit plan": COMPOSED only — the cycle + per-window map. Other kinds
     // have no plan to lay out, so the chip stays hidden for them.
     onEditPlan: spec.widget === "COMPOSED" ? () => setEditPlanOpen(true) : null,
+    bare,
     // Embedder overrides (e.g. sub-component modal disables re-analyze).
     ...(controlsOverride || {}),
   };
@@ -366,6 +385,31 @@ export function GoalWidget({
       {editSetupModal}
       {editPlanModal}
     </>
+  );
+}
+
+/**
+ * A tracker kind this build has no component for — a spec from a newer
+ * build, or a shared goal composed with a kind we don't ship. Say so rather
+ * than rendering nothing, and keep the goal's title on screen.
+ */
+function UnknownTrackerShell({ spec, goal, className, onRetry, shared = false }) {
+  return (
+    <WidgetShell
+      spec={spec}
+      label="Unknown tracker"
+      title={goal?.title || spec.title}
+      onRetry={onRetry}
+      className={className}
+    >
+      <div className="text-[13px] leading-[1.5] text-muted-fg">
+        This app doesn&apos;t have a tracker of kind{" "}
+        <strong className="text-fg">{String(spec.widget || "?")}</strong>.
+        {shared
+          ? " It was assigned to you, so only the person who assigned it can change it — ask them, or check for an app update."
+          : " Re-analyze to let the analyst pick a different one."}
+      </div>
+    </WidgetShell>
   );
 }
 
@@ -467,10 +511,11 @@ async function reclassifyGoalToSpec(spec, goal, contextAnswers) {
 async function runReclassify(spec, goal, contextAnswers) {
   const result = await reclassifyGoalToSpec(spec, goal, contextAnswers);
   const saved = saveSpec(result);
-  // Re-analysis may have swapped the widget shape — wipe the goal's logged
-  // history + settle-locks so the new widget reads clean, not stale entries
-  // from the old one. Mirrors the analyst commit path (classify-run-store).
-  if (saved?.ok) {
+  // Re-analysis may have swapped the widget SHAPE — only then wipe the
+  // goal's logged history + settle-locks so the new widget reads clean. A
+  // same-shape re-analysis (new tiers, new reasoning) keeps every entry.
+  // Mirrors the analyst commit path (classify-run-store).
+  if (saved?.ok && specShapeChanged(spec, saved.spec || result)) {
     clearGoalEntries(spec.goalId);
     clearGoalLocks(spec.goalId);
   }

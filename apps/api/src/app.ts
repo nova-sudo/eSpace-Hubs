@@ -35,6 +35,7 @@ import { authRouter } from "./modules/auth/routes.js";
 import { aiRouter } from "./modules/ai/routes.js";
 import { goalsRouter } from "./modules/goals/routes.js";
 import { goalSpecsRouter } from "./modules/goal-specs/routes.js";
+import { goalSpecMetaRouter } from "./modules/goal-spec-meta/routes.js";
 import { goalContextRouter } from "./modules/goal-context/routes.js";
 import { goalLocksRouter } from "./modules/goal-locks/routes.js";
 import { reviewPacketsRouter } from "./modules/review-packets/routes.js";
@@ -51,6 +52,7 @@ import { onboardingRouter } from "./modules/onboarding/routes.js";
 import { adminRouter } from "./modules/admin/routes.js";
 import { managerRouter } from "./modules/manager/routes.js";
 import { myReportsRouter } from "./modules/my-reports/routes.js";
+import { myManagerNotesRouter } from "./modules/my-manager-notes/routes.js";
 import { notificationsRouter } from "./modules/notifications/routes.js";
 import { goalVerdictsRouter } from "./modules/goal-verdicts/routes.js";
 import { tierPoliciesRouter } from "./modules/tier-policies/routes.js";
@@ -159,6 +161,7 @@ export function buildApp(): Application {
   app.use("/api/v1/ai", aiRouter);
   app.use("/api/v1/goals", goalsRouter);
   app.use("/api/v1/goal-specs", goalSpecsRouter);
+  app.use("/api/v1/goal-spec-meta", goalSpecMetaRouter);
   app.use("/api/v1/goal-context", goalContextRouter);
   app.use("/api/v1/goal-locks", goalLocksRouter);
   app.use("/api/v1/review-packets", reviewPacketsRouter);
@@ -179,6 +182,8 @@ export function buildApp(): Application {
   // A team lead's own minimal read of their direct reports, authorised by the
   // managerId link alone — no manager-hub capability. See the module header.
   app.use("/api/v1/my-reports", myReportsRouter);
+  // A report's read of the 1:1 notes their manager shared with them.
+  app.use("/api/v1/my-manager-notes", myManagerNotesRouter);
   app.use("/api/v1/notifications", notificationsRouter);
   app.use("/api/v1/goal-verdicts", goalVerdictsRouter);
   app.use("/api/v1/tier-policies", tierPoliciesRouter);

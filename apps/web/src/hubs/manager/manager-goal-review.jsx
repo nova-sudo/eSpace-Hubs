@@ -12,17 +12,26 @@
  * lead is cross-referencing has to stay on screen while they pick a
  * rung. Same data, same projections — only the container changed.
  *
+ *   readings  what was logged, one row per cadence window (opens here)
  *   evidence  what the engineer attached, plus the goal's own rubric
- *   readings  the entries actually logged, newest first
- *   history   who graded it, when, and on what reasoning
+ *   history   who graded it, when, on what reasoning — every grade ever
+ *             set (append-only), and whether the report saw / disputes it
  *
  * Data: GET /manager/reports/:userId/goals/:goalId/detail (via
- * useGoalDetail). Rendered inside ManagerGradeDrawer.
+ * useGoalDetail) and …/verdicts (via useVerdictHistory, passed in as
+ * `verdicts`). Rendered inside ManagerGradeDrawer.
  */
 
 import { Badge, Label } from "@/components/ui";
 import { TIER_LABELS } from "@/features/goal-tiers";
-import { ago, onDate } from "./manager-format";
+import { fmtNumber, fmtTarget } from "@/lib/fmt";
+import {
+  ago,
+  describeAck,
+  describeVerdictHistory,
+  onDate,
+  shortDate,
+} from "./manager-format";
 import { TIER_TONE } from "./manager-ui";
 
 const CONFIDENCE_LABEL = { high: "High", medium: "Medium", low: "Low" };
@@ -58,7 +67,7 @@ function EvidencePoint({ point }) {
           {point.from || "Note"}
         </span>
         {rel ? (
-          <span className="ml-auto flex-none text-[11px] text-dim-fg">{rel}</span>
+          <span className="ml-auto flex-none text-[11px] text-muted-fg">{rel}</span>
         ) : null}
       </div>
       {point.kind === "link" ? (
@@ -81,8 +90,8 @@ function EvidenceSection({ evidence }) {
   if (!evidence || evidence.length === 0) {
     return (
       <PanelNote>
-        No evidence logged yet — the engineer hasn&apos;t attached notes or
-        links to their entries. Grade from the AI read and the criteria.
+        No notes or links attached to their entries yet. Grade from the
+        numbers and the rubric.
       </PanelNote>
     );
   }
@@ -96,6 +105,16 @@ function EvidenceSection({ evidence }) {
 }
 
 // ─── tier criteria (the goal's own rubric) ───────────────────────────
+
+/** The goal tree's written rubric — the "why" when there are no scored levels. */
+export function RubricNote({ rubric }) {
+  if (!rubric) return null;
+  return (
+    <p className="whitespace-pre-line rounded-[var(--radius-lg)] bg-card px-3.5 py-3 text-[12.5px] leading-relaxed text-fg">
+      {rubric}
+    </p>
+  );
+}
 
 function TierCriteria({ tiers, aiTier }) {
   if (!tiers) return null;
@@ -153,8 +172,9 @@ function GoalDefinition({ spec }) {
       <PanelNote>This goal hasn&apos;t been classified into a widget yet.</PanelNote>
     );
   }
-  const targetStr = spec.target
-    ? `${spec.target.op} ${spec.target.value}${spec.target.period ? ` / ${spec.target.period}` : ""}`
+  const target = fmtTarget({ ...spec.target, unit: spec.unit });
+  const targetStr = target
+    ? `${target}${spec.target.period ? ` per ${spec.target.period}` : ""}`
     : null;
   return (
     <div>
@@ -194,7 +214,7 @@ function GoalDefinition({ spec }) {
         </DefRow>
       ) : null}
       {spec.reasoning ? (
-        <p className="mt-2 text-[11.5px] leading-snug text-dim-fg">{spec.reasoning}</p>
+        <p className="mt-2 text-[11.5px] leading-snug text-muted-fg">{spec.reasoning}</p>
       ) : null}
     </div>
   );
@@ -207,10 +227,10 @@ function EntryCard({ entry }) {
   return (
     <div className="rounded-[var(--radius-lg)] bg-card px-3 py-2.5">
       <div className="mb-1 flex items-center gap-2">
-        <span className="text-[11px] text-dim-fg">
+        <span className="text-[11px] text-muted-fg">
           {entry.periodKey ? entry.periodKey : entry.source}
         </span>
-        {rel ? <span className="ml-auto text-[11px] text-dim-fg">{rel}</span> : null}
+        {rel ? <span className="ml-auto text-[11px] text-muted-fg">{rel}</span> : null}
       </div>
       {entry.cells.length > 0 ? (
         <div className="grid gap-0.5">
@@ -235,7 +255,7 @@ function EntryCard({ entry }) {
                 ) : (
                   <span className="text-[12px] font-bold">
                     {c.value}
-                    {c.unit ? <span className="text-dim-fg"> {c.unit}</span> : null}
+                    {c.unit ? <span className="text-muted-fg"> {c.unit}</span> : null}
                   </span>
                 )
               ) : (
@@ -248,6 +268,28 @@ function EntryCard({ entry }) {
       {entry.note ? (
         <p className="mt-1.5 text-[11.5px] leading-snug text-muted-fg">{entry.note}</p>
       ) : null}
+    </div>
+  );
+}
+
+/** One row per cadence window — "W40 · 3 h · 3 entries" — not per click. */
+function WindowRows({ windows }) {
+  return (
+    <div className="overflow-hidden rounded-[var(--radius-lg)] bg-card">
+      {windows.map((w, i) => (
+        <div
+          key={w.key}
+          className={`flex items-baseline gap-3 px-3.5 py-2 ${i ? "border-t border-line" : ""}`}
+        >
+          <span className="w-12 flex-none text-[12px] font-semibold text-muted-fg">{w.label}</span>
+          <span className="min-w-0 flex-1 text-[13px] font-bold tabular-nums text-fg">
+            {w.total != null ? `${fmtNumber(w.total)}${w.unit ? ` ${w.unit}` : ""}` : "Logged"}
+          </span>
+          <span className="text-[11px] text-muted-fg">
+            {w.entries} {w.entries === 1 ? "entry" : "entries"}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -284,9 +326,78 @@ function VerdictCard({ title, tier, when, by, body, tone }) {
   );
 }
 
+/**
+ * Every manager grade on this goal, one sentence per grading period
+ * ("Over achieved by Ana on 3 Sep, changed to Achieved on 20 Sep"), then
+ * the individual grades with their notes and the report's response.
+ */
+function GradeTimeline({ verdicts, firstName }) {
+  if (!verdicts || verdicts.loading) return <PanelNote>Loading grade history…</PanelNote>;
+  if (verdicts.error) {
+    return <PanelNote>Couldn&apos;t load the grade history right now.</PanelNote>;
+  }
+  const history = verdicts.history ?? [];
+  if (history.length === 0) return null;
+  const lines = describeVerdictHistory(history, TIER_LABELS);
+  const newestFirst = [...history].reverse();
+  return (
+    <section>
+      <SectionLabel count={history.length}>Grade history</SectionLabel>
+      <div className="grid gap-1.5">
+        {lines.map((l) => (
+          <div
+            key={l.periodKey}
+            className="rounded-[var(--radius-lg)] bg-card px-3.5 py-3 text-[12.5px] leading-snug text-fg"
+          >
+            <Badge className="mr-2">{l.periodKey}</Badge>
+            {l.text}
+          </div>
+        ))}
+        {newestFirst.map((h, i) => {
+          const ack = describeAck(h.ack, firstName);
+          return (
+            <div
+              key={h.id ?? `${h.gradedAt}-${i}`}
+              className="rounded-[var(--radius-lg)] bg-card px-3.5 py-3"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={TIER_TONE[h.tier] ?? "neutral"}>
+                  {TIER_LABELS[h.tier] ?? h.tier}
+                </Badge>
+                {h.supersededAt ? <Badge>Replaced {shortDate(h.supersededAt)}</Badge> : null}
+                {ack ? (
+                  <Badge tone={h.ack.disagree ? "peach" : "mint"}>{ack}</Badge>
+                ) : null}
+                <span className="ml-auto text-[11px] text-muted-fg">
+                  {h.gradedByName} · {onDate(h.gradedAt)}
+                </span>
+              </div>
+              {h.note ? (
+                <p className="mt-2 text-[12.5px] leading-relaxed text-fg">{h.note}</p>
+              ) : null}
+              {h.ack?.disagree && h.ack.note ? (
+                <p className="mt-2 rounded-[var(--radius-lg)] bg-peach px-3 py-2 text-[12px] leading-snug text-peach-ink">
+                  <b>{firstName}:</b> {h.ack.note}
+                </p>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 // ─── the panel ───────────────────────────────────────────────────────
 
-export function ManagerGoalReview({ tab = "evidence", loading, error, data }) {
+export function ManagerGoalReview({
+  tab = "evidence",
+  loading,
+  error,
+  data,
+  verdicts,
+  firstName = "They",
+}) {
   if (loading) {
     return <PanelNote>Loading the goal…</PanelNote>;
   }
@@ -299,15 +410,19 @@ export function ManagerGoalReview({ tab = "evidence", loading, error, data }) {
     );
   }
 
-  const { spec, ai, manager, evidence, entries, entryCount } = data;
+  const { spec, ai, manager, evidence, entries, entryCount, windows, rubric } = data;
   const aiTier = ai?.tier ?? null;
 
   if (tab === "readings") {
     return (
       <div className="grid gap-5">
         <section>
-          <SectionLabel count={entryCount}>Logged entries</SectionLabel>
-          {entries && entries.length > 0 ? (
+          <SectionLabel count={entryCount}>
+            {windows ? "Logged per period" : "Logged entries"}
+          </SectionLabel>
+          {windows && windows.length > 0 ? (
+            <WindowRows windows={windows} />
+          ) : entries && entries.length > 0 ? (
             <div className="grid gap-1.5">
               {entries.map((e, i) => (
                 <EntryCard key={`${e.ts}-${i}`} entry={e} />
@@ -332,8 +447,9 @@ export function ManagerGoalReview({ tab = "evidence", loading, error, data }) {
   if (tab === "history") {
     return (
       <div className="grid gap-5">
+        <GradeTimeline verdicts={verdicts} firstName={firstName} />
         <section>
-          <SectionLabel>Grading history</SectionLabel>
+          <SectionLabel>Current verdicts</SectionLabel>
           <div className="grid gap-1.5">
             {manager ? (
               <VerdictCard
@@ -381,6 +497,11 @@ export function ManagerGoalReview({ tab = "evidence", loading, error, data }) {
         <section>
           <SectionLabel>Achievement criteria</SectionLabel>
           <TierCriteria tiers={spec.tiers} aiTier={aiTier} />
+        </section>
+      ) : rubric ? (
+        <section>
+          <SectionLabel>Rubric from their goal sheet</SectionLabel>
+          <RubricNote rubric={rubric} />
         </section>
       ) : null}
     </div>

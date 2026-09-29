@@ -14,7 +14,7 @@
  */
 
 import { Router, type NextFunction, type Request, type Response } from "express";
-import rateLimit, { type Options } from "express-rate-limit";
+import rateLimit, { ipKeyGenerator, type Options } from "express-rate-limit";
 import multer from "multer";
 import { requireAuth } from "../../middleware/require-auth.js";
 import { HttpError } from "../../middleware/error-handler.js";
@@ -36,7 +36,9 @@ const uploadLimiterOptions: Partial<Options> = {
   limit: 60,
   standardHeaders: "draft-7",
   legacyHeaders: false,
-  keyGenerator: (req: Request) => req.session?.userId?.toHexString() ?? req.ip ?? "anon",
+  // Per user; the IP fallback (no session) is subnet-bucketed for IPv6.
+  keyGenerator: (req: Request) =>
+    req.session?.userId?.toHexString() ?? (req.ip ? ipKeyGenerator(req.ip) : "anon"),
   handler: (_req, res) => {
     res.status(429).json({
       error: {

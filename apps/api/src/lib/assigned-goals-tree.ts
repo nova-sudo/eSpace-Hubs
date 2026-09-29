@@ -42,7 +42,7 @@ export function syntheticAssignedL1(docs: AssignedGoal[]): GoalL1 | null {
   return {
     id: ASSIGNED_ROOT_ID,
     code: "",
-    title: "Shared goals",
+    title: "Assigned to you",
     description: "Goals a manager shared with you. Fill them here; the plan itself is read-only.",
     rubric: "",
     weightage: 0,

@@ -149,12 +149,33 @@ export async function destroySession(sessionId: string): Promise<void> {
 export async function setSessionTotpVerified(
   sessionId: string,
   verified: boolean,
+  /** Stamp when step 2 was cleared with a BACKUP code; null otherwise. */
+  verifiedWithBackupCodeAt: Date | null = null,
 ): Promise<void> {
   const col = await getSessionsCollection();
   await col.updateOne(
     { _id: sessionId },
-    { $set: { totpVerified: verified } },
+    { $set: { totpVerified: verified, verifiedWithBackupCodeAt } },
   );
+}
+
+/**
+ * After the user's TOTP secret changes (self-service move to a new
+ * phone): every OTHER live session of theirs drops back to the TOTP
+ * step. Not destroyed — the next request answers `totp_required`, the
+ * web app shows the code prompt, and a code from the NEW phone lets
+ * that device carry on. The current session is left verified.
+ */
+export async function requireTotpReverifyForOtherSessions(
+  userId: ObjectId,
+  keepSessionId: string,
+): Promise<number> {
+  const col = await getSessionsCollection();
+  const res = await col.updateMany(
+    { userId, _id: { $ne: keepSessionId } },
+    { $set: { totpVerified: false, verifiedWithBackupCodeAt: null } },
+  );
+  return res.modifiedCount ?? 0;
 }
 
 /**

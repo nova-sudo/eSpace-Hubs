@@ -87,7 +87,7 @@ export function HubSwitcher() {
             >
               <div>
                 <div className="text-[13px] font-semibold text-fg">{hub.label}</div>
-                <div className="text-[11.5px] text-dim-fg">/{hub.id}</div>
+                <div className="text-[11.5px] text-muted-fg">/{hub.id}</div>
               </div>
               {isActive ? (
                 <span className="text-[11.5px] font-bold text-fg">Current</span>

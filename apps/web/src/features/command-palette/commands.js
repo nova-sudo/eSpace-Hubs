@@ -16,11 +16,20 @@
  * derived from existing data (sections, providers).
  */
 
+// `slot` is the hub page slot the route needs — a route the active hub
+// doesn't expose (the manager hub has no /goals, /evidence, /reviews) is
+// left out instead of bouncing the user back to the hub home.
 const ROUTES = [
-  { label: "Performance", path: "/", keywords: ["dashboard", "home", "main", "metrics"] },
+  {
+    label: "Home",
+    path: "/",
+    slot: "dashboard",
+    keywords: ["intelligence", "dashboard", "home", "main", "metrics", "performance", "team", "overview"],
+  },
   {
     label: "Goals",
     path: "/goals",
+    slot: "goals",
     // The flow map IS the Goals page now (the /goals-v2 preview route only
     // redirects here), so its old preview-only keywords ride along.
     keywords: ["objectives", "tracking", "ai", "tree", "flow", "map", "canvas"],
@@ -28,15 +37,26 @@ const ROUTES = [
   {
     label: "Evidence",
     path: "/evidence",
+    slot: "evidence",
     keywords: ["export", "review", "packet", "markdown", "pdf"],
   },
-  { label: "Settings", path: "/settings", keywords: ["integrations", "tokens"] },
+  { label: "Settings", path: "/settings", slot: "settings", keywords: ["integrations", "tokens"] },
   // Utility / drill-down routes — searchable but not header-pinned.
-  { label: "Reviews log", path: "/reviews", keywords: ["pr", "ttfr", "comments"] },
+  { label: "Reviews log", path: "/reviews", slot: "reviews", keywords: ["pr", "ttfr", "comments"] },
   {
     label: "Snapshots",
     path: "/snapshots",
+    slot: "snapshots",
     keywords: ["history", "weekly", "trend"],
+  },
+  // Exposed on every hub, but hidden from the dev/qa nav bar — the palette
+  // (and the home page's drill-down sub-nav) are how a dev gets back to a
+  // goal that was shared with them once the notification is gone.
+  {
+    label: "Shared with me",
+    path: "/shared-goals",
+    slot: "sharedgoals",
+    keywords: ["shared", "assigned", "team", "manager", "analytics"],
   },
 ];
 
@@ -45,19 +65,22 @@ const ROUTES = [
  * the palette stays in sync with whatever sections are mounted (no risk
  * of drift if a section is added without updating the palette).
  *
- * Numbers reflect the section's position WITHIN ITS OWN TAB:
- *   Performance tab — 01..04 (overview, review-timing, glance, trends)
- *   Goals tab       — 01..02 (goals, goal-tracking)
+ * Labels are the page's own section headings — no numbering (a retired
+ * idiom, and the numbers never appeared on the page).
  */
 const SECTION_LABELS = {
-  // Performance tab
-  "sec-overview": { number: "01", label: "Overview" },
-  "sec-review-timing": { number: "02", label: "Review timing" },
-  "sec-glance": { number: "03", label: "At a glance" },
-  "sec-trend": { number: "04", label: "Trends" },
+  // Intelligence (home)
+  "sec-summary": { label: "Year so far" },
+  "sec-focus": { label: "Needs you first" },
+  "sec-objectives": { label: "All objectives" },
+  // Legacy performance dashboard
+  "sec-overview": { label: "Overview" },
+  "sec-review-timing": { label: "Review timing" },
+  "sec-glance": { label: "At a glance" },
+  "sec-trend": { label: "Trends" },
   // Goals tab
-  "sec-goals": { number: "01", label: "Performance goals" },
-  "sec-goal-tracking": { number: "02", label: "Goal tracking (AI)" },
+  "sec-goals": { label: "Performance goals" },
+  "sec-goal-tracking": { label: "Goal tracking" },
 };
 
 function listSections() {
@@ -66,7 +89,7 @@ function listSections() {
   return nodes
     .map((node) => {
       const id = node.dataset.sectionId;
-      const meta = SECTION_LABELS[id] || { number: "", label: id };
+      const meta = SECTION_LABELS[id] || { label: id };
       return { id, node, ...meta };
     })
     // DOM order — querySelectorAll already returns it.
@@ -86,10 +109,16 @@ export function buildCommands(ctx) {
     pathname,
     router,
     provider,
+    providers,
     setProvider,
+    getProvider,
     snapshotNow,
+    snapshotReady = true,
     link,
+    toast,
+    pages,
   } = ctx;
+  const say = toast || { success() {}, error() {} };
   const cmds = [];
 
   // ── Navigation ─────────────────────────────────────────────────────
@@ -98,13 +127,14 @@ export function buildCommands(ctx) {
   // The pathname comparison uses the resolved hub-prefixed path so
   // we skip the route the user is already on.
   ROUTES.forEach((r) => {
+    // `pages` is the active hub's slot map; unknown (still loading) → show all.
+    if (pages && r.slot && !pages[r.slot]) return;
     const target = link ? link(r.path) : r.path;
     if (target === pathname) return; // skip current route
     cmds.push({
       id: `nav:${r.path}`,
       category: "Go to",
       label: r.label,
-      sub: target,
       keywords: r.keywords,
       run: () => router.push(target),
     });
@@ -122,7 +152,7 @@ export function buildCommands(ctx) {
       cmds.push({
         id: `section:${s.id}`,
         category: "Jump to section",
-        label: `${s.number} · ${s.label}`,
+        label: s.label,
         sub: `press ${i + 1}`,
         keywords: [s.id, s.label.toLowerCase()],
         shortcut: [String(i + 1)],
@@ -132,44 +162,81 @@ export function buildCommands(ctx) {
   }
 
   // ── One-shot actions ───────────────────────────────────────────────
-  cmds.push({
-    id: "action:snapshot-now",
-    category: "Actions",
-    label: "Snapshot now",
-    sub: "freeze this week's metrics",
-    keywords: ["capture", "save", "weekly"],
-    run: () => snapshotNow(""),
-  });
+  // Skipped (not just disabled) until the snapshot store has hydrated —
+  // capturing before that races the first load and can overwrite a week.
+  if (snapshotReady && typeof snapshotNow === "function" && (!pages || pages.snapshots)) {
+    cmds.push({
+      id: "action:snapshot-now",
+      category: "Actions",
+      label: "Snapshot now",
+      sub: "freeze this week's metrics",
+      keywords: ["capture", "save", "weekly"],
+      run: async () => {
+        // The hook is moving to a `{ ok, error }` result; a legacy
+        // undefined resolve still counts as success (the store rolled back
+        // + logged if it wasn't).
+        let r;
+        try {
+          r = await snapshotNow("");
+        } catch (err) {
+          say.error("Couldn't save the snapshot", { description: err?.message });
+          return;
+        }
+        if (r && r.ok === false) {
+          say.error("Couldn't save the snapshot", {
+            description: r.error?.message || "Try again in a moment.",
+          });
+        } else if (r && r.ok === true) {
+          say.success("Snapshot saved");
+        }
+      },
+    });
+  }
 
-  cmds.push({
+  if (!pages || pages.evidence) cmds.push({
     id: "action:open-evidence-compile",
     category: "Actions",
     label: "Compile evidence review",
-    sub: "open the builder → export .pdf / .md",
+    sub: "open the builder, export .pdf or .md",
     keywords: ["pdf", "export", "compile", "review", "evidence"],
     run: () =>
       router.push(link ? link("/evidence?view=compile") : "/evidence?view=compile"),
   });
 
   // ── AI provider switcher ───────────────────────────────────────────
-  // AI_PROVIDERS lives in use-ai-provider; we import the module from
-  // command-palette.jsx (this file is server-safe / pure logic) and pass
-  // the helpers in via ctx, but the list is small enough to mirror here
-  // to keep this module dependency-free.
-  const PROVIDERS = [
-    { id: "mistral", label: "Mistral" },
-    { id: "glm", label: "GLM (Z.ai)" },
-    { id: "openrouter", label: "OpenRouter" },
-  ];
+  // The list comes in via ctx (AI_PROVIDERS from the analyst feature) so a
+  // provider added there shows up here without a second copy to forget.
+  const PROVIDERS = Array.isArray(providers) && providers.length > 0
+    ? providers
+    : [
+        { id: "mistral", label: "Mistral" },
+        { id: "glm", label: "GLM (Z.ai)" },
+        { id: "openrouter", label: "OpenRouter" },
+      ];
+  const labelOf = (id) => PROVIDERS.find((p) => p.id === id)?.label || id;
   PROVIDERS.forEach((p) => {
     if (p.id === provider) return; // skip the active one
     cmds.push({
       id: `provider:${p.id}`,
       category: "AI provider",
       label: `Switch to ${p.label}`,
-      sub: provider ? `currently ${provider}` : undefined,
-      keywords: ["ai", "switch", p.id],
-      run: () => setProvider(p.id),
+      sub: provider ? `currently ${labelOf(provider)}` : undefined,
+      keywords: ["ai", "switch", p.id, p.label.toLowerCase()],
+      run: async () => {
+        // The pref store writes optimistically and rolls back on a failed
+        // PATCH; `ok` reports which happened so the toast is truthful.
+        const r = await setProvider(p.id);
+        // The pref store rolls back silently on a failed PATCH — read the
+        // live value back rather than trusting the optimistic write.
+        const now = typeof getProvider === "function" ? getProvider() : p.id;
+        if ((r && r.ok === false) || now !== p.id) {
+          say.error(`Couldn't switch to ${p.label}`, {
+            description: r.error?.message || "Your previous provider is still active.",
+          });
+        } else {
+          say.success(`AI provider: ${p.label}`);
+        }
+      },
     });
   });
 
@@ -177,10 +244,10 @@ export function buildCommands(ctx) {
   const cheatsheet = [
     { keys: ["⌘", "K"], desc: "Open this palette" },
     { keys: ["?"], desc: "Open this palette to shortcuts" },
-    { keys: ["1", "…", "4"], desc: "Jump to section N (Performance / Goals)" },
+    { keys: ["1", "…", "9"], desc: "Jump to section N (Intelligence / Goals)" },
     { keys: ["j"], desc: "Next section (on / or /goals)" },
     { keys: ["k"], desc: "Previous section (on / or /goals)" },
-    { keys: ["g", "p"], desc: "Go to Performance" },
+    { keys: ["g", "p"], desc: "Go to Intelligence (home)" },
     { keys: ["g", "g"], desc: "Go to Goals" },
     { keys: ["g", "e"], desc: "Go to Evidence" },
     { keys: ["g", "t"], desc: "Go to Settings" },

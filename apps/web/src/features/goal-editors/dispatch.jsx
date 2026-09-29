@@ -60,6 +60,9 @@ export function GoalManualEditor({
   // SELECTED window so a fill lands in that period (backfill). When omitted,
   // editors fall back to `midWeekTs(activeLabel)` (the weekly check-in path).
   writeTs,
+  // The word for one cadence window ("week", "month", "quarter") — editors
+  // say "this week" only when the cadence really is weekly.
+  periodWord,
 }) {
   switch (widget) {
     case SPEC_KINDS.COUNTER:
@@ -71,6 +74,7 @@ export function GoalManualEditor({
           weekEnd={weekEnd}
           activeLabel={activeLabel}
           writeTs={writeTs}
+          periodWord={periodWord}
         />
       );
     case SPEC_KINDS.SCALE:
@@ -81,6 +85,7 @@ export function GoalManualEditor({
           weekEnd={weekEnd}
           activeLabel={activeLabel}
           writeTs={writeTs}
+          periodWord={periodWord}
         />
       );
     case SPEC_KINDS.MILESTONE:
@@ -92,6 +97,7 @@ export function GoalManualEditor({
           weekEnd={weekEnd}
           activeLabel={activeLabel}
           writeTs={writeTs}
+          periodWord={periodWord}
         />
       );
     case SPEC_KINDS.FREE_TEXT:
@@ -102,6 +108,7 @@ export function GoalManualEditor({
           weekEnd={weekEnd}
           activeLabel={activeLabel}
           writeTs={writeTs}
+          periodWord={periodWord}
         />
       );
     case SPEC_KINDS.DATE_LOG:
@@ -112,6 +119,7 @@ export function GoalManualEditor({
           weekEnd={weekEnd}
           activeLabel={activeLabel}
           writeTs={writeTs}
+          periodWord={periodWord}
         />
       );
     case SPEC_KINDS.BEFORE_AFTER:
@@ -122,6 +130,7 @@ export function GoalManualEditor({
           weekEnd={weekEnd}
           activeLabel={activeLabel}
           writeTs={writeTs}
+          periodWord={periodWord}
         />
       );
     case SPEC_KINDS.INCIDENT_LOG:
@@ -133,6 +142,7 @@ export function GoalManualEditor({
           weekEnd={weekEnd}
           activeLabel={activeLabel}
           writeTs={writeTs}
+          periodWord={periodWord}
         />
       );
     case SPEC_KINDS.RECURRING_MILESTONE:
@@ -142,6 +152,7 @@ export function GoalManualEditor({
           spec={spec}
           activeLabel={activeLabel}
           writeTs={writeTs}
+          periodWord={periodWord}
         />
       );
     default:

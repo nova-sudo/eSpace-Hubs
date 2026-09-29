@@ -142,19 +142,24 @@ function sourceSentence(field, resolved) {
 }
 
 export function ComposedFields({ goalId, fields, periodKey = null, periodPath = null, writeTs = null, variant: _variant = "light", showHeadline = true }) {
-  const { entries, append } = useGoalInputs(goalId);
+  const { entries, append, remove } = useGoalInputs(goalId);
   const list = Array.isArray(fields) ? fields : [];
 
-  const record = useMemo(() => {
+  // Every entry written against THIS period — the latest is the record the
+  // form shows; all of them go when the user clears the window.
+  const periodEntries = useMemo(() => {
     const all = entries || [];
-    const matching = all.filter((e) =>
+    return all.filter((e) =>
       periodKey == null
         ? e?.value && e.value.periodKey == null
         : e?.value?.periodKey === periodKey,
     );
-    const latest = matching[matching.length - 1];
-    return latest?.value && typeof latest.value === "object" ? latest.value : {};
   }, [entries, periodKey]);
+
+  const record = useMemo(() => {
+    const latest = periodEntries[periodEntries.length - 1];
+    return latest?.value && typeof latest.value === "object" ? latest.value : {};
+  }, [periodEntries]);
 
   const values = record.values && typeof record.values === "object" ? record.values : {};
   const evidence = record.evidence && typeof record.evidence === "object" ? record.evidence : {};
@@ -216,7 +221,26 @@ export function ComposedFields({ goalId, fields, periodKey = null, periodPath = 
     append(payload, undefined, writeTs ?? undefined);
   }
   function setValue(id, v) {
-    write({ ...values, [id]: v }, evidence);
+    const next = { ...values, [id]: v };
+    // A blur with nothing typed anywhere must not mint a record: any entry
+    // in a window marks it logged, so a stray keystroke that was deleted
+    // again would otherwise log the window forever.
+    if (periodEntries.length === 0 && !anyValue(next, list) && !anyValue(evidence, null)) return;
+    write(next, evidence);
+  }
+  /** Delete every entry logged against this period — "un-log" the window. */
+  function clearWindow() {
+    if (periodEntries.length === 0) return;
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        `Clear this window? Its ${periodEntries.length} saved ${periodEntries.length === 1 ? "record" : "records"} will be deleted and it will no longer count as logged.`,
+      )
+    ) {
+      return;
+    }
+    for (const e of periodEntries) remove(e);
+    setLiveAuto({});
   }
   function setEvidence(id, text) {
     const ne = { ...evidence };
@@ -364,10 +388,10 @@ export function ComposedFields({ goalId, fields, periodKey = null, periodPath = 
       case "number":
         return (
           <div className="flex min-h-[44px] min-w-0 items-center gap-2">
-            <Input
+            <DraftInput
               type="number"
               value={v ?? ""}
-              onChange={(e) => setValue(f.id, e.target.value === "" ? "" : Number(e.target.value))}
+              onCommit={(raw) => setValue(f.id, raw === "" ? "" : Number(raw))}
               placeholder="0"
               aria-label={f.label}
               className="w-[92px] shrink-0 bg-card"
@@ -378,10 +402,10 @@ export function ComposedFields({ goalId, fields, periodKey = null, periodPath = 
         );
       case "date":
         return (
-          <Input
+          <DraftInput
             type="date"
             value={typeof v === "string" ? v : ""}
-            onChange={(e) => setValue(f.id, e.target.value)}
+            onCommit={(raw) => setValue(f.id, raw)}
             aria-label={f.label}
             className="bg-card"
           />
@@ -404,10 +428,10 @@ export function ComposedFields({ goalId, fields, periodKey = null, periodPath = 
         );
       case "link":
         return (
-          <Input
+          <DraftInput
             type="url"
             value={typeof v === "string" ? v : ""}
-            onChange={(e) => setValue(f.id, e.target.value)}
+            onCommit={(raw) => setValue(f.id, raw)}
             placeholder="https://…"
             aria-label={f.label}
             className="bg-card"
@@ -416,10 +440,10 @@ export function ComposedFields({ goalId, fields, periodKey = null, periodPath = 
       case "text":
       default:
         return (
-          <Input
+          <DraftInput
             type="text"
             value={typeof v === "string" ? v : ""}
-            onChange={(e) => setValue(f.id, e.target.value)}
+            onCommit={(raw) => setValue(f.id, raw)}
             placeholder={f.help || "…"}
             aria-label={f.label}
             className="bg-card"
@@ -439,15 +463,28 @@ export function ComposedFields({ goalId, fields, periodKey = null, periodPath = 
               owed. One combined "captured" number let a period read finished
               while carrying no justification for any of it — which is the
               number the tier grader then had to judge. */}
-          {summary.owed > 0 ? (
-            <Badge tone="lemon">
-              {summary.owed} need{summary.owed === 1 ? "s" : ""} proof
-            </Badge>
-          ) : summary.proofable > 0 ? (
-            <Label>
-              {summary.withProof} of {summary.proofable} with proof
-            </Label>
-          ) : null}
+          <span className="flex items-center gap-2">
+            {summary.owed > 0 ? (
+              <Badge tone="lemon">
+                {summary.owed} need{summary.owed === 1 ? "s" : ""} proof
+              </Badge>
+            ) : summary.proofable > 0 ? (
+              <Label>
+                {summary.withProof} of {summary.proofable} with proof
+              </Label>
+            ) : null}
+            {periodEntries.length > 0 ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={clearWindow}
+                title="Delete everything saved for this window so it no longer counts as logged"
+              >
+                Clear this window
+              </Button>
+            ) : null}
+          </span>
         </div>
       ) : null}
       {list.length === 0 ? <div className="text-[13px] text-muted-fg">No fields defined for this widget yet.</div> : null}
@@ -487,6 +524,59 @@ export function ComposedFields({ goalId, fields, periodKey = null, periodPath = 
         ),
       )}
     </div>
+  );
+}
+
+/** Is any field in `values` non-empty? (`fields` null → check every key.) */
+function anyValue(values, fields) {
+  if (!values || typeof values !== "object") return false;
+  const ids = fields ? fields.map((f) => f.id) : Object.keys(values);
+  return ids.some((id) => {
+    const v = values[id];
+    if (v == null) return false;
+    if (typeof v === "string") return v.trim().length > 0;
+    if (typeof v === "number") return Number.isFinite(v);
+    if (typeof v === "boolean") return v;
+    return true;
+  });
+}
+
+/**
+ * A typed control that commits on blur / Enter instead of every keystroke.
+ * Each keystroke used to append a store entry (and a POST) — and any entry
+ * in a window marks it logged, so a stray character logged the window for
+ * good. Re-seeds from `value` whenever the stored value changes underneath
+ * it (another tab, a clear) but never mid-typing.
+ */
+function DraftInput({ value, onCommit, onKeyDown, ...rest }) {
+  const [draft, setDraft] = useState(value ?? "");
+  const [focused, setFocused] = useState(false);
+  const lastValue = useRef(value);
+  if (lastValue.current !== value) {
+    lastValue.current = value;
+    if (!focused) setDraft(value ?? "");
+  }
+  const commit = () => {
+    if (String(draft ?? "") !== String(value ?? "")) onCommit(draft);
+  };
+  return (
+    <Input
+      {...rest}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false);
+        commit();
+      }}
+      onKeyDown={(e) => {
+        onKeyDown?.(e);
+        if (e.key === "Enter" && rest.type !== "date") {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+      }}
+    />
   );
 }
 

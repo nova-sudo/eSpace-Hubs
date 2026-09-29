@@ -82,7 +82,7 @@ export function TicketCycleWidget({
         <Bars data={histogram.map((b) => ({ n: b.n, label: b.label }))} height={56} />
         <div className="flex gap-[3px]">
           {histogram.map((b) => (
-            <span key={b.label} className="flex-1 text-center text-[11px] text-dim-fg">
+            <span key={b.label} className="flex-1 text-center text-[11px] text-muted-fg">
               {b.label}
             </span>
           ))}

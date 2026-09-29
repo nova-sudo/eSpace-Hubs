@@ -184,12 +184,12 @@ export function PlanEditor({ block, onChange, goal, depth = 0, containerStart, c
           <div className="ml-auto flex flex-col items-end gap-1">
             <Badge tone={bounds.lengthSource === "default" ? "lemon" : "mint"}>{describeCycle(bounds)}</Badge>
             {inherits ? (
-              <span className="text-[11.5px] text-dim-fg">Inherits the window it sits in</span>
+              <span className="text-[11.5px] text-muted-fg">Inherits the window it sits in</span>
             ) : null}
           </div>
         </div>
         {bounds.lengthSource === "default" ? (
-          <div className="text-[12.5px] leading-[1.5] text-lemon-ink">
+          <div className="text-[12.5px] leading-[1.5] text-lemon-text">
             That is a year&apos;s worth of {nounPlural}, not a length the plan stated. Set how many{" "}
             {nounPlural} it actually runs.
           </div>
@@ -363,11 +363,11 @@ function WindowRow({
           placeholder={periodLabelFor(bounds.cadence, index + 1)}
           onChange={(e) => onLabel(e.target.value)}
           aria-label={`Window ${index + 1} title`}
-          className="h-8 min-w-[160px] flex-1 rounded-[var(--radius-md)] bg-card px-2.5 text-[13px] font-semibold text-fg outline-none placeholder:font-normal placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
+          className="h-8 min-w-[160px] flex-1 rounded-[var(--radius-md)] bg-card px-2.5 text-[13px] font-semibold text-fg border border-field-line outline-none placeholder:font-normal placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
         />
         <span className="text-[12px] text-muted-fg">{formatRange(w.start, w.end - DAY)}</span>
         {!flat && !open && (activities.length || deliverables.length) ? (
-          <span className="text-[11.5px] text-dim-fg">
+          <span className="text-[11.5px] text-muted-fg">
             {activities.length + deliverables.length} mapped
           </span>
         ) : null}
@@ -395,7 +395,7 @@ function WindowRow({
               placeholder="Focus — what this window is for"
               onChange={(e) => onFocus(e.target.value)}
               aria-label={`Window ${index + 1} focus`}
-              className="h-8 min-w-[220px] flex-1 rounded-[var(--radius-md)] bg-card px-2.5 text-[12.5px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
+              className="h-8 min-w-[220px] flex-1 rounded-[var(--radius-md)] bg-card px-2.5 text-[12.5px] text-fg border border-field-line outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
             />
             <label className="flex items-center gap-1.5 text-[12px] text-muted-fg">
               Due
@@ -404,7 +404,7 @@ function WindowRow({
                 value={period?.dueAt ?? ""}
                 onChange={(e) => onDueAt(e.target.value)}
                 aria-label={`Window ${index + 1} due date`}
-                className="h-8 rounded-[var(--radius-md)] bg-card px-2 text-[12px] text-fg outline-none focus:ring-2 focus:ring-ink"
+                className="h-8 rounded-[var(--radius-md)] bg-card px-2 text-[12px] text-fg border border-field-line outline-none focus:ring-2 focus:ring-ink"
               />
             </label>
           </div>
@@ -431,7 +431,7 @@ function WindowRow({
           />
 
           {period?.fields?.length ? (
-            <span className="text-[11.5px] text-dim-fg">
+            <span className="text-[11.5px] text-muted-fg">
               Asks {period.fields.length} field{period.fields.length === 1 ? "" : "s"} of its own
             </span>
           ) : null}
@@ -549,7 +549,7 @@ function ItemList({ kind, items, windowIndex, total, onDragStartItem, onShift, o
             onBlur={commit}
             placeholder={deliverable ? "Deliverable" : "Activity"}
             aria-label={`New ${deliverable ? "deliverable" : "activity"}`}
-            className="h-7 w-[200px] rounded-[var(--radius-pill)] bg-card px-2.5 text-[12.5px] text-fg outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
+            className="h-7 w-[200px] rounded-[var(--radius-pill)] bg-card px-2.5 text-[12.5px] text-fg border border-field-line outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink"
           />
         ) : (
           <button

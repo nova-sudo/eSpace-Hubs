@@ -4,6 +4,7 @@
  *   GET  /            the authenticated user's direct reports (may be empty)
  *   POST /resolve     which of these email addresses are already my reports
  *   GET  /fills       what each report has logged, for the plan's roster view
+ *   GET  /manager     the caller's own line manager ({ manager: {id, displayName} | null })
  *
  * Authorization is `requireAuth()` plus the controller's `managerId ===
  * session.userId` scoping, and nothing else — see the controller header. No
@@ -15,6 +16,7 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/require-auth.js";
 import {
+  getMyManagerHandler,
   listMyReportsHandler,
   listReportFillsHandler,
   resolveMyReportsHandler,
@@ -25,3 +27,4 @@ export const myReportsRouter: Router = Router();
 myReportsRouter.get("/", requireAuth(), listMyReportsHandler);
 myReportsRouter.post("/resolve", requireAuth(), resolveMyReportsHandler);
 myReportsRouter.get("/fills", requireAuth(), listReportFillsHandler);
+myReportsRouter.get("/manager", requireAuth(), getMyManagerHandler);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X, Search } from "lucide-react";
@@ -14,6 +14,8 @@ import { CompanionIndicator } from "@/features/companion";
 import { useActiveHub, HubSwitcher } from "@/features/hubs";
 import { openCommandPalette } from "@/features/command-palette";
 import { cn } from "@/lib/cn";
+import { drillDownsFor } from "./drill-down-nav";
+import { isNavHidden, TAB_ALIASES } from "./nav-visibility";
 
 /**
  * Slot → nav label + subpath. Drives the header's nav rendering.
@@ -44,6 +46,7 @@ const NAV_ITEMS = [
   { slot: "evidence", subpath: "/evidence" },
   { slot: "hub-config", subpath: "/hub-config" },
   { slot: "users", subpath: "/users" },
+  { slot: "orgchart", subpath: "/org-chart" },
   { slot: "audit", subpath: "/audit" },
   { slot: "settings", subpath: "/settings" },
 ];
@@ -60,6 +63,7 @@ const DEFAULT_LABELS = {
   evidence: "Evidence",
   "hub-config": "Hubs",
   users: "Users",
+  orgchart: "Org chart",
   audit: "Audit",
   settings: "Settings",
   employees: "Employees",
@@ -73,30 +77,10 @@ const DEFAULT_LABELS = {
 
 const HUB_SLOT_LABEL_OVERRIDES = {
   dev: { dashboard: "Intelligence" },
-  admin: { dashboard: "Overview" },
+  // Same names as the admin section rail (admin-shell.jsx) — one name per place.
+  admin: { dashboard: "Overview", users: "Members", "hub-config": "Hubs & pages", audit: "Audit log" },
   qa: { dashboard: "Overview" },
   manager: { dashboard: "Team" },
-};
-
-/**
- * Slots that stay registered in a hub's `pages` map (so the route still
- * resolves — e.g. the wordmark link keeps working, direct URLs still
- * work) but shouldn't clutter that hub's nav bar.
- *
- * Empty on purpose. Admin used to hide its own "Overview" and "Hubs"
- * entries, which left hub configuration reachable only from a page that
- * was itself unreachable from the nav. The admin portal now draws its
- * own section rail (`hubs/admin/admin-shell.jsx`), and the top nav lists
- * the same sections, so the two agree. Keyed per-hub rather than
- * per-slot because QA has a "dashboard" slot of its own that must keep
- * its entry.
- */
-const HUB_HIDDEN_NAV_SLOTS = {
-  // Engineers rarely view someone else's shared goal; the notification that
-  // shares one deep-links to /shared-goals, so the route stays reachable
-  // without a permanent nav pill on the busiest hubs.
-  dev: ["sharedgoals"],
-  qa: ["sharedgoals"],
 };
 
 function labelFor(slot, hubId) {
@@ -110,6 +94,7 @@ function NavPill({ href, label, active, className }) {
   return (
     <Link
       href={href}
+      aria-current={active ? "page" : undefined}
       className={cn(
         "whitespace-nowrap rounded-[var(--radius-pill)] px-4.5 py-2.5 text-[13.5px] font-semibold transition-colors",
         active ? "bg-ink text-ink-on" : "text-fg hover:bg-card",
@@ -121,15 +106,35 @@ function NavPill({ href, label, active, className }) {
   );
 }
 
+const MOBILE_NAV_ID = "mobile-nav-panel";
+
 export function Header() {
   const pathname = usePathname();
   const hub = useActiveHub();
   // F10 — mobile nav. Below md the nav collapses behind a hamburger;
   // the panel closes on any route change so a tap never strands it open.
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuButtonRef = useRef(null);
   useEffect(() => {
     setMenuOpen(false);
   }, [pathname]);
+  // Escape closes the panel and puts focus back on the hamburger (only when
+  // focus was in the panel or on the button — never yanked from elsewhere).
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      const panel = document.getElementById(MOBILE_NAV_ID);
+      const focusWasOurs =
+        document.activeElement === menuButtonRef.current ||
+        (panel && panel.contains(document.activeElement)) ||
+        document.activeElement === document.body;
+      setMenuOpen(false);
+      if (focusWasOurs) menuButtonRef.current?.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
 
   // Build the hub-prefixed link for each nav slot. Without an active
   // hub (brief loading window) fall back to root — the redirect at
@@ -140,16 +145,24 @@ export function Header() {
   // same list, so slot visibility can never drift between the two.
   const navItems = NAV_ITEMS.flatMap((item) => {
     if (hub && !hub.pages[item.slot]) return [];
-    if (hub && HUB_HIDDEN_NAV_SLOTS[hub.id]?.includes(item.slot)) return [];
+    if (hub && isNavHidden(hub.id, item.slot)) return [];
     const label = labelFor(item.slot, hub?.id);
     const href = `${hubPrefix}${item.subpath}` || "/";
-    // Dashboard slot is the home tab. It highlights only on the
-    // home route itself now — the old reviews/snapshots drill-downs
-    // are no longer part of the Intelligence home (Sprint-1 revamp).
+    // Dashboard slot is the home tab. It stays lit on its drill-downs
+    // (Reviews log, Snapshots — the sub-nav under the page header) so a user two
+    // clicks deep still sees which tab they're in. A drill-down that has
+    // its own pill on this hub (manager's "Shared with me") lights that.
     const dashboardHome = `${hubPrefix}` || "/";
     const active =
       item.slot === "dashboard"
-        ? pathname === dashboardHome
+        ? pathname === dashboardHome ||
+          drillDownsFor(hub).some(
+            (d) =>
+              pathname === `${hubPrefix}${d.path}` || pathname?.startsWith(`${hubPrefix}${d.path}/`),
+          ) ||
+          (TAB_ALIASES[hub?.id]?.dashboard || []).some(
+            (sub) => pathname === `${hubPrefix}${sub}` || pathname?.startsWith(`${hubPrefix}${sub}/`),
+          )
         : pathname?.startsWith(href);
     return [{ slot: item.slot, label, href, active }];
   });
@@ -160,18 +173,24 @@ export function Header() {
         <div className="flex min-w-0 items-center gap-3 md:gap-8">
           {/* Hamburger — mobile only. Sits left of the wordmark, thumb reach. */}
           <IconButton
+            ref={menuButtonRef}
             label={menuOpen ? "Close navigation" : "Open navigation"}
             aria-expanded={menuOpen}
+            aria-controls={MOBILE_NAV_ID}
             onClick={() => setMenuOpen((o) => !o)}
             className="md:hidden"
           >
             {menuOpen ? <X size={18} /> : <Menu size={18} />}
           </IconButton>
-          <Link href={hubPrefix || "/"} className="flex min-w-0 items-center gap-2.5">
+          <Link
+            href={hubPrefix || "/"}
+            aria-label="eSpace Hubs home"
+            className="flex min-w-0 items-center gap-2.5"
+          >
             <LogoMark />
             {/* Name treatment from the brand kit: "eSpace" at 800, "Hubs"
                 at 600 in muted. */}
-            <span className="truncate text-[17px] font-extrabold tracking-[-0.02em] text-fg">
+            <span className="hidden truncate text-[17px] font-extrabold tracking-[-0.02em] text-fg sm:inline">
               eSpace <span className="font-semibold text-muted-fg">Hubs</span>
             </span>
           </Link>
@@ -216,7 +235,11 @@ export function Header() {
           (not absolutely positioned) so it can never overlap content it
           doesn't push down; route changes close it via the effect above. */}
       {menuOpen ? (
-        <nav className="flex flex-col gap-1 bg-bg px-4 pb-3 pt-1 md:hidden">
+        <nav
+          id={MOBILE_NAV_ID}
+          aria-label="Main navigation"
+          className="flex flex-col gap-1 bg-bg px-4 pb-3 pt-1 md:hidden"
+        >
           <div className="pb-1">
             <HubSwitcher />
           </div>

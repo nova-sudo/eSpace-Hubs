@@ -12,7 +12,8 @@
  * transition so one user's grades never leak to the next.
  */
 
-/** { [goalId]: { tier, note, gradedByName, gradedAt } } */
+/** { [goalId]: { tier, note, gradedByName, gradedAt, periodKey, ack } }
+ *  ack: { at, disagree, note } | null — the report's acknowledgement. */
 let state = {};
 let tick = 0;
 let hydrated = false;
@@ -47,6 +48,31 @@ export function readManagerVerdict(goalId) {
   return (goalId && state[goalId]) || null;
 }
 
+function toEntry(v) {
+  return {
+    tier: v.tier,
+    note: v.note ?? "",
+    gradedByName: v.gradedByName ?? "",
+    gradedAt: v.gradedAt ?? null,
+    periodKey: v.periodKey ?? null,
+    // The grade event this is — echoed on acknowledge so a "Seen" can't
+    // land on a newer grade the report hasn't loaded yet.
+    eventId: v.eventId ?? null,
+    ack: v.ack ?? null,
+  };
+}
+
+/**
+ * Replace one goal's cached verdict with the server's fresh copy — the
+ * acknowledge endpoint returns the updated current grade, so "Seen" /
+ * "I disagree" shows without re-hydrating everything.
+ */
+export function applyManagerVerdict(goalId, verdict) {
+  if (!goalId || !verdict?.tier) return;
+  state = { ...state, [goalId]: toEntry(verdict) };
+  notify();
+}
+
 /** Seed the cache from the server, once per session. */
 export async function hydrateManagerVerdicts() {
   if (hydrated || hydrating || typeof window === "undefined") return;
@@ -63,12 +89,7 @@ export async function hydrateManagerVerdicts() {
     const next = {};
     for (const v of rows) {
       if (!v?.goalId || !v?.tier) continue;
-      next[v.goalId] = {
-        tier: v.tier,
-        note: v.note ?? "",
-        gradedByName: v.gradedByName ?? "",
-        gradedAt: v.gradedAt ?? null,
-      };
+      next[v.goalId] = toEntry(v);
     }
     state = next;
     notify();

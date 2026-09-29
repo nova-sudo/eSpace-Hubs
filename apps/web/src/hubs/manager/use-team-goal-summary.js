@@ -7,10 +7,16 @@
  * Replaces the browser fanning out one goal-health call per report.
  *
  * Returns { loading, error, totals, perReport }, where perReport is a
- * Map<userId, { total, graded, needsAttention, needsSetup, delegatedToYou,
- * byTier }> — needsAttention counts goals that are ready-to-track but have
- * no data yet, or need context before they can start (needs_setup +
- * no_data).
+ * Map<userId, { total, graded, needsSetup, noTracker, delegatedToYou,
+ * byTier, byStatus, worst, lastEntryAt, openDisputes, packet,
+ * needsAttention }>.
+ *
+ * Statuses are the SHARED model (`goalStatus`, computed server-side over
+ * the same cadence windows the report's own pages use), so "Behind" here
+ * is "Behind" on their Home. `worst` is the report's weakest measured goal
+ * with its reason ("Behind · Gone quiet · 3 weeks…"); `needsAttention`
+ * counts what a lead should look at: goals behind, open disagreements and
+ * a packet they haven't opened.
  *
  * `byTier` is the achievement-tier histogram the API has always returned
  * per report. The team table draws it as a spread bar: "9 of 12 graded"
@@ -28,6 +34,9 @@ const EMPTY_TOTALS = {
   goals: 0,
   graded: 0,
   needsSetup: 0,
+  noTracker: 0,
+  openDisputes: 0,
+  newPackets: 0,
   noData: 0,
   tracking: 0,
   auto: 0,
@@ -63,6 +72,9 @@ export function useTeamGoalSummary(reports) {
         totals.goals += s.total ?? 0;
         totals.graded += s.graded ?? 0;
         totals.needsSetup += s.needsSetup ?? 0;
+        totals.noTracker += s.noTracker ?? 0;
+        totals.openDisputes += s.openDisputes ?? 0;
+        if (s.packet?.state === "new") totals.newPackets += 1;
         totals.noData += s.noData ?? 0;
         totals.tracking += s.tracking ?? 0;
         totals.auto += s.auto ?? 0;
@@ -71,11 +83,20 @@ export function useTeamGoalSummary(reports) {
         for (const t of Object.keys(totals.byTier)) {
           totals.byTier[t] += byTier[t] ?? 0;
         }
+        const behind = s.byStatus?.behind ?? 0;
         perReport.set(id, {
           total: s.total ?? 0,
           graded: s.graded ?? 0,
-          needsAttention: (s.needsSetup ?? 0) + (s.noData ?? 0),
+          needsAttention:
+            behind + (s.openDisputes ?? 0) + (s.packet?.state === "new" ? 1 : 0),
+          behind,
           needsSetup: s.needsSetup ?? 0,
+          noTracker: s.noTracker ?? 0,
+          byStatus: s.byStatus ?? {},
+          worst: s.worst ?? null,
+          lastEntryAt: s.lastEntryAt ?? null,
+          openDisputes: s.openDisputes ?? 0,
+          packet: s.packet ?? null,
           delegatedToYou: s.delegatedToYou ?? 0,
           byTier,
         });

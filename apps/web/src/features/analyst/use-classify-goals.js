@@ -30,6 +30,8 @@ import {
   discardSpec,
   discardAllPending,
   updatePendingSpec,
+  pendingCommitImpact,
+  pendingCommitImpactAll,
 } from "./classify-run-store";
 
 export { CLASSIFY_PHASES };
@@ -145,5 +147,7 @@ export function useClassifyGoals() {
     discardSpec,
     discardAllPending,
     updatePendingSpec,
+    pendingCommitImpact,
+    pendingCommitImpactAll,
   };
 }

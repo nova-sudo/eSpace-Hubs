@@ -29,10 +29,10 @@ export const TIER_TONE = {
 const SPREAD_ORDER = ["role_model", "over_achieved", "achieved", "not_achieved"];
 
 const SPREAD_FILL = {
-  role_model: "bg-lav-ink",
-  over_achieved: "bg-sky-ink",
-  achieved: "bg-mint-ink",
-  not_achieved: "bg-peach-ink",
+  role_model: "bg-lav-text",
+  over_achieved: "bg-sky-text",
+  achieved: "bg-mint-text",
+  not_achieved: "bg-peach-text",
 };
 
 /** Short spread wording — "2 over", not "2 over achieved". */
@@ -58,7 +58,7 @@ export function TierSpreadBar({ byTier, height = 8, className }) {
   return (
     <span
       className={cn(
-        "flex w-full overflow-hidden rounded-[var(--radius-pill)] bg-card-alt",
+        "flex w-full overflow-hidden rounded-[var(--radius-pill)] bg-track",
         className,
       )}
       style={{ height }}
@@ -129,7 +129,7 @@ export function MiniBar({ value, total, height = 4, className }) {
   return (
     <span
       className={cn(
-        "block w-full overflow-hidden rounded-[var(--radius-pill)] bg-card-alt",
+        "block w-full overflow-hidden rounded-[var(--radius-pill)] bg-track",
         className,
       )}
       style={{ height }}
@@ -159,8 +159,9 @@ export function CountTile({ label, value, tone = "alt" }) {
   );
 }
 
-/** The hub's one empty / error / loading card. */
-export function EmptyCard({ children, className }) {
+/** The hub's one empty / error / loading card. `title` = the empty-state
+ *  pattern's 15px bold line above the muted body. */
+export function EmptyCard({ title, children, className }) {
   return (
     <div
       className={cn(
@@ -169,6 +170,9 @@ export function EmptyCard({ children, className }) {
       )}
       style={{ boxShadow: "var(--shadow-card)" }}
     >
+      {title ? (
+        <div className="mb-1 text-[15px] font-bold leading-[1.3] text-fg">{title}</div>
+      ) : null}
       {children}
     </div>
   );

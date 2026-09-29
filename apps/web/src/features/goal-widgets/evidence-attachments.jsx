@@ -157,7 +157,7 @@ export function EvidenceAttachments({ goalId, periodKey, className = "" }) {
             onChange={(e) => void doUpload(e.target.files)}
           />
 
-          {error ? <span className="text-[12.5px] text-peach-ink">{error}</span> : null}
+          {error ? <span className="text-[12.5px] text-peach-text">{error}</span> : null}
 
           {count > 0 ? (
             <ul className="flex list-none flex-col gap-1 p-0">
@@ -176,7 +176,7 @@ export function EvidenceAttachments({ goalId, periodKey, className = "" }) {
                     <span className="truncate">{f.name}</span>
                   </a>
                   <span className="flex shrink-0 items-center gap-2">
-                    <span className="text-[11.5px] text-dim-fg">{formatBytes(f.size)}</span>
+                    <span className="text-[11.5px] text-muted-fg">{formatBytes(f.size)}</span>
                     <IconButton label={`Remove ${f.name}`} size="sm" onCard onClick={() => void remove(f.id)} disabled={busy}>
                       <X size={12} />
                     </IconButton>
@@ -185,7 +185,7 @@ export function EvidenceAttachments({ goalId, periodKey, className = "" }) {
               ))}
             </ul>
           ) : files !== null ? (
-            <span className="text-[12.5px] text-dim-fg">Nothing attached to this period yet</span>
+            <span className="text-[12.5px] text-muted-fg">Nothing attached to this period yet</span>
           ) : null}
         </div>
       ) : null}

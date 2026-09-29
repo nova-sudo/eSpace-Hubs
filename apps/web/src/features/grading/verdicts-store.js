@@ -161,13 +161,26 @@ export async function fetchVerdicts() {
       // Server uses normalised string prId; we keep the same key
       // shape locally so reads from useGradedPrs match exactly.
       if (!v.prId || !v.rubricHash || !v.verdict) continue;
-      next.set(makeCacheKey(v.prId, v.rubricHash), v.verdict);
+      // Rows persisted by older clients when the grader itself failed
+      // (`pass:false, reasoning:"Grading failed: …"`) come back looking
+      // like real failures. Re-flag them so they stay out of the pass
+      // rate and stay retryable — new clients never persist these.
+      const verdict = isErroredReasoning(v.verdict.reasoning)
+        ? { ...v.verdict, errored: true }
+        : v.verdict;
+      next.set(makeCacheKey(v.prId, v.rubricHash), verdict);
     }
     bumpSnapshot();
     setState({ loading: false, fetched: true, error: null, verdicts: next });
     return next;
   })();
   return inflightFetch;
+}
+
+/** The reasoning prefixes the grader writes when IT failed (not the PR). */
+const ERRORED_REASONING_RE = /^Grading (failed|error):/;
+export function isErroredReasoning(reasoning) {
+  return typeof reasoning === "string" && ERRORED_REASONING_RE.test(reasoning);
 }
 
 /* ─────────────────────── writes ─────────────────────── */
@@ -177,11 +190,12 @@ export async function fetchVerdicts() {
  * re-renders immediately; the POST runs in the background. Failures
  * roll back the local entry.
  *
- * Errored verdicts (the grader threw / upstream 5xx'd) still call
- * here so we don't re-attempt grading on the next render. The local
- * Map keeps the `errored: true` flag; the API persists pass=false +
- * the failure reasoning (the server schema doesn't model `errored`
- * yet — it's a frontend concept).
+ * Errored verdicts (the grader threw / upstream 5xx'd) are kept LOCAL
+ * ONLY: they carry `errored: true` so the widget doesn't re-attempt
+ * every render, but they are never POSTed — the server schema has no
+ * `errored` flag, so a persisted one would come back as a genuine
+ * `pass:false` and count as a failure forever. `retryErrored` (below)
+ * clears them so a later run grades again.
  */
 export async function saveVerdict(prId, rubricHash, verdict) {
   if (!prId || !rubricHash || !verdict) return;
@@ -191,6 +205,7 @@ export async function saveVerdict(prId, rubricHash, verdict) {
   nextMap.set(key, verdict);
   bumpSnapshot();
   setState({ verdicts: nextMap, error: null });
+  if (verdict.errored) return;
 
   // Send the canonical shape — strip frontend-only fields the API
   // schema rejects (`errored`), keep `pass / reasoning / violations`.
@@ -277,6 +292,28 @@ export async function pruneUnrelated(currentRubricHashByPr) {
     r.error?.code,
     r.error?.message,
   );
+}
+
+/**
+ * Drop every errored (transient-failure) verdict from the local Map so
+ * the next `grade()` pass re-attempts those PRs. Pass `rubricHash` to
+ * scope it to one widget. Returns how many were cleared.
+ */
+export function clearErroredVerdicts(rubricHash = null) {
+  const nextMap = new Map();
+  let cleared = 0;
+  for (const [key, verdict] of state.verdicts) {
+    const inScope = !rubricHash || key.endsWith(`::${rubricHash}`);
+    if (inScope && (verdict?.errored || isErroredReasoning(verdict?.reasoning))) {
+      cleared += 1;
+      continue;
+    }
+    nextMap.set(key, verdict);
+  }
+  if (cleared === 0) return 0;
+  bumpSnapshot();
+  setState({ verdicts: nextMap });
+  return cleared;
 }
 
 /** Wipe local state — reserved for a future "reset grading cache"
