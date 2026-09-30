@@ -1,9 +1,14 @@
 "use client";
 
+import { useMemo } from "react";
 import { githubApi, normalizeGithubEvents } from "../api-clients";
 import { useIntegrations } from "../use-integrations";
 import { useSwrIf } from "./use-swr-if";
-import { isoDaysAgo } from "@/lib/date";
+import {
+  canonicalEventsSinceIso,
+  filterEventsSince,
+  resolveFetchWindow,
+} from "./provider-windows";
 
 /**
  * Current user's GitHub public events, normalized to the GitLab event shape
@@ -22,21 +27,19 @@ import { isoDaysAgo } from "@/lib/date";
  */
 export function useGithubEventsSince(since) {
   const { isConnected } = useIntegrations();
-  const iso =
-    since instanceof Date
-      ? since.toISOString()
-      : typeof since === "number"
-        ? isoDaysAgo(since)
-        : since;
-  const swr = useSwrIf(isConnected("github"), `github:events:${iso}`, () =>
-    githubApi.myEventsSince(iso),
+  // The feed itself stops at ~90 days, so EVERY window — even YTD — is
+  // served from the one canonical 90-day walk and trimmed client-side.
+  // (A YTD walk and a 90d walk read the exact same pages.) `null` skips.
+  const win = resolveFetchWindow(since, [canonicalEventsSinceIso()]);
+  const filterIso = win?.filterIso ?? null;
+  const fetchIso = win ? canonicalEventsSinceIso() : null;
+  const swr = useSwrIf(isConnected("github") && Boolean(fetchIso), `github:events:${fetchIso}`, () =>
+    githubApi.myEventsSince(fetchIso),
   );
-  const all = swr.data ? normalizeGithubEvents(swr.data) : swr.data;
   // Client-side trim to the requested window — GitHub's endpoint ignores date.
-  const cutoff = typeof iso === "string" ? new Date(iso).getTime() : null;
-  const data =
-    all && cutoff
-      ? all.filter((e) => new Date(e.created_at).getTime() >= cutoff)
-      : all;
+  const data = useMemo(
+    () => (swr.data ? filterEventsSince(normalizeGithubEvents(swr.data), filterIso) : swr.data),
+    [swr.data, filterIso],
+  );
   return { ...swr, data };
 }

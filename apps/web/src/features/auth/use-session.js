@@ -3,6 +3,7 @@
 import { useSyncExternalStore, useCallback } from "react";
 import { mutate as mutateSwr } from "swr";
 import { apiGet, apiPost } from "@/lib/api-client";
+import { clearProviderCache } from "@/lib/provider-cache";
 import {
   getSession,
   setSession,
@@ -37,6 +38,9 @@ function clearSwrCache() {
   } catch {
     // SWR not initialised yet — nothing cached to clear.
   }
+  // The persisted (IndexedDB / localStorage) provider cache goes with it:
+  // the next account on this browser must not render our PR / ticket data.
+  void clearProviderCache();
 }
 
 /** Promote `user` into the session, clearing SWR when the id changes. */

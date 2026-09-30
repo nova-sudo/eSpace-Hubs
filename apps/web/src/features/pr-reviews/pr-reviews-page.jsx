@@ -29,17 +29,30 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useSWRConfig } from "swr";
 import { ExternalLink } from "lucide-react";
 import { DrillDownNav } from "@/components/shell/drill-down-nav";
-import { Badge, Button, Card, Label, PageHeader, Stat } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  FreshnessNote,
+  Label,
+  LiveValue,
+  PageContainer,
+  PageHeader,
+  Stat,
+} from "@/components/ui";
 import { toast } from "sonner";
 import { AI_PROVIDERS, useAiProvider } from "@/features/analyst";
 import { cn } from "@/lib/cn";
 import {
   fmtMs,
-  usePrReviewTimings,
   useIntegrations,
+  usePrReviewTiming,
+  useRetryReviewList,
+  useReviewablePrs,
+  useLiveStatus,
+  useProviderFreshness,
 } from "@/features/integrations";
 import { useDateRange, DateRangeToolbar, splitByRange } from "@/features/date-range";
 import { useHubLink } from "@/features/hubs";
@@ -53,34 +66,44 @@ const TIMING_LEGEND = {
   Idle: "Total time the PR sat waiting on reviewers: TTFR plus every later gap.",
 };
 
-/** Revalidate the review-timing SWR entries — the hook has no `mutate`,
- *  but its keys are prefixed, so a key filter reaches them. */
-function useRetryReviewTimings() {
-  const { mutate } = useSWRConfig();
-  return useCallback(
-    () =>
-      mutate(
-        (key) => typeof key === "string" && key.startsWith("pr-review-timings:"),
-        undefined,
-        { revalidate: true },
-      ),
-    [mutate],
-  );
-}
+/**
+ * Rows whose comment threads load at once. Each row costs one details
+ * fetch per PR (GitHub: 3 requests, GitLab: 2), so the log pages through
+ * the window instead of hydrating every PR up front — the 12-month preset
+ * used to spend ~600 GitHub requests before painting anything.
+ */
+const PAGE_SIZE = 20;
 
 export function PrReviewsPage() {
   const { range } = useDateRange();
-  const { data: timings, isLoading, error } = usePrReviewTimings(range.fetchSince);
-  const retry = useRetryReviewTimings();
+  // Only the CURRENT window is rendered, so only it is fetched — the
+  // previous-period `fetchSince` would double the reach (a whole extra year
+  // on the "this year" preset). The list is a slice of the shared canonical
+  // merged-PR fetch; per-PR details load lazily per visible row below.
+  const { data: rows, isLoading, error } = useReviewablePrs(range.start);
+  // The list's own freshness: a failed refresh keeps the cached list on
+  // screen (with "as of" + why) instead of swapping it for an error card.
+  const listLive = useLiveStatus({
+    providers: ["github", "gitlab"],
+    hasValue: rows !== undefined,
+    dataReady: rows !== undefined,
+    isLoading,
+    error,
+  });
+  const retry = useRetryReviewList();
   const link = useHubLink();
   const { isConnected } = useIntegrations();
   const hasCodeHost = isConnected("github") || isConnected("gitlab");
   const inWindow = useMemo(
     () =>
-      splitByRange(timings || [], range, (t) => t.pr?.mergedAt || t.pr?.createdAt)
-        .current,
-    [timings, range],
+      splitByRange(rows || [], range, (r) => r.mergedAt || r.createdAt).current,
+    [rows, range],
   );
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  // A new window starts back at one page.
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [range.id, range.fetchSinceISO]);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -97,13 +120,13 @@ export function PrReviewsPage() {
       return;
     }
     const requested = initialRequestRef.current;
-    if (requested && inWindow.some((t) => String(t.pr.id) === String(requested))) {
+    if (requested && inWindow.some((t) => String(t.id) === String(requested))) {
       initialRequestRef.current = null;
       setSelectedId(requested);
       return;
     }
-    if (selectedId == null || !inWindow.some((t) => String(t.pr.id) === String(selectedId))) {
-      setSelectedId(inWindow[0].pr.id);
+    if (selectedId == null || !inWindow.some((t) => String(t.id) === String(selectedId))) {
+      setSelectedId(inWindow[0].id);
     }
   }, [inWindow, selectedId]);
 
@@ -118,10 +141,13 @@ export function PrReviewsPage() {
     [router, pathname, searchParams],
   );
 
-  const selected = inWindow.find((t) => String(t.pr.id) === String(selectedId));
+  const selected = inWindow.find((t) => String(t.id) === String(selectedId)) || null;
+  // The selected PR's details load even when it sits past the visible page
+  // (a `?pr=` deep link) — it shares its cache entry with its list row.
+  const selectedTiming = usePrReviewTiming(selected);
 
   return (
-    <main className="relative z-[2] px-4 sm:px-10 pb-14 pt-9">
+    <PageContainer>
       <PageHeader
         crumb={
           inWindow.length > 0
@@ -131,11 +157,9 @@ export function PrReviewsPage() {
         title="Where review time goes."
         subtitle="Every reviewed PR in the window — time to first review, the gap between rounds, total idle time, and the comment threads that drove each round. Line comments show the code they were left on."
       />
-      <DrillDownNav className="-mt-2 mb-7" />
+      <DrillDownNav />
 
-      <div className="-mx-4 mb-5 sm:-mx-10">
-        <DateRangeToolbar />
-      </div>
+      <DateRangeToolbar />
 
       {!hasCodeHost ? (
         <Empty
@@ -147,10 +171,10 @@ export function PrReviewsPage() {
         />
       ) : isLoading && inWindow.length === 0 ? (
         <Empty label="Loading review timings…" />
-      ) : error ? (
+      ) : error && rows === undefined ? (
         <Empty
           label="Couldn't load review data."
-          body={error.message || String(error)}
+          body={<FreshnessNote status={listLive} showReasons />}
           action={
             <Button onClick={() => void retry()}>Retry</Button>
           }
@@ -158,28 +182,34 @@ export function PrReviewsPage() {
       ) : inWindow.length === 0 ? (
         <Empty
           label="No reviewed PRs in this window."
-          body="Only PRs that were merged (or opened) inside the selected range appear here — try a wider range."
+          body={
+            <>
+              Only PRs that were merged (or opened) inside the selected range appear here — try a wider range.
+              <FreshnessNote status={listLive} showQuiet={false} className="mt-1.5 flex justify-center" />
+            </>
+          }
         />
       ) : (
-        <div
-          className="grid gap-4"
-          style={{ gridTemplateColumns: "minmax(280px, 360px) minmax(0, 1fr)" }}
-        >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
           <PrList
+            live={listLive}
+            onRetry={() => void retry()}
             items={inWindow}
+            visibleCount={visibleCount}
+            onLoadMore={() => setVisibleCount((n) => n + PAGE_SIZE)}
             selectedId={selectedId}
             onSelect={selectPr}
           />
-          {selected ? <PrDetail item={selected} onRetry={retry} /> : null}
+          {selected ? <PrDetail row={selected} state={selectedTiming} /> : null}
         </div>
       )}
-    </main>
+    </PageContainer>
   );
 }
 
 function Empty({ label, body, action }) {
   return (
-    <Card className="px-4 sm:px-10 py-16 text-center">
+    <Card className="px-6 py-16 text-center sm:px-10">
       <Label>Review log</Label>
       <h2 className="mx-auto mt-3 max-w-[520px] text-[18px] font-bold tracking-[-0.01em] text-fg">
         {label}
@@ -198,30 +228,42 @@ function providerName(source) {
 
 /* ─────────────────────────── PR list ─────────────────────────── */
 
-function PrList({ items, selectedId, onSelect }) {
+function PrList({ items, visibleCount, onLoadMore, selectedId, onSelect, live, onRetry }) {
+  const visible = items.slice(0, visibleCount);
+  const remaining = items.length - visible.length;
   return (
     <Card padding={0} className="overflow-hidden">
-      <div className="border-b border-line px-4 py-3">
-        <Label>PRs · sorted by total idle</Label>
+      <div className="flex flex-col gap-1 border-b border-line px-4 py-3">
+        <Label>PRs · newest merge first</Label>
+        <FreshnessNote status={live} onRetry={onRetry} showQuiet={false} />
       </div>
       <div className="max-h-[70vh] overflow-y-auto">
-        {[...items]
-          .sort((a, b) => (b.timing?.idle || 0) - (a.timing?.idle || 0))
-          .map((it) => (
-            <PrListItem
-              key={it.pr.id}
-              item={it}
-              active={String(it.pr.id) === String(selectedId)}
-              onSelect={() => onSelect(it.pr.id)}
-            />
-          ))}
+        {visible.map((row) => (
+          <PrListItem
+            key={row.id}
+            row={row}
+            active={String(row.id) === String(selectedId)}
+            onSelect={() => onSelect(row.id)}
+          />
+        ))}
+        {remaining > 0 ? (
+          <div className="border-t border-line px-4 py-3">
+            <Button size="sm" variant="soft" onClick={onLoadMore}>
+              Load {Math.min(PAGE_SIZE, remaining)} more · {remaining} left
+            </Button>
+          </div>
+        ) : null}
       </div>
     </Card>
   );
 }
 
-function PrListItem({ item, active, onSelect }) {
-  const t = item.timing;
+function PrListItem({ row, active, onSelect }) {
+  // Each visible row loads its own PR's thread (shared, long-lived cache
+  // entry); rows past the page never fetch.
+  const timing = usePrReviewTiming(row);
+  const t = timing.item?.timing;
+  const live = usePrTimingLive(row, timing);
   return (
     <button
       type="button"
@@ -232,20 +274,21 @@ function PrListItem({ item, active, onSelect }) {
       )}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <span className="font-mono text-[12px] font-bold text-fg">#{item.pr.number}</span>
+        <span className="font-mono text-[12px] font-bold text-fg">#{row.number}</span>
         <span className="text-[11.5px] text-muted-fg">
-          {item.pr.mergedAt ? fullDate(item.pr.mergedAt) : "—"}
+          {row.mergedAt ? fullDate(row.mergedAt) : "—"}
         </span>
       </div>
       <div className="mt-0.5 line-clamp-2 text-[13px] font-semibold leading-[1.35] text-fg">
-        {item.pr.title || "(no title)"}
+        {row.title || "(no title)"}
       </div>
       <div className="mt-1.5 flex items-center justify-between gap-2 text-[11.5px] text-muted-fg">
-        <span>{item.pr.repo}</span>
-        <span>
-          idle {fmtMs(t?.idle || 0)} · {t?.reviewCount || 0} review
-          {t?.reviewCount === 1 ? "" : "s"}
-        </span>
+        <span>{row.repo}</span>
+        <LiveValue status={live} layout="compact" skeleton="w-[16ch]" messageClassName="text-[11.5px] font-medium">
+          <span>
+            {t ? `idle ${fmtMs(t.idle || 0)} · ${t.reviewCount || 0} review${t.reviewCount === 1 ? "" : "s"}` : null}
+          </span>
+        </LiveValue>
       </div>
     </button>
   );
@@ -253,14 +296,46 @@ function PrListItem({ item, active, onSelect }) {
 
 /* ─────────────────────────── PR detail ─────────────────────────── */
 
-function PrDetail({ item, onRetry }) {
-  const { pr, details, timing } = item;
+/**
+ * <LiveValue> status for one PR's timing row: its own cached details entry
+ * (persisted per user, so a revisit paints the last timings at once).
+ */
+function usePrTimingLive(row, state) {
+  const f = useProviderFreshness(row?.detailsKey || null);
+  return {
+    hasValue: Boolean(state.item?.timing),
+    pending: state.isLoading,
+    refreshing: f.isRefreshing,
+    error: state.error || null,
+    rateLimitedUntil: f.rateLimitedUntil,
+    fetchedAt: f.fetchedAt,
+    provider: providerName(row?.source),
+    emptyLabel: "No timing",
+    retry: state.retry,
+  };
+}
+
+function PrDetail({ row, state }) {
+  const pr = state.item?.pr || row;
+  const details = state.item?.details || null;
+  const timing = state.item?.timing || null;
+  const live = usePrTimingLive(row, state);
+  // Timing cells: a skeleton until this PR's thread arrives, never a "—"
+  // or "0" that reads as "no review wait".
+  const cell = (text) => (
+    // Compact: a short "Paused" / "Unavailable" in the cell, the full
+    // reason once, in the note under the band.
+    <LiveValue status={live} layout="compact" skeleton="w-[2.5ch]" messageClassName="text-[15px]">
+      {text}
+    </LiveValue>
+  );
+  const detailsLoading = state.isLoading;
   const [retrying, setRetrying] = useState(false);
   async function retryDetails() {
     if (retrying) return;
     setRetrying(true);
     try {
-      await onRetry?.();
+      await state.retry?.();
     } finally {
       setRetrying(false);
     }
@@ -310,20 +385,21 @@ function PrDetail({ item, onRetry }) {
       <div className="border-b border-line px-5 py-4">
         <div className="grid grid-cols-4 gap-3">
           <div title={TIMING_LEGEND.TTFR}>
-            <Stat label="TTFR" value={fmtMs(timing?.ttfr)} sub="time to first review" />
+            <Stat label="TTFR" value={cell(fmtMs(timing?.ttfr))} sub="time to first review" />
           </div>
           <div title={TIMING_LEGEND.ATTNR}>
-            <Stat label="ATTNR" value={fmtMs(timing?.attnr)} sub="avg. gap between rounds" />
+            <Stat label="ATTNR" value={cell(fmtMs(timing?.attnr))} sub="avg. gap between rounds" />
           </div>
           <div title={TIMING_LEGEND.Idle}>
-            <Stat label="Idle (Σ)" value={fmtMs(timing?.idle || 0)} sub="total waiting on review" />
+            <Stat label="Idle (Σ)" value={cell(fmtMs(timing?.idle || 0))} sub="total waiting on review" />
           </div>
           <Stat
             label="Reviewers"
-            value={timing?.reviewers?.length ? `${timing.reviewers.length}` : "0"}
+            value={cell(timing?.reviewers?.length ? `${timing.reviewers.length}` : "0")}
             sub={(timing?.reviewers || []).slice(0, 3).join(", ")}
           />
         </div>
+        <FreshnessNote status={live} showReasons className="mt-2" />
         <p className="mt-3 text-[11.5px] leading-[1.5] text-muted-fg">
           TTFR — {TIMING_LEGEND.TTFR} ATTNR — {TIMING_LEGEND.ATTNR}
         </p>
@@ -344,9 +420,12 @@ function PrDetail({ item, onRetry }) {
       {/* Comment thread */}
       <div className="px-5 py-4">
         <Label>Comments{details ? ` · ${orderedComments.length}` : ""}</Label>
-        {!details ? (
-          // `details: null` means the per-PR fetch failed, not that the PR
-          // is comment-free — say so and offer a way back.
+        {!details && detailsLoading ? (
+          <div className="mt-3 text-[13px] text-muted-fg">Loading this PR&apos;s comments…</div>
+        ) : !details ? (
+          // No details and not loading means the per-PR fetch failed (or
+          // the PR can't be located), not that it's comment-free — say so
+          // and offer a way back.
           <div className="mt-3 flex flex-wrap items-center gap-3 text-[13px] text-muted-fg">
             <span>Couldn&apos;t load this PR&apos;s comments.</span>
             <Button size="sm" variant="soft" onClick={() => void retryDetails()} disabled={retrying}>

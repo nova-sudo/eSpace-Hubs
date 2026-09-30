@@ -23,7 +23,7 @@ export function DateRangeToolbar() {
 
 function ToolbarSkeleton() {
   return (
-    <div className="relative z-[2] flex items-center gap-3 px-4 sm:px-10 pb-5">
+    <div className="relative z-[2] mb-5 flex items-center gap-3">
       <Label>Range</Label>
       <div className="h-9 w-64 rounded-[var(--radius-pill)] bg-card-alt" />
     </div>
@@ -36,7 +36,7 @@ function DateRangeToolbarInner() {
   const options = PRESET_IDS.map((id) => ({ value: id, label: PRESETS[id].label }));
 
   return (
-    <div className="relative z-[2] flex flex-wrap items-center justify-between gap-3 px-4 sm:px-10 pb-5">
+    <div className="relative z-[2] mb-5 flex flex-wrap items-center justify-between gap-3">
       <div className="flex min-w-0 max-w-full items-center gap-3">
         <Label>Range</Label>
         <SegmentedControl as="radiogroup" ariaLabel="Date range" options={options} value={preset} onChange={setPreset} size="sm" />

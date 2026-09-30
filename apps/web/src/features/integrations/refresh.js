@@ -1,6 +1,8 @@
 "use client";
 
 import { mutate } from "swr";
+import { isProviderKey, providersForKey } from "@/lib/provider-cache";
+import { rateLimitedUntil } from "@/lib/rate-limit";
 
 /**
  * Force-refetch every cached integration read (F5 — data honesty).
@@ -17,12 +19,19 @@ import { mutate } from "swr";
  *
  * Returns the SWR promise so callers can await it for a busy state.
  */
-const INTEGRATION_KEY_RE = /^(gitlab|github|gh_actions|jenkins|jira|combined):/;
+
+/**
+ * A key is skipped while every provider it depends on is rate-limited:
+ * the fetch would fail fast anyway, and skipping keeps the cached value
+ * and its "as of" time untouched. The banner already says when the
+ * refresh resumes, and the limit's expiry revalidates failed keys.
+ */
+function refreshable(key) {
+  if (!isProviderKey(key)) return false;
+  const providers = providersForKey(key);
+  return providers.some((p) => rateLimitedUntil(p) === null);
+}
 
 export function refreshIntegrationData() {
-  return mutate(
-    (key) => typeof key === "string" && INTEGRATION_KEY_RE.test(key),
-    undefined,
-    { revalidate: true },
-  );
+  return mutate(refreshable, undefined, { revalidate: true });
 }

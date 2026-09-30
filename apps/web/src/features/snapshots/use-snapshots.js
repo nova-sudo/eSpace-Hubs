@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import {
   fetchSnapshots,
   getSnapshotsServerSnapshot,
@@ -22,6 +22,7 @@ import {
   useIntegrations,
 } from "@/features/integrations";
 import { isoDaysAgo, weekKey } from "@/lib/date";
+import { useDeferredFeeds } from "./use-deferred-feeds";
 
 /** The gap tag a capture carries when it has no PR / review numbers. */
 export const PROVIDER_METRICS_GAP = "provider-metrics";
@@ -54,7 +55,7 @@ function useCodeHostConnected() {
  * GET fires per session establishment regardless of how many tiles
  * read snapshots.
  */
-export function useSnapshots() {
+export function useSnapshots({ enabled = true } = {}) {
   // useSyncExternalStore drives re-renders whenever the store's tick
   // increments. The actual data comes from readSnapshots() in the
   // render body — the tick is just a "data changed" signal.
@@ -69,12 +70,15 @@ export function useSnapshots() {
   // auth-transition listener inside the store resets `fetched` to
   // false on logout).
   const { user, loading: sessionLoading } = useSession();
+  // `enabled: false` subscribes without triggering the GET — the command
+  // palette is mounted on every hub, but only a hub with a snapshots page
+  // needs the history loaded.
   useEffect(() => {
-    if (sessionLoading || !user) return;
+    if (!enabled || sessionLoading || !user) return;
     const s = getSnapshotsState();
     if (s.fetched || s.loading) return;
     void fetchSnapshots();
-  }, [user, sessionLoading]);
+  }, [user, sessionLoading, enabled]);
 
   // `fetched` flips true once the first load settles (even with zero
   // snapshots), so consumers can gate empty-state vs loader.
@@ -124,10 +128,18 @@ export function useSnapshotReadiness() {
 }
 
 /**
- * Captures a snapshot from the currently-loaded live metrics.
+ * Captures a snapshot from the live metrics.
  * Returns a callback the UI can bind to a "Snapshot now" button; the
  * callback resolves to `{ ok, error }` (see `saveSnapshot`) so callers
  * toast from the actual outcome.
+ *
+ * LAZY: the hook fetches nothing on mount. The provider feeds are armed
+ * the first time the callback runs, and the capture awaits them — so the
+ * command palette (mounted on every page of every hub) and the Home action
+ * queue no longer pull 30 days of PRs + events on every page load just in
+ * case someone snapshots. When another surface already loaded the shared
+ * canonical feeds (the Snapshots page's readiness check does), the capture
+ * resolves from cache with no request.
  *
  * The capture is keyed to the CURRENT week (`weekKey()`), as manual.
  * Existing goalReadings / note for that week are carried forward — the
@@ -135,8 +147,13 @@ export function useSnapshotReadiness() {
  * weekly readings the auto-capture recorded.
  */
 export function useSnapshotNow() {
-  const { data: mrs } = useCombinedMergedSince(isoDaysAgo(30));
-  const { data: events } = useCombinedEventsSince(isoDaysAgo(30));
+  const [armed, setArmed] = useState(false);
+  const feeds = useDeferredFeeds({
+    armed,
+    mergedSince: isoDaysAgo(30),
+    eventsSince: isoDaysAgo(30),
+  });
+  const { waitForFeeds } = feeds;
   const codeHost = useCodeHostConnected();
   const noCodeHost = !codeHost.loading && !codeHost.connected;
 
@@ -144,6 +161,7 @@ export function useSnapshotNow() {
     async (note = "") => {
       const week = weekKey();
       const existing = readSnapshots().find((s) => s.week === week);
+      const noteText = (typeof note === "string" ? note : "").trim() || existing?.note || "";
       if (noCodeHost) {
         // Nothing to read PR numbers from — record the week (manual
         // trackers, note) with the provider columns marked unknown.
@@ -156,21 +174,23 @@ export function useSnapshotNow() {
           turnaround: 0,
           linkage: 0,
           rounds: 0,
-          note: (typeof note === "string" ? note : "").trim() || existing?.note || "",
+          note: noteText,
           goalReadings: existing?.goalReadings || {},
           partial: true,
           gaps: [PROVIDER_METRICS_GAP],
         });
       }
+      // First use: subscribe to the feeds now and wait for them.
+      if (!armed) setArmed(true);
+      const { mrs, events, error } = await waitForFeeds();
       // Refuse rather than freeze zeros: every caller (page, palette,
       // home tile) is protected without each re-checking the feeds.
       if (!mrs || !events) {
         return {
           ok: false,
-          error: {
-            code: "not_ready",
-            message: "Integration data is still loading",
-          },
+          error: error
+            ? { code: "provider_error", message: "Provider data failed to load" }
+            : { code: "not_ready", message: "Integration data is still loading" },
         };
       }
       const mergedThisW = mergedThisWeek(mrs).count;
@@ -189,10 +209,10 @@ export function useSnapshotNow() {
         turnaround: median == null ? 0 : Math.round(median * 24),
         linkage,
         rounds: Math.round(rounds * 10) / 10,
-        note: (typeof note === "string" ? note : "").trim() || existing?.note || "",
+        note: noteText,
         goalReadings: existing?.goalReadings || {},
       });
     },
-    [mrs, events, noCodeHost],
+    [armed, waitForFeeds, noCodeHost],
   );
 }

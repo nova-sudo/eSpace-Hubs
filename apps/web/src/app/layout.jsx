@@ -5,6 +5,7 @@ import { CompanionApiOriginProvider } from "@/features/companion";
 import { MigrateOnce } from "@/features/migrate";
 import { HubsFetcher } from "@/features/hubs";
 import { JobsToast } from "@/components/shell/jobs-toast";
+import { ProviderCacheConfig } from "@/features/integrations";
 
 // Fonts (Manrope + JetBrains Mono) load via the <link> in <head> below —
 // see docs/design-system-v2.md.
@@ -69,7 +70,10 @@ export default function RootLayout({ children }) {
               snapshots, evidence, goal-specs, goal-context, and
               goal-inputs each self-hydrate inside their consuming hooks
               on session establishment — no standalone <*Sync /> mounts. */}
-          {children}
+          {/* The one <SWRConfig>: per-user persisted provider cache
+              (last-known values render immediately, revalidate in the
+              background) + the rate-limit banner. */}
+          <ProviderCacheConfig>{children}</ProviderCacheConfig>
         </SessionProvider>
         {/* Headless: keeps a single persistent toast in sync with the
             in-memory jobs store so background analysis / tier-grading stays

@@ -37,7 +37,7 @@ const API_BASE = "/api/v1";
  */
 let lastCompanionUnreachableToastAt = 0;
 const COMPANION_UNREACHABLE_THROTTLE_MS = 30_000;
-function maybeToastCompanionUnreachable(message) {
+export function maybeToastCompanionUnreachable(message) {
   if (typeof window === "undefined") return;
   const now = Date.now();
   if (now - lastCompanionUnreachableToastAt < COMPANION_UNREACHABLE_THROTTLE_MS) {
@@ -197,25 +197,57 @@ function transportError(code, detail, requestId) {
  * @typedef {ApiSuccess | ApiError} ApiResult
  */
 
-async function request(method, path, body, init = {}) {
+/**
+ * A 429 from OUR API whose advertised wait is at most this long is retried
+ * once in place; a longer one comes back as `rate_limited` with
+ * `retryAfterMs` so the caller can say "try again in N minutes". A 429
+ * guarantees the handler never ran, so replaying any verb is safe.
+ */
+const SHORT_RETRY_MAX_MS = 10_000;
+
+/** Wait (ms) our API advertised on a 429: Retry-After → envelope → draft-7. */
+export function retryAfterMsFrom(headers, payload, now = Date.now()) {
+  const ra = headers?.get?.("retry-after");
+  if (ra) {
+    const secs = Number(ra);
+    if (Number.isFinite(secs)) return Math.max(0, secs * 1000);
+    const when = Date.parse(ra);
+    if (Number.isFinite(when)) return Math.max(0, when - now);
+  }
+  const fromBody = Number(payload?.error?.retryAfterMs);
+  if (Number.isFinite(fromBody) && fromBody >= 0) return fromBody;
+  const draft7 = /reset=(\d+)/i.exec(headers?.get?.("ratelimit") || "");
+  if (draft7) return Number(draft7[1]) * 1000;
+  return null;
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function request(method, path, body, init = {}, attempt = 1) {
   let res;
   // Caller-supplied signal wins; otherwise arm the default timeout.
-  const controller = init.signal ? null : new AbortController();
+  // `headers` and `signal` are pulled out of `init` so spreading the rest
+  // can never clobber the merged headers (callers passing
+  // `init.headers` used to lose Accept / Content-Type).
+  const { headers: initHeaders, signal: initSignal, ...restInit } = init;
+  const controller = initSignal ? null : new AbortController();
   const timer = controller
     ? setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
     : null;
   try {
     res = await fetch(`${API_BASE}${path}`, {
+      ...restInit,
       method,
       credentials: "include",
       headers: {
         Accept: "application/json",
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-        ...(init.headers || {}),
+        ...(initHeaders || {}),
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-      ...(controller ? { signal: controller.signal } : {}),
-      ...init,
+      signal: controller ? controller.signal : initSignal,
     });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
@@ -285,6 +317,28 @@ async function request(method, path, body, init = {}) {
     // callers to each render their own error — one global toast.
     if (res.status === 502 && apiError.code === "companion_unreachable") {
       maybeToastCompanionUnreachable(apiError.message);
+    }
+    // Our own limiters (auth, query-field, AI). Honour Retry-After: one
+    // quiet retry for a short wait, otherwise surface `rate_limited` with
+    // the wait so the caller can show "try again at …" instead of a
+    // generic failure.
+    if (res.status === 429) {
+      const retryAfterMs = retryAfterMsFrom(res.headers, payload);
+      if (
+        attempt === 1 &&
+        retryAfterMs !== null &&
+        retryAfterMs <= SHORT_RETRY_MAX_MS &&
+        !initSignal?.aborted
+      ) {
+        await wait(retryAfterMs);
+        return request(method, path, body, init, attempt + 1);
+      }
+      apiError = {
+        ...apiError,
+        code: apiError.code && !/^http_/.test(apiError.code) ? apiError.code : "rate_limited",
+        rateLimited: true,
+        retryAfterMs: retryAfterMs ?? apiError.retryAfterMs ?? null,
+      };
     }
     return { ok: false, status: res.status, error: apiError };
   }

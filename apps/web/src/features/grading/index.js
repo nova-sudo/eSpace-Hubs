@@ -17,6 +17,7 @@
  */
 export { useGradedPrs, resolveRubric } from "./use-graded-prs";
 export { rubricHash, normalizeRubric } from "./rubric-hash";
+export { gradePrPauseMs, gradeProgressLabel } from "./grade-pause";
 export {
   readVerdict,
   saveVerdict,

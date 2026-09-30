@@ -228,9 +228,23 @@ function resolveImpl(preset, now) {
   });
 }
 
+/**
+ * Snap a fetch cutoff to local midnight of its day. `fetchSince` only says
+ * how far back to FETCH (the window itself keeps its exact `start`), and a
+ * millisecond-precise cutoff — the rolling presets' `now − 2×days` — minted
+ * a new SWR key on every mount, so revisiting the page always refetched.
+ * Snapping only ever widens the fetch, never drops a row.
+ */
+export function snapFetchSince(date) {
+  const d = new Date(date instanceof Date ? date.getTime() : date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 function build(range) {
+  const fetchSince = snapFetchSince(range.fetchSince);
   // Pre-compute the ISO key the SWR layer uses so cache dedupe is free.
-  return { ...range, fetchSinceISO: range.fetchSince.toISOString() };
+  return { ...range, fetchSince, fetchSinceISO: fetchSince.toISOString() };
 }
 
 // ── module-level cache ──────────────────────────────────────

@@ -14,6 +14,7 @@ export {
   useGithubReviewRequests,
 } from "./use-github-pulls";
 export { useGithubMergedSince } from "./use-github-merged";
+export { useAuthoredPrsSince } from "./use-authored-prs";
 export { useGithubReviewCounts } from "./use-github-review-counts";
 export { useRepoOptions } from "./use-repo-options";
 export { useLabelOptions } from "./use-label-options";
@@ -33,6 +34,16 @@ export {
   useCombinedEventsSince,
 } from "./use-combined";
 export {
-  usePrReviewTimings,
+  useReviewablePrs,
+  usePrReviewTiming,
+  useRetryReviewList,
+  reviewRowFromMr,
   parseGithubLocator,
 } from "./use-pr-review-timings";
+export {
+  canonicalMergedSinceIso,
+  canonicalEventsSinceIso,
+  snapSinceIso,
+  filterMergedSince,
+  filterEventsSince,
+} from "./provider-windows";
