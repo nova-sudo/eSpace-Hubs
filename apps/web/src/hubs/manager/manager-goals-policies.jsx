@@ -15,7 +15,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
-import { Button, Card, PageHeader, SegmentedControl } from "@/components/ui";
+import { Button, Card, PageHeader, SegmentedControl, PageContainer } from "@/components/ui";
 import {
   AssignedGoalEditor,
   AssignedGoalProgress,
@@ -46,7 +46,7 @@ export function ManagerGoalsPolicies() {
   }
 
   return (
-    <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-7 sm:px-10">
+    <PageContainer>
       <PageHeader
         crumb="Manager · goals & policies"
         title="Goals & policies."
@@ -58,7 +58,7 @@ export function ManagerGoalsPolicies() {
         right={<SegmentedControl ariaLabel="Goals and policies" options={TABS} value={tab} onChange={setTab} />}
       />
       {tab === "policies" ? <ManagerTierPolicies embedded /> : <SharedGoalsTab />}
-    </main>
+    </PageContainer>
   );
 }
 

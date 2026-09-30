@@ -36,6 +36,7 @@ import {
   Input,
   Label,
   PageHeader,
+  PageContainer,
 } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { ConfirmDialog } from "./confirm-dialog";
@@ -490,5 +491,5 @@ function Ladder({ title, hint, ladder, onChange, disabled }) {
  */
 function Wrapper({ embedded, children }) {
   if (embedded) return <div>{children}</div>;
-  return <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-7 sm:px-10">{children}</main>;
+  return <PageContainer>{children}</PageContainer>;
 }

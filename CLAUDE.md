@@ -191,7 +191,10 @@ attaches them as `Authorization` headers upstream via the integrations proxy
 (`apps/api/src/modules/integrations/proxy.ts`). Tokens are never logged and
 never echoed back to the browser after save. Goals, readings, snapshots, and
 grades are server-persisted per account (and manager-readable where the role
-model says so) — the app is NOT localStorage-only anymore. The settings page's
+model says so) — the app is NOT localStorage-only anymore. Recent provider
+results (PRs, tickets, builds — never tokens) are cached per user in the
+browser (IndexedDB, `lib/provider-cache.js`) so pages paint the last-known
+value at once, and that cache is cleared on sign-out. The settings page's
 privacy copy mirrors this contract — keep the two in sync. Key custody /
 rotation: see BL-004 in `docs/backlog.md`.
 

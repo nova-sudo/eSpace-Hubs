@@ -15,7 +15,7 @@
  * on the tile opens that goal.
  */
 
-import { Badge, Card, Label, PacedBar, ProgressRing } from "@/components/ui";
+import { Badge, Card, ProgressRing, ProgressSummary } from "@/components/ui";
 import { unmeasuredLine } from "@/features/goal-inputs";
 import { cn } from "@/lib/cn";
 import { tierDotColor } from "./goal-status";
@@ -30,49 +30,17 @@ const HEADLINE_HELP =
  * goal-inputs `loggedPercent`), plus the line naming what isn't in it.
  */
 export function GoalsSummary({ weighted, logged, unmeasured = 0, counts }) {
-  const measurable = weighted != null && Number.isFinite(weighted);
-  const due = logged?.due ?? 0;
-  const excluded = unmeasuredLine(unmeasured);
+  // The Home layout (components/ui ProgressSummary): headline + badges, then
+  // the bar with its note at full width — both pages read the same.
   return (
-    <Card padding={20} className="flex flex-wrap items-center gap-x-8 gap-y-4">
-      <div className="min-w-[160px]" title={HEADLINE_HELP}>
-        <Label>Logged so far</Label>
-        <div className="mt-1.5 flex items-baseline gap-2.5">
-          <span
-            className="text-[44px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg"
-            aria-label={measurable ? `${weighted} percent of what was due is logged` : "Nothing due yet"}
-          >
-            {measurable ? `${weighted}%` : "—"}
-          </span>
-          <span className="text-[12px] font-semibold text-muted-fg">
-            {measurable && due > 0
-              ? `of what was due · ${logged.done} of ${due} check-ins`
-              : "Nothing due yet"}
-          </span>
-        </div>
-      </div>
-
-      <div className="min-w-[220px] flex-1">
-        <PacedBar value={measurable ? weighted : 0} expected={100} height={8} />
-        <div className="mt-1.5 text-[12px] text-muted-fg">
-          {excluded ?? "Every goal with a tracker is in this number."}
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-1.5">
-        {counts.length === 0 ? (
-          <Badge tone="neutral">No goals yet</Badge>
-        ) : (
-          counts.map((c) => (
-            <span key={c.status} title={c.description}>
-              <Badge tone={c.tone}>
-                {c.count} {c.label.toLowerCase()}
-              </Badge>
-            </span>
-          ))
-        )}
-      </div>
-    </Card>
+    <ProgressSummary
+      percent={weighted}
+      logged={logged}
+      counts={counts}
+      note={unmeasuredLine(unmeasured) ?? "Every goal with a tracker is in this number."}
+      help={HEADLINE_HELP}
+      emptyBadge="No goals yet"
+    />
   );
 }
 

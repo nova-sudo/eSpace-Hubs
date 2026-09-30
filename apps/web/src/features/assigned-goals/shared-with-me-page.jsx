@@ -8,7 +8,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
-import { PageHeader } from "@/components/ui";
+import { Button, PageContainer, PageHeader } from "@/components/ui";
 import { DrillDownNav } from "@/components/shell/drill-down-nav";
 import { useActiveHub } from "@/features/hubs";
 import { useSharedWithMe } from "./api";
@@ -24,20 +24,25 @@ export function SharedWithMePage({ goalId = null }) {
 
   if (goalId) {
     return (
-      <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-7 sm:px-10">
-        <Link
-          href={base}
-          className="mb-4 inline-flex items-center gap-1 text-[13px] font-bold text-fg hover:opacity-80"
-        >
-          <ChevronLeft size={16} /> Shared with me
-        </Link>
+      <PageContainer>
+        <PageHeader
+          crumb="Shared goals · one goal"
+          title="How the team is doing."
+          right={
+            <Button as={Link} href={base} variant="ghost">
+              <ChevronLeft size={15} />
+              Shared with me
+            </Button>
+          }
+        />
+        <DrillDownNav />
         <AssignedGoalProgress goalId={goalId} />
-      </main>
+      </PageContainer>
     );
   }
 
   return (
-    <main className="mx-auto max-w-[960px] px-4 pb-16 pt-7 sm:px-10">
+    <PageContainer>
       <PageHeader
         crumb="Shared goals"
         title="Shared with me."
@@ -56,7 +61,7 @@ export function SharedWithMePage({ goalId = null }) {
           </>
         }
       />
-      <DrillDownNav className="-mt-2 mb-7" />
+      <DrillDownNav />
       {error ? (
         <div className="text-[13px] text-muted-fg">Couldn&apos;t load: {error.message}</div>
       ) : loading && goals.length === 0 ? (
@@ -75,6 +80,6 @@ export function SharedWithMePage({ goalId = null }) {
           }
         />
       )}
-    </main>
+    </PageContainer>
   );
 }

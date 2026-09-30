@@ -1,7 +1,7 @@
 "use client";
 
 import { ExternalLink } from "lucide-react";
-import { Badge, Card, Label } from "@/components/ui";
+import { Badge, Card, Label, ValueSkeleton } from "@/components/ui";
 import { formatExpected } from "./format-expected";
 import { documentTitle, goalCountLine } from "./markdown-export";
 
@@ -189,7 +189,9 @@ function GoalReadingsBlock({ readings }) {
               ) : null}
             </h4>
             {g.l1.reading ? (
-              <span className="shrink-0 text-[12px] text-muted-fg">{g.l1.reading.value}</span>
+              <span className="shrink-0 text-[12px] text-muted-fg">
+                <AchievedValue reading={g.l1.reading} />
+              </span>
             ) : null}
           </div>
           {g.items.length === 0 ? (
@@ -236,7 +238,7 @@ function PreviewGoalBlock({ r }) {
         <span className="text-muted-fg">Target </span>
         {expected || "—"}
         <span className="text-muted-fg">  →  Achieved </span>
-        {r.reading?.value || "—"}
+        <AchievedValue reading={r.reading} />
       </div>
       {reasoning ? (
         <div className="mt-1 text-[12.5px] leading-[1.45] text-fg">
@@ -278,3 +280,24 @@ function PreviewGoalBlock({ r }) {
   );
 }
 
+
+/**
+ * The achieved value in the preview. A PR-derived reading whose feed hasn't
+ * answered is a skeleton (never "0 merged"); one standing in from the
+ * widget's last published reading says so; an unavailable feed says why.
+ */
+function AchievedValue({ reading }) {
+  if (!reading) return "—";
+  if (reading.pending) return <ValueSkeleton className="w-[8ch]" label="Loading the reading" />;
+  if (reading.unavailable) return <span className="text-peach-text">{reading.value}</span>;
+  return (
+    <>
+      {reading.value || "—"}
+      {reading.lastKnown ? (
+        <span className="text-muted-fg" title="Your code host hasn't answered yet — this is the last value the goal showed.">
+          {" "}· last known
+        </span>
+      ) : null}
+    </>
+  );
+}

@@ -29,6 +29,7 @@ import {
   useCombinedEventsSince,
   useCombinedMergedSince,
   useJiraTickets,
+  useLiveStatus,
 } from "@/features/integrations";
 
 /**
@@ -39,6 +40,28 @@ import {
  */
 function specMrs(spec, ctx) {
   return filterMrsByRepo(ctx.mrs, spec?.source?.filter?.repo);
+}
+
+/**
+ * A PR-derived reading while the merged feed hasn't answered (or failed with
+ * nothing cached): the widget's last PUBLISHED reading, marked `lastKnown`,
+ * else an explicit pending / unavailable reading — never a computed 0. Null
+ * when the feed is fine (or no code host is connected) and the caller should
+ * compute as usual.
+ */
+function mrsNotReady(spec, ctx) {
+  if (ctx.mrsState !== "pending" && ctx.mrsState !== "error") return null;
+  const live = fromLiveReading(spec);
+  if (live) return { ...live, lastKnown: true };
+  if (ctx.mrsState === "pending") {
+    return { value: "Still loading", statusTone: TONES.MUTED, statusLabel: "loading", pending: true };
+  }
+  return {
+    value: `Unavailable — couldn't reach ${ctx.mrsReason || "your code host"}`,
+    statusTone: TONES.MUTED,
+    statusLabel: "unavailable",
+    unavailable: true,
+  };
 }
 import { useGoals } from "@/features/goals";
 import {
@@ -65,7 +88,7 @@ import {
   useSnapshots,
 } from "@/features/snapshots";
 import { isContextComplete, readContextFor, useAllGoalContext } from "@/features/goal-context";
-import { isGoalReady } from "@/features/goal-widgets";
+import { isGoalReady, metricNeedsJiraTickets } from "@/features/goal-widgets";
 import {
   readGoalLiveReading,
   subscribeGoalLiveReadings,
@@ -119,9 +142,40 @@ export function useGoalReadings() {
   const { allGoals: goals } = useGoals(); // incl. shared goals
   const { specs } = useGoalSpecs();
   const since = startOfYearIso();
-  const { data: merged } = useCombinedMergedSince(since);
+  const mergedFeed = useCombinedMergedSince(since);
+  const merged = mergedFeed.data;
+  // Whether the merged-PR feed has answered. Until it has, every PR-derived
+  // reading would compute over [] and print "0 merged" (and a miss) — the
+  // number people cite. Those readings show the widget's last published
+  // value instead, or an explicit "still loading" / "unavailable".
+  const mergedLive = useLiveStatus({
+    providers: ["github", "gitlab"],
+    hasValue: merged !== undefined,
+    dataReady: merged !== undefined,
+    isLoading: mergedFeed.isLoading,
+    error: mergedFeed.error,
+    fetchedAt: mergedFeed.fetchedAt,
+  });
+  const mrsState =
+    merged !== undefined
+      ? "ok"
+      : mergedFeed.error
+        ? "error"
+        : mergedLive.pending
+          ? "pending"
+          : "none";
+  const mrsReason = mrsState === "error" ? mergedLive.provider : null;
   const { data: events } = useCombinedEventsSince(since);
-  const { data: jira } = useJiraTickets();
+  // Only the ticket-cycle reading reads the Jira issue list — don't spend a
+  // Jira call on every Evidence load for users with no such goal (the same
+  // gate useDataSource applies).
+  const needsJira = useMemo(() => {
+    const list = specs instanceof Map ? [...specs.values()] : Object.values(specs || {});
+    return list.some(
+      (sp) => sp?.widget === SPEC_KINDS.TICKET_CYCLE || metricNeedsJiraTickets(sp?.source?.metric),
+    );
+  }, [specs]);
+  const { data: jira } = useJiraTickets(needsJira);
   const { snapshots } = useSnapshots();
   // Subscribe to the API-direct inputs + context stores. The memo below
   // reads readInputs() and readContextFor() synchronously, so it must
@@ -181,6 +235,8 @@ export function useGoalReadings() {
     const ctxBase = {
       specs,
       mrs,
+      mrsState,
+      mrsReason,
       events,
       tickets,
       allInputs,
@@ -200,7 +256,7 @@ export function useGoalReadings() {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [goals, specs, merged, events, jira, snapshots, inputsTick, contextTick, liveTick, tiersTick, managerTick, locksTick]);
+  }, [goals, specs, merged, mrsState, mrsReason, events, jira, snapshots, inputsTick, contextTick, liveTick, tiersTick, managerTick, locksTick]);
 }
 
 /** Locked window keys for one goal, from the flat goal-locks map
@@ -437,6 +493,8 @@ function readMergedCount(spec, ctx) {
   // reads more honestly for "did you sustain the bar?" reviews.
   const fromCompliance = readingFromCompliance(spec, ctx);
   if (fromCompliance) return fromCompliance;
+  const notReady = mrsNotReady(spec, ctx);
+  if (notReady) return notReady;
   const count = specMrs(spec, ctx).length;
   return withTarget(count, spec.source?.target, `${count} merged`);
 }
@@ -444,6 +502,8 @@ function readMergedCount(spec, ctx) {
 function readReviewRounds(spec, ctx) {
   const fromCompliance = readingFromCompliance(spec, ctx);
   if (fromCompliance) return fromCompliance;
+  const notReady = mrsNotReady(spec, ctx);
+  if (notReady) return notReady;
   const avg = avgReviewerComments(specMrs(spec, ctx));
   if (avg == null) return empty();
   return withTarget(avg, spec.source?.target, `${avg.toFixed(1)} avg`, {
@@ -454,6 +514,8 @@ function readReviewRounds(spec, ctx) {
 function readTurnaround(spec, ctx) {
   const fromCompliance = readingFromCompliance(spec, ctx);
   if (fromCompliance) return fromCompliance;
+  const notReady = mrsNotReady(spec, ctx);
+  if (notReady) return notReady;
   const median = medianTurnaroundDays(specMrs(spec, ctx));
   if (median == null) return empty();
   const value = fmtDurationHours(median);
@@ -463,6 +525,8 @@ function readTurnaround(spec, ctx) {
 function readLinkage(spec, ctx) {
   const fromCompliance = readingFromCompliance(spec, ctx);
   if (fromCompliance) return fromCompliance;
+  const notReady = mrsNotReady(spec, ctx);
+  if (notReady) return notReady;
   const result = linkagePct(specMrs(spec, ctx));
   if (!result) return empty();
   const pct = result.pct ?? 0;
@@ -702,6 +766,8 @@ function readBeforeAfter(spec, goal, { allInputs }) {
 function readFirstPassRate(spec, ctx) {
   const fromCompliance = readingFromCompliance(spec, ctx);
   if (fromCompliance) return fromCompliance;
+  const notReady = mrsNotReady(spec, ctx);
+  if (notReady) return notReady;
   const result = firstPassRatePct(specMrs(spec, ctx));
   if (!result) return empty();
   const pct = result.pct ?? 0;

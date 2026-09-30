@@ -30,7 +30,7 @@ import {
   Settings,
   Users,
 } from "lucide-react";
-import { Label } from "@/components/ui";
+import { Label, PageContainer, PageHeader } from "@/components/ui";
 import { useActiveHub, useHubLink } from "@/features/hubs";
 import { cn } from "@/lib/cn";
 
@@ -54,7 +54,7 @@ export function AdminShell({ active, children }) {
   const sections = SECTIONS.filter((s) => !hub || Boolean(hub.pages?.[s.slot]));
 
   return (
-    <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-7 sm:px-10">
+    <PageContainer>
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[212px_minmax(0,1fr)] lg:gap-7">
         <nav aria-label="Admin sections" className="min-w-0 lg:sticky lg:top-[88px] lg:self-start">
           <div className="hidden lg:block">
@@ -88,7 +88,7 @@ export function AdminShell({ active, children }) {
         </nav>
         <div className="min-w-0">{children}</div>
       </div>
-    </main>
+    </PageContainer>
   );
 }
 
@@ -99,16 +99,16 @@ export function AdminShell({ active, children }) {
 export function AdminNotAuthorised({ active, crumb, capability }) {
   return (
     <AdminShell active={active}>
-      <div>
-        <Label>{crumb}</Label>
-        <h1 className="mt-3.5 text-[40px] font-extrabold leading-[1.05] tracking-[-0.03em] text-fg">
-          Not authorised.
-        </h1>
-        <p className="mt-3 max-w-[560px] text-[14.5px] leading-[1.55] text-muted-fg">
-          This view requires the <span className="font-mono">{capability}</span>{" "}
-          capability. Ask your org admin to extend your roles.
-        </p>
-      </div>
+      <PageHeader
+        crumb={crumb}
+        title="Not authorised."
+        subtitle={
+          <>
+            This view requires the <span className="font-mono">{capability}</span>{" "}
+            capability. Ask your org admin to extend your roles.
+          </>
+        }
+      />
     </AdminShell>
   );
 }

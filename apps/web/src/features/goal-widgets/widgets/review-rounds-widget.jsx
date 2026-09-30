@@ -7,6 +7,8 @@ import { useDataSource } from "../data-sources/use-data-source";
 import { evalTarget } from "./merged-count-widget";
 import { ComplianceLine } from "../compliance-line";
 import { usePublishGoalReading } from "../use-publish-reading";
+import { useSourceLiveStatus } from "../use-source-live-status";
+import { WidgetHeadline } from "../widget-headline";
 
 /**
  * Review-rounds widget — average reviewer comments per merged MR.
@@ -18,8 +20,10 @@ import { usePublishGoalReading } from "../use-publish-reading";
  * source (NOT a constant).
  */
 export function ReviewRoundsWidget({ spec, goal, variant = "light", className, onRetry }) {
-  const { data, isLoading, error, windowLabel, provenance } = useDataSource(spec.source);
+  const ds = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel, provenance } = ds;
   const value = data?.value ?? null;
+  const live = useSourceLiveStatus(spec.source, ds, { hasValue: value != null, emptyLabel: "No reviewed merges yet" });
   const target = spec.source?.target;
   const meets = target && value != null ? evalTarget(value, target) : null;
 
@@ -37,6 +41,7 @@ export function ReviewRoundsWidget({ spec, goal, variant = "light", className, o
           provenance,
         }
       : null,
+    { hold: live.pending || Boolean(error) },
   );
 
   // Bar fill is a relative gauge: 0 → max(value, target). When a target is
@@ -60,17 +65,21 @@ export function ReviewRoundsWidget({ spec, goal, variant = "light", className, o
       className={className}
     >
       <div className="flex h-full flex-col justify-between gap-3">
-        <div className="flex items-baseline gap-2">
-          <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
-            {error ? "!" : isLoading ? "…" : fmtNumber(value ?? 0, 1)}
-          </div>
-          <span className="text-[13px] text-muted-fg">avg · lower is tighter</span>
-          {meets != null ? (
-            <Badge tone={meets ? "mint" : "peach"} className="ml-auto">
-              {meets ? "On target" : "Drifting"}
-            </Badge>
-          ) : null}
-        </div>
+        <WidgetHeadline
+          status={live}
+          after={
+            <>
+              <span className="text-[13px] text-muted-fg">avg · lower is tighter</span>
+              {meets != null ? (
+                <Badge tone={meets ? "mint" : "peach"} className="ml-auto">
+                  {meets ? "On target" : "Drifting"}
+                </Badge>
+              ) : null}
+            </>
+          }
+        >
+          {value != null ? fmtNumber(value, 1) : null}
+        </WidgetHeadline>
 
         {/* Single bar: your average. If a target exists, draw a vertical
             tick-mark on the bar to show where the rule sits — no second

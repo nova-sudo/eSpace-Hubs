@@ -13,7 +13,7 @@
  */
 
 import Link from "next/link";
-import { Label, PageHeader } from "@/components/ui";
+import { Label, PageHeader, PageContainer } from "@/components/ui";
 import { useActiveHubStrict } from "@/features/hubs";
 
 const SLOT_LABELS = {
@@ -32,16 +32,16 @@ export function QaPlaceholder({ slot = "dashboard" }) {
   const widgets = Array.isArray(hub.widgets) ? hub.widgets : [];
 
   return (
-    <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
+    <PageContainer>
       <PageHeader
         crumb={`${hub.label} · ${slotLabel}`}
         title="We're still building this."
         subtitle={hub.description}
       />
 
-      <div className="mx-auto max-w-2xl rounded-[var(--radius-xl)] bg-card p-6" style={{ boxShadow: "var(--shadow-card)" }}>
+      <div className="rounded-[var(--radius-xl)] bg-card p-6" style={{ boxShadow: "var(--shadow-card)" }}>
         <Label>Coming soon</Label>
-        <p className="mt-2 text-[13.5px] leading-[1.65] text-fg">
+        <p className="mt-2 max-w-[70ch] text-[13.5px] leading-[1.65] text-fg">
           The {hub.label} is scaffolded — auth, hub routing, theming, and
           integration access are all wired up. The {slotLabel.toLowerCase()}{" "}
           view is the next piece of UI to land.
@@ -84,6 +84,6 @@ export function QaPlaceholder({ slot = "dashboard" }) {
           </ul>
         </div>
       </div>
-    </main>
+    </PageContainer>
   );
 }

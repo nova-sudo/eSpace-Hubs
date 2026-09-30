@@ -27,7 +27,7 @@ export function TeamQueueView({ rows, link }) {
   }
 
   return (
-    <div className="grid max-w-[880px] gap-3">
+    <div className="grid gap-3">
       {rows.map(({ report, actions }) => (
         <Card key={report.id} padding={18}>
           <div className="flex items-center gap-3">

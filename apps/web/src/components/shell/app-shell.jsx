@@ -5,6 +5,7 @@ import { CommandPalette, useGlobalShortcuts } from "@/features/command-palette";
 import { BackfillBanner, useAutoSnapshot } from "@/features/snapshots";
 import { SPEC_KIND_META, SPEC_VARIANTS, useGoalSpecs } from "@/features/goal-specs";
 import { useActiveHub } from "@/features/hubs";
+import { PageWidth } from "@/components/ui";
 import { Header } from "./header";
 import { Footer } from "./footer";
 
@@ -71,14 +72,20 @@ function AppShellInner({ children, hideFooter }) {
         <Header />
         <div>{children}</div>
         {hideFooter ? null : (
-          <div className="px-4 sm:px-10">
+          <PageWidth>
             <Footer />
-          </div>
+          </PageWidth>
         )}
       </div>
-      <AnalystPage />
+      {/* The analyst overlay loads the dev goal tree (goals, specs, spec
+          meta) on mount; only hubs exposing the analyst (dev) can open it —
+          its activator in the header is gated the same way — so don't pay
+          for those loads on manager/admin/qa. */}
+      {hub?.pages?.analyst ? <AnalystPage /> : null}
       {/* Mounted last so it floats above the analyst overlay; uses fixed
-          positioning + z-100 to clear every other layer including the grain. */}
+          positioning + z-100 to clear every other layer including the grain.
+          Its snapshot hooks are lazy (nothing fetched until "Snapshot now"
+          runs) and its history load is gated to hubs with a snapshots page. */}
       <CommandPalette />
       {/* Auto-snapshotter — captures one snapshot per completed Sun → Thu
           work-week (idempotent). Wrapped in a child component and mounted

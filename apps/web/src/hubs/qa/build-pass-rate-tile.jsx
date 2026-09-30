@@ -32,6 +32,8 @@ import {
   useJenkinsJobs,
   useJenkinsBuildsForJob,
 } from "@/features/integrations/hooks";
+import { FreshnessNote, ValueSkeleton } from "@/components/ui";
+import { useQaLive } from "./use-qa-live";
 
 const WINDOW_DAYS = 30;
 
@@ -122,11 +124,13 @@ function ConnectedBody() {
 }
 
 function JobView({ jobs, selected, onSelect }) {
-  const { builds, isLoading, error } = useJenkinsBuildsForJob(selected);
+  const swr = useJenkinsBuildsForJob(selected);
+  const { builds, isLoading, error } = swr;
+  const live = useQaLive("jenkins", swr);
 
   const stats = useMemo(() => computeStats(builds, WINDOW_DAYS), [builds]);
 
-  if (error) {
+  if (error && swr.data === undefined) {
     return (
       <Body
         headline="!"
@@ -147,7 +151,7 @@ function JobView({ jobs, selected, onSelect }) {
             }`}
           >
             {isLoading
-              ? "…"
+              ? <ValueSkeleton className="w-[2ch]" />
               : stats.completed === 0
                 ? "—"
                 : `${Math.round(stats.passRate * 100)}%`}
@@ -161,6 +165,7 @@ function JobView({ jobs, selected, onSelect }) {
             </div>
           ) : null}
         </div>
+        <FreshnessNote status={live} showQuiet={false} className="mt-1" />
       </div>
 
       <div>

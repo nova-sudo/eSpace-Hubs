@@ -319,7 +319,7 @@ function GradeActionRow({
   const hasPastWeeks = (allWeeksWithPrs?.length || 0) > 1;
 
   let thisWeekLabel;
-  if (running) thisWeekLabel = `Grading ${progress.done}/${progress.total}…`;
+  if (running) thisWeekLabel = progress.label || `Grading ${progress.done}/${progress.total}…`;
   else if (hasUngradedThisWeek) thisWeekLabel = `Grade week (${thisWeekUngraded})`;
   else thisWeekLabel = "Week done";
 

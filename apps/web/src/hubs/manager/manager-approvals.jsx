@@ -26,7 +26,7 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Check } from "lucide-react";
-import { Avatar, Badge, Button, Card, Label, PageHeader } from "@/components/ui";
+import { Avatar, Badge, Button, Card, Label, PageHeader, PageContainer } from "@/components/ui";
 import { apiPost } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
 import { useApprovalsQueue } from "./use-approvals-queue";
@@ -93,7 +93,7 @@ export function ManagerApprovals() {
   }
 
   return (
-    <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-7 sm:px-10">
+    <PageContainer>
       <PageHeader
         crumb="Build-your-own goals · pending your approval"
         title="Custom trackers, on hold."
@@ -183,7 +183,7 @@ export function ManagerApprovals() {
           ) : null}
         </div>
       )}
-    </main>
+    </PageContainer>
   );
 }
 

@@ -47,6 +47,8 @@ import { Badge, BentoTile, Label } from "@/components/ui";
 import { useHubLink, useQaHubConfig } from "@/features/hubs";
 import { useIntegrations } from "@/features/integrations";
 import { useJenkinsBuildsForJob } from "@/features/integrations/hooks";
+import { FreshnessNote, ValueSkeleton } from "@/components/ui";
+import { useQaLive } from "./use-qa-live";
 
 // Job name comes from useQaHubConfig (QA Hub → Settings → QA Hub
 // config). Defaults to "qa-sim-target" — the synthetic CI target we
@@ -108,14 +110,16 @@ function NotConnectedBody() {
 }
 
 function Body({ jobName }) {
-  const { builds, isLoading, error } = useJenkinsBuildsForJob(jobName);
+  const swr = useJenkinsBuildsForJob(jobName);
+  const { builds, isLoading, error } = swr;
+  const live = useQaLive("jenkins", swr);
   const stats = useMemo(() => compute(builds, WINDOW_DAYS), [builds]);
 
-  if (error) {
+  if (error && swr.data === undefined) {
     return <Body0 head="!" sub="Couldn't load builds for this job." />;
   }
   if (isLoading) {
-    return <Body0 head="…" sub="Loading builds…" />;
+    return <Body0 head={<ValueSkeleton className="w-[2ch]" />} sub="Loading builds…" />;
   }
   if (stats.completed === 0) {
     return <Body0 head="—" sub="No completed builds in the last 30 days." />;
@@ -125,6 +129,7 @@ function Body({ jobName }) {
     <div className="flex h-full flex-col justify-between">
       <div>
         <Headline value={`${Math.round(stats.flakeRate * 100)}%`} />
+        <FreshnessNote status={live} showQuiet={false} className="mt-1" />
         <div className="mt-2 flex items-center gap-1.5 text-[11.5px] text-muted-fg">
           <Badge tone="lemon">{stats.unstable} unstable</Badge>
           <span>/ {stats.completed} completed</span>

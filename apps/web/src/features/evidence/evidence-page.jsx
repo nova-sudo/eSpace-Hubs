@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Badge, Button, Card, PageHeader, SegmentedControl } from "@/components/ui";
+import { Badge, Button, Card, PageContainer, PageHeader, SegmentedControl } from "@/components/ui";
 import { useIntegrations } from "@/features/integrations";
 import { useSession } from "@/features/auth";
 import { useHubLink } from "@/features/hubs";
@@ -188,8 +188,20 @@ export function EvidencePage() {
     [pendingMarkdown],
   );
 
+  // A PR-derived reading whose feed hasn't answered yet ("Still loading").
+  // Freezing or exporting it would put that placeholder in the document.
+  const readingsPending = goalReadings.some((r) => r.reading?.pending);
+  function blockWhilePending() {
+    if (!readingsPending) return false;
+    toast("Some readings are still loading from your code host", {
+      description: "Give it a moment — the document would print \u201cStill loading\u201d for them.",
+    });
+    return true;
+  }
+
   async function handleSubmitForReview() {
     if (submitting) return;
+    if (blockWhilePending()) return;
     setSubmitting(true);
     const markdown = renderMarkdown(buildDocProps());
     // Clamp to the server's field caps so one long reading string can't
@@ -259,12 +271,14 @@ export function EvidencePage() {
   }
 
   function handleDownloadMarkdown() {
+    if (blockWhilePending()) return;
     downloadMarkdown(`${exportStem(docName)}.md`, renderMarkdown(buildDocProps()));
     toast.success("Markdown downloaded");
   }
 
   async function handleExportPdf() {
     if (generatingPdf) return;
+    if (blockWhilePending()) return;
     setGeneratingPdf(true);
     const t = toast.loading("Generating PDF…");
     try {
@@ -457,7 +471,7 @@ export function EvidencePage() {
   );
 
   return (
-    <main className="relative z-[2] px-4 sm:px-10 pb-14 pt-9">
+    <PageContainer>
       <PageHeader
         crumb={`Evidence · ${rangeLabel}`}
         title="Make the case."
@@ -552,6 +566,6 @@ export function EvidencePage() {
         </div>
       )}
       {dialogs}
-    </main>
+    </PageContainer>
   );
 }

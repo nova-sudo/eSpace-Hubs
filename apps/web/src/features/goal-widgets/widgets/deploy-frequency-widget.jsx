@@ -6,6 +6,8 @@ import { useDataSource } from "../data-sources/use-data-source";
 import { evalTarget } from "./merged-count-widget";
 import { NeedsScopeBanner } from "./build-events-shared";
 import { usePublishGoalReading } from "../use-publish-reading";
+import { useSourceLiveStatus } from "../use-source-live-status";
+import { WidgetHeadline } from "../widget-headline";
 
 /**
  * AUTO widget — count of successful CI/CD builds (Jenkins) or
@@ -27,12 +29,14 @@ export function DeployFrequencyWidget({
   className,
   onRetry,
 }) {
-  const { data, isLoading, error, windowLabel, provenance } = useDataSource(spec.source);
+  const ds = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel, provenance } = ds;
   const needsScope = data?.needsScope === true;
   const count = data?.count ?? null;
   const trend = data?.trend || [];
   const target = spec.source?.target;
   const hit = target && count != null ? evalTarget(count, target) : null;
+  const live = useSourceLiveStatus(spec.source, ds, { hasValue: !isLoading && count != null, emptyLabel: "No deploys yet" });
 
   usePublishGoalReading(
     goal?.id,
@@ -45,6 +49,7 @@ export function DeployFrequencyWidget({
           provenance,
         }
       : null,
+    { hold: live.pending || Boolean(error) },
   );
 
   return (
@@ -62,12 +67,12 @@ export function DeployFrequencyWidget({
         <NeedsScopeBanner provider={spec.source?.provider} />
       ) : (
         <div className="flex h-full flex-col justify-between gap-2">
-          <div className="flex items-baseline gap-3">
-            <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
-              {error ? "!" : isLoading ? "…" : (count ?? 0)}
-            </div>
-            {hit != null ? <Badge tone={hit ? "mint" : "peach"}>{hit ? "On target" : "Below target"}</Badge> : null}
-          </div>
+          <WidgetHeadline
+            status={live}
+            after={hit != null ? <Badge tone={hit ? "mint" : "peach"}>{hit ? "On target" : "Below target"}</Badge> : null}
+          >
+            {count}
+          </WidgetHeadline>
           {trend.length >= 2 ? (
             <LineSpark data={trend} color="var(--ink)" height={40} strokeWidth={2} fillOpacity={0.16} showDots />
           ) : (

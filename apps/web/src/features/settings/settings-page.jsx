@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { Button, PageHeader, SegmentedControl } from "@/components/ui";
+import { Button, PageContainer, PageHeader, SegmentedControl } from "@/components/ui";
 import { useSession } from "@/features/auth";
 import { useActiveHub, useHubLink } from "@/features/hubs";
 import { NotificationPreferences } from "@/features/notifications";
@@ -180,7 +180,7 @@ export function SettingsPage() {
         });
 
   return (
-    <main className="relative z-[2] px-4 sm:px-10 pb-14 pt-9">
+    <PageContainer>
       <PageHeader
         crumb={header.crumb}
         title={header.title}
@@ -209,6 +209,6 @@ export function SettingsPage() {
             the user to the top and hoping. */}
         <ActivePanel onSwitchTab={setTab} />
       </div>
-    </main>
+    </PageContainer>
   );
 }

@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { Menu, X, Search } from "lucide-react";
 import { LogoMark } from "./logo-mark";
 import { ThemeToggle } from "./theme-toggle";
-import { IconButton } from "@/components/ui";
+import { IconButton, PageWidth } from "@/components/ui";
 import { AnalystActivator } from "@/features/analyst";
 import { UserChip } from "@/features/auth";
 import { NotificationBell } from "@/features/notifications";
@@ -169,7 +169,9 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-20 h-[72px] bg-bg">
-      <div className="flex h-full items-center justify-between px-4 sm:px-10">
+      {/* Same gutter + max width as <PageContainer>, so the bar's content
+          edges line up with every page's content edges. */}
+      <PageWidth className="h-full" innerClassName="flex h-full items-center justify-between">
         <div className="flex min-w-0 items-center gap-3 md:gap-8">
           {/* Hamburger — mobile only. Sits left of the wordmark, thumb reach. */}
           <IconButton
@@ -229,7 +231,7 @@ export function Header() {
           {/* Session-aware chip with logout dropdown. */}
           <UserChip />
         </div>
-      </div>
+      </PageWidth>
 
       {/* Mobile nav panel — a plain vertical list under the bar. In-flow
           (not absolutely positioned) so it can never overlap content it

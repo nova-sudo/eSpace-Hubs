@@ -119,10 +119,39 @@ numeral. Never uppercase a button, a nav item, a title, or a badge.
 
 ### Spacing
 
-4pt grid. Page gutter `px-4 sm:px-10`. Page top `pt-7`. Card padding
+4pt grid. Page gutter `px-4 sm:px-10` (16px phones, 40px from sm up). Page
+top `pt-7`, bottom `pb-16`. Card padding
 `p-5` (20px) for grid cards, `p-6`/`p-7` (24/28px) for a hero card.
 Grid gap `gap-4` (16px). Stack gap inside a card `gap-3.5` (14px). Page
 header bottom margin `mb-7`.
+
+### Page width
+
+**Every page uses `PageContainer`; no page sets its own max-width.** One
+token, `--page-max: 1440px` (Tailwind `max-w-page`), is the content width
+for the whole app. `PageContainer` (`components/ui/page-container.jsx`) is
+the only place that defines it together with the gutter and the page's
+top/bottom padding:
+
+```jsx
+<PageContainer>            {/* <main>: px-4 sm:px-10 · pt-7 pb-16 */}
+  <PageHeader … />         {/* inner box: mx-auto max-w-page */}
+  <DrillDownNav />         {/* optional sub-nav, always right here */}
+  …
+</PageContainer>
+```
+
+- The shell header, backfill banner and footer use `PageWidth` (the same
+  gutter + width without the vertical padding), so a page's content edges
+  line up with the header's at every width.
+- Never add `max-w-[…]`, `mx-auto` or `px-4 sm:px-10` to a page root, and
+  never negate the gutter (`-mx-4 sm:-mx-10`) to escape it.
+- Tables, boards, grids, charts and card lists use the full container
+  width. Running text caps itself at a readable measure: `max-w-[70ch]`
+  (the PageHeader subtitle already does). Dialogs, auth / onboarding cards
+  and popovers keep their own widths — they are not pages.
+- An admin page renders inside `AdminShell`, which is a `PageContainer`
+  with the section rail in its first column.
 
 ## 3. Primitives (`apps/web/src/components/ui`)
 
@@ -140,6 +169,7 @@ inline in the feature and note it in your report.
 | `Stat` | `label`, `value`, `unit`, `delta`, `deltaInvert`, `sub`, `size` = md (44px) · lg (56px) | Numeral in Manrope 800 tabular. Delta renders as a mint/peach `Badge`. |
 | `Delta` | `value`, `invert` | Renders as a mint (good) / peach (bad) / neutral `Badge` with `+`/`−` sign. No arrows. |
 | `PageHeader` | `crumb`, `title`, `subtitle`, `right` | Crumb = Label. Title = Display recipe. `italicWord` is accepted and ignored. Optional GSAP reveal kept. |
+| `PageContainer` / `PageWidth` | `as`, `className`, `innerClassName` | The one page width (`max-w-page` = `--page-max`, 1440px) + gutter. `PageContainer` adds `pt-7 pb-16` and is every page's root; `PageWidth` is the header/footer/banner variant. |
 | `Section` | `title`, `right`, `children`, `className` | Section-title recipe with `mb-3.5`. No rule line. `num` is accepted and ignored. |
 | `SegmentedControl` | `options: [{value,label,count?}]`, `value`, `onChange`, `size` = sm · md, `onCard`, `as` = `tablist` (default) · `radiogroup`, `ariaLabel`, `controls` (panel id or `value => id`), `idBase` | Pill track in `bg-card` (or `bg-card-alt` on a card), active item = ink pill. `tablist` for view switchers (tab + aria-selected), `radiogroup` for filters / settings / one-of-N (radio + aria-checked). Both: roving tabindex, ←/→/Home/End. Always pass `ariaLabel`. Overflow scrolls with a fade on the hidden edge(s); the active option is scrolled into view. |
 | `FilterChip` | `label`, `value`, `icon`, `onClick`, `active`, `count` | 40px pill: `Label: Value ▾`. |
@@ -147,6 +177,8 @@ inline in the feature and note it in your report.
 | `FillStrip` | `cells: [{state: filled · owed · current · future · settled · before, label?}]`, `size` = sm (6px) · md (10px) · row (8×16 cells) | filled = ink, owed = peach-text, current = track with a dashed muted outline, future = track, settled = track at 60%, before = a track-coloured outline only. |
 | `Input`, `Field`, `Select`, `Checkbox` | as today | Filled `bg-card-alt`, `--radius-lg`, 44px, a 1px `border-field-line` at rest (see "Inputs are the exception to borderless" below), 2px ink ring on focus. Field label = `<Label>`, hint = 12px `text-muted-fg`. Select popup = card with `--shadow-float`. |
 | `IconButton` | `label` (aria), `size` = sm (32) · md (38); `children` = a lucide icon | Circle, `bg-card` on the canvas, `bg-card-alt` on a card. |
+| `LiveValue`, `FreshnessNote`, `ValueSkeleton` | `status` = `{ hasValue, pending, refreshing, error, rateLimitedUntil, fetchedAt, provider, emptyLabel, retry? }`; `layout` = stack (default) · inline · compact; `skeleton` (width class); `hideNote`; `showQuiet`; `onRetry` | **Every provider-backed number goes through `LiveValue`.** First load = a skeleton the size of the number (1em tall, `bg-track`, pulse only with motion allowed) — never "—", "…" or 0. Refreshing with a value = the value + "updating…". Failed refresh = the last value + "as of 10:42 · Couldn't reach GitLab" (peach-text) + Retry. Rate limited = the last value + "as of 10:42 · GitHub rate limit — refreshing at 11:05" (lemon-text). Nothing at all = "No activity yet". Relative "updated 5 min ago" with the absolute time as tooltip. Build `status` with `useLiveStatus` / `useProviderFreshness` (integrations) or `useSourceLiveStatus` (goal-widgets). State mapping: `live-value-state.js` (tested). |
+| `ProgressSummary` | `percent`, `logged`, `counts`, `note`, `help`, `emptyBadge` | The "Logged so far" card Home and Goals both lead with: headline + badges row, then the bar with its note at full width. |
 | `Loader`, `Loading`, `TileState` | as today | Loader is a plain 3-dot pulse or ring in currentColor. No dot-matrix library. |
 | `Bars`, `Sparkline`, `LineSpark`, `ContributionHeatmap` | as today | Bars: rounded 8/8/4/4 tops, highlighted bar = lav with the value printed on it. Lines: ink stroke, soft gradient fill. Colors only from tokens. |
 | `Reveal`, `useFocusTrap`, `StarGlyph`, `ItemEvidence` | as today | Restyled to tokens. |
@@ -191,9 +223,13 @@ every transition, animation and smooth scroll globally.
 
 ## 5. Patterns
 
-**Page header.** Crumb (Label) → Display title → optional subtitle
-(14.5px muted, max-w 560) on the left; actions (FilterChips, a
-SegmentedControl, primary Button) on the right, bottom-aligned.
+**Page header.** Every page opens with `PageHeader`, first thing inside
+`PageContainer`: crumb (Label) → Display title (40px) → optional subtitle
+(14.5px muted, max-w 70ch) on the left; actions (FilterChips, a
+SegmentedControl, primary Button, a ghost "back" Button on a drill-in page)
+on the right, bottom-aligned. No hand-rolled `<h1>`. A page with a sub-nav
+renders `<DrillDownNav />` directly after the header; its placement is
+built in, so pages pass no margin classes.
 
 **Card.** White, no border, 20px radius, `p-5`. A card's internal
 sections are separated by `border-t border-line`, never by boxes.

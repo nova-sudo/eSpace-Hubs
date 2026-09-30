@@ -6,10 +6,14 @@ import { useDataSource } from "../data-sources/use-data-source";
 import { evalTarget } from "./merged-count-widget";
 import { ComplianceLine } from "../compliance-line";
 import { usePublishGoalReading } from "../use-publish-reading";
+import { useSourceLiveStatus } from "../use-source-live-status";
+import { WidgetHeadline } from "../widget-headline";
 
 export function LinkageWidget({ spec, goal, variant = "light", className, onRetry }) {
-  const { data, isLoading, error, windowLabel, provenance } = useDataSource(spec.source);
+  const ds = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel, provenance } = ds;
   const pct = data?.pct ?? null;
+  const live = useSourceLiveStatus(spec.source, ds, { hasValue: pct != null, emptyLabel: "No merges yet" });
   const linked = data?.linked ?? 0;
   const loose = data?.loose ?? 0;
   const target = spec.source?.target;
@@ -29,6 +33,7 @@ export function LinkageWidget({ spec, goal, variant = "light", className, onRetr
           provenance,
         }
       : null,
+    { hold: live.pending || Boolean(error) },
   );
 
   return (
@@ -43,20 +48,19 @@ export function LinkageWidget({ spec, goal, variant = "light", className, onRetr
       className={className}
     >
       <div className="flex h-full flex-col justify-between gap-2">
-        <div className="flex items-baseline gap-2">
-          <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
-            {isLoading ? "…" : pct == null ? "—" : `${pct}%`}
-          </div>
-          {error ? (
-            <Badge tone="neutral" className="ml-auto" title={error?.message || String(error)}>
-              Source unavailable
-            </Badge>
-          ) : meets != null ? (
-            <Badge tone={meets ? "mint" : "peach"} className="ml-auto">
-              {meets ? "On target" : "Below target"}
-            </Badge>
-          ) : null}
-        </div>
+        <WidgetHeadline
+          status={live}
+          skeleton="w-[3ch]"
+          after={
+            meets != null ? (
+              <Badge tone={meets ? "mint" : "peach"} className="ml-auto">
+                {meets ? "On target" : "Below target"}
+              </Badge>
+            ) : null
+          }
+        >
+          {pct != null ? `${pct}%` : null}
+        </WidgetHeadline>
         <div className="flex items-center gap-3 text-[12.5px] text-muted-fg">
           <span>
             linked: <strong className="text-fg">{linked}</strong>

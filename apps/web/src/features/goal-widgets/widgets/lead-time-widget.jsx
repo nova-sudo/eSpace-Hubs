@@ -6,6 +6,8 @@ import { useDataSource } from "../data-sources/use-data-source";
 import { evalTarget } from "./merged-count-widget";
 import { NeedsScopeBanner } from "./build-events-shared";
 import { usePublishGoalReading } from "../use-publish-reading";
+import { useSourceLiveStatus } from "../use-source-live-status";
+import { WidgetHeadline } from "../widget-headline";
 
 /**
  * AUTO widget — median build duration in MINUTES for successful
@@ -34,7 +36,8 @@ export function LeadTimeWidget({
   className,
   onRetry,
 }) {
-  const { data, isLoading, error, windowLabel, provenance } = useDataSource(spec.source);
+  const ds = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel, provenance } = ds;
   const needsScope = data?.needsScope === true;
   const medianMin = data?.medianMin ?? null;
   const histogram = data?.histogram || [];
@@ -42,6 +45,7 @@ export function LeadTimeWidget({
   const target = spec.source?.target;
   const hit =
     target && medianMin != null ? evalTarget(medianMin, target) : null;
+  const live = useSourceLiveStatus(spec.source, ds, { hasValue: !isLoading && medianMin != null, emptyLabel: "No successful builds yet" });
 
   usePublishGoalReading(
     goal?.id,
@@ -54,6 +58,7 @@ export function LeadTimeWidget({
           provenance,
         }
       : null,
+    { hold: live.pending || Boolean(error) },
   );
 
   return (
@@ -71,17 +76,22 @@ export function LeadTimeWidget({
         <NeedsScopeBanner provider={spec.source?.provider} />
       ) : (
         <div className="flex h-full flex-col justify-between gap-2">
-          <div className="flex items-baseline gap-2">
-            <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
-              {error ? "!" : isLoading ? "…" : medianMin == null ? "—" : formatMin(medianMin)}
-            </div>
-            <span className="text-[13px] text-muted-fg">median</span>
-            {hit != null ? (
-              <Badge tone={hit ? "mint" : "peach"} className="ml-auto">
-                {hit ? "On target" : "Above target"}
-              </Badge>
-            ) : null}
-          </div>
+          <WidgetHeadline
+            status={live}
+            skeleton="w-[3.5ch]"
+            after={
+              <>
+                <span className="text-[13px] text-muted-fg">median</span>
+                {hit != null ? (
+                  <Badge tone={hit ? "mint" : "peach"} className="ml-auto">
+                    {hit ? "On target" : "Above target"}
+                  </Badge>
+                ) : null}
+              </>
+            }
+          >
+            {medianMin == null ? null : formatMin(medianMin)}
+          </WidgetHeadline>
           {histogram.length > 0 && n > 0 ? (
             <>
               <Bars data={histogram.map((b) => ({ n: b.n, label: b.bin }))} height={48} />
