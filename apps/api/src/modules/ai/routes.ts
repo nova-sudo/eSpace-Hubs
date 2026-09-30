@@ -27,6 +27,7 @@ import {
   chatHandler,
   gradePrHandler,
   gradeGoalTierHandler,
+  gradeGoalTierCacheHandler,
   listGoalTierVerdictsHandler,
   putClientTierVerdictHandler,
   composeWidgetHandler,
@@ -186,9 +187,13 @@ aiRouter.post("/chat", requireAuth(), chatLimiter, chatHandler);
 aiRouter.post("/grade-pr", requireAuth(), gradePrLimiter, gradePrHandler);
 // Score which achievement tier a developer is at for one goal, given the
 // goal's classifier-distilled tier criteria + its current metric data.
+// The cache gate runs BEFORE the limiter: a verdict answered from the
+// durable store (same hash, or the once-a-day re-grade throttle) costs no
+// model call, so it must not spend one of the 60 limiter slots either.
 aiRouter.post(
   "/grade-goal-tier",
   requireAuth(),
+  gradeGoalTierCacheHandler,
   gradeGoalTierLimiter,
   gradeGoalTierHandler,
 );

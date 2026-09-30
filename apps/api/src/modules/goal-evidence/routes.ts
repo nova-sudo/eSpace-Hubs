@@ -4,6 +4,8 @@
  *   POST   /:goalId          authed, multipart — attach one file
  *   GET    /:goalId          authed — list this goal's files (?userId= for a
  *                             manager reading a direct report's)
+ *   GET    /manifests?goalIds=…  authed — list files for many of the caller's
+ *                             OWN goals in one call (no ?userId=)
  *   GET    /file/:fileId     authed — download one, always as an attachment
  *   DELETE /file/:fileId     authed — owner only
  *
@@ -23,6 +25,7 @@ import {
   deleteEvidenceFileHandler,
   downloadEvidenceFileHandler,
   listEvidenceFilesHandler,
+  listEvidenceManifestsHandler,
   uploadEvidenceFileHandler,
 } from "./controller.js";
 
@@ -39,13 +42,16 @@ const uploadLimiterOptions: Partial<Options> = {
   // Per user; the IP fallback (no session) is subnet-bucketed for IPv6.
   keyGenerator: (req: Request) =>
     req.session?.userId?.toHexString() ?? (req.ip ? ipKeyGenerator(req.ip) : "anon"),
-  handler: (_req, res) => {
-    res.status(429).json({
-      error: {
-        code: "rate_limited",
-        message: "Too many uploads. Wait a few minutes and try again.",
-      },
-    });
+  // The standard HttpError envelope (via the error handler), like every
+  // other limiter — the ad-hoc JSON body used to skip it.
+  handler: (_req: Request, _res: Response, next: NextFunction) => {
+    next(
+      new HttpError(
+        429,
+        "rate_limited",
+        "Too many uploads. Wait a few minutes and try again.",
+      ),
+    );
   },
 };
 
@@ -111,5 +117,8 @@ goalEvidenceRouter.post(
 // `/file/...` is declared before `/:goalId` would match it — Express takes the
 // first match, and "file" is a legal goal id shape.
 goalEvidenceRouter.get("/file/:fileId", requireAuth(), downloadEvidenceFileHandler);
+// Batch manifests for the caller's OWN goals — declared before `/:goalId`
+// for the same first-match reason as `/file/...`.
+goalEvidenceRouter.get("/manifests", requireAuth(), listEvidenceManifestsHandler);
 goalEvidenceRouter.delete("/file/:fileId", requireAuth(), deleteEvidenceFileHandler);
 goalEvidenceRouter.get("/:goalId", requireAuth(), listEvidenceFilesHandler);

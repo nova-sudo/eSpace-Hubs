@@ -63,6 +63,7 @@ import {
   validateQuerySource,
 } from "@espace-devhub/shared/goal-specs";
 import { aiUnconfigured } from "./unconfigured.js";
+import { isRegradeThrottled } from "./tier-throttle.js";
 
 /** Parse a model's JSON reply, tolerating stray prose / markdown fences
  *  (the OpenAI path uses json_object mode; Claude relies on the prompt). */
@@ -512,7 +513,21 @@ export function toIsoOrNull(v: unknown): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-export async function gradeGoalTierHandler(
+/**
+ * Stage 1 of POST /ai/grade-goal-tier — runs BEFORE the per-user
+ * `gradeGoalTierLimiter`, so answering from the durable store never spends
+ * a limiter slot (a cache hit used to count exactly like a paid grade):
+ *
+ *   - same `tierHash` as the stored verdict → return it (`cached: true`);
+ *   - a changed hash but already graded by the model TODAY (user's day),
+ *     not forced, criteria unchanged → return the stored verdict with
+ *     `throttled: true` instead of re-grading (the client's once-a-day rule,
+ *     now enforced where a cleared cache or a second device can't reset it).
+ *
+ * Anything else carries the parsed payload to the limiter and the grader
+ * via `res.locals.tierGrade`.
+ */
+export async function gradeGoalTierCacheHandler(
   req: Request,
   res: Response,
   next: NextFunction,
@@ -527,25 +542,38 @@ export async function gradeGoalTierHandler(
     // period, exactly how grading has always worked. A real periodKey grades
     // that one cadence window on its own.
     const periodKey = payload.periodKey || WHOLE_GOAL_TIER_KEY;
-
     // Durable cache: when the client supplies goalId + tierHash, a matching
     // persisted verdict is returned WITHOUT calling the model — grade once per
     // data state, share across the user's devices, re-grade only on change.
     const cacheable = Boolean(payload.goalId && payload.tierHash);
-    const verdicts = await getGoalTierVerdictsCollection();
     if (cacheable && !payload.force) {
+      const verdicts = await getGoalTierVerdictsCollection();
       const hit = await verdicts.findOne({
         orgId: session.orgId,
         userId: session.userId,
         goalId: payload.goalId,
         periodKey,
       });
-      if (hit && hit.tierHash === payload.tierHash) {
+      const sameHash = Boolean(hit && hit.tierHash === payload.tierHash);
+      const throttled =
+        !sameHash &&
+        isRegradeThrottled({
+          hit: hit ?? null,
+          tierHash: payload.tierHash,
+          force: payload.force,
+          criteriaChanged: payload.criteriaChanged,
+          tzOffsetMinutes: payload.tzOffsetMinutes,
+        });
+      if (hit && (sameHash || throttled)) {
         res.json({
           verdict: hit.verdict,
           model: hit.model,
           provider: hit.provider,
           cached: true,
+          // A throttled answer describes the STORED data state: send its
+          // hash so the client keeps treating the current data as ungraded
+          // (and re-grades it on its next day).
+          ...(throttled ? { throttled: true, tierHash: hit.tierHash } : {}),
           periodKey,
           // When the model ACTUALLY graded this (not now — this is a cache
           // hit). Omitted on a legacy row that never stamped it.
@@ -554,6 +582,33 @@ export async function gradeGoalTierHandler(
         return;
       }
     }
+    res.locals.tierGrade = { payload, periodKey, cacheable };
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** Stage 2 — the model call (after the limiter). */
+export async function gradeGoalTierHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    // Normally parsed by gradeGoalTierCacheHandler; parse here too so the
+    // handler still works mounted on its own.
+    const staged = res.locals.tierGrade as
+      | { payload: ReturnType<typeof gradeGoalTierSchema.parse>; periodKey: string; cacheable: boolean }
+      | undefined;
+    const payload = staged?.payload ?? gradeGoalTierSchema.parse(req.body);
+    const periodKey = staged?.periodKey ?? (payload.periodKey || WHOLE_GOAL_TIER_KEY);
+    const cacheable = staged?.cacheable ?? Boolean(payload.goalId && payload.tierHash);
+    const verdicts = await getGoalTierVerdictsCollection();
 
     const userPrompt = buildTierUserPrompt(
       payload.goalTitle,

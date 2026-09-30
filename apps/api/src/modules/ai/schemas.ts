@@ -90,6 +90,12 @@ export const gradeGoalTierSchema = z.object({
   periodKey: z.string().min(1).max(400).optional(),
   // Bypass the server cache (the "re-analyze" affordance).
   force: z.boolean().optional(),
+  // The client knows the tier CRITERIA changed since its last grade — lets
+  // a criteria edit through the once-a-day re-grade throttle.
+  criteriaChanged: z.boolean().optional(),
+  // The client's `Date#getTimezoneOffset()`, so "today" for the throttle is
+  // the user's day, not UTC's.
+  tzOffsetMinutes: z.number().int().min(-14 * 60).max(14 * 60).optional(),
 });
 export type GradeGoalTierInput = z.infer<typeof gradeGoalTierSchema>;
 

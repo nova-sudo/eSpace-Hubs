@@ -47,29 +47,53 @@ import { requireAuth } from "../../middleware/require-auth.js";
 import { resolveQuery } from "./query-runner.js";
 
 /**
- * 30 per 15 minutes. A tracker tops out at 10 fields, so a user opening
- * a widget and refreshing it a couple of times stays well inside; a loop
- * burning GitHub's hourly quota does not.
+ * How long until this limiter's window reopens for the caller, in ms —
+ * from the `req.rateLimit` info express-rate-limit attaches. Carried on the
+ * 429 as `error.retryAfterMs` (+ `Retry-After`) so the client can say
+ * "try again in 4 min" and back off instead of retrying blind.
  */
-const queryFieldLimiterOptions: Partial<Options> = {
-  windowMs: 15 * 60 * 1000,
-  max: 30,
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-  skipSuccessfulRequests: false,
-  keyGenerator: (req: Request) =>
-    req.session?.userId.toHexString() ?? "unauthenticated",
-  handler: (_req: Request, _res: Response, next: NextFunction) => {
-    next(
-      new HttpError(
-        429,
-        "rate_limited",
-        "Too many auto-fill refreshes. Wait a few minutes and try again.",
-      ),
-    );
-  },
-};
-const queryFieldLimiter = rateLimit(queryFieldLimiterOptions);
+export function limiterRetryAfterMs(req: Request, now = Date.now()): number | undefined {
+  const reset = (req as Request & { rateLimit?: { resetTime?: Date } }).rateLimit?.resetTime;
+  if (!(reset instanceof Date)) return undefined;
+  return Math.max(1_000, reset.getTime() - now);
+}
+
+function queryLimiterOptions(max: number): Partial<Options> {
+  return {
+    windowMs: 15 * 60 * 1000,
+    max,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    skipSuccessfulRequests: false,
+    keyGenerator: (req: Request) =>
+      req.session?.userId.toHexString() ?? "unauthenticated",
+    handler: (req: Request, _res: Response, next: NextFunction) => {
+      next(
+        new HttpError(
+          429,
+          "rate_limited",
+          "Too many auto-fill refreshes. Wait a few minutes and try again.",
+          undefined,
+          limiterRetryAfterMs(req),
+        ),
+      );
+    },
+  };
+}
+
+/**
+ * Single-field route: 60 per 15 minutes (was 30 — one composed tracker
+ * holds up to 10 auto fields plus nested and management blocks, so opening
+ * three trackers used to exhaust it). Current clients batch a whole window
+ * through /query-fields instead; this stays for older bundles and Retry.
+ */
+const queryFieldLimiter = rateLimit(queryLimiterOptions(60));
+/**
+ * Batch route: 30 WINDOWS per 15 minutes. One request fills every auto
+ * field of one window, so the budget counts forms opened, not fields.
+ * Separate bucket from the single-field route.
+ */
+const queryFieldsLimiter = rateLimit(queryLimiterOptions(30));
 
 /**
  * `periodPath` is how the client says WHICH form the field belongs to —
@@ -218,6 +242,102 @@ export async function queryFieldHandler(
   }
 }
 
+/** Most auto fields one batch may name — a window tops out at 10 today. */
+export const MAX_BATCH_FIELDS = 20;
+
+const queryFieldsSchema = z
+  .object({
+    goalId: z.string().min(1).max(200),
+    fieldIds: z.array(z.string().min(1).max(200)).min(1).max(MAX_BATCH_FIELDS),
+    periodKey: z.string().min(1).max(200).optional(),
+    periodPath: queryFieldSchema.shape.periodPath,
+  })
+  .strict();
+
+/** A per-field failure in the batch reply — the single route's error envelope. */
+function fieldError(err: unknown): { ok: false; status: number; error: { code: string; message: string } } {
+  if (err instanceof HttpError) {
+    return { ok: false, status: err.status, error: { code: err.code, message: err.message } };
+  }
+  return {
+    ok: false,
+    status: 500,
+    error: { code: "query_failed", message: "Couldn't read this field." },
+  };
+}
+
+/**
+ * POST /integrations/query-fields — fill EVERY auto field of one window in
+ * one request (one limiter slot). Same trust model as /query-field: the body
+ * names goal + fields + window position, never a source; each source is read
+ * from the stored spec. Fields resolve one after another (the runner already
+ * serialises its own per-repo fan-out) and fail independently — the reply is
+ * `{ goalId, results: { [fieldId]: <single-route body> | { ok:false, status,
+ * error } } }`, so one broken repo lookup never hides its neighbours.
+ */
+export async function queryFieldsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const { goalId, fieldIds, periodPath } = queryFieldsSchema.parse(req.body);
+
+    const specDoc = isAssignedGoalId(goalId)
+      ? await assignedSpecRecordFor(session.orgId, session.userId, goalId)
+      : await (await getGoalSpecsCollection()).findOne({
+          orgId: session.orgId,
+          userId: session.userId,
+          goalId,
+        });
+    if (!specDoc?.spec) {
+      throw new HttpError(404, "spec_not_found", "This tracker no longer exists.");
+    }
+
+    const contextCol = await getGoalContextCollection();
+    const contextDoc = await contextCol.findOne({
+      orgId: session.orgId,
+      userId: session.userId,
+      goalId,
+    });
+    const users = await getUsersCollection();
+    const user = await users.findOne(
+      { _id: session.userId },
+      { projection: { engagement: 1 } },
+    );
+    const engagement = (user?.engagement ?? DEFAULT_ENGAGEMENT) as Engagement;
+
+    const results: Record<string, unknown> = {};
+    for (const fieldId of [...new Set(fieldIds)]) {
+      const source = findFieldSource(specDoc.spec, fieldId, periodPath);
+      if (!source) {
+        results[fieldId] = fieldError(
+          new HttpError(400, "field_not_auto_filled", "This field isn't filled from a connected tool."),
+        );
+        continue;
+      }
+      try {
+        const result = await resolveQuery(source, {
+          userId: session.userId,
+          orgId: session.orgId,
+          engagement,
+          contextAnswers: contextDoc?.answers ?? {},
+        });
+        results[fieldId] = { goalId, fieldId, ...result };
+      } catch (err) {
+        results[fieldId] = fieldError(err);
+      }
+    }
+    res.json({ goalId, results });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export const queryFieldRouter: Router = Router();
 
 // Auth first (the limiter keys on the session), then the limiter, so a
@@ -227,4 +347,10 @@ queryFieldRouter.post(
   requireAuth(),
   queryFieldLimiter,
   queryFieldHandler,
+);
+queryFieldRouter.post(
+  "/query-fields",
+  requireAuth(),
+  queryFieldsLimiter,
+  queryFieldsHandler,
 );

@@ -46,7 +46,7 @@ interface LimiterConfig {
 }
 
 /** The client IP, IPv6 bucketed by /56 (see buildLimiter). */
-function ipKey(req: Request): string {
+export function ipKey(req: Request): string {
   return req.ip ? ipKeyGenerator(req.ip) : "unknown";
 }
 
@@ -100,26 +100,82 @@ function buildLimiter(cfg: LimiterConfig) {
 // lockout (in the user document) is the second layer; this is the
 // per-IP layer.
 
+/** Lower-cased, trimmed email from a JSON body, or "" when absent. */
+export function normalizedEmail(body: unknown): string {
+  const raw = (body as { email?: unknown } | undefined)?.email;
+  return typeof raw === "string" ? raw.trim().toLowerCase().slice(0, 320) : "";
+}
+
 /**
- * /login — 10 attempts per 5 minutes per IP. A user mistyping a few
- * times is fine; a stuffing tool gets 10 tries before a 5-minute pause.
+ * Login bucket: the client IP AND the account being tried. Keyed by IP
+ * alone, one office behind a NAT shared ten attempts per five minutes —
+ * a Monday-morning sign-in wave (or a deploy that ends sessions) locked
+ * everyone else out. Per (IP, email) a stuffing tool still gets ten tries
+ * per account before a pause, and the per-account lockout in the user
+ * document stays the second layer.
  */
-export const loginLimiter = buildLimiter({
+export function loginKey(req: Request): string {
+  return `login:${ipKey(req)}|${normalizedEmail(req.body) || "-"}`;
+}
+
+/**
+ * TOTP bucket: the client IP AND the (partial) session's user — the TOTP
+ * step carries no email, but the password step already attached a session.
+ * With no session it degrades to the IP alone.
+ */
+export function totpKey(req: Request): string {
+  const uid = req.session?.userId;
+  return `totp:${ipKey(req)}|${uid ? uid.toHexString() : "-"}`;
+}
+
+/**
+ * The per-IP CEILING behind the per-account limiters: generous enough for
+ * a whole office signing in at once, tight enough that one host spraying
+ * many accounts still hits a wall.
+ */
+const AUTH_IP_CEILING = 100;
+
+/**
+ * /login — 10 attempts per 5 minutes per (IP, email), under a 100 per 5
+ * minutes per-IP ceiling. A user mistyping a few times is fine; a stuffing
+ * tool gets 10 tries per account before a 5-minute pause, and a sweep
+ * across accounts from one host is capped by the ceiling.
+ */
+export const loginAccountLimiter = buildLimiter({
   windowMs: 5 * 60 * 1000,
   max: 10,
   label: "login",
+  keyGenerator: loginKey,
 });
+export const loginIpCeilingLimiter = buildLimiter({
+  windowMs: 5 * 60 * 1000,
+  max: AUTH_IP_CEILING,
+  label: "login",
+  keyGenerator: (req) => `login-ip:${ipKey(req)}`,
+});
+/** Mounted as one middleware chain: the IP ceiling, then the per-account bucket. */
+export const loginLimiter = [loginIpCeilingLimiter, loginAccountLimiter];
 
 /**
- * /totp/verify — 10 attempts per 5 minutes per IP. Step 2 of two-step
- * login. TOTP codes are 6 digits → 10^6 space; 10/5min means a brute
- * force on a single 30s window is bounded to a tiny success probability.
+ * /totp/verify (and the other code-carrying TOTP routes) — 10 attempts per
+ * 5 minutes per (IP, user), under a 100 per 5 minutes per-IP ceiling. Step 2
+ * of two-step login. TOTP codes are 6 digits → 10^6 space; 10/5min per
+ * account bounds a brute force on a single 30s window to a tiny success
+ * probability.
  */
-export const totpLimiter = buildLimiter({
+export const totpAccountLimiter = buildLimiter({
   windowMs: 5 * 60 * 1000,
   max: 10,
   label: "TOTP-verify",
+  keyGenerator: totpKey,
 });
+export const totpIpCeilingLimiter = buildLimiter({
+  windowMs: 5 * 60 * 1000,
+  max: AUTH_IP_CEILING,
+  label: "TOTP-verify",
+  keyGenerator: (req) => `totp-ip:${ipKey(req)}`,
+});
+export const totpLimiter = [totpIpCeilingLimiter, totpAccountLimiter];
 
 /**
  * /password/reset-request — 5 per hour per IP. The endpoint always
