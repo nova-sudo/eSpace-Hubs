@@ -1,9 +1,15 @@
 "use client";
 
+import { useMemo } from "react";
 import { githubApi } from "../api-clients";
 import { useIntegrations } from "../use-integrations";
 import { useSwrIf } from "./use-swr-if";
-import { isoDaysAgo } from "@/lib/date";
+import {
+  canonicalEventsSinceIso,
+  canonicalMergedSinceIso,
+  filterEventsSince,
+  resolveFetchWindow,
+} from "./provider-windows";
 
 /**
  * Synthesise event-shaped records from the user's PR list.
@@ -46,30 +52,24 @@ import { isoDaysAgo } from "@/lib/date";
  */
 export function useGithubPrEventsSince(since) {
   const { isConnected } = useIntegrations();
-  const iso =
-    since instanceof Date
-      ? since.toISOString()
-      : typeof since === "number"
-        ? isoDaysAgo(since)
-        : since;
+  // Windows inside the last 90 days share the canonical events-window
+  // search; older ones (Evidence's YTD) share the long canonical one. `null`
+  // skips the search entirely.
+  const win = resolveFetchWindow(since, [canonicalEventsSinceIso(), canonicalMergedSinceIso()]);
+  const fetchIso = win?.fetchIso ?? null;
+  const filterIso = win?.filterIso ?? null;
   const swr = useSwrIf(
-    isConnected("github"),
-    `github:pr-events:${iso}`,
-    () => githubApi.myAuthoredPrsSince(iso),
+    isConnected("github") && Boolean(fetchIso),
+    `github:pr-events:${fetchIso}`,
+    () => githubApi.myAuthoredPrsSince(fetchIso),
   );
-  const synthesised = swr.data ? synthesisePrEvents(swr.data) : swr.data;
-  // Apply the same client-side cutoff as the real events hook, in
-  // case GitHub returned a PR whose created_at predates the caller's
-  // window (search-issues filters by `created:>=DAY` which is
-  // day-granular, so a PR created earlier in the boundary day could
-  // slip through).
-  const cutoff = typeof iso === "string" ? new Date(iso).getTime() : null;
-  const data =
-    synthesised && cutoff
-      ? synthesised.filter(
-          (e) => new Date(e.created_at).getTime() >= cutoff,
-        )
-      : synthesised;
+  // Apply the caller's cutoff client-side: the fetch covers a wider window,
+  // and search-issues filters by `created:>=DAY` which is day-granular, so
+  // a PR created earlier in the boundary day could slip through too.
+  const data = useMemo(
+    () => (swr.data ? filterEventsSince(synthesisePrEvents(swr.data), filterIso) : swr.data),
+    [swr.data, filterIso],
+  );
   return { ...swr, data };
 }
 

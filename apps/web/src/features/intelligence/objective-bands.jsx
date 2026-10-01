@@ -18,7 +18,7 @@
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { Badge, Card, FillStrip, Label, PacedBar } from "@/components/ui";
-import { SPEC_KIND_META, specCadence } from "@/features/goal-specs";
+import { SPEC_KIND_META, SPEC_VARIANTS, specCadence } from "@/features/goal-specs";
 import { TIER_LABELS, tierTone } from "@/features/goal-tiers";
 import { GoalWidgetModal } from "@/features/goal-widgets";
 import { ASSIGNED_GROUP_LABEL, AssignedBadge } from "@/features/assigned-goals";
@@ -144,7 +144,11 @@ function GoalRow({ card, onOpen }) {
  */
 function GoalRowValue({ card }) {
   const { spec, health, status } = card;
-  if (status?.status === GOAL_STATUS.AUTO) return <AutoGoalValue spec={spec} compact />;
+  // An AUTO tracker shows its live value whatever its status word — a graded
+  // "Behind" auto goal used to fall through to "—".
+  if (status?.status === GOAL_STATUS.AUTO || SPEC_KIND_META[spec?.widget]?.variant === SPEC_VARIANTS.AUTO) {
+    return <AutoGoalValue spec={spec} compact />;
+  }
   const logged = status?.logged;
   if (logged && logged.due > 0) {
     return (

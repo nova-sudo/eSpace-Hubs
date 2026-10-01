@@ -9,12 +9,15 @@ import {
   Card,
   Delta,
   Label,
+  PageContainer,
   PageHeader,
   Section,
   SegmentedControl,
   Select,
   Stat,
+  FreshnessNote,
 } from "@/components/ui";
+import { useProviderActivity } from "@/features/integrations";
 import { cn } from "@/lib/cn";
 import { TrendChart } from "./trend-chart";
 import {
@@ -54,6 +57,17 @@ export function SnapshotsPage() {
   const { snapshots, fetched, loading, error, retry } = useSnapshots();
   const snapshotNow = useSnapshotNow();
   const readiness = useSnapshotReadiness();
+  // How fresh the PR data a capture would record is — the same note every
+  // provider-backed number carries.
+  const prActivity = useProviderActivity(["github", "gitlab"]);
+  const prLive = {
+    hasValue: !readiness.noCodeHost && prActivity.latestFetchedAt != null,
+    refreshing: prActivity.isRefreshing,
+    rateLimitedUntil: prActivity.rateLimitedUntil,
+    fetchedAt: prActivity.latestFetchedAt,
+    error: readiness.failed ? { message: readiness.reason } : null,
+    provider: "your code host",
+  };
   const { source, staleHostname } = useApiOrigin();
   // A paired companion whose heartbeat went stale: provider routes 502
   // until it's back, so a capture now would freeze zeros.
@@ -113,7 +127,7 @@ export function SnapshotsPage() {
   const loadFailed = fetched && snapshots.length === 0 && Boolean(error);
 
   return (
-    <main className="relative z-[2] px-4 sm:px-10 pb-14 pt-9">
+    <PageContainer>
       <PageHeader
         crumb={
           snapshots.length > 0
@@ -142,10 +156,11 @@ export function SnapshotsPage() {
                 ? captureHint
                 : "Each completed week is captured for you when you open the dashboard (or by the weekly server job). Snapshot now adds a mid-week reading of the current week."}
             </span>
+            <FreshnessNote status={prLive} prefix="PR data" className="justify-end text-right" />
           </div>
         }
       />
-      <DrillDownNav className="-mt-2 mb-7" />
+      <DrillDownNav />
 
       {snapshots.length === 0 ? (
         // Gate on `fetched` — this used to flash "no history yet" on
@@ -253,7 +268,7 @@ export function SnapshotsPage() {
           </Section>
         </>
       )}
-    </main>
+    </PageContainer>
   );
 }
 
@@ -519,7 +534,7 @@ function CompareGrid({ base, other }) {
 
 function EmptyState({ onCapture, disabled, hint }) {
   return (
-    <Card className="px-4 sm:px-10 py-16 text-center">
+    <Card className="px-6 py-16 text-center sm:px-10">
       <Label>No snapshots yet</Label>
       <h2 className="mx-auto mt-3 max-w-[520px] text-[18px] font-bold tracking-[-0.01em] text-fg">
         Capture your first snapshot to start building a trend.

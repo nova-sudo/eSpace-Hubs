@@ -171,3 +171,40 @@ test("design-system-v2 guard: tint -ink colours only on their own tint surface",
     `tint -ink colour off its tint surface (use the -text token — docs/design-system-v2.md §2):\n${violations.join("\n")}`,
   );
 });
+
+/**
+ * Page width: every page renders inside <PageContainer> (components/ui),
+ * which owns the one width (--page-max) and the page gutter. A page root
+ * that sets its own max-width, or re-declares the gutter, drifts — that is
+ * how Home ended up at 1040px and Goals at 1320px. docs/design-system-v2.md
+ * "Page width".
+ */
+const PAGE_GUTTER = /(?<![\w:-])px-4\b[^"`]*\bsm:px-10\b|\bsm:px-10\b[^"`]*(?<![\w:-])px-4\b/;
+const PAGE_MAIN_WIDTH = /<main\b[^>]*className="[^"]*\b(max-w-|mx-auto)/;
+const GUTTER_ALLOW = {
+  "components/ui/page-container.jsx": "defines the gutter",
+  "features/onboarding/onboarding-page.jsx": "onboarding is a centred card page, not a hub page",
+  "features/analyst/analyst-page.jsx": "full-screen overlay, not a page",
+  "features/goals/goals-page/plain-section.jsx": "pre-cutover goals page — no longer routed",
+};
+
+test("design-system-v2 guard: pages use PageContainer, never their own width or gutter", () => {
+  const violations = [];
+  for (const file of walk(srcRoot)) {
+    if (file === thisFile) continue;
+    const rel = path.relative(srcRoot, file).split(path.sep).join("/");
+    if (isSkippedPath(rel) || GUTTER_ALLOW[rel]) continue;
+    readFileSync(file, "utf8")
+      .split("\n")
+      .forEach((line, i) => {
+        if (PAGE_GUTTER.test(line) || PAGE_MAIN_WIDTH.test(line)) {
+          violations.push(`${rel}:${i + 1}: ${line.trim()}`);
+        }
+      });
+  }
+  assert.deepEqual(
+    violations,
+    [],
+    `page sets its own width / gutter (wrap it in <PageContainer> — docs/design-system-v2.md "Page width"):\n${violations.join("\n")}`,
+  );
+});

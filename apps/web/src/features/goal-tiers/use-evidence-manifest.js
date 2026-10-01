@@ -22,7 +22,24 @@
  */
 
 import useSWR from "swr";
+import { apiGet } from "@/lib/api-client";
 import { listEvidenceFiles } from "@/features/goal-widgets/evidence-files";
+
+import { createManifestBatcher } from "./manifest-batcher";
+
+async function requestManifests(goalIds) {
+  const qs = goalIds.map((id) => `goalIds=${encodeURIComponent(id)}`).join("&");
+  const res = await apiGet(`/goal-evidence/manifests?${qs}`);
+  if (!res.ok) throw new Error(res.error?.message || "manifests unavailable");
+  const manifests = res.data?.manifests;
+  if (!manifests || typeof manifests !== "object") throw new Error("bad manifests payload");
+  return manifests;
+}
+
+const fetchManifest = createManifestBatcher({
+  request: requestManifests,
+  fallback: (goalId) => listEvidenceFiles(goalId),
+});
 
 /** Bytes are never the useful unit in prose. */
 function shortSize(n) {
@@ -92,7 +109,7 @@ export function evidenceManifestToText(files, cap = 12) {
 export function useEvidenceManifest(goalId) {
   const { data, error, isLoading } = useSWR(
     goalId ? ["goal-evidence-manifest", goalId] : null,
-    () => listEvidenceFiles(goalId),
+    () => fetchManifest(goalId),
     {
       revalidateOnFocus: false,
       shouldRetryOnError: false,

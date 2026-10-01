@@ -84,6 +84,10 @@
 
   /* Shell layout — sticky header height, read by scroll-snap surfaces. */
   --header-height: 72px;
+  /* Page width — the ONE content width for every page (PageContainer,
+     the header bar, the footer). Gutters sit outside it: 16px on phones,
+     40px from sm up. No page sets its own max-width. */
+  --page-max: 1440px;
 
   color-scheme: light;
 }
@@ -217,6 +221,9 @@
   --radius-xl: var(--radius-xl);
   --radius-lg: var(--radius-lg);
   --radius-md: var(--radius-md);
+
+  /* max-w-page → var(--page-max). */
+  --container-page: var(--page-max);
 
   --font-sans: var(--font-sans);
   --font-display: var(--font-display);

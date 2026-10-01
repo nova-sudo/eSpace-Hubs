@@ -20,8 +20,8 @@
  * Presentation only — data comes pre-derived on the card.
  */
 
-import { Badge, Button, Card, FillStrip, InsightRow, Label } from "@/components/ui";
-import { SPEC_KIND_META, specCadence } from "@/features/goal-specs";
+import { Badge, Button, Card, FillStrip, FreshnessNote, InsightRow, Label, LiveValue } from "@/components/ui";
+import { SPEC_KIND_META, SPEC_VARIANTS, specCadence } from "@/features/goal-specs";
 import { cadenceWindowLabel, composedCycleBounds, GOAL_STATUS } from "@/features/goal-inputs";
 import { readinessLabel, GOAL_READINESS } from "@/features/goal-widgets";
 import { currentWindowKey } from "@/features/goal-locks";
@@ -29,7 +29,8 @@ import { ASSIGNED_GROUP_LABEL } from "@/features/assigned-goals";
 import { ASSIGNED_ROOT_ID } from "@espace-devhub/shared/goal-specs";
 import { skipWindow } from "./skip-window";
 import { cadenceCells } from "./progress";
-import { fmtTarget } from "@/lib/fmt";
+import { fmtTarget, opLabel } from "@/lib/fmt";
+import { useAutoHeadline } from "./auto-value";
 
 function capitalize(s) {
   return s ? s[0].toUpperCase() + s.slice(1) : s;
@@ -40,8 +41,33 @@ function daysSince(ts) {
   return Math.max(0, Math.round((Date.now() - ts) / 86_400_000));
 }
 
-/** Big-numeral signal — days since the last entry, the one number the hero leads with. */
-function heroSignal(health, status) {
+/**
+ * Big-numeral signal. A MANUAL goal leads with days since the last entry;
+ * an AUTO goal leads with its live value (44 merged) — it has no entries,
+ * so "never logged" would be a lie about a goal that is being measured.
+ */
+function heroSignal(health, status, auto) {
+  if (auto) {
+    // The numeral goes through <LiveValue>: a skeleton on a first load, the
+    // last-known value (with "as of" + why) when a refresh fails — never
+    // "…" or "—" standing in for a number the user already saw.
+    const t = auto.target;
+    const targetText = t && t.value != null ? ` · target ${opLabel(t.op)} ${t.value}` : "";
+    return {
+      big: auto.value == null ? "" : String(auto.value),
+      unit: auto.value == null ? "" : auto.unit,
+      // A stale value's "as of" / "last known" line comes from <FreshnessNote>
+      // under this one — don't also call it live.
+      sub: `${
+        auto.value == null
+          ? "tracked automatically from your activity"
+          : auto.lastKnown || auto.status?.error || auto.status?.rateLimitedUntil
+            ? "from your activity"
+            : "live from your activity"
+      }${targetText}`,
+      live: auto.status,
+    };
+  }
   if (status?.status === GOAL_STATUS.NEEDS_SETUP) {
     return { big: "!", unit: "", sub: "not set up yet" };
   }
@@ -72,14 +98,18 @@ export function FocusHero({ card, onOpen }) {
   // reads "Assigned to you" here ("Shared with me" is the viewer page).
   const l1Label = l1?.id === ASSIGNED_ROOT_ID ? ASSIGNED_GROUP_LABEL : l1?.category || l1?.title;
   const context = [kindLabel, l1Label].filter(Boolean).join(" · ");
-  const signal = heroSignal(health, status);
+  // AUTO goals are measured from provider data, never logged by hand: the
+  // hero shows their live reading and offers no fill / skip.
+  const isAuto = SPEC_KIND_META[spec?.widget]?.variant === SPEC_VARIANTS.AUTO;
+  const autoHeadline = useAutoHeadline(isAuto ? spec : null);
+  const signal = heroSignal(health, status, isAuto && !needsSetup ? autoHeadline : null);
 
   const cadence = specCadence(spec);
   const windowKey = currentWindowKey(cadence, new Date(), composedCycleBounds(spec));
   const [periodNoun, periodPlural] = cadenceWindowLabel(cadence);
   // Only a fill goal can settle its window — settling doesn't answer setup
   // questions or fix a failing tier.
-  const canSkip = !needsSetup && !notAchieved && !!windowKey;
+  const canSkip = !isAuto && !needsSetup && !notAchieved && !!windowKey;
 
   const targetVal = spec?.manual?.target;
   const targetText = fmtTarget(targetVal);
@@ -94,19 +124,24 @@ export function FocusHero({ card, onOpen }) {
   // capped to the 8 windows ENDING at the current one. total===0 = a
   // single-record/pip kind → no strip.
   const fill = health?.fill;
-  const stripCells = cadenceCells(fill, { cap: 8, endAtCurrent: true });
+  const stripCells = isAuto ? [] : cadenceCells(fill, { cap: 8, endAtCurrent: true });
 
   let insight;
   if (notAchieved && tierReasoning) {
     // The modal opens on the widget (fill view), not scrolled to the tier
     // ladder — so the action says where it goes, not what it explains.
-    insight = { text: tierReasoning, action: { label: "Open goal", onClick: onOpen } };
+    // An AUTO goal's primary button already says "Open goal" — don't repeat it.
+    insight = isAuto
+      ? { text: tierReasoning }
+      : { text: tierReasoning, action: { label: "Open goal", onClick: onOpen } };
   } else if (sentBack) {
     insight = { text: readinessLabel(health?.readiness) };
   } else if (needsSetup) {
     insight = { text: readinessLabel(health?.readiness) || "This goal needs setup before it can be tracked." };
   } else if (notAchieved) {
     insight = { text: "Graded “Not achieved” — log more, or open it to see what it takes to reach the next tier." };
+  } else if (isAuto) {
+    insight = { text: "Tracked automatically from your connected tools — there's nothing to log by hand." };
   } else if (status?.status === GOAL_STATUS.BEHIND) {
     insight = { text: "This is the goal slipping the most right now. Logging what's missing brings it back on pace — it takes about a minute." };
   } else if (status?.status === GOAL_STATUS.NOT_LOGGED) {
@@ -119,7 +154,9 @@ export function FocusHero({ card, onOpen }) {
     ? "Revise and resubmit"
     : needsSetup
       ? "Set up"
-      : `Fill this ${periodNoun}`;
+      : isAuto
+        ? "Open goal"
+        : `Fill this ${periodNoun}`;
 
   return (
     <Card padding={28} className="flex flex-col gap-5">
@@ -143,12 +180,32 @@ export function FocusHero({ card, onOpen }) {
       <div className="flex flex-wrap items-end gap-8">
         <div>
           <div className="flex items-baseline gap-1.5">
-            <span className="text-[56px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg">
-              {signal.big}
-            </span>
-            {signal.unit ? <span className="text-[20px] font-semibold text-muted-fg">{signal.unit}</span> : null}
+            {signal.live ? (
+              <LiveValue
+                status={signal.live}
+                skeleton="w-[2.5ch]"
+                hideNote
+                className="text-[56px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg"
+                messageClassName="text-[15px]"
+              >
+                {signal.big}
+                {signal.unit ? (
+                  <span className="ml-1.5 text-[20px] font-semibold tracking-normal text-muted-fg">{signal.unit}</span>
+                ) : null}
+              </LiveValue>
+            ) : (
+              <>
+                <span className="text-[56px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg">
+                  {signal.big}
+                </span>
+                {signal.unit ? <span className="text-[20px] font-semibold text-muted-fg">{signal.unit}</span> : null}
+              </>
+            )}
           </div>
           <div className="mt-1.5 text-[13px] text-muted-fg">{signal.sub}</div>
+          {signal.live ? (
+            <FreshnessNote status={signal.live} className="mt-1" />
+          ) : null}
         </div>
 
         {stripCells.length > 0 ? (

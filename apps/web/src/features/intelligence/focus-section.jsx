@@ -62,30 +62,45 @@ export function queueRowLine(card) {
   return status?.label ?? "Needs attention";
 }
 
-export function FocusSection({ queue, total }) {
+/**
+ * `aside` (the snapshot nudge, manager notes) rides in the right-hand column
+ * with the rest of the queue. From xl up the hero and that column sit side by
+ * side (3 : 2); below xl they stack. The column is `empty:hidden`, so when
+ * nothing else needs the user the hero simply takes the full width.
+ */
+export function FocusSection({ queue, total, aside = null }) {
   // The card whose widget is open in the modal — held by value so a queue
   // reorder (the usual result of filling it) can't close it under the user.
   const [active, setActive] = useState(null);
 
-  if (!Array.isArray(queue) || queue.length === 0) {
-    return <AllCaughtUp total={total} />;
-  }
-  const [lead, ...rest] = queue;
+  const hasQueue = Array.isArray(queue) && queue.length > 0;
+  const [lead, ...rest] = hasQueue ? queue : [];
   return (
     <>
-      <div className="flex flex-col gap-2.5">
-        <FocusHero key={lead.goal.id} card={lead} onOpen={() => setActive(lead)} />
-        {rest.map((card) => (
-          <QueueRow key={card.goal.id} card={card} onOpen={() => setActive(card)} />
-        ))}
+      <div className="flex flex-col gap-2.5 xl:flex-row xl:items-start xl:gap-4">
+        <div className="min-w-0 xl:flex-[3]">
+          {hasQueue ? (
+            <FocusHero key={lead.goal.id} card={lead} onOpen={() => setActive(lead)} />
+          ) : (
+            <AllCaughtUp total={total} />
+          )}
+        </div>
+        <div className="flex min-w-0 flex-col gap-2.5 empty:hidden xl:flex-[2]">
+          {rest.map((card) => (
+            <QueueRow key={card.goal.id} card={card} onOpen={() => setActive(card)} />
+          ))}
+          {aside}
+        </div>
       </div>
 
-      <GoalWidgetModal
-        open={!!active}
-        onClose={() => setActive(null)}
-        spec={active?.spec}
-        goal={active?.goal}
-      />
+      {hasQueue ? (
+        <GoalWidgetModal
+          open={!!active}
+          onClose={() => setActive(null)}
+          spec={active?.spec}
+          goal={active?.goal}
+        />
+      ) : null}
     </>
   );
 }

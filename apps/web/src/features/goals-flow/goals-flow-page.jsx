@@ -31,7 +31,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Sparkles, X } from "lucide-react";
-import { Badge, Button, Card, PageHeader, SegmentedControl } from "@/components/ui";
+import { Badge, Button, Card, PageContainer, PageHeader, SegmentedControl } from "@/components/ui";
 import { useHubLink } from "@/features/hubs";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
 import { useAllGoalInputs } from "@/features/goal-inputs";
@@ -387,21 +387,20 @@ export function GoalsFlowPage() {
   }
 
   return (
-    <div className="relative z-[2] flex min-h-0 flex-1 flex-col bg-bg">
+    <PageContainer>
       <span aria-live="polite" className="sr-only">
         {announcement}
       </span>
 
-      <div className="mx-auto w-full max-w-[1320px] px-4 pt-7 sm:px-10">
         <PageHeader
           crumb={
             showControls
-              ? `${objectiveCount} objective${objectiveCount === 1 ? "" : "s"} · ${totalGoals} goal${
+              ? `Goals · ${objectiveCount} objective${objectiveCount === 1 ? "" : "s"} · ${totalGoals} goal${
                   totalGoals === 1 ? "" : "s"
                 }${ghostCount > 0 ? ` · ${ghostCount} without a tracker` : ""}`
               : "Goals"
           }
-          title="Goals"
+          title="Every goal, in one place."
           right={
             // An empty page has nothing to filter, collapse or classify —
             // the controls only appear once there are goals to act on.
@@ -452,12 +451,8 @@ export function GoalsFlowPage() {
             ) : null
           }
         />
-      </div>
 
-      <div
-        className="mx-auto w-full max-w-[1320px] px-4 pb-16 sm:px-10"
-        onKeyDown={handleTreeKeyDown}
-      >
+      <div onKeyDown={handleTreeKeyDown}>
         {loadError && !ready ? (
           <Card padding={24} className="flex flex-col items-start gap-3">
             <span className="text-[13px] text-fg">
@@ -567,6 +562,6 @@ export function GoalsFlowPage() {
       </div>
 
       {evidenceOpen ? <EvidenceDrawer onClose={() => setEvidenceOpen(false)} /> : null}
-    </div>
+    </PageContainer>
   );
 }

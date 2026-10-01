@@ -21,7 +21,7 @@
 
 import { useRouter } from "next/navigation";
 import { DrillDownNav } from "@/components/shell/drill-down-nav";
-import { Button, Card, Label, Loader, Reveal, Section } from "@/components/ui";
+import { Button, Card, Loader, PageContainer, PageHeader, Reveal, Section } from "@/components/ui";
 import { useAnalystOptional, ANALYST_MODES } from "@/features/analyst";
 import { fetchSpecs, getSpecsState } from "@/features/goal-specs";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
@@ -94,16 +94,11 @@ export function IntelligencePage() {
   const onPaceCount = summary.onPace;
 
   return (
-    <main className="relative z-[2] mx-auto max-w-[1040px] px-4 pb-16 pt-7 sm:px-10">
-      <div className="mb-5">
-        <Label>{crumb}</Label>
-        <h1 className="mt-3.5 text-[40px] font-extrabold leading-[1.05] tracking-[-0.03em] text-fg">
-          One thing at a time.
-        </h1>
-      </div>
+    <PageContainer>
+      <PageHeader crumb={crumb} title="One thing at a time." />
       {/* Overview · Reviews log · Snapshots (· Shared with me) — the home
           tab's drill-downs. Self-hides on hubs without any. */}
-      <DrillDownNav className="mb-7" />
+      <DrillDownNav />
 
       {loadError ? (
         // A failed /goals, /goal-specs or /goal-inputs fetch settles once (no
@@ -161,11 +156,16 @@ export function IntelligencePage() {
                 ) : null
               }
             >
-              <FocusSection queue={queue} total={summary.total} />
-              <div className="mt-2.5">
-                <ActionQueue snapshotHref={snapshotHref} />
-              </div>
-              <ManagerNotesCard className="mt-2.5" />
+              <FocusSection
+                queue={queue}
+                total={summary.total}
+                aside={
+                  <>
+                    <ActionQueue snapshotHref={snapshotHref} />
+                    <ManagerNotesCard />
+                  </>
+                }
+              />
             </Section>
           </div>
 
@@ -186,7 +186,7 @@ export function IntelligencePage() {
           </div>
         </Reveal>
       )}
-    </main>
+    </PageContainer>
   );
 }
 

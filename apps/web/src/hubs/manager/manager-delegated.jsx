@@ -20,7 +20,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { Avatar, Badge, Button, Card, SegmentedControl, PageHeader } from "@/components/ui";
+import { Avatar, Badge, Button, Card, SegmentedControl, PageHeader, PageContainer } from "@/components/ui";
 import { TIER_LABELS } from "@/features/goal-tiers";
 import { useDelegatedQueue } from "./use-delegated-queue";
 import { ManagerGradeDrawer } from "./manager-grade-drawer";
@@ -53,7 +53,7 @@ export function ManagerDelegated() {
   }, [items, filter]);
 
   return (
-    <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-7 sm:px-10">
+    <PageContainer>
       <PageHeader
         crumb="Delegated to you · your judgement required"
         title="Goals only you can score."
@@ -72,7 +72,7 @@ export function ManagerDelegated() {
         }
       />
 
-      <div className="grid max-w-[900px] gap-3">
+      <div className="grid gap-3">
         {error ? (
           <EmptyCard>
             Couldn&apos;t load your delegated goals right now. Refresh, or check
@@ -211,6 +211,6 @@ export function ManagerDelegated() {
           refresh();
         }}
       />
-    </main>
+    </PageContainer>
   );
 }

@@ -76,7 +76,9 @@ export interface ResolveQueryContext {
 export interface ResolvedQuery {
   value: boolean | number | string | null;
   extract: QueryExtract;
-  fetchedAt: string;
+  /** Epoch ms of the upstream read — the client's "as of" label and the
+   *  saved `record.auto.fetchedAt` both speak numbers. */
+  fetchedAt: number;
   describe: string;
   provider: QueryProvider;
 }
@@ -559,6 +561,77 @@ function applyExtract(
   }
 }
 
+// ─── rate limits ─────────────────────────────────────────────────────
+
+const RATE_LIMIT_DEFAULT_WAIT_MS = 60_000; // GitHub: "wait at least one minute"
+const RATE_LIMIT_MAX_WAIT_MS = 60 * 60_000;
+const SECONDARY_LIMIT_RE = /secondary rate limit|rate limit exceeded|abuse detection/i;
+
+function clampWait(ms: number): number {
+  if (!Number.isFinite(ms)) return RATE_LIMIT_DEFAULT_WAIT_MS;
+  return Math.min(Math.max(ms, 1_000), RATE_LIMIT_MAX_WAIT_MS);
+}
+
+/** Epoch-seconds OR delta-seconds reset header → ms from now. */
+function resetHeaderToMs(raw: string | null, now: number): number | null {
+  if (!raw) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  // Anything past ~2001 in epoch seconds is an absolute reset time;
+  // smaller numbers are a delta (IETF RateLimit-Reset semantics).
+  return n > 1_000_000_000 ? n * 1000 - now : n * 1000;
+}
+
+/**
+ * Upstream rate-limit detection for the query runner.
+ *
+ * - 429 is always a limit (GitHub primary/secondary, GitLab throttles).
+ * - 403 is a limit when the remaining counter is zero (`x-ratelimit-*`
+ *   for GitHub, un-prefixed `RateLimit-*` for GitLab), when a
+ *   Retry-After is present, or when the body names GitHub's secondary
+ *   limit. Every other 403 is a genuine auth rejection.
+ *
+ * The body is peeked from a clone and never surfaced to the caller.
+ * Exported for tests.
+ */
+export async function detectUpstreamRateLimit(
+  response: Response,
+  now: number = Date.now(),
+): Promise<{ retryAfterMs: number } | null> {
+  const status = response.status;
+  if (status !== 429 && status !== 403) return null;
+  const h = response.headers;
+  const retryAfter = h.get("retry-after");
+  const remaining = h.get("x-ratelimit-remaining") ?? h.get("ratelimit-remaining");
+  let limited = status === 429 || remaining === "0" || Boolean(retryAfter);
+  if (!limited) {
+    try {
+      const text = await response.clone().text();
+      limited = SECONDARY_LIMIT_RE.test(text.slice(0, 4_000));
+    } catch {
+      limited = false;
+    }
+  }
+  if (!limited) return null;
+
+  let waitMs: number | null = null;
+  if (retryAfter) {
+    const secs = Number(retryAfter);
+    if (Number.isFinite(secs)) waitMs = secs * 1000;
+    else {
+      const when = Date.parse(retryAfter);
+      if (Number.isFinite(when)) waitMs = when - now;
+    }
+  }
+  if (waitMs === null && remaining === "0") {
+    waitMs = resetHeaderToMs(
+      h.get("x-ratelimit-reset") ?? h.get("ratelimit-reset"),
+      now,
+    );
+  }
+  return { retryAfterMs: clampWait(waitMs ?? RATE_LIMIT_DEFAULT_WAIT_MS) };
+}
+
 // ─── execution ───────────────────────────────────────────────────────
 
 const FETCH_TIMEOUT_MS = 20_000;
@@ -736,7 +809,7 @@ export async function resolveQuery(
     // produce shapes the aggregates don't know); N>1 folds per-extract.
     value: fanout === 1 ? values[0]! : aggregateValues(extract, values),
     extract,
-    fetchedAt: new Date().toISOString(),
+    fetchedAt: Date.now(),
     describe,
     provider,
   };
@@ -853,6 +926,24 @@ async function executeOne(
   }
 
   const status = response.status;
+
+  // A rate limit is transient infrastructure, not a broken connection:
+  // no "reconnect" copy, no markError (Settings would say "Needs
+  // attention"), and the upstream's wait travels back as Retry-After.
+  // Checked before the 401/403 branch because GitHub answers its
+  // secondary limit with a 403.
+  const limited = await detectUpstreamRateLimit(response);
+  if (limited) {
+    logOutcome(template.id, provider, startedAt, "rate_limited", fanout);
+    const label = provider === "github" ? "GitHub" : "GitLab";
+    throw new HttpError(
+      429,
+      "rate_limited",
+      `${label} is rate-limiting requests right now. This field will fill itself once the limit resets.`,
+      { provider, upstream: true },
+      limited.retryAfterMs,
+    );
+  }
 
   if (status === 401 || status === 403) {
     logOutcome(template.id, provider, startedAt, "auth_failed", fanout);

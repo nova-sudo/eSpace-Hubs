@@ -1,219 +1,48 @@
 "use client";
 
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
+import { useCallback, useMemo } from "react";
 import { useCombinedMergedSince } from "./use-combined";
 import { githubApi } from "../api-clients/github";
 import { gitlabApi } from "../api-clients/gitlab";
 import { parseGitlabLocator } from "../api-clients/gitlab-normalize";
 import { computePrReviewTiming } from "../metrics/review-timing";
+import { createPool } from "./per-item-cache";
 
 /**
- * For every merged PR/MR in the window, fetch its conversation + review
- * comments and compute review-timing stats (TTFR, ATTNR, idle).
+ * Review timings (TTFR, ATTNR, idle) for merged PRs/MRs — loaded PER PR,
+ * lazily.
  *
- * Provider-agnostic: each item in the combined merged list is routed to
- * its own provider's details fetch — `githubApi.pullDetails` for GitHub
- * PRs, `gitlabApi.mrDetails` for GitLab MRs — both of which return the
- * SAME normalized `{ createdAt, author, comments:[{user,createdAt,…}] }`
- * shape, so `computePrReviewTiming` consumes them identically. A GitLab-
- * only user now gets the same review-timing section a GitHub user does.
+ * The Reviews log used to fetch every merged PR's conversation + review
+ * comments up front (GitHub: 3 calls per PR, GitLab: 2) before painting a
+ * single row — ~600 GitHub requests for the 12-month preset. Now:
  *
- * Network discipline:
- *   - One SWR cache entry keyed by the sorted item ids in the window.
- *     Same window across tiles → one fetch.
- *   - Bounded concurrency (`CONCURRENCY`) so a 30+ MR/PR window doesn't
- *     hammer a provider's secondary rate limit (and proxyFetch's
- *     rate-limit wait/resume backs that up).
- *   - Per-item errors are isolated: a failing item yields a null timing
- *     and the rest still come back; the aggregate ignores nulls.
+ *   - `useReviewablePrs(since)` returns the merged list as lightweight rows
+ *     straight away (no per-PR calls);
+ *   - `usePrReviewTiming(row)` loads ONE PR's details. The page mounts it
+ *     only for the rows it shows (a capped page plus "Load more") and for
+ *     the selected PR, so the fan-out is bounded by what's on screen.
+ *
+ * Each PR is its own SWR entry (`github:pr-details:<owner>/<repo>#<n>`,
+ * `gitlab:mr-details:<project>!<iid>`). A MERGED PR's thread is effectively
+ * immutable, so the entry is long-lived: no revalidation on remount, a 24h
+ * dedupe, and — when the app's SWR cache is persisted — it survives reloads
+ * (this replaces the old single-slot localStorage day cache, which one
+ * preset switch overwrote). All detail fetches share one module-level pool
+ * of CONCURRENCY so a page of rows mounting together can't trip GitHub's
+ * secondary limits.
  */
 
 const CONCURRENCY = 4;
+const pool = createPool(CONCURRENCY);
 
-// Once-a-day persistent cache. The per-PR/MR detail fetches are the
-// expensive part (one round-trip per item); merged items never change,
-// so we cache the computed timings keyed by (day, item-set) and only
-// refetch when the calendar day rolls over or the item set changes.
-const CACHE_KEY = "espace-devhub:review-timing-cache";
-// Cap the persisted payload so a heavy author's full comment set can't
-// blow the ~5MB localStorage budget — over the cap we just skip
-// persisting (SWR's in-memory cache still serves the session; the next
-// day refetches).
-const MAX_CACHE_BYTES = 2_000_000;
-
-function todayStamp() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function readTimingCache(day, idsKey) {
-  if (typeof window === "undefined") return undefined;
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return undefined;
-    const parsed = JSON.parse(raw);
-    if (
-      parsed?.day === day &&
-      parsed?.idsKey === idsKey &&
-      Array.isArray(parsed.data)
-    ) {
-      return parsed.data;
-    }
-  } catch {
-    /* corrupt / unavailable — treat as a miss */
-  }
-  return undefined;
-}
-
-function writeTimingCache(day, idsKey, data) {
-  if (typeof window === "undefined") return;
-  try {
-    const payload = JSON.stringify({ day, idsKey, data });
-    if (payload.length > MAX_CACHE_BYTES) return;
-    localStorage.setItem(CACHE_KEY, payload);
-  } catch {
-    /* quota / disabled — fine, the section just refetches next load */
-  }
-}
-
-export function usePrReviewTimings(since) {
-  const { data: prs, isLoading: listLoading, error: listError } =
-    useCombinedMergedSince(since);
-
-  const list = prs || [];
-  // Stable key — sorted ids across BOTH providers — so SWR re-fetches
-  // only when the window or the item set actually changes.
-  const idsKey = list
-    .map((p) => p.id)
-    .filter(Boolean)
-    .sort()
-    .join(",");
-  // Day-stamped key + a localStorage fallback give the section a cache
-  // that revalidates at most ONCE per day: same day + same item set →
-  // served from cache (even across reloads); a new day (or a changed
-  // item set) busts the key and refetches once.
-  const day = todayStamp();
-  const swrKey = idsKey ? `pr-review-timings:${day}:${idsKey}` : null;
-  const cached = swrKey ? readTimingCache(day, idsKey) : undefined;
-
-  const swr = useSWR(
-    swrKey,
-    async () => {
-      // Build a per-item task carrying a provider-specific details
-      // fetcher. Items we can't locate (no parseable locator) are
-      // dropped rather than failing the batch.
-      const tasks = list
-        .map((pr) => {
-          if (pr?.source === "gitlab") {
-            const loc = parseGitlabLocator(pr);
-            if (!loc) return null;
-            return {
-              pr,
-              source: "gitlab",
-              owner: null,
-              repo: null,
-              number: pr.number ?? loc.iid,
-              fetchDetails: () => gitlabApi.mrDetails(loc.projectId, loc.iid),
-            };
-          }
-          // Default to GitHub (source "github" or legacy untagged).
-          const loc = parseGithubLocator(pr);
-          if (!loc) return null;
-          return {
-            pr,
-            source: "github",
-            owner: loc.owner,
-            repo: loc.repo,
-            number: pr.number ?? loc.number,
-            fetchDetails: () =>
-              githubApi.pullDetails(loc.owner, loc.repo, loc.number),
-          };
-        })
-        .filter(Boolean);
-
-      const out = [];
-      let cursor = 0;
-      const workers = Array.from(
-        { length: Math.min(CONCURRENCY, tasks.length) },
-        async () => {
-          while (true) {
-            const i = cursor++;
-            if (i >= tasks.length) return;
-            const t = tasks[i];
-            try {
-              const details = await t.fetchDetails();
-              const timing = computePrReviewTiming(
-                {
-                  createdAt: details.createdAt || t.pr.created_at,
-                  author: details.author,
-                },
-                details.comments || [],
-              );
-              out.push({
-                pr: {
-                  id: t.pr.id,
-                  number: t.number,
-                  title: t.pr.title || details.title || "",
-                  htmlUrl: t.pr.web_url || details.htmlUrl || null,
-                  owner: t.owner,
-                  repo: t.repo,
-                  createdAt: details.createdAt || t.pr.created_at,
-                  mergedAt: details.mergedAt || t.pr.merged_at,
-                  author: details.author,
-                  source: t.source,
-                },
-                details,
-                timing,
-              });
-            } catch {
-              out.push({
-                pr: {
-                  id: t.pr.id,
-                  number: t.number,
-                  title: t.pr.title || "",
-                  htmlUrl: t.pr.web_url || null,
-                  owner: t.owner,
-                  repo: t.repo,
-                  createdAt: t.pr.created_at,
-                  mergedAt: t.pr.merged_at,
-                  author: null,
-                  source: t.source,
-                },
-                details: null,
-                timing: null,
-              });
-            }
-          }
-        },
-      );
-      await Promise.all(workers);
-      // Keep newest-merged first — matches the rest of the dashboard.
-      out.sort((a, b) => {
-        const am = a.pr.mergedAt ? Date.parse(a.pr.mergedAt) : 0;
-        const bm = b.pr.mergedAt ? Date.parse(b.pr.mergedAt) : 0;
-        return bm - am;
-      });
-      writeTimingCache(day, idsKey, out);
-      return out;
-    },
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-      // Don't refetch while we have data (in-memory or the day-stamped
-      // localStorage fallback) — the day-stamped key is what forces the
-      // once-daily refresh.
-      revalidateIfStale: false,
-      shouldRetryOnError: false,
-      dedupingInterval: 24 * 60 * 60_000,
-      ...(cached ? { fallbackData: cached } : {}),
-    },
-  );
-
-  return {
-    data: swr.data,
-    isLoading: listLoading || (!!swrKey && !swr.data && !swr.error),
-    error: listError || swr.error || null,
-  };
-}
+const LONG_LIVED = {
+  revalidateOnFocus: false,
+  revalidateOnReconnect: false,
+  revalidateIfStale: false,
+  shouldRetryOnError: false,
+  dedupingInterval: 24 * 60 * 60_000,
+};
 
 /**
  * Parse `{owner, repo, number}` out of a GitHub merged-PR record.
@@ -227,4 +56,135 @@ export function parseGithubLocator(pr) {
   const m = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(url);
   if (!m) return null;
   return { owner: m[1], repo: m[2], number: Number(m[3]) };
+}
+
+/**
+ * A lightweight review-log row for one merged PR/MR — everything the list
+ * needs without a details fetch. `detailsKey` is null when the record can't
+ * be located (no parseable URL / project id); such a row renders without
+ * timings rather than failing the page.
+ */
+export function reviewRowFromMr(mr) {
+  if (!mr) return null;
+  if (mr.source === "gitlab") {
+    const loc = parseGitlabLocator(mr);
+    const slug = typeof mr.web_url === "string"
+      ? (/^https?:\/\/[^/]+\/(.+?)\/-\/merge_requests\//.exec(mr.web_url)?.[1] ?? null)
+      : null;
+    return {
+      id: mr.id,
+      number: mr.number ?? mr.iid ?? loc?.iid ?? null,
+      title: mr.title || "",
+      htmlUrl: mr.web_url || null,
+      owner: null,
+      repo: slug,
+      createdAt: mr.created_at || null,
+      mergedAt: mr.merged_at || null,
+      author: mr.author?.username || null,
+      source: "gitlab",
+      detailsKey: loc ? `gitlab:mr-details:${loc.projectId}!${loc.iid}` : null,
+      locator: loc,
+    };
+  }
+  const loc = parseGithubLocator(mr);
+  return {
+    id: mr.id,
+    number: mr.number ?? loc?.number ?? null,
+    title: mr.title || "",
+    htmlUrl: mr.web_url || null,
+    owner: loc?.owner ?? null,
+    repo: loc?.repo ?? null,
+    createdAt: mr.created_at || null,
+    mergedAt: mr.merged_at || null,
+    author: null,
+    source: "github",
+    detailsKey: loc ? `github:pr-details:${loc.owner}/${loc.repo}#${loc.number}` : null,
+    locator: loc,
+  };
+}
+
+/** Newest merge first — the order the review log pages through. */
+export function sortRowsNewestFirst(rows) {
+  return [...rows].sort((a, b) => {
+    const am = a.mergedAt ? Date.parse(a.mergedAt) : 0;
+    const bm = b.mergedAt ? Date.parse(b.mergedAt) : 0;
+    return bm - am;
+  });
+}
+
+/**
+ * Merged PRs/MRs since `since`, as review-log rows. No per-PR requests —
+ * pair with `usePrReviewTiming` for the rows actually on screen.
+ */
+export function useReviewablePrs(since) {
+  const { data, isLoading, error } = useCombinedMergedSince(since);
+  const rows = useMemo(
+    () => (Array.isArray(data) ? sortRowsNewestFirst(data.map(reviewRowFromMr).filter(Boolean)) : undefined),
+    [data],
+  );
+  return { data: rows, isLoading: Boolean(isLoading) && !rows, error: error || null };
+}
+
+async function fetchRowDetails(row) {
+  if (row.source === "gitlab") {
+    return gitlabApi.mrDetails(row.locator.projectId, row.locator.iid);
+  }
+  return githubApi.pullDetails(row.locator.owner, row.locator.repo, row.locator.number);
+}
+
+/**
+ * One PR's details + computed review timing. Pass `enabled: false` (or a
+ * null row) to skip. Returns `{ item, isLoading, error, retry }` where
+ * `item` is `{ pr, details, timing }` — the shape the review log renders —
+ * or null until the details resolve.
+ */
+export function usePrReviewTiming(row, { enabled = true } = {}) {
+  const key = enabled && row?.detailsKey ? row.detailsKey : null;
+  const swr = useSWR(key, () => pool(() => fetchRowDetails(row)), LONG_LIVED);
+  const { mutate } = swr;
+  const item = useMemo(() => {
+    if (!row) return null;
+    const details = swr.data || null;
+    if (!details) return null;
+    const timing = computePrReviewTiming(
+      { createdAt: details.createdAt || row.createdAt, author: details.author },
+      details.comments || [],
+    );
+    return {
+      pr: {
+        ...row,
+        title: row.title || details.title || "",
+        htmlUrl: row.htmlUrl || details.htmlUrl || null,
+        createdAt: details.createdAt || row.createdAt,
+        mergedAt: details.mergedAt || row.mergedAt,
+        author: details.author || row.author,
+      },
+      details,
+      timing,
+    };
+  }, [row, swr.data]);
+  const retry = useCallback(() => mutate(), [mutate]);
+  return {
+    item,
+    isLoading: Boolean(key) && !swr.data && !swr.error,
+    error: swr.error || null,
+    retry,
+  };
+}
+
+/**
+ * Revalidate the merged-list keys behind the review log (the list-level
+ * "Retry"). Only mounted keys refetch; per-PR details are left alone.
+ */
+export function useRetryReviewList() {
+  const { mutate } = useSWRConfig();
+  return useCallback(
+    () =>
+      mutate(
+        (key) =>
+          typeof key === "string" &&
+          (key.startsWith("github:merged:") || key.startsWith("gitlab:merged:")),
+      ),
+    [mutate],
+  );
 }

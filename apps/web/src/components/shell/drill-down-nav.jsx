@@ -71,7 +71,9 @@ export function DrillDownNav({ className }) {
     // can scroll fully into view.
     <nav
       aria-label="Intelligence sections"
-      className={cn("-mx-4 max-w-[100vw] overflow-x-auto px-4 sm:mx-0 sm:px-0", className)}
+      // Placement is fixed here, not per page: tucked directly under the
+      // PageHeader (-mt-2 against its mb-7), the same on every page.
+      className={cn("-mx-4 -mt-2 mb-7 max-w-[100vw] overflow-x-auto px-4 sm:mx-0 sm:px-0", className)}
     >
       <ul className="inline-flex items-center gap-1 rounded-[var(--radius-pill)] bg-card p-1">
         {items.map((it) => (

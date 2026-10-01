@@ -20,6 +20,15 @@ export {
 } from "./integrations-store";
 export { useIntegrations } from "./use-integrations";
 export { refreshIntegrationData } from "./refresh";
+export {
+  ProviderCacheConfig,
+  useProviderFreshness,
+  useProviderActivity,
+  useLiveStatus,
+  deriveLiveStatus,
+  providersLabel,
+  STALE_AFTER_MS,
+} from "./cache";
 export * from "./api-clients";
 export * from "./hooks";
 export * from "./metrics";

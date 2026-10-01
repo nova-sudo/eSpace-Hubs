@@ -361,6 +361,133 @@ export async function listEvidenceFilesHandler(
   }
 }
 
+// ─── GET /api/v1/goal-evidence/manifests?goalIds=a&goalIds=b ─────────
+
+/** Most goal ids one manifests request may name. */
+export const MAX_MANIFEST_GOALS = 50;
+
+/**
+ * Parse `goalIds` (repeated params and/or comma-separated) for the batch
+ * manifest read. OWN goals only: a `userId` parameter is refused outright
+ * rather than honoured — the manager's cross-user read stays on the
+ * single-goal route, where the report→manager link is checked per request.
+ */
+export function parseManifestGoalIds(query: Request["query"]): string[] {
+  if (query.userId !== undefined) {
+    throw new HttpError(
+      400,
+      "validation_error",
+      "The manifests batch reads your own goals only; use /goal-evidence/:goalId?userId= for a report's.",
+    );
+  }
+  const raw = query.goalIds;
+  const parts: string[] = [];
+  const push = (v: unknown) => {
+    if (typeof v !== "string") return;
+    for (const piece of v.split(",")) {
+      const t = piece.trim();
+      if (t) parts.push(t);
+    }
+  };
+  if (Array.isArray(raw)) raw.forEach(push);
+  else push(raw);
+  const unique = [...new Set(parts)];
+  if (unique.length === 0) {
+    throw new HttpError(400, "validation_error", "goalIds is required.");
+  }
+  if (unique.length > MAX_MANIFEST_GOALS) {
+    throw new HttpError(
+      400,
+      "validation_error",
+      `At most ${MAX_MANIFEST_GOALS} goal ids per request.`,
+    );
+  }
+  for (const id of unique) {
+    if (!goalIdSchema.safeParse(id).success) {
+      throw new HttpError(400, "validation_error", "Invalid goal id.");
+    }
+  }
+  return unique;
+}
+
+/**
+ * The Mongo filter for a manifests read — ALWAYS the session's own org and
+ * user, whatever the request says. Exported so the authorization shape is
+ * pinned by a test.
+ */
+export function manifestsFilter(
+  session: { orgId: ObjectId; userId: ObjectId },
+  goalIds: string[],
+): Record<string, unknown> {
+  return {
+    "metadata.orgId": session.orgId,
+    "metadata.userId": session.userId,
+    "metadata.goalId": { $in: goalIds },
+  };
+}
+
+type ManifestRow = {
+  _id: ObjectId;
+  filename?: string;
+  length?: number;
+  uploadDate?: Date;
+  metadata?: Record<string, unknown>;
+};
+
+/**
+ * Group rows (newest first) into `{ goalId: files[] }` with every requested
+ * goal present (an empty list means "asked, nothing attached") and each
+ * capped at MAX_FILES_PER_GOAL — the single-goal route's cap.
+ */
+export function groupManifestRows(
+  rows: ManifestRow[],
+  goalIds: string[],
+): Record<string, PublicEvidenceFile[]> {
+  const out: Record<string, PublicEvidenceFile[]> = {};
+  for (const id of goalIds) out[id] = [];
+  for (const r of rows) {
+    const goalId = r.metadata?.goalId;
+    if (typeof goalId !== "string" || !out[goalId]) continue;
+    if (out[goalId].length >= MAX_FILES_PER_GOAL) continue;
+    out[goalId].push({
+      id: r._id.toHexString(),
+      name: (r.metadata?.originalName as string) || (r.filename as string),
+      contentType: (r.metadata?.contentType as string) || "application/octet-stream",
+      size: r.length as number,
+      periodKey: (r.metadata?.periodKey as string | null) ?? null,
+      uploadedAt: (r.uploadDate as Date).toISOString(),
+    });
+  }
+  return out;
+}
+
+/**
+ * Manifests for many of the caller's OWN goals in one round-trip. The
+ * Goals timeline and the Evidence board show a tier badge per goal, and
+ * each badge's grader reads its goal's manifest — 13 goals used to be 13
+ * GETs on every load.
+ */
+export async function listEvidenceManifestsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = requireSession(req);
+    const goalIds = parseManifestGoalIds(req.query);
+    const db = await getDb();
+    const rows = (await db
+      .collection(`${BUCKET_NAME}.files`)
+      .find(manifestsFilter(session, goalIds))
+      .sort({ uploadDate: -1 })
+      .limit(MAX_FILES_PER_GOAL * goalIds.length)
+      .toArray()) as unknown as ManifestRow[];
+    res.json({ manifests: groupManifestRows(rows, goalIds) });
+  } catch (err) {
+    next(err);
+  }
+}
+
 /**
  * Whose evidence is being asked for. Absent `userId`, the caller's own. With
  * one, the caller must be that user's manager — checked against the users

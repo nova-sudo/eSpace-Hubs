@@ -25,7 +25,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Download } from "lucide-react";
-import { Button, PageHeader, SegmentedControl } from "@/components/ui";
+import { Button, PageHeader, SegmentedControl, PageContainer } from "@/components/ui";
 import { useHubLink } from "@/features/hubs";
 import { useReportHealth } from "./use-report-health";
 import { useManagerView } from "./use-manager-view";
@@ -52,34 +52,26 @@ export function ManagerEmployeeBoard({ userId }) {
   const { packets } = useReviewPackets(userId);
   const latestPacket = packets.find((p) => p.markdown) ?? null;
 
+  // "Back to team" rides in the header's action slot — the same place every
+  // other drill-in page (shared goal detail) puts its way back.
   const back = (
-    <Link
-      href={link("/employees")}
-      className="mb-5 inline-flex items-center gap-1.5 text-[12.5px] font-bold text-fg"
-    >
-      <ArrowLeft size={14} /> Back to team
-    </Link>
+    <Button as={Link} href={link("/employees")} variant="ghost" size="sm">
+      <ArrowLeft size={14} /> Team
+    </Button>
   );
 
-  if (loading) {
+  if (loading || error || !data) {
     return (
-      <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-7 sm:px-10">
-        {back}
-        <EmptyCard>Loading the board…</EmptyCard>
-      </main>
-    );
-  }
-
-  if (error || !data) {
-    return (
-      <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-7 sm:px-10">
-        {back}
+      <PageContainer>
+        <PageHeader crumb="Reports to you" title="Report board." right={back} />
         <EmptyCard>
-          {error?.code === "not_found"
-            ? "That teammate isn't on your team."
-            : "Couldn't load this board right now. Refresh, or check back in a moment."}
+          {loading
+            ? "Loading the board…"
+            : error?.code === "not_found"
+              ? "That teammate isn't on your team."
+              : "Couldn't load this board right now. Refresh, or check back in a moment."}
         </EmptyCard>
-      </main>
+      </PageContainer>
     );
   }
 
@@ -89,9 +81,7 @@ export function ManagerEmployeeBoard({ userId }) {
     .filter((g) => g.tier?.source !== "manager");
 
   return (
-    <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-7 sm:px-10">
-      {back}
-
+    <PageContainer>
       <PageHeader
         crumb={
           [user.role, user.department, user.level].filter(Boolean).join(" · ") ||
@@ -107,6 +97,7 @@ export function ManagerEmployeeBoard({ userId }) {
         }
         right={
           <div className="flex flex-wrap items-center gap-2.5">
+            {back}
             <SegmentedControl ariaLabel="Report view"
               options={VIEW_OPTIONS}
               value={view}
@@ -172,6 +163,6 @@ export function ManagerEmployeeBoard({ userId }) {
           refresh();
         }}
       />
-    </main>
+    </PageContainer>
   );
 }

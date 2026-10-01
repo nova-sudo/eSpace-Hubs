@@ -22,6 +22,8 @@ import { Badge, BentoTile, Label } from "@/components/ui";
 import { useHubLink, useQaHubConfig } from "@/features/hubs";
 import { useIntegrations } from "@/features/integrations";
 import { useJiraDefectsForProject } from "@/features/integrations/hooks";
+import { FreshnessNote, ValueSkeleton } from "@/components/ui";
+import { useQaLive } from "./use-qa-live";
 
 const WINDOW_DAYS = 14;
 
@@ -81,17 +83,16 @@ function NotConnectedBody() {
 }
 
 function Body({ projectKey }) {
-  const { data, isLoading, error } = useJiraDefectsForProject(
-    projectKey,
-    WINDOW_DAYS,
-  );
+  const swr = useJiraDefectsForProject(projectKey, WINDOW_DAYS);
+  const { data, isLoading, error } = swr;
+  const live = useQaLive("jira", swr);
   const buckets = useMemo(() => bucketByPriority(data?.issues ?? []), [data]);
   const total = buckets.reduce((s, b) => s + b.count, 0);
 
-  if (error) {
+  if (error && data === undefined) {
     return <Body0 head="!" sub="Couldn't load defects." />;
   }
-  if (isLoading) return <Body0 head="…" sub="Loading priority mix…" />;
+  if (isLoading) return <Body0 head={<ValueSkeleton className="w-[1.5ch]" />} sub="Loading priority mix…" />;
   if (total === 0) {
     return <Body0 head="—" sub="No bugs in the window — no mix to show." muted />;
   }
@@ -103,6 +104,7 @@ function Body({ projectKey }) {
     <div className="flex h-full flex-col justify-between">
       <div>
         <Headline value={total} />
+        <FreshnessNote status={live} showQuiet={false} className="mt-1" />
         <div className="mt-2">
           <Label>defects by priority</Label>
         </div>

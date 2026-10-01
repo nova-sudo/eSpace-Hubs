@@ -20,12 +20,18 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { RefreshCw } from "lucide-react";
-import { Badge } from "@/components/ui";
-import { refreshIntegrationData } from "@/features/integrations";
-import { fmtRelative } from "@/lib/fmt";
+import { Badge, absoluteTime, clockTime, relativeAgo } from "@/components/ui";
+import { refreshIntegrationData, useProviderActivity } from "@/features/integrations";
+import { providersForSource } from "./use-source-live-status";
 
-export function ProvenanceChip({ provenance }) {
+/**
+ * Same words as <LiveValue> for the same situation: "updating…" while a
+ * refresh runs, "rate limited until 11:05" / "last refresh failed" when the
+ * number on screen is last-known, "updated 5 min ago" otherwise.
+ */
+export function ProvenanceChip({ provenance, source }) {
   const [busy, setBusy] = useState(false);
+  const activity = useProviderActivity(providersForSource(source));
   if (!provenance) return null;
 
   const { sample, unit, window, fetchedAt, truncated, note, error } = provenance;
@@ -43,20 +49,29 @@ export function ProvenanceChip({ provenance }) {
     }
   }
 
+  const limitedUntil = provenance.error && activity.rateLimitedUntil ? activity.rateLimitedUntil : null;
   const parts = [];
-  if (error) {
-    parts.push("data error");
-  } else if (sample == null) {
-    parts.push("fetching…");
+  if (sample == null) {
+    parts.push(error ? (limitedUntil ? "rate limited" : "no data") : "loading");
   } else {
     parts.push(`n=${sample}${unit ? ` ${unit}` : ""}${truncated ? " (partial)" : ""}`);
   }
   if (window) parts.push(window);
-  if (fetchedAt) parts.push(`${fmtRelative(new Date(fetchedAt).toISOString())} ago`);
+  if (activity.isRefreshing && sample != null) parts.push("updating…");
+  else if (limitedUntil) parts.push(`rate limited until ${clockTime(limitedUntil)}`);
+  else if (error) parts.push("last refresh failed");
+  else if (fetchedAt) parts.push(`updated ${relativeAgo(fetchedAt)}`);
 
-  const tooltip = error
-    ? "The upstream fetch failed — this tile may be stale or empty. Click to retry."
-    : [note, "Click to refetch all integration data."].filter(Boolean).join(" ");
+  const tooltip = [
+    fetchedAt ? `Fetched ${absoluteTime(fetchedAt)}.` : null,
+    error
+      ? "The last refresh failed — the number shown is the last one fetched. Click to retry."
+      : null,
+    note,
+    error ? null : "Click to refetch all integration data.",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <button
@@ -68,7 +83,7 @@ export function ProvenanceChip({ provenance }) {
     >
       <Badge tone={error || truncated ? "lemon" : "sky"} className="max-w-full">
         <span className="truncate">{parts.join(" · ")}</span>
-        <RefreshCw size={11} className={busy ? "animate-spin" : undefined} />
+        <RefreshCw size={11} className={busy ? "motion-safe:animate-spin" : undefined} />
       </Badge>
     </button>
   );

@@ -44,6 +44,13 @@
  * `progress` for "synthesising week 8 of 17" and `run()` is the
  * trigger button. The hook itself doesn't auto-run — the banner
  * component decides whether to surface it.
+ *
+ * Request discipline: counting `missingWeeks` needs only the snapshot
+ * history, so the hook fetches NO provider data until `run()` is called.
+ * The run then arms the year-long feeds (a slice of the shared canonical
+ * merged-PR fetch) and waits for them — `preparing` is true meanwhile.
+ * Before, the banner pulled 365 days of PRs + 90 days of events on every
+ * dev page load even when no week was missing.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -53,12 +60,9 @@ import { useSnapshots } from "./use-snapshots";
 import { synthesiseWeek } from "./synthesise-week";
 import { useGoals } from "@/features/goals";
 import { useGoalSpecs } from "@/features/goal-specs";
-import {
-  useCombinedEventsSince,
-  useCombinedMergedSince,
-  useJiraTickets,
-} from "@/features/integrations";
 import { readInputs, useAllGoalInputs } from "@/features/goal-inputs";
+import { useDeferredFeeds } from "./use-deferred-feeds";
+import { backfillFeedsNeeded, specsNeedJiraTickets } from "./snapshot-gates";
 import { isoDaysAgo, weekKey } from "@/lib/date";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -79,9 +83,13 @@ const EVENTS_HORIZON_DAYS = 90;
 export function useBackfill() {
   const { allGoals: goals } = useGoals(); // incl. shared goals
   const { specs } = useGoalSpecs();
-  const { data: mrs } = useCombinedMergedSince(isoDaysAgo(365));
-  const { data: events } = useCombinedEventsSince(isoDaysAgo(EVENTS_HORIZON_DAYS));
-  const { data: jira } = useJiraTickets();
+  const [requested, setRequested] = useState(false);
+  const { waitForFeeds } = useDeferredFeeds({
+    armed: backfillFeedsNeeded({ requested }),
+    mergedSince: isoDaysAgo(365),
+    eventsSince: isoDaysAgo(EVENTS_HORIZON_DAYS),
+    needJira: specsNeedJiraTickets(specs),
+  });
   // Track the inputs store's tick so allInputs re-reads when that
   // (now API-direct) store hydrates after mount — a bare [] dep would
   // freeze allInputs to the pre-hydration empty map.
@@ -132,6 +140,18 @@ export function useBackfill() {
     if (typeof window === "undefined") return;
     cancelledRef.current = false;
     setIsRunning(true);
+    // Arm the provider feeds on demand and wait for them (instant when the
+    // shared canonical lists are already cached).
+    setRequested(true);
+    setProgress(null);
+    const { mrs, events, jira, settled, error } = await waitForFeeds();
+    if (cancelledRef.current) return;
+    // A failed PR feed would synthesise every week as "0 merged" — refuse.
+    if (!settled || (error && !mrs)) {
+      setIsRunning(false);
+      toast.error("Couldn't load your PR history for the backfill — try again in a moment.");
+      return;
+    }
 
     // Recompute EVERY completed week — not just the ones missing a
     // snapshot. Preserve each week's existing `capturedBy` so the write
@@ -169,7 +189,7 @@ export function useBackfill() {
         `Refreshed ${ranges.length} week${ranges.length === 1 ? "" : "s"} of history`,
       );
     }
-  }, [goals, specs, mrs, events, jira, allInputs, isRunning]);
+  }, [goals, specs, waitForFeeds, allInputs, isRunning]);
 
   useEffect(
     () => () => {
@@ -178,7 +198,10 @@ export function useBackfill() {
     [],
   );
 
-  return { run, isRunning, progress, missingWeeks, totalWeeks };
+  // Between "Backfill" and the first synthesised week the run is waiting on
+  // the provider feeds it just armed.
+  const preparing = isRunning && !progress;
+  return { run, isRunning, preparing, progress, missingWeeks, totalWeeks };
 }
 
 /* ─────────────── helpers ─────────────── */

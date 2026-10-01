@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo } from "react";
+import { useSWRConfig } from "swr";
 import { githubApi } from "../api-clients";
 import { mrRepo } from "../metrics/repo-filter";
 import { useSwrIf } from "./use-swr-if";
+import { createPool, readCachedItem, writeCachedItem } from "./per-item-cache";
 
 /**
  * Hydrate GitHub rows in a normalised merged-MR list with REAL comment
@@ -18,11 +20,13 @@ import { useSwrIf } from "./use-swr-if";
  * The fix needs one `GET /pulls/{n}` per PR (the detail response carries
  * both `comments` and `review_comments`), which is an N+1 we cap:
  *   - only the CAP most-recent GitHub rows by `merged_at` are hydrated
- *   - fetches run at most CONCURRENCY at a time
- *   - the whole batch is one SWR entry keyed on the target ids, so a
- *     re-render (or a sibling widget on the same spec) reuses it
+ *   - fetches share one module-level pool of CONCURRENCY
+ *   - each PR's count is its own long-lived cache entry
+ *     (`github:pull-count:<id>`): a merged PR's counts don't change, so two
+ *     widgets with different repo filters, or yesterday's list plus one new
+ *     merge, only fetch the PRs never counted before
  *   - a failed per-PR fetch keeps the search-derived count rather than
- *     failing the batch
+ *     failing the batch (and is retried on the next batch)
  * Rows beyond the cap, GitLab rows, and rows we can't locate (no repo
  * slug / number) pass through untouched — GitLab's `user_notes_count`
  * is already correct.
@@ -32,8 +36,16 @@ import { useSwrIf } from "./use-swr-if";
  */
 const CAP = 30;
 const CONCURRENCY = 4;
+const pool = createPool(CONCURRENCY);
+
+/** Per-PR cache key — shared by every consumer, whatever its repo filter. */
+export function pullCountKey(id) {
+  return `github:pull-count:${id}`;
+}
 
 export function useGithubReviewCounts(mrs) {
+  const swrConfig = useSWRConfig();
+  const { mutate } = swrConfig;
   const { targets, beyondCap } = useMemo(() => {
     if (!Array.isArray(mrs)) return { targets: [], beyondCap: 0 };
     const eligible = mrs
@@ -57,29 +69,39 @@ export function useGithubReviewCounts(mrs) {
           .join(",")}`
       : null;
 
-  const swr = useSwrIf(Boolean(key), key, async () => {
-    const counts = {};
-    let next = 0;
-    const worker = async () => {
-      while (next < targets.length) {
-        const m = targets[next++];
-        const slug = mrRepo(m);
-        const slash = slug.indexOf("/");
-        const owner = slug.slice(0, slash);
-        const repo = slug.slice(slash + 1);
-        try {
-          const c = await githubApi.pullCounts(owner, repo, m.number);
-          counts[m.id] = c.comments + c.reviewComments;
-        } catch {
-          // Keep the search-derived count for this row.
-        }
-      }
-    };
-    await Promise.all(
-      Array.from({ length: Math.min(CONCURRENCY, targets.length) }, worker),
-    );
-    return counts;
-  });
+  const swr = useSwrIf(
+    Boolean(key),
+    key,
+    async () => {
+      const counts = {};
+      await Promise.all(
+        targets.map(async (m) => {
+          const cached = readCachedItem(swrConfig, pullCountKey(m.id));
+          if (typeof cached === "number") {
+            counts[m.id] = cached;
+            return;
+          }
+          const slug = mrRepo(m);
+          const slash = slug.indexOf("/");
+          const owner = slug.slice(0, slash);
+          const repo = slug.slice(slash + 1);
+          try {
+            const c = await pool(() => githubApi.pullCounts(owner, repo, m.number));
+            counts[m.id] = c.comments + c.reviewComments;
+            writeCachedItem(mutate, pullCountKey(m.id), counts[m.id]);
+          } catch {
+            // Keep the search-derived count for this row; not cached, so
+            // the next batch asks again.
+          }
+        }),
+      );
+      return counts;
+    },
+    // The batch is assembled from immutable per-PR entries; re-running it
+    // on every remount would only re-read the cache. A new id set is a new
+    // key, and the refresh chip still revalidates explicitly.
+    { revalidateIfStale: false },
+  );
 
   const data = useMemo(() => {
     if (!Array.isArray(mrs)) return mrs;

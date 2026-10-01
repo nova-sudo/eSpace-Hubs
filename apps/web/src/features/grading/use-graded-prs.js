@@ -25,7 +25,12 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { useIntegrations, githubApi, gitlabApi } from "@/features/integrations";
+import {
+  useIntegrations,
+  githubApi,
+  gitlabApi,
+  useAuthoredPrsSince,
+} from "@/features/integrations";
 import { useGoalContext } from "@/features/goal-context";
 import { useSession } from "@/features/auth";
 import {
@@ -40,11 +45,50 @@ import {
 } from "./verdicts-store";
 import { normalizeRubric, rubricHash } from "./rubric-hash";
 import { firstReviewComments } from "./first-review-comments";
-import { fetchWithRateLimitRetry, isRateLimitStatus } from "@/lib/rate-limit";
+import { isRateLimitStatus, sleep } from "@/lib/rate-limit";
 import { getAiProvider } from "@/features/analyst";
+import { gradePrPauseMs, gradeProgressLabel, MAX_PAUSES_PER_PR } from "./grade-pause";
 
 /** Concurrency cap for grading calls — honour Mistral rate limits. */
 const GRADE_CONCURRENCY = 3;
+
+/** Stable empty list so `prs` keeps its identity while nothing is loaded. */
+const EMPTY = Object.freeze([]);
+
+/**
+ * POST one PR to /ai/grade-pr, pausing (not failing, not toasting) on a
+ * rate limit. A 429 from our own `gradePrLimiter` (15-min window) or the
+ * model provider sets the SHARED pause to the advertised reset and the PR
+ * is retried after it — up to MAX_PAUSES_PER_PR times, after which the
+ * last response is returned and the caller leaves the PR ungraded for a
+ * later run. Throws AbortError when the run is cancelled mid-wait.
+ */
+async function postGradeWithPause({ body, aiProvider, token, pause }) {
+  for (let attempt = 0; ; attempt += 1) {
+    await pause.wait();
+    if (token.aborted) throw new DOMException("Aborted", "AbortError");
+    const res = await fetch("/api/v1/ai/grade-pr", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        "x-ai-provider": aiProvider,
+      },
+      body,
+      signal: token.controller?.signal,
+    });
+    if (res.ok || !isRateLimitStatus(res.status, res.headers) || attempt >= MAX_PAUSES_PER_PR) {
+      return res;
+    }
+    let payload = null;
+    try {
+      payload = await res.clone().json();
+    } catch {
+      /* headers still drive the wait */
+    }
+    pause.set(Date.now() + gradePrPauseMs(res.headers, payload, attempt + 1));
+  }
+}
 
 /**
  * Resolve the rubric array from a goal's context answers.
@@ -167,75 +211,31 @@ export function useGradedPrs(spec, options = {}) {
     void fetchVerdicts();
   }, [user, sessionLoading, enabled]);
 
-  const [prs, setPrs] = useState([]);
-  const [listError, setListError] = useState(null);
-  const [isListLoading, setIsListLoading] = useState(false);
-  const [progress, setProgress] = useState({ done: 0, total: 0, running: false });
+  const [progress, setProgress] = useState({ done: 0, total: 0, running: false, pausedUntil: null });
   // `controller` lets us abort an in-flight rate-limit wait when the hook
   // unmounts or the rubric changes, instead of hanging on a backoff sleep.
   const cancelRef = useRef({ aborted: false, controller: null });
 
-  // Step 1 — load the PR list ONCE per (connected, year) combo.
-  // GitHub's search API is aggressively rate-limited (30 req/min/user), and
-  // a failed fetch must not trigger a retry loop — we'd burn the quota in
-  // seconds. The hook only refetches when github connection flips or the
-  // caller explicitly invokes `refreshList()`.
-  //
-  // Implementation: one useEffect keyed solely on `githubConnected` (a
-  // stable boolean). `refreshList` bumps a counter to re-run the effect
-  // without needing the effect's dep on a ref (which wouldn't trigger).
-  const [refreshTick, setRefreshTick] = useState(0);
-  useEffect(() => {
-    // Phase F: respect the `enabled` gate. Disabled hooks still run
-    // the effect (React rules) but don't fetch.
-    if (!anyConnected || !enabled) {
-      setPrs([]);
-      setListError(null);
-      setIsListLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setIsListLoading(true);
-    setListError(null);
-    const since = startOfYearIso();
-    // Fetch each connected provider's authored PR/MR list in parallel and
-    // union them, tagged with `source` so the grader routes each item to
-    // the right details fetch. allSettled so one provider's failure (e.g.
-    // an exhausted rate limit) still renders the other's items; the first
-    // rejection surfaces as listError for the retry affordance.
-    Promise.allSettled([
-      githubConnected
-        ? githubApi
-            .myPrsSince(since)
-            .then((items) => items.map(normalizeSearchItem).filter(Boolean))
-        : Promise.resolve([]),
-      gitlabConnected
-        ? gitlabApi
-            .myMrsSince(since)
-            .then((items) => items.map(normalizeGitlabItem).filter(Boolean))
-        : Promise.resolve([]),
-    ])
-      .then((results) => {
-        if (cancelled) return;
-        const merged = results
-          .filter((r) => r.status === "fulfilled")
-          .flatMap((r) => r.value);
-        setPrs(merged);
-        const firstErr = results.find((r) => r.status === "rejected")?.reason;
-        setListError(firstErr || null);
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setIsListLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [githubConnected, gitlabConnected, refreshTick, enabled]);
-
-  const refreshList = useCallback(() => {
-    setRefreshTick((n) => n + 1);
-  }, []);
+  // Step 1 — the authored PR/MR list since Jan 1, through ONE shared SWR key
+  // per provider (see integrations' `useAuthoredPrsSince`): every rubric
+  // widget, SCORECARD slot and modal on the page shares a single fetch. It
+  // used to be a raw useEffect per hook instance — two paginated GitHub
+  // searches (30/min budget) for every mounted instance. Each provider's
+  // list renders on its own, so one provider's failure (e.g. an exhausted
+  // rate limit) still shows the other's items; the first error surfaces
+  // as listError for the retry affordance. Disabled hooks fetch nothing.
+  const lists = useAuthoredPrsSince(startOfYearIso(), { enabled: anyConnected && enabled });
+  const githubItems = lists.github.data;
+  const gitlabItems = lists.gitlab.data;
+  const prs = useMemo(() => {
+    if (!anyConnected || !enabled) return EMPTY;
+    const gh = Array.isArray(githubItems) ? githubItems.map(normalizeSearchItem).filter(Boolean) : [];
+    const gl = Array.isArray(gitlabItems) ? gitlabItems.map(normalizeGitlabItem).filter(Boolean) : [];
+    return gh.length === 0 && gl.length === 0 ? EMPTY : [...gh, ...gl];
+  }, [githubItems, gitlabItems, anyConnected, enabled]);
+  const listError = anyConnected && enabled ? lists.error : null;
+  const isListLoading = anyConnected && enabled ? lists.isLoading : false;
+  const refreshList = lists.refresh;
 
   // Compute verdicts map from the store each render — cheap, keeps the hook
   // stateless w.r.t. verdicts. `gradingStoreSnap` is in the dep array so
@@ -268,7 +268,26 @@ export function useGradedPrs(spec, options = {}) {
     cancelRef.current = { aborted: false, controller: new AbortController() };
     const token = cancelRef.current;
 
-    setProgress({ done: 0, total: pending.length, running: true });
+    setProgress({ done: 0, total: pending.length, running: true, pausedUntil: null });
+
+    // One pause shared by every worker: the first 429 sets `until`, every
+    // worker waits for it, and progress shows it once.
+    const pause = {
+      until: 0,
+      set(untilMs) {
+        if (untilMs <= this.until) return;
+        this.until = untilMs;
+        if (!token.aborted) setProgress((p) => ({ ...p, pausedUntil: untilMs }));
+      },
+      async wait() {
+        while (!token.aborted && Date.now() < this.until) {
+          await sleep(Math.max(0, this.until - Date.now()), token.controller?.signal);
+        }
+        if (!token.aborted && this.until) {
+          setProgress((p) => (p.pausedUntil ? { ...p, pausedUntil: null } : p));
+        }
+      },
+    };
 
     let cursor = 0;
     let done = 0;
@@ -295,31 +314,26 @@ export function useGradedPrs(spec, options = {}) {
             const commentsForGrading = firstReviewOnly
               ? firstReviewComments(details.comments, pr.author)
               : details.comments;
-            // Rate-limited grade calls wait the upstream-indicated delay
-            // and retry transparently (see fetchWithRateLimitRetry). The
-            // signal lets a cancel/unmount abort the backoff wait.
-            const res = await fetchWithRateLimitRetry(
-              "/api/v1/ai/grade-pr",
-              {
-                method: "POST",
-                credentials: "include",
-                headers: {
-                  "Content-Type": "application/json",
-                  "x-ai-provider": aiProvider,
+            // Rate-limited grade calls PAUSE the whole run until the
+            // server's window reopens (see `postGradeWithPause`): one
+            // shared "paused until" progress state instead of a toast per
+            // worker per retry, and a wait that matches our own limiter's
+            // 15-minute window instead of six capped 2-minute retries.
+            const res = await postGradeWithPause({
+              body: JSON.stringify({
+                pr: {
+                  id: pr.id,
+                  title: details.title || pr.title,
+                  body: details.body,
+                  comments: commentsForGrading,
                 },
-                body: JSON.stringify({
-                  pr: {
-                    id: pr.id,
-                    title: details.title || pr.title,
-                    body: details.body,
-                    comments: commentsForGrading,
-                  },
-                  rubric,
-                  provider: aiProvider,
-                }),
-              },
-              { provider: "ai", signal: token.controller?.signal },
-            );
+                rubric,
+                provider: aiProvider,
+              }),
+              aiProvider,
+              token,
+              pause,
+            });
             if (token.aborted) return;
             const body = await res.json().catch(() => ({}));
             if (res.ok && body?.verdict) {
@@ -364,7 +378,7 @@ export function useGradedPrs(spec, options = {}) {
 
     await Promise.all(workers);
     if (!token.aborted) {
-      setProgress({ done: pending.length, total: pending.length, running: false });
+      setProgress({ done: pending.length, total: pending.length, running: false, pausedUntil: null });
     }
   }, [rubric, hash, firstReviewOnly]);
 
@@ -416,12 +430,19 @@ export function useGradedPrs(spec, options = {}) {
     };
   }, [prs, verdictsByPr]);
 
+  // One human-readable progress line ("Grading 12/40…" / "Paused by the
+  // rate limit · resumes 14:05 · 12/40") so widgets show a single state.
+  const progressWithLabel = useMemo(
+    () => ({ ...progress, label: gradeProgressLabel(progress) }),
+    [progress],
+  );
+
   return {
     prs,
     verdictsByPr,
     rubric,
     summary,
-    progress,
+    progress: progressWithLabel,
     isListLoading,
     // Whether the verdict cache has finished hydrating from the API for
     // this session. `summary.total` reads 0 until this flips true (no

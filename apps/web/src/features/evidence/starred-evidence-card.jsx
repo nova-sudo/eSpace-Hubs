@@ -24,8 +24,8 @@ import {
 
 export function StarredEvidenceCard() {
   const starred = useStarredEvidence();
-  const candidates = useEvidenceCandidates();
   const [picking, setPicking] = useState(false);
+  const candidates = useEvidenceCandidates({ enabled: picking });
   const { isConnected } = useIntegrations();
   const link = useHubLink();
   const hasCodeHost = isConnected("github") || isConnected("gitlab");

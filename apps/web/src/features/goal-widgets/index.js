@@ -25,6 +25,9 @@ export { WidgetShell, TargetChip } from "./widget-shell";
 export { WidgetErrorBoundary } from "./widget-error-boundary";
 export { registerWidget, resolveWidget, listWidgets, missingWidgetKinds } from "./registry";
 export { useDataSource } from "./data-sources/use-data-source";
+export { useSourceLiveStatus, providersForSource } from "./use-source-live-status";
+export { metricNeedsJiraTickets, metricNeedsJiraIssueTypes } from "./data-sources/jira-gate";
+export { WidgetHeadline } from "./widget-headline";
 export { useGoalWidgetItems } from "./use-goal-widget-items";
 export { ComplianceLine } from "./compliance-line";
 // The narrative half of a period (focus / activities / deliverables) and the

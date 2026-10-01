@@ -42,11 +42,14 @@ export function useStarredEvidence() {
 
 /**
  * Candidates shown in the picker — recent merged MRs and recently-closed
- * Jira tickets the user hasn't yet starred.
+ * Jira tickets the user hasn't yet starred. `enabled: false` skips the
+ * Jira request (pass the picker's open state).
  */
-export function useEvidenceCandidates() {
+export function useEvidenceCandidates({ enabled = true } = {}) {
   const { data: merged } = useCombinedMergedSince(isoDaysAgo(90));
-  const { data: tickets } = useJiraTickets();
+  // The Jira list is only read while the picker is open — not on every
+  // Evidence load.
+  const { data: tickets } = useJiraTickets(enabled);
   const starred = useStarredEvidence();
   const starredIds = new Set(starred.map((s) => s.id));
 

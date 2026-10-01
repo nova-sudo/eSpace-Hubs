@@ -68,11 +68,15 @@ export function CommandPalette() {
   const router = useRouter();
   const pathname = usePathname();
   const { provider, setProvider } = useAiProvider();
-  const snapshotNow = useSnapshotNow();
-  const { fetched: snapshotsFetched } = useSnapshots();
   const link = useHubLink();
   // Only offer routes this hub actually has (review-ui-polish m8).
   const pages = useActiveHub()?.pages ?? null;
+  // Lazy: `useSnapshotNow` fetches nothing until the "Snapshot now" command
+  // actually runs, and the snapshot history only loads on a hub that has a
+  // snapshots page — the palette is mounted on every page of every hub, so
+  // anything eager here was a background fetch on manager/admin/qa too.
+  const snapshotNow = useSnapshotNow();
+  const { fetched: snapshotsFetched } = useSnapshots({ enabled: Boolean(pages?.snapshots) });
 
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");

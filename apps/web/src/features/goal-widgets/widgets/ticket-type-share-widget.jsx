@@ -6,6 +6,8 @@ import { useDataSource } from "../data-sources/use-data-source";
 import { evalTarget } from "./merged-count-widget";
 import { ComplianceLine } from "../compliance-line";
 import { usePublishGoalReading } from "../use-publish-reading";
+import { useSourceLiveStatus } from "../use-source-live-status";
+import { WidgetHeadline } from "../widget-headline";
 import { useProviderLinks, githubMergedPrsUrl, gitlabMergedMrsUrl, jiraIssuesUrl, mrJiraKeys } from "@/features/integrations";
 import { SourceLinks } from "../source-links";
 
@@ -22,7 +24,8 @@ import { SourceLinks } from "../source-links";
  * bug"; the share is a floor over linked work and the chip says so.
  */
 export function TicketTypeShareWidget({ spec, goal, variant = "light", className, onRetry }) {
-  const { data, isLoading, error, windowLabel, provenance } = useDataSource(spec.source);
+  const ds = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel, provenance } = ds;
   const hosts = useProviderLinks();
   const mode = data?.mode === "count" ? "count" : "share";
   const pct = data?.pct ?? null;
@@ -36,6 +39,7 @@ export function TicketTypeShareWidget({ spec, goal, variant = "light", className
   const headline = mode === "count" ? (total > 0 ? matched : null) : pct;
   const unit = mode === "count" ? "PRs" : "%";
   const meets = target && headline != null ? evalTarget(headline, target) : null;
+  const live = useSourceLiveStatus(spec.source, ds, { hasValue: headline != null, emptyLabel: "No merges yet" });
   const noneMatched = headline === 0 && total > 0;
 
   // Where to look: the merged PRs the number is drawn from, and the tickets
@@ -77,6 +81,7 @@ export function TicketTypeShareWidget({ spec, goal, variant = "light", className
           provenance,
         }
       : null,
+    { hold: live.pending || Boolean(error) },
   );
 
   return (
@@ -92,21 +97,11 @@ export function TicketTypeShareWidget({ spec, goal, variant = "light", className
       footer={<SourceLinks links={checkLinks} />}
     >
       <div className="flex h-full flex-col justify-between gap-2">
-        <div className="flex items-baseline gap-2">
-          <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
-            {isLoading
-              ? "…"
-              : headline == null
-                ? "—"
-                : mode === "count"
-                  ? headline
-                  : `${headline}%`}
-          </div>
-          {error ? (
-            <Badge tone="neutral" className="ml-auto" title={error?.message || String(error)}>
-              Source unavailable
-            </Badge>
-          ) : !jiraConnected ? (
+        <WidgetHeadline
+          status={live}
+          skeleton="w-[3ch]"
+          after={
+          !jiraConnected ? (
             <Badge tone="lemon" className="ml-auto">
               Connect Jira
             </Badge>
@@ -114,8 +109,11 @@ export function TicketTypeShareWidget({ spec, goal, variant = "light", className
             <Badge tone={meets ? "mint" : "peach"} className="ml-auto">
               {meets ? "On target" : "Below target"}
             </Badge>
-          ) : null}
-        </div>
+          ) : null
+          }
+        >
+          {headline == null ? null : mode === "count" ? headline : `${headline}%`}
+        </WidgetHeadline>
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-muted-fg">
           <span>

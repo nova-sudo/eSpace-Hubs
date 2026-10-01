@@ -60,7 +60,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGoalInputs } from "@/features/goal-inputs";
-import { Badge, Button, Input, Select, Checkbox, Label } from "@/components/ui";
+import { Badge, Button, Input, Select, Checkbox, Label, LiveValue } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import {
   FIELD_KIND_HINT,
@@ -73,6 +73,7 @@ import {
 } from "../field-status";
 import { AnswerRow, FieldBlock, ProofCell } from "./field-block.jsx";
 import { apiPost } from "@/lib/api-client";
+import { createQueryFieldBatcher } from "./query-field-batcher";
 // Namespace import, deliberately: the plain-English description is authored by
 // the shared query-template registry, but the server sends its own copy along
 // with the reading (it knows the RESOLVED provider, we only know the spec). We
@@ -87,6 +88,14 @@ import { ExternalLink } from "lucide-react";
 const AUTO_REFRESH_MS = 6 * 60 * 60 * 1000;
 
 /**
+ * One request per window: every AutoField of a form that reads in the same
+ * tick shares a single `/integrations/query-fields` call (see the batcher).
+ * Module-level so sibling fields — and nested / management blocks of the
+ * same window — land in the same batch.
+ */
+const queryAutoField = createQueryFieldBatcher({ post: apiPost });
+
+/**
  * Error codes that mean "the integration isn't there", as opposed to "the query
  * ran and found nothing". Matched loosely because the executor owns the exact
  * vocabulary; anything unrecognised degrades to the vaguer-but-still-honest
@@ -95,6 +104,7 @@ const AUTO_REFRESH_MS = 6 * 60 * 60 * 1000;
  */
 function unavailableReason(error) {
   const code = String(error?.code || "");
+  if (error?.rateLimited || /rate_limited/i.test(code)) return "rate_limited";
   if (/not_connected|disconnected|no_integration|missing_token|unauthor/i.test(code)) {
     return "disconnected";
   }
@@ -601,6 +611,7 @@ function AutoField({ goalId, field, periodKey, periodPath, stored, onResolved })
   const onResolvedRef = useRef(onResolved);
   onResolvedRef.current = onResolved;
 
+  const pathKey = JSON.stringify([periodKey ?? null, Array.isArray(periodPath) ? periodPath : null]);
   const storedAt = stored?.fetchedAt || 0;
   const fresh = storedAt > 0 && Date.now() - storedAt < AUTO_REFRESH_MS;
 
@@ -611,11 +622,22 @@ function AutoField({ goalId, field, periodKey, periodPath, stored, onResolved })
     }
     // A reading taken hours ago is still the answer; don't re-hit the provider
     // (and don't flash a spinner) just because the widget re-mounted.
-    if (fresh && nonce === 0) return undefined;
+    if (fresh && nonce === 0) {
+      // (Re-)seat the stored reading — after a window switch the previous
+      // window's reading must not linger.
+      setState({ status: "resolved", reading: stored });
+      return undefined;
+    }
 
     let cancelled = false;
+    // Keep what's on screen while the re-read runs: this window's stored
+    // reading, or the one already showing (a Retry) — never blank it.
     setState((prev) =>
-      prev.status === "resolved" ? { ...prev, busy: true } : { status: "loading" },
+      stored
+        ? { status: "resolved", reading: stored, busy: true }
+        : prev.status === "resolved"
+          ? { ...prev, busy: true, failure: null }
+          : { status: "loading" },
     );
     // The server holds the source: we name the goal and the field, it looks up
     // the spec, picks the template, and builds the URL. Sending the source from
@@ -629,19 +651,23 @@ function AutoField({ goalId, field, periodKey, periodPath, stored, onResolved })
     // all, and the same id can carry a different source in week 9 than in
     // week 1. periodKey — the calendar storage key — can address neither,
     // which is why it rides along for logging rather than for lookup.
-    apiPost("/integrations/query-field", {
-      goalId,
-      fieldId: field.id,
-      ...(periodKey != null ? { periodKey } : {}),
-      ...(Array.isArray(periodPath) && periodPath.length > 0 ? { periodPath } : {}),
-    }).then((r) => {
+    queryAutoField({ goalId, fieldId: field.id, periodKey, periodPath }).then((r) => {
       if (cancelled) return;
       if (!r.ok) {
-        setState({
-          status: "unavailable",
+        // A failed refresh keeps the stored reading on screen with "as of"
+        // + why; only a field that never had a reading shows the reason
+        // in its place.
+        const failure = {
           reason: unavailableReason(r.error),
           message: r.error?.message || null,
-        });
+          provider: r.error?.details?.provider || null,
+          retryAt: Number.isFinite(r.error?.retryAfterMs) ? Date.now() + r.error.retryAfterMs : null,
+        };
+        setState((prev) =>
+          prev.reading
+            ? { status: "resolved", reading: prev.reading, busy: false, failure }
+            : { status: "unavailable", ...failure },
+        );
         return;
       }
       const body = r.data && typeof r.data === "object" ? r.data : {};
@@ -662,19 +688,53 @@ function AutoField({ goalId, field, periodKey, periodPath, stored, onResolved })
         describe: typeof d.describe === "string" ? d.describe : null,
         fetchedAt: typeof d.fetchedAt === "number" ? d.fetchedAt : Date.now(),
       };
-      setState({ status: "resolved", reading });
+      setState({ status: "resolved", reading, failure: null });
       onResolvedRef.current?.(field.id, reading);
     });
     return () => {
       cancelled = true;
     };
+    // `pathKey`: stepping to another window re-reads — the same field id can
+    // carry a different source per window, and without it the previous
+    // window's reading stayed on screen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [goalId, field?.id, nonce]);
+  }, [goalId, field?.id, nonce, pathKey]);
 
   const reading = state.reading || null;
   const sentence = sourceSentence(field, reading);
   const providerLabel = reading?.provider || (field.source?.provider !== "ask" ? field.source?.provider : null);
   const resolved = state.status === "resolved";
+
+  // A rate limit clears on its own: re-read once it lifts (the server's copy
+  // promises "this field will fill itself"), capped so a far-off reset
+  // doesn't hold a timer for an hour.
+  const failure = state.status === "unavailable" ? state : state.failure || null;
+  const retryAt = failure?.reason === "rate_limited" ? failure.retryAt : null;
+  useEffect(() => {
+    if (!retryAt) return undefined;
+    const wait = retryAt - Date.now();
+    if (wait > 30 * 60_000) return undefined;
+    const id = setTimeout(() => setNonce((n) => n + 1), Math.max(1_000, wait + 1_000));
+    return () => clearTimeout(id);
+  }, [retryAt]);
+  const providerName =
+    (failure?.provider || providerLabel) === "gitlab"
+      ? "GitLab"
+      : (failure?.provider || providerLabel) === "github"
+        ? "GitHub"
+        : "the provider";
+  // The shared value-with-freshness states (components/ui LiveValue).
+  const liveStatus = {
+    hasValue: resolved && reading != null,
+    pending: state.status === "loading",
+    refreshing: Boolean(state.busy),
+    error: failure
+      ? { rateLimited: failure.reason === "rate_limited", message: failure.message || undefined }
+      : null,
+    rateLimitedUntil: retryAt,
+    fetchedAt: reading?.fetchedAt ?? null,
+    provider: providerName,
+  };
 
   // The page that shows what this query looked at — the same template's web
   // binding, with the user's own answers filled in. A courtesy, never a
@@ -715,18 +775,7 @@ function AutoField({ goalId, field, periodKey, periodPath, stored, onResolved })
       }
       proofCaption="Source"
       answer={
-        state.status === "loading" ? (
-          <AnswerRow>
-            <span className="text-[13px] text-muted-fg">Reading…</span>
-          </AnswerRow>
-        ) : resolved ? (
-          <AnswerRow>
-            <span className="min-w-0 truncate text-[13px] font-semibold text-fg">
-              {formatAuto(reading?.value, reading?.extract)}
-            </span>
-            {state.busy ? <span className="shrink-0 text-[11.5px] text-muted-fg">refreshing</span> : null}
-          </AnswerRow>
-        ) : (
+        state.status === "unavailable" && state.reason !== "rate_limited" ? (
           <AnswerRow className="justify-between pr-1.5">
             <span className="min-w-0 flex-1 truncate text-[13px] text-muted-fg">
               {state.reason === "disconnected"
@@ -736,6 +785,19 @@ function AutoField({ goalId, field, periodKey, periodPath, stored, onResolved })
             <Button size="sm" variant="soft" className="shrink-0" onClick={() => setNonce((n) => n + 1)}>
               Retry
             </Button>
+          </AnswerRow>
+        ) : (
+          <AnswerRow>
+            <LiveValue
+              status={liveStatus}
+              layout="inline"
+              showQuiet={false}
+              skeleton="w-[5ch]"
+              onRetry={() => setNonce((n) => n + 1)}
+              className="min-w-0 text-[13px] font-semibold text-fg"
+            >
+              <span className="min-w-0 truncate">{formatAuto(reading?.value, reading?.extract)}</span>
+            </LiveValue>
           </AnswerRow>
         )
       }
@@ -757,7 +819,7 @@ function AutoField({ goalId, field, periodKey, periodPath, stored, onResolved })
           ) : null}
           {resolved && reading?.fetchedAt ? (
             <span className="text-[11.5px] text-muted-fg">{fetchedLabel(reading.fetchedAt)}</span>
-          ) : state.status === "unavailable" && state.message ? (
+          ) : state.status === "unavailable" && state.message && state.reason !== "rate_limited" ? (
             <span className="text-[11.5px] leading-[1.4] text-muted-fg">{state.message}</span>
           ) : null}
         </div>

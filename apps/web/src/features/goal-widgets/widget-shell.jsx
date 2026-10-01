@@ -155,7 +155,7 @@ export function WidgetShell({
           not as another action chip. */}
       {provenance ? (
         <div className="mt-2 flex min-w-0">
-          <ProvenanceChip provenance={provenance} />
+          <ProvenanceChip provenance={provenance} source={spec?.source} />
         </div>
       ) : null}
 

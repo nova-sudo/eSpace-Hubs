@@ -29,7 +29,7 @@ export function PageHeader({ crumb, title, italicWord: _italicWord, subtitle, ri
         </h1>
         {subtitle ? (
           <p
-            className="ui-reveal mt-3 max-w-[560px] text-[14.5px] leading-[1.55] text-muted-fg"
+            className="ui-reveal mt-3 max-w-[70ch] text-[14.5px] leading-[1.55] text-muted-fg"
             style={delay(2)}
           >
             {subtitle}

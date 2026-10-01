@@ -30,6 +30,37 @@ import { fetchWithRateLimitRetry } from "@/lib/rate-limit";
 import { startJob, endJob } from "@/lib/jobs-store";
 
 const STORAGE_KEY = "espace-devhub:goal-tiers";
+/** Signatures of verdicts already mirrored to the server (see persistDisplayedVerdict). */
+const PUSHED_STORAGE_KEY = "espace-devhub:goal-tiers-pushed";
+
+/**
+ * Tier grades share ONE small queue: at most GRADE_CONCURRENCY in flight.
+ * Timeline and the Evidence board mount a badge per goal, and each used to
+ * fire its POST at once — up to 13 simultaneous model calls, the burst
+ * that trips provider limits and the per-user limiter together.
+ */
+const GRADE_CONCURRENCY = 2;
+let gradeActive = 0;
+const gradeQueue = [];
+function runQueued(task) {
+  return new Promise((resolve, reject) => {
+    gradeQueue.push({ task, resolve, reject });
+    pumpGradeQueue();
+  });
+}
+function pumpGradeQueue() {
+  while (gradeActive < GRADE_CONCURRENCY && gradeQueue.length > 0) {
+    const { task, resolve, reject } = gradeQueue.shift();
+    gradeActive += 1;
+    Promise.resolve()
+      .then(task)
+      .then(resolve, reject)
+      .finally(() => {
+        gradeActive -= 1;
+        pumpGradeQueue();
+      });
+  }
+}
 const CHANGE_EVENT = "goal-tiers:change";
 
 /** Sentinel `periodKey` for the whole-goal verdict — mirrors the server's
@@ -57,6 +88,7 @@ const inflight = new Set();
 // so a fresh device / cleared localStorage doesn't re-grade unchanged goals.
 let hydrated = false;
 let hydrating = false;
+let hydrationPromise = null;
 
 function load() {
   if (loaded || typeof window === "undefined") return;
@@ -170,7 +202,16 @@ export async function gradeGoalTier({
   let failure = null;
   const retryArgs = { goalId, goalTitle, tiers, currentData, key, criteriaKey, gradedDay, aiProvider, periodKey };
   try {
-    const res = await fetchWithRateLimitRetry(
+    // Whether the CRITERIA really changed since the grade we hold — the
+    // server's once-a-day re-grade throttle lets a criteria edit through.
+    // Unknown (no local criteriaKey, e.g. a verdict seeded from the server)
+    // is NOT a change: that is exactly the fresh-device case the server
+    // throttle exists to catch.
+    const held = state[storeKey];
+    const criteriaChanged = Boolean(
+      held && held.criteriaKey && criteriaKey && held.criteriaKey !== criteriaKey,
+    );
+    const res = await runQueued(() => fetchWithRateLimitRetry(
       "/api/v1/ai/grade-goal-tier",
       {
         method: "POST",
@@ -191,10 +232,13 @@ export async function gradeGoalTier({
           tierHash: key,
           periodKey: periodKey || undefined,
           force: force || undefined,
+          criteriaChanged: criteriaChanged || undefined,
+          // Lets the server's throttle count "today" in the user's zone.
+          tzOffsetMinutes: new Date().getTimezoneOffset(),
         }),
       },
       { provider: "ai" },
-    );
+    ));
     const body = await res.json().catch(() => ({}));
     if (res.ok && body?.verdict?.tier) {
       // F9 G0.1 — remember what was showing a moment ago. Raw-tier
@@ -218,11 +262,16 @@ export async function gradeGoalTier({
           : body.cached
             ? null
             : new Date().toISOString();
+      // A `throttled` answer is the server's once-a-day rule returning the
+      // verdict it already holds for an OLDER data state: keep that state's
+      // hash so tomorrow's first view still sees the data as changed.
+      const verdictKey =
+        body.throttled && typeof body.tierHash === "string" && body.tierHash ? body.tierHash : key;
       state = {
         ...state,
         [storeKey]: {
           ...body.verdict,
-          key,
+          key: verdictKey,
           criteriaKey,
           gradedDay,
           ...(gradedAt ? { gradedAt } : {}),
@@ -316,9 +365,14 @@ export function pokeGoalTiers() {
  * `hydrated`/`hydrating` guards collapse them to a single request, and a 401 /
  * network error leaves it un-hydrated so it retries once auth settles.
  */
-export async function hydrateGoalTiers() {
-  if (hydrated || hydrating || typeof window === "undefined") return;
+export function hydrateGoalTiers() {
+  if (hydrated || hydrating || typeof window === "undefined") return hydrationPromise || Promise.resolve();
   hydrating = true;
+  hydrationPromise = hydrateGoalTiersOnce();
+  return hydrationPromise;
+}
+
+async function hydrateGoalTiersOnce() {
   load();
   try {
     const res = await fetch("/api/v1/ai/goal-tier-verdicts", {
@@ -330,9 +384,22 @@ export async function hydrateGoalTiers() {
     const body = await res.json().catch(() => ({}));
     const rows = Array.isArray(body?.verdicts) ? body.verdicts : [];
     let changed = false;
+    let seededPushed = false;
     for (const r of rows) {
       if (!r?.goalId || !r?.tierHash || !r?.verdict) continue;
       const storeKey = tierKey(r.goalId, r.periodKey);
+      // A row the client mirrored (numeric / capped) is already what
+      // persistDisplayedVerdict would PUT — seed its dedupe so a cold load
+      // (new device, cleared storage) doesn't PUT it straight back.
+      const mirrored = /^client-(numeric|capped)$/.exec(r.provider || "");
+      if (mirrored && r.verdict?.tier) {
+        const sig = pushedSignature(r.verdict.tier, r.tierHash, mirrored[1]);
+        const pushed = pushedMap();
+        if (pushed.get(storeKey) !== sig) {
+          pushed.set(storeKey, sig);
+          seededPushed = true;
+        }
+      }
       const gradedAt = typeof r.gradedAt === "string" && r.gradedAt ? r.gradedAt : null;
       const local = state[storeKey];
       if (local) {
@@ -350,6 +417,7 @@ export async function hydrateGoalTiers() {
       };
       changed = true;
     }
+    if (seededPushed) persistPushed();
     if (changed) {
       persist();
       notify();
@@ -371,13 +439,57 @@ export async function hydrateGoalTiers() {
  * store key on (tier, data hash, source) so render-effect callers don't
  * re-PUT on every pass; a failed write clears the dedupe so it retries.
  */
-const pushedRemote = new Map();
+//
+// The dedupe map is PERSISTED (localStorage, reset with the tier cache on
+// auth transitions) and seeded from the server rows on hydration, so a cold
+// load no longer re-PUTs every unchanged verdict — it used to, because the
+// map lived in memory only (up to 13 PUTs per Evidence / Timeline load).
+let pushedRemote = null;
+function pushedMap() {
+  if (pushedRemote) return pushedRemote;
+  pushedRemote = new Map();
+  if (typeof window === "undefined") return pushedRemote;
+  try {
+    const raw = localStorage.getItem(PUSHED_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed && typeof parsed === "object") {
+      for (const [k, v] of Object.entries(parsed)) {
+        if (typeof v === "string") pushedRemote.set(k, v);
+      }
+    }
+  } catch {
+    /* corrupt — start empty */
+  }
+  return pushedRemote;
+}
+function persistPushed() {
+  if (typeof window === "undefined" || !pushedRemote) return;
+  try {
+    localStorage.setItem(PUSHED_STORAGE_KEY, JSON.stringify(Object.fromEntries(pushedRemote)));
+  } catch {
+    /* quota / disabled — the in-memory map still dedupes this session */
+  }
+}
+/** The dedupe signature for one mirrored verdict. Exported for tests. */
+export function pushedSignature(tier, key, source) {
+  return `${tier}|${key}|${source}`;
+}
 export function persistDisplayedVerdict(goalId, periodKey, verdict, key, source) {
   if (!goalId || !verdict?.tier || !key || typeof window === "undefined") return;
   const storeKey = tierKey(goalId, periodKey);
-  const sig = `${verdict.tier}|${key}|${source}`;
-  if (pushedRemote.get(storeKey) === sig) return;
-  pushedRemote.set(storeKey, sig);
+  const sig = pushedSignature(verdict.tier, key, source);
+  // Mid-hydration: wait for the server rows to seed the dedupe first, or a
+  // fresh device PUTs back every verdict the server already holds.
+  if (hydrating && hydrationPromise) {
+    void hydrationPromise.then(() =>
+      persistDisplayedVerdict(goalId, periodKey, verdict, key, source),
+    );
+    return;
+  }
+  const pushed = pushedMap();
+  if (pushed.get(storeKey) === sig) return;
+  pushed.set(storeKey, sig);
+  persistPushed();
   void fetch(`/api/v1/ai/goal-tier-verdicts/${encodeURIComponent(goalId)}`, {
     method: "PUT",
     credentials: "include",
@@ -392,10 +504,14 @@ export function persistDisplayedVerdict(goalId, periodKey, verdict, key, source)
     }),
   })
     .then((res) => {
-      if (!res.ok) pushedRemote.delete(storeKey);
+      if (!res.ok) {
+        pushed.delete(storeKey);
+        persistPushed();
+      }
     })
     .catch(() => {
-      pushedRemote.delete(storeKey);
+      pushed.delete(storeKey);
+      persistPushed();
     });
 }
 
@@ -404,11 +520,12 @@ export function resetGoalTiers() {
   loaded = true;
   hydrated = false;
   hydrating = false;
-  pushedRemote.clear();
+  pushedRemote = new Map();
   notify();
   if (typeof window === "undefined") return;
   try {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(PUSHED_STORAGE_KEY);
   } catch {
     /* ignore */
   }

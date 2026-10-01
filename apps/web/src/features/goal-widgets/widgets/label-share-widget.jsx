@@ -7,6 +7,8 @@ import { useDataSource } from "../data-sources/use-data-source";
 import { evalTarget } from "./merged-count-widget";
 import { ComplianceLine } from "../compliance-line";
 import { usePublishGoalReading } from "../use-publish-reading";
+import { useSourceLiveStatus } from "../use-source-live-status";
+import { WidgetHeadline } from "../widget-headline";
 import { useGoalContext } from "@/features/goal-context";
 import { useProviderLinks, githubMergedPrsUrl, gitlabMergedMrsUrl } from "@/features/integrations";
 import { SourceLinks } from "../source-links";
@@ -49,7 +51,8 @@ export function LabelShareWidget({
     return picked.length > 0 ? { ...base, labels: picked } : base;
   }, [spec, answers]);
 
-  const { data, isLoading, error, windowLabel, provenance } = useDataSource(source);
+  const ds = useDataSource(source);
+  const { data, isLoading, error, windowLabel, provenance } = ds;
   const hosts = useProviderLinks();
   const mode = data?.mode === "count" ? "count" : "share";
   const pct = data?.pct ?? null;
@@ -62,6 +65,10 @@ export function LabelShareWidget({
   const headline = mode === "count" ? (total > 0 ? hits : null) : pct;
   const unit = mode === "count" ? "PRs" : "%";
   const meets = target && headline != null ? evalTarget(headline, target) : null;
+  const live = useSourceLiveStatus(source, ds, {
+    hasValue: headline != null,
+    emptyLabel: needsLabels ? "Pick labels to count" : "No merges yet",
+  });
 
   // Nothing matched across a non-empty window is ambiguous: either nothing
   // qualified, or the team labels it something this goal is not watching.
@@ -101,6 +108,7 @@ export function LabelShareWidget({
           provenance,
         }
       : null,
+    { hold: live.pending || Boolean(error) },
   );
 
   return (
@@ -116,30 +124,19 @@ export function LabelShareWidget({
       footer={<SourceLinks links={checkLinks} />}
     >
       <div className="flex h-full flex-col justify-between gap-2">
-        <div className="flex items-baseline gap-2">
-          <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
-            {isLoading
-              ? "…"
-              : headline == null
-                ? "—"
-                : mode === "count"
-                  ? headline
-                  : `${headline}%`}
-          </div>
-          {error ? (
-            <Badge tone="neutral" className="ml-auto" title={error?.message || String(error)}>
-              Source unavailable
-            </Badge>
-          ) : needsLabels ? (
-            <Badge tone="lemon" className="ml-auto">
-              Pick labels
-            </Badge>
-          ) : meets != null ? (
-            <Badge tone={meets ? "mint" : "peach"} className="ml-auto">
-              {meets ? "On target" : "Below target"}
-            </Badge>
-          ) : null}
-        </div>
+        <WidgetHeadline
+          status={live}
+          skeleton="w-[3ch]"
+          after={
+            meets != null ? (
+              <Badge tone={meets ? "mint" : "peach"} className="ml-auto">
+                {meets ? "On target" : "Below target"}
+              </Badge>
+            ) : null
+          }
+        >
+          {headline == null ? null : mode === "count" ? headline : `${headline}%`}
+        </WidgetHeadline>
 
         <div className="flex items-center gap-3 text-[12.5px] text-muted-fg">
           <span>

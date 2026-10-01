@@ -79,7 +79,7 @@ export function IntegrationsTab() {
             />
             <PrivacyPoint
               title="Follows your account"
-              body="Because the credential lives with your account, not this browser, a new device or a cleared cache shows the same connections. Disconnecting here deletes the stored credential on every device."
+              body="Because the credential lives with your account, not this browser, a new device or a cleared cache shows the same connections. Disconnecting here deletes the stored credential on every device. Recent provider results (your PRs, tickets and builds, never tokens) are cached in this browser for your account so pages load instantly, and cleared when you sign out."
             />
             <PrivacyPoint
               title="Scopes"

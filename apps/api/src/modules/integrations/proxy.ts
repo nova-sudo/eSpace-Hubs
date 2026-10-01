@@ -93,6 +93,15 @@ const PASSTHROUGH_RESPONSE_HEADERS = new Set([
   "x-ratelimit-reset",
   "x-ratelimit-resource",
   "x-ratelimit-used",
+  // GitLab spells its rate-limit headers without the x- prefix; the
+  // browser's rate-limit state reads either spelling.
+  "ratelimit-limit",
+  "ratelimit-remaining",
+  "ratelimit-reset",
+  "ratelimit-resettime",
+  "ratelimit-observed",
+  // GitHub's advised polling floor for events endpoints.
+  "x-poll-interval",
   "x-github-request-id",
   "x-gitlab-meta",
   "x-request-id",
@@ -494,8 +503,13 @@ async function runProxy(
 
     // Update integration status — fire-and-forget. If upstream returned
     // a 4xx/5xx, record the status so the UI can decide whether to
-    // prompt for reconnect (401/403) or just retry.
-    if (upstream.status >= 400) {
+    // prompt for reconnect (401/403) or just retry. A rate limit is
+    // transient, not a broken connection: stamping `lastError` for it
+    // made Settings say "Needs attention" and prompt a reconnect, so a
+    // rate-limited response touches neither timestamp.
+    if (isRateLimitedUpstream(upstream.status, upstream.headers)) {
+      // no bookkeeping — see above
+    } else if (upstream.status >= 400) {
       void markIntegrationError({
         orgId: session.orgId,
         userId: session.userId,
@@ -537,6 +551,22 @@ async function runProxy(
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Header-only rate-limit check for status bookkeeping. 429 always; 403
+ * when the remaining counter is zero (either spelling) or a Retry-After
+ * is present — GitHub's secondary limit. The body is streamed through
+ * untouched, so a secondary-limit 403 that carries none of these
+ * headers still stamps lastError; the browser recognises it from the
+ * body and never shows it as a connection fault on a tile.
+ */
+export function isRateLimitedUpstream(status: number, headers: Headers): boolean {
+  if (status === 429) return true;
+  if (status !== 403) return false;
+  const remaining =
+    headers.get("x-ratelimit-remaining") ?? headers.get("ratelimit-remaining");
+  return remaining === "0" || headers.has("retry-after");
+}
 
 /** Private / loopback / link-local / CGNAT — the addresses an
  *  attacker-controlled endpointUrl must not be able to aim the proxy

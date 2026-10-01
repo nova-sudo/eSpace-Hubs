@@ -47,6 +47,7 @@ import {
   buildPassRate,
   SOURCE_METRICS,
 } from "./source-deps";
+import { metricNeedsJiraIssueTypes, metricNeedsJiraTickets } from "./jira-gate";
 
 /**
  * F5 — data honesty. One provenance record rides along with every metric
@@ -109,9 +110,13 @@ export function useDataSource(source) {
   const days = Math.max(1, Math.ceil((Date.now() - startOfYearMs()) / DAY_MS));
   const windowLabel = `${new Date().getFullYear()} YTD`;
 
-  // We only need Jira for JIRA-based metrics; call conditionally via a
-  // separate hook that already handles "skip when not connected".
-  const jira = useJiraTickets();
+  // Only ticket-reading metrics subscribe to `jira:my-issues`. Every AUTO
+  // widget (and every Home `AutoGoalValue`) runs this hook, so an
+  // unconditional call cost every Jira-connected user one Jira request per
+  // page even with no Jira goal. TICKET_TYPE_SHARE resolves types through
+  // its own batched lookup below; LINKAGE_PCT only regex-matches keys in
+  // the PR text and needs no Jira call at all.
+  const jira = useJiraTickets(metricNeedsJiraTickets(source?.metric));
 
   // CI/CD events for DEPLOY_FREQUENCY / LEAD_TIME / BUILD_PASS_RATE.
   // The hook itself gates by provider + filter.job/repo and returns
@@ -159,7 +164,7 @@ export function useDataSource(source) {
   // TICKET_TYPE_SHARE asks Jira what kind of issue each referenced key is
   // (batched, capped — see hook). Skipped for every other metric.
   const issueTypes = useJiraIssueTypes(
-    metric === SOURCE_METRICS.TICKET_TYPE_SHARE ? windowedMerged : null,
+    metricNeedsJiraIssueTypes(metric) ? windowedMerged : null,
   );
 
   if (!source || !metric) {

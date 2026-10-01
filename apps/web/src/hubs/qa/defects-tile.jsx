@@ -30,6 +30,8 @@ import { BentoTile, Label } from "@/components/ui";
 import { useHubLink, useQaHubConfig } from "@/features/hubs";
 import { useIntegrations } from "@/features/integrations";
 import { useJiraDefectsForProject } from "@/features/integrations/hooks";
+import { FreshnessNote, ValueSkeleton } from "@/components/ui";
+import { useQaLive } from "./use-qa-live";
 
 const WINDOW_DAYS = 14;
 
@@ -69,13 +71,14 @@ function NotConnectedBody() {
 }
 
 function Body({ projectKey }) {
-  const { data, isLoading, error } = useJiraDefectsForProject(
-    projectKey,
-    WINDOW_DAYS,
-  );
+  const swr = useJiraDefectsForProject(projectKey, WINDOW_DAYS);
+  const { data, isLoading, error } = swr;
+  const live = useQaLive("jira", swr);
   const issues = Array.isArray(data?.issues) ? data.issues : [];
 
-  if (error) {
+  // A failed refresh with a cached answer keeps the answer (the note says
+  // "as of" + why); only a feed that never answered shows the error.
+  if (error && data === undefined) {
     // Jira project-not-found returns 400/404 with a clear message; we
     // surface a short version so the user knows what to do.
     const isProjectMissing =
@@ -91,12 +94,13 @@ function Body({ projectKey }) {
       />
     );
   }
-  if (isLoading) return <Body0 head="…" sub="Loading defects…" />;
+  if (isLoading) return <Body0 head={<ValueSkeleton className="w-[1.5ch]" />} sub="Loading defects…" />;
 
   return (
     <div className="flex h-full flex-col justify-between">
       <div>
         <Headline value={issues.length} />
+        <FreshnessNote status={live} showQuiet={false} className="mt-1" />
         <div className="mt-2">
           <Label>
             {issues.length === 1 ? "bug" : "bugs"} logged in the last {WINDOW_DAYS} days

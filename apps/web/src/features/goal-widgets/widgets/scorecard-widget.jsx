@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
-import { Badge, Label } from "@/components/ui";
+import { Badge, Label, LiveValue } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { WidgetShell, TargetChip } from "../widget-shell";
 import { useDataSource } from "../data-sources/use-data-source";
+import { useSourceLiveStatus } from "../use-source-live-status";
 import { useGoalInputs } from "@/features/goal-inputs";
 import { useGoalContext } from "@/features/goal-context";
 import { useGradedPrs } from "@/features/grading";
@@ -174,6 +175,7 @@ export function ScorecardWidget({
                 score={scoredEntries[i]?.score}
                 loading={scoredEntries[i]?.loading}
                 error={scoredEntries[i]?.error}
+                live={rows[i]?.live}
                 rubric={rows[i]?.rubric}
                 onExpand={() => setActiveIndex(i)}
               />
@@ -218,7 +220,7 @@ function Headline({ score, pass, total }) {
  * embedding the full widget body to keep the row compact + scannable
  * — a SCORECARD with 3 full widget tiles inside would be unreadable.
  */
-function ComponentRow({ component, data, score, loading, error, rubric, onExpand }) {
+function ComponentRow({ component, data, score, loading, error, live, rubric, onExpand }) {
   const label =
     component?.label?.trim() ||
     component?.widget?.replace(/_/g, " ").toLowerCase() ||
@@ -262,9 +264,23 @@ function ComponentRow({ component, data, score, loading, error, rubric, onExpand
         </Badge>
       </div>
       <div className="flex items-baseline gap-2 text-[13px] text-fg">
-        <span className="font-bold">
-          {error ? "!" : loading ? "…" : value == null ? "—" : formatValue(value, component?.widget)}
-        </span>
+        {/* Same value states as every provider number: skeleton on a first
+            load, last-known + why on a failed refresh, never "…" / "!". */}
+        <LiveValue
+          status={{
+            ...(live || {}),
+            hasValue: value != null && !loading,
+            pending: Boolean(loading) || Boolean(live?.pending),
+            error: error || null,
+            emptyLabel: "No data yet",
+          }}
+          layout="compact"
+          skeleton="w-[3ch]"
+          className="font-bold"
+          messageClassName="text-[12px]"
+        >
+          {value == null ? null : formatValue(value, component?.widget)}
+        </LiveValue>
         <span className="text-[11px] text-muted-fg">
           {weightCopy(component?.weight)}
           {component?.firstReviewOnly ? " · first-review only" : ""}
@@ -323,7 +339,7 @@ function RubricRowFooter({ rubric, data }) {
             canGrade ? "cursor-pointer" : "cursor-not-allowed",
           )}
         >
-          {isRunning ? `Grading… ${rubric.progress?.done ?? 0}/${rubric.progress?.total ?? 0}` : "Grade now"}
+          {isRunning ? (rubric.progress?.label || `Grading… ${rubric.progress?.done ?? 0}/${rubric.progress?.total ?? 0}`) : "Grade now"}
         </button>
       ) : null}
     </div>
@@ -492,6 +508,9 @@ function useComponentData(component, parentGoal, index) {
   // doesn't use a source — useDataSource handles null/undefined
   // gracefully (returns { data: null, isLoading: false }).
   const dataSource = useDataSource(isAuto ? component?.source : null);
+  const live = useSourceLiveStatus(isAuto ? component?.source : null, dataSource, {
+    hasValue: dataSource.data != null,
+  });
 
   // Synthetic sub-id so MANUAL components have independent storage.
   const subId =
@@ -507,6 +526,7 @@ function useComponentData(component, parentGoal, index) {
       data: dataSource.data,
       isLoading: dataSource.isLoading,
       error: dataSource.error,
+      live,
     };
   }
 

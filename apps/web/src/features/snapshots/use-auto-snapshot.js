@@ -45,9 +45,6 @@ import {
   linkagePct,
   medianTurnaroundDays,
   mergedThisWeek,
-  useCombinedEventsSince,
-  useCombinedMergedSince,
-  useJiraTickets,
 } from "@/features/integrations";
 import {
   readInputs,
@@ -56,6 +53,8 @@ import {
 } from "@/features/goal-inputs";
 import { readGoalLiveReading } from "@/features/goal-tiers";
 import { isoDaysAgo, resolveCompletedWorkWeek } from "@/lib/date";
+import { useDeferredFeeds } from "./use-deferred-feeds";
+import { autoSnapshotNeeded, specsNeedJiraTickets } from "./snapshot-gates";
 
 /**
  * Find the snapshot for the immediately PRIOR week — used to thread
@@ -93,9 +92,22 @@ export function useAutoSnapshot() {
   // store hydrates — the capture reads readInputs() and would otherwise
   // snapshot empty manual-input readings on a fresh session.
   const inputsTick = useAllGoalInputs();
-  const { data: mrs } = useCombinedMergedSince(isoDaysAgo(120));
-  const { data: events } = useCombinedEventsSince(isoDaysAgo(90));
-  const { data: jira } = useJiraTickets();
+  // Provider feeds are ARMED only when a capture is actually due: the
+  // store has hydrated (server truth) and last week has no snapshot. Until
+  // then nothing is fetched — this runner is mounted on every dev page.
+  const { fetched: snapshotsFetched } = getSnapshotsState();
+  const dueWeek = resolveCompletedWorkWeek();
+  const needed = autoSnapshotNeeded({
+    fetched: snapshotsFetched,
+    snapshots: readSnapshots(),
+    weekLabel: dueWeek.weekLabel,
+  });
+  const { mrs, events, jira } = useDeferredFeeds({
+    armed: needed,
+    mergedSince: isoDaysAgo(120),
+    eventsSince: isoDaysAgo(90),
+    needJira: specsNeedJiraTickets(specs),
+  });
 
   // Run-once-per-mount guard: the effect fires on first load and on
   // every re-render of the goals/specs/integration data. We only want

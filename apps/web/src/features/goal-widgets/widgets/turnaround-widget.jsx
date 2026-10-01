@@ -7,10 +7,14 @@ import { useDataSource } from "../data-sources/use-data-source";
 import { evalTarget } from "./merged-count-widget";
 import { ComplianceLine } from "../compliance-line";
 import { usePublishGoalReading } from "../use-publish-reading";
+import { useSourceLiveStatus } from "../use-source-live-status";
+import { WidgetHeadline } from "../widget-headline";
 
 export function TurnaroundWidget({ spec, goal, variant = "light", className, onRetry }) {
-  const { data, isLoading, error, windowLabel, provenance } = useDataSource(spec.source);
+  const ds = useDataSource(spec.source);
+  const { data, isLoading, error, windowLabel, provenance } = ds;
   const median = data?.median ?? null;
+  const live = useSourceLiveStatus(spec.source, ds, { hasValue: median != null, emptyLabel: "No merges yet" });
   const histogram = data?.histogram || [];
   const target = spec.source?.target;
   const meets = target && median != null ? evalTarget(median, target) : null;
@@ -29,6 +33,7 @@ export function TurnaroundWidget({ spec, goal, variant = "light", className, onR
           provenance,
         }
       : null,
+    { hold: live.pending || Boolean(error) },
   );
 
   return (
@@ -43,17 +48,22 @@ export function TurnaroundWidget({ spec, goal, variant = "light", className, onR
       className={className}
     >
       <div className="flex h-full flex-col justify-between gap-2">
-        <div className="flex items-baseline gap-2">
-          <div className="text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-fg sm:text-[36px]">
-            {error ? "!" : isLoading ? "…" : fmtDays(median)}
-          </div>
-          <span className="text-[13px] text-muted-fg">median</span>
-          {meets != null ? (
-            <Badge tone={meets ? "mint" : "peach"} className="ml-auto">
-              {meets ? "On target" : "Over target"}
-            </Badge>
-          ) : null}
-        </div>
+        <WidgetHeadline
+          status={live}
+          skeleton="w-[3.5ch]"
+          after={
+            <>
+              <span className="text-[13px] text-muted-fg">median</span>
+              {meets != null ? (
+                <Badge tone={meets ? "mint" : "peach"} className="ml-auto">
+                  {meets ? "On target" : "Over target"}
+                </Badge>
+              ) : null}
+            </>
+          }
+        >
+          {median != null ? fmtDays(median) : null}
+        </WidgetHeadline>
         <Bars data={histogram.map((b) => ({ n: b.n, label: b.label }))} height={56} />
         <div className="flex gap-[3px]">
           {histogram.map((b) => (

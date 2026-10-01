@@ -29,6 +29,7 @@ import {
   PageHeader,
   SegmentedControl,
   Select,
+  PageContainer,
 } from "@/components/ui";
 import { useHubLink } from "@/features/hubs";
 import { useManagerReports } from "./use-manager-reports";
@@ -279,7 +280,7 @@ export function ManagerTeamPage({ crumb, title, subtitle, lead = null }) {
   }
 
   return (
-    <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-7 sm:px-10">
+    <PageContainer>
       <PageHeader
         crumb={crumb}
         title={title}
@@ -325,6 +326,6 @@ export function ManagerTeamPage({ crumb, title, subtitle, lead = null }) {
       </div>
 
       <div className="mt-6">{body()}</div>
-    </main>
+    </PageContainer>
   );
 }

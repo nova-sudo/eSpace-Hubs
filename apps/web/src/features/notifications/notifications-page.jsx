@@ -10,7 +10,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button, Loading, PageHeader, SegmentedControl } from "@/components/ui";
+import { Button, Loading, PageContainer, PageHeader, SegmentedControl } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { useHubLink } from "@/features/hubs";
 import { humanizeIsoDays, notificationPath } from "./notification-kinds";
@@ -46,7 +46,7 @@ export function NotificationsPage() {
   };
 
   return (
-    <main className="mx-auto max-w-[860px] px-4 pb-16 pt-7 sm:px-10">
+    <PageContainer>
       <PageHeader
         crumb="Inbox"
         title="Notifications."
@@ -110,7 +110,7 @@ export function NotificationsPage() {
                       </span>
                       <span className="text-[11.5px] tabular-nums text-muted-fg">{when(n.createdAt)}</span>
                     </span>
-                    <span className="mt-0.5 block text-[12.5px] leading-snug text-muted-fg">{humanizeIsoDays(n.body)}</span>
+                    <span className="mt-0.5 block max-w-[70ch] text-[12.5px] leading-snug text-muted-fg">{humanizeIsoDays(n.body)}</span>
                     {typeof n.data?.note === "string" && n.data.note ? (
                       <span className="mt-1.5 block whitespace-pre-wrap break-words rounded-[var(--radius-md)] bg-card-alt px-2.5 py-1.5 text-[12px] leading-snug text-fg">
                         <span className="font-semibold text-muted-fg">Note: </span>
@@ -133,6 +133,6 @@ export function NotificationsPage() {
           </Button>
         </div>
       ) : null}
-    </main>
+    </PageContainer>
   );
 }

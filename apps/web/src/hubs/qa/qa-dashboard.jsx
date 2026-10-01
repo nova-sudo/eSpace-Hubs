@@ -25,7 +25,7 @@
 
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { PageHeader, Section } from "@/components/ui";
+import { PageHeader, Section, PageContainer } from "@/components/ui";
 import { useActiveHub, useHubLink } from "@/features/hubs";
 import { BuildPassRateTile } from "./build-pass-rate-tile";
 import { DefectPriorityMixTile } from "./defect-priority-mix-tile";
@@ -37,7 +37,7 @@ export function QaDashboard() {
   const link = useHubLink();
 
   return (
-    <main className="max-w-[1280px] mx-auto px-4 sm:px-10 pb-16 pt-7">
+    <PageContainer>
       <PageHeader
         crumb={`${hub?.label ?? "QA Hub"} · performance`}
         title="Test quality, on the record."
@@ -74,6 +74,6 @@ export function QaDashboard() {
           <DefectPriorityMixTile />
         </div>
       </Section>
-    </main>
+    </PageContainer>
   );
 }

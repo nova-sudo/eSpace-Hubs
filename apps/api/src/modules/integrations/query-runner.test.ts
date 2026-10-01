@@ -17,6 +17,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ObjectId } from "mongodb";
 import {
+  detectUpstreamRateLimit,
   resolveQuery,
   type QueryRunnerDeps,
   type QueryTemplateDescriptor,
@@ -323,7 +324,8 @@ test("a 404 means exists:false — it is an answer, not a failure", async () => 
   assert.equal(result.value, false);
   assert.equal(result.extract, "exists");
   assert.equal(result.describe, "whether the file exists");
-  assert.ok(Date.parse(result.fetchedAt) > 0);
+  assert.equal(typeof result.fetchedAt, "number");
+  assert.ok(result.fetchedAt > 0);
 });
 
 test("a 200 means exists:true and nothing of the upstream body escapes", async () => {
@@ -551,4 +553,101 @@ test("a template with no binding for the resolved provider is refused", async ()
     "query_provider_unsupported",
   );
   assert.equal(calls.length, 0);
+});
+
+// ─── upstream rate limits ────────────────────────────────────────────
+
+/** deps() with a markError spy, so a test can assert nothing got flagged. */
+function spyDeps(fetchImpl: typeof fetch) {
+  const flagged: unknown[] = [];
+  const d = deps(permissiveRegistry(() => ({ path: "repos/espace/devhub" })), fetchImpl);
+  d.markError = (async (input: unknown) => {
+    flagged.push(input);
+  }) as never;
+  return { d, flagged };
+}
+
+async function expectRateLimited(response: () => Response) {
+  const { impl } = recordingFetch(response);
+  const { d, flagged } = spyDeps(impl);
+  try {
+    await resolveQuery(source, ctx(), d);
+    assert.fail("expected rate_limited");
+  } catch (err) {
+    const httpErr = err as HttpError;
+    assert.equal(httpErr.status, 429);
+    assert.equal(httpErr.code, "rate_limited");
+    assert.doesNotMatch(httpErr.message, /reconnect/i);
+    assert.equal(flagged.length, 0, "a rate limit must not flag the integration");
+    return httpErr;
+  }
+  throw new Error("unreachable");
+}
+
+test("GitHub secondary-limit 403 maps to rate_limited, not reconnect", async () => {
+  const err = await expectRateLimited(() =>
+    jsonResponse(
+      403,
+      { message: "You have exceeded a secondary rate limit. Please wait a few minutes." },
+      { "x-ratelimit-remaining": "4200" },
+    ),
+  );
+  assert.equal(err.retryAfterMs, 60_000);
+});
+
+test("a 403 with retry-after is a rate limit and carries the wait", async () => {
+  const err = await expectRateLimited(() =>
+    jsonResponse(403, { message: "slow down" }, { "retry-after": "42" }),
+  );
+  assert.equal(err.retryAfterMs, 42_000);
+});
+
+test("a 429 maps to rate_limited with Retry-After instead of a generic 502", async () => {
+  const err = await expectRateLimited(() =>
+    jsonResponse(429, { message: "Too Many Requests" }, { "retry-after": "7" }),
+  );
+  assert.equal(err.retryAfterMs, 7_000);
+});
+
+test("primary exhaustion (remaining 0) waits until x-ratelimit-reset", async () => {
+  const now = 1_700_000_000_000;
+  const reset = String(Math.floor(now / 1000) + 300);
+  const out = await detectUpstreamRateLimit(
+    jsonResponse(403, { message: "API rate limit exceeded" }, {
+      "x-ratelimit-remaining": "0",
+      "x-ratelimit-reset": reset,
+    }),
+    now,
+  );
+  assert.deepEqual(out, { retryAfterMs: 300_000 });
+});
+
+test("GitLab's un-prefixed RateLimit-* headers are understood", async () => {
+  const now = 1_700_000_000_000;
+  const out = await detectUpstreamRateLimit(
+    jsonResponse(403, {}, {
+      "ratelimit-remaining": "0",
+      "ratelimit-reset": String(Math.floor(now / 1000) + 30),
+    }),
+    now,
+  );
+  assert.deepEqual(out, { retryAfterMs: 30_000 });
+});
+
+test("a plain 403 (bad scope) is still a reconnect, not a rate limit", async () => {
+  assert.equal(
+    await detectUpstreamRateLimit(
+      jsonResponse(403, { message: "Resource not accessible by integration" }, {
+        "x-ratelimit-remaining": "4999",
+      }),
+    ),
+    null,
+  );
+  const { impl } = recordingFetch(() =>
+    jsonResponse(403, { message: "Resource not accessible by integration" }),
+  );
+  await expectHttpError(
+    resolveQuery(source, ctx(), spyDeps(impl).d),
+    "integration_needs_reconnect",
+  );
 });
