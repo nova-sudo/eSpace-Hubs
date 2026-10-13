@@ -63,6 +63,7 @@ import {
   listQueryTemplates,
   validateQuerySource,
 } from "@espace-devhub/shared/goal-specs";
+import { deriveCadenceTiers } from "./cadence-tiers.js";
 import { aiUnconfigured } from "./unconfigured.js";
 import { isRegradeThrottled } from "./tier-throttle.js";
 
@@ -2639,7 +2640,7 @@ export async function composeWidgetHandler(
     // a note, like the check above) and drop the per-period one rather than
     // grade a window against a bar it can never meet.
     if (scopeNotes.length > 0) {
-      cadenceTiers = null;
+      cadenceTiers = deriveCadenceTiers("COMPOSED", tiers);
       for (const note of scopeNotes) {
         if (unrepresented.length >= 6) break;
         if (unrepresented.includes(note)) continue;

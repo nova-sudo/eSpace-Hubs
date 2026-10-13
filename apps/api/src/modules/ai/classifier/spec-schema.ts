@@ -51,6 +51,7 @@ export const SPEC_RESPONSE_SCHEMA = {
       "composed",
       "firstReviewOnly",
       "tiers",
+      "cadenceTiers",
     ],
     properties: {
       kind: {
@@ -506,6 +507,21 @@ export const SPEC_RESPONSE_SCHEMA = {
           "shape and keep the user's thresholds. Keep each <=160 chars. " +
           "Use null for a tier you genuinely can't express; null the " +
           "whole object only for goals with no meaningful levels.",
+      },
+      cadenceTiers: {
+        type: ["object", "null"],
+        additionalProperties: false,
+        required: ["notAchieved", "achieved", "overAchieved", "roleModel"],
+        properties: {
+          notAchieved: { type: ["string", "null"] },
+          achieved: { type: ["string", "null"] },
+          overAchieved: { type: ["string", "null"] },
+          roleModel: { type: ["string", "null"] },
+        },
+        description:
+          "RECURRING_MILESTONE / COMPOSED only: the same four levels but " +
+          "for ONE period on its own (no streaks or cross-period totals). " +
+          "MUST be null for every other widget.",
       },
     },
   },

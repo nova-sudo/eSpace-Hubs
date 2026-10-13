@@ -23,6 +23,7 @@
  * (M3.2). Same algorithm, same prompt, TypeScript types added.
  */
 
+import { deriveCadenceTiers, resetsPerPeriod } from "../cadence-tiers.js";
 import { validateSpec } from "@espace-devhub/shared/goal-specs";
 import { fetchWithRateLimitRetry } from "../../../lib/rate-limit.js";
 import { AnalysisEvents, type AnalysisEvent } from "./events.js";
@@ -579,6 +580,10 @@ function buildSystemPrompt(): string {
     "      roleModel    = long streak / every tracked period complete + automated.",
     "    Whichever path: each tier must be checkable from the period history +",
     "    streak the grader receives.",
+    "    ALSO return `cadenceTiers` (same four keys) for RECURRING_MILESTONE and",
+    "    COMPOSED: a ladder for ONE period on its own (e.g. achieved = this",
+    "    period's checklist fully complete). It must NOT cite streaks or totals",
+    "    across periods. Omit it (null) for every other widget.",
     "  - Keep each <=160 chars. Use null for a tier you truly can't state;",
     "    null the whole object only when the goal has no meaningful levels.",
     "",
@@ -619,6 +624,7 @@ function buildSystemPrompt(): string {
     '    "untrackable": {...} | null,',
     '    "scorecard":   {...} | null,',
     '    "tiers":       { "notAchieved", "achieved", "overAchieved", "roleModel" },',
+    '    "cadenceTiers": { "notAchieved", "achieved", "overAchieved", "roleModel" } | null,  // RECURRING_MILESTONE / COMPOSED only',
     '    "tierScale":   { "unit", "direction", "achieved", "overAchieved", "roleModel" } | null',
     "  }",
     "",
@@ -1138,6 +1144,15 @@ export function specEventFromBuffer(
     fields: obj.fields ?? null,
     composed: obj.composed ?? null,
     tiers: obj.tiers ?? null,
+    // Per-window ladder, only for widgets that reset each period; the model
+    // may omit it, so fall back to the derived one-period ladder.
+    ...(resetsPerPeriod(obj.widget)
+      ? {
+          cadenceTiers:
+            obj.cadenceTiers ??
+            deriveCadenceTiers(obj.widget as string, (obj.tiers ?? null) as any),
+        }
+      : {}),
     // W1: numeric ladder for deterministic grading (null for qualitative).
     tierScale: obj.tierScale ?? null,
     firstReviewOnly: obj.firstReviewOnly === true,
