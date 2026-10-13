@@ -10,3 +10,5 @@ export { ManagerDelegated } from "./manager-delegated.jsx";
 export { ManagerApprovals } from "./manager-approvals.jsx";
 export { ManagerTierPolicies } from "./manager-tier-policies.jsx";
 export { ManagerGoalsPolicies } from "./manager-goals-policies.jsx";
+export { ApprovalLaddersEditor } from "./approval-ladders-editor.jsx";
+export { cadenceNoun, initLadders, ladderPayload } from "./approval-ladders.js";

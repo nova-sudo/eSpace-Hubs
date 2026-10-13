@@ -33,13 +33,8 @@ import { useApprovalsQueue } from "./use-approvals-queue";
 import { revalidateManagerData } from "./use-fetch-once";
 import { EmptyCard } from "./manager-ui";
 import { daysWaiting, plural, waitedFor } from "./manager-format";
-
-const TIER_ROWS = [
-  ["notAchieved", "Not achieved", "peach"],
-  ["achieved", "Achieved", "mint"],
-  ["overAchieved", "Over-achieved", "sky"],
-  ["roleModel", "Role model", "lav"],
-];
+import { cadenceNoun, initLadders, ladderPayload } from "./approval-ladders";
+import { ApprovalLaddersEditor } from "./approval-ladders-editor";
 
 const keyOf = (item) => `${item.user.id}:${item.goal.id}`;
 
@@ -49,6 +44,10 @@ export function ManagerApprovals() {
   const [changesFor, setChangesFor] = useState(null); // "userId:goalId"
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(null);
+  // Ladder drafts per tracker ("userId:goalId"), created on first edit —
+  // switching trackers in the rail never carries one tracker's edits over.
+  const [ladders, setLadders] = useState({});
+  const laddersFor = (item) => ladders[keyOf(item)] ?? initLadders(item);
 
   // Oldest first — the one that has been waiting longest is the one a
   // report is most likely blocked on.
@@ -67,12 +66,19 @@ export function ManagerApprovals() {
       `/manager/reports/${encodeURIComponent(item.user.id)}/goals/${encodeURIComponent(
         item.goal.id,
       )}/approval`,
-      { decision, note: noteText || "" },
+      decision === "approve"
+        ? { decision, note: "", ...ladderPayload(laddersFor(item)) }
+        : { decision, note: noteText || "" },
     );
     setBusy(null);
     if (r.ok) {
       setChangesFor(null);
       setNote("");
+      setLadders((all) => {
+        const next = { ...all };
+        delete next[key];
+        return next;
+      });
       toast.success(
         decision === "approve"
           ? `Approved — live for ${item.user.displayName.split(" ")[0]}`
@@ -179,6 +185,10 @@ export function ManagerApprovals() {
                 setNote("");
               }}
               onDecide={decide}
+              ladders={laddersFor(selected)}
+              onLadders={(next) =>
+                setLadders((all) => ({ ...all, [keyOf(selected)]: next }))
+              }
             />
           ) : null}
         </div>
@@ -196,6 +206,8 @@ function ApprovalDetail({
   onOpenChanges,
   onCancelChanges,
   onDecide,
+  ladders,
+  onLadders,
 }) {
   const waited = waitedFor(item.submittedAt);
   return (
@@ -235,7 +247,7 @@ function ApprovalDetail({
             onClick={() => onDecide(item, "approve")}
           >
             <Check size={14} />
-            {busy ? "Working…" : "Approve & activate"}
+            {busy ? "Working…" : "Approve with these levels"}
           </Button>
         </div>
       </div>
@@ -269,7 +281,17 @@ function ApprovalDetail({
           </div>
         ) : null}
 
-        <div className="flex flex-wrap gap-2">
+        {/* The levels are what the report will be graded against, so they
+            sit right under the decision and are edited in place — what you
+            see here is exactly what Approve saves. */}
+        <ApprovalLaddersEditor
+          item={item}
+          state={ladders}
+          onChange={onLadders}
+          cadenceLabel={cadenceNoun(item.cadence)}
+        />
+
+        <div className="mt-5 flex flex-wrap gap-2 border-t border-line pt-4">
           <Badge tone="lav">Build-your-own tracker</Badge>
           {item.cadence ? (
             <Badge>
@@ -283,56 +305,29 @@ function ApprovalDetail({
           </Badge>
         </div>
 
-        <div className="mt-5 grid gap-5 sm:grid-cols-2">
-          <div>
-            <Label className="mb-2 block">Fields captured each period</Label>
-            {item.fields.length ? (
-              <div className="flex flex-wrap gap-1.5">
-                {item.fields.map((f, i) => (
-                  <span
-                    key={i}
-                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] bg-card-alt px-2.5 py-1.5 text-[12px]"
-                  >
-                    {f.kind ? (
-                      <span className="text-[11px] font-bold text-muted-fg">
-                        {f.kind}
-                      </span>
-                    ) : null}
-                    <span className="font-semibold text-fg">{f.label || "—"}</span>
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <p className="text-[12.5px] text-muted-fg">
-                No manual fields — this tracker reads itself.
-              </p>
-            )}
-          </div>
-
-          <div>
-            <Label className="mb-2 block">Achievement levels</Label>
-            {item.tiers ? (
-              <div className="grid gap-1.5 sm:grid-cols-2">
-                {TIER_ROWS.map(([field, label, tone]) =>
-                  item.tiers[field] ? (
-                    <div
-                      key={field}
-                      className="rounded-[var(--radius-lg)] bg-card-alt px-3 py-2.5"
-                    >
-                      <Badge tone={tone}>{label}</Badge>
-                      <div className="mt-1.5 text-[12px] leading-snug text-muted-fg">
-                        {item.tiers[field]}
-                      </div>
-                    </div>
-                  ) : null,
-                )}
-              </div>
-            ) : (
-              <p className="text-[12.5px] text-muted-fg">
-                No ladder authored — it falls back to the goal&apos;s own tiers.
-              </p>
-            )}
-          </div>
+        <div className="mt-5">
+          <Label className="mb-2 block">Fields captured each period</Label>
+          {item.fields.length ? (
+            <div className="flex flex-wrap gap-1.5">
+              {item.fields.map((f, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] bg-card-alt px-2.5 py-1.5 text-[12px]"
+                >
+                  {f.kind ? (
+                    <span className="text-[11px] font-bold text-muted-fg">
+                      {f.kind}
+                    </span>
+                  ) : null}
+                  <span className="font-semibold text-fg">{f.label || "—"}</span>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[12.5px] text-muted-fg">
+              No manual fields — this tracker reads itself.
+            </p>
+          )}
         </div>
 
         {/* Fields that read themselves. An AI picked these queries from an

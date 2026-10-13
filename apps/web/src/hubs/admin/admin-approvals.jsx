@@ -13,7 +13,7 @@
  * queue, so the lasting fix is on the Members page.
  *
  *   GET  /admin/approvals
- *   POST /admin/approvals/:userId/:goalId   { decision, note }
+ *   POST /admin/approvals/:userId/:goalId   { decision, note, tiers?, cadenceTiers? }
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -25,13 +25,7 @@ import { useHubLink } from "@/features/hubs";
 import { AdminShell } from "./admin-shell";
 import { formatDate, waitedFor } from "./admin-lib";
 import { EmptyState } from "./admin-ui";
-
-const TIER_ROWS = [
-  ["notAchieved", "Not achieved", "peach"],
-  ["achieved", "Achieved", "mint"],
-  ["overAchieved", "Over-achieved", "sky"],
-  ["roleModel", "Role model", "lav"],
-];
+import { ApprovalLaddersEditor, cadenceNoun, initLadders, ladderPayload } from "@/hubs/manager";
 
 const REASON = {
   no_manager: { label: "No manager", tone: "lemon" },
@@ -46,6 +40,9 @@ export function AdminApprovals() {
   const [busy, setBusy] = useState(null);
   const [changesFor, setChangesFor] = useState(null);
   const [note, setNote] = useState("");
+  // Ladder drafts per tracker ("userId:goalId"), created on first edit.
+  const [ladders, setLadders] = useState({});
+  const laddersFor = (item) => ladders[keyOf(item)] ?? initLadders(item);
 
   const load = useCallback(async () => {
     const r = await apiGet("/admin/approvals");
@@ -70,7 +67,9 @@ export function AdminApprovals() {
     setBusy(key);
     const r = await apiPost(
       `/admin/approvals/${encodeURIComponent(item.user.id)}/${encodeURIComponent(item.goal.id)}`,
-      { decision, note: decision === "request_changes" ? note : "" },
+      decision === "approve"
+        ? { decision, note: "", ...ladderPayload(laddersFor(item)) }
+        : { decision, note },
     );
     setBusy(null);
     if (!r.ok) {
@@ -84,6 +83,11 @@ export function AdminApprovals() {
     );
     setChangesFor(null);
     setNote("");
+    setLadders((all) => {
+      const next = { ...all };
+      delete next[key];
+      return next;
+    });
     setState((s) => ({ ...s, items: s.items.filter((it) => keyOf(it) !== key) }));
   }
 
@@ -171,7 +175,7 @@ export function AdminApprovals() {
                       disabled={busy === key}
                       onClick={() => void decide(item, "approve")}
                     >
-                      Approve
+                      Approve with these levels
                     </Button>
                   </div>
                 </div>
@@ -206,7 +210,16 @@ export function AdminApprovals() {
                   </div>
                 ) : null}
 
-                <div className="mt-4 grid gap-4 md:grid-cols-3">
+                <div className="mt-4">
+                  <ApprovalLaddersEditor
+                    item={item}
+                    state={laddersFor(item)}
+                    onChange={(next) => setLadders((all) => ({ ...all, [key]: next }))}
+                    cadenceLabel={cadenceNoun(item.cadence)}
+                  />
+                </div>
+
+                <div className="mt-4 grid gap-4 border-t border-line pt-4 md:grid-cols-2">
                   <Block title="What they'll log">
                     {item.fields.length === 0 ? (
                       <span className="text-muted-fg">No fields.</span>
@@ -233,18 +246,6 @@ export function AdminApprovals() {
                     {item.periods.length > 12 ? (
                       <div className="text-muted-fg">+{item.periods.length - 12} more</div>
                     ) : null}
-                  </Block>
-                  <Block title="Achievement levels">
-                    {item.tiers ? (
-                      TIER_ROWS.filter(([k]) => item.tiers[k]).map(([k, label, tone]) => (
-                        <div key={k} className="flex items-start gap-2">
-                          <Badge tone={tone}>{label}</Badge>
-                          <span className="min-w-0 flex-1">{item.tiers[k]}</span>
-                        </div>
-                      ))
-                    ) : (
-                      <span className="text-muted-fg">No levels set.</span>
-                    )}
                   </Block>
                 </div>
               </Panel>
