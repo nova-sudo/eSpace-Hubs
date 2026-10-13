@@ -192,7 +192,8 @@ interface ReviewCell {
 
 export interface ReviewEntry {
   ts: string;
-  source: "manual" | "auto";
+  /** "github" = logged by the sync when the period's issue closed. */
+  source: "manual" | "auto" | "github";
   periodKey: string | null;
   note: string | null;
   cells: ReviewCell[];

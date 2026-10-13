@@ -16,10 +16,11 @@ export const QUERY_PARAM_KINDS: readonly [
   "search_query",
   "label",
   "branch",
+  "issue_number",
 ];
 export type QueryParamKind = (typeof QUERY_PARAM_KINDS)[number];
 
-export const QUERY_EXTRACTS: readonly ["exists", "count", "latest_date", "ratio"];
+export const QUERY_EXTRACTS: readonly ["exists", "count", "latest_date", "ratio", "closed"];
 export type QueryExtract = (typeof QUERY_EXTRACTS)[number];
 
 export const QUERY_SOURCE_PROVIDERS: readonly ["github", "gitlab", "ask"];
@@ -76,6 +77,8 @@ export interface QueryTemplate extends QueryTemplateSummary {
     ctx?: QueryBuildContext,
   ) => { path: string };
   describe: (params: Record<string, string>) => string;
+  /** Per-extract reducers for responses the generic reducers can't read. */
+  extractors?: Record<string, (raw: { status: number; body: unknown }) => unknown>;
 }
 
 export const QUERY_TEMPLATES: Readonly<Record<string, QueryTemplate>>;

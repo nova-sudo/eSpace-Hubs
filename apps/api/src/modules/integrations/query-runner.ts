@@ -56,7 +56,7 @@ import {
 
 export type QueryProvider = "github" | "gitlab";
 export type QuerySourceProvider = QueryProvider | "ask";
-export type QueryExtract = "exists" | "count" | "ratio" | "latest_date";
+export type QueryExtract = "exists" | "count" | "ratio" | "latest_date" | "closed";
 
 export interface QuerySource {
   provider: QuerySourceProvider;

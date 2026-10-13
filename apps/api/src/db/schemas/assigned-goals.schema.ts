@@ -43,6 +43,22 @@ export const assignedGoalsValidator: Document = {
       status: { enum: ["active", "archived"] },
       archivedAt: { bsonType: ["date", "null"] },
       specRevision: { bsonType: ["int", "long"], minimum: 0 },
+      // The creator asked assignees to publish periods as GitHub issues.
+      github: {
+        oneOf: [
+          { bsonType: "null" },
+          {
+            bsonType: "object",
+            required: ["repo", "requestedAt", "requestedBy"],
+            additionalProperties: false,
+            properties: {
+              repo: { bsonType: ["string", "null"], maxLength: 120 },
+              requestedAt: { bsonType: "date" },
+              requestedBy: { bsonType: "objectId" },
+            },
+          },
+        ],
+      },
       createdAt: { bsonType: "date" },
       updatedAt: { bsonType: "date" },
     },

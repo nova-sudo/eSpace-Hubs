@@ -23,6 +23,7 @@ import type {
   CompanionDevice,
   CompanionPairing,
   EvidenceItem,
+  GithubLink,
   GoalContextDoc,
   GoalCycleArchive,
   GoalInputEntry,
@@ -219,6 +220,13 @@ export async function getManagerGoalVerdictEventsCollection(): Promise<
 > {
   const db = await getDb();
   return db.collection<ManagerGoalVerdictEvent>("manager_goal_verdict_events");
+}
+
+export async function getGithubLinksCollection(): Promise<
+  Collection<GithubLink>
+> {
+  const db = await getDb();
+  return db.collection<GithubLink>("github_links");
 }
 
 export async function getAssignedGoalsCollection(): Promise<
@@ -779,8 +787,42 @@ async function ensureIndexes(): Promise<void> {
     },
   ]);
 
+  const githubLinks = await getGithubLinksCollection();
+  await githubLinks.createIndexes([
+    {
+      // The claim: one row per (user, goal, period), taken BEFORE the
+      // GitHub call so a retry can never create a second issue.
+      key: { idempotencyKey: 1 },
+      unique: true,
+      name: "github_links_idem_uniq",
+    },
+    {
+      // A goal's links for its owner — the widget chip and the sync route.
+      key: { orgId: 1, userId: 1, goalId: 1, periodIndex: 1 },
+      name: "github_links_org_user_goal_period",
+    },
+    {
+      // The manager grid: every assignee's links for one shared goal.
+      key: { orgId: 1, assignedGoalId: 1 },
+      name: "github_links_org_assigned",
+      partialFilterExpression: { assignedGoalId: { $type: "objectId" } },
+    },
+    {
+      // One live link per issue — an issue adopted twice would double-log.
+      key: { orgId: 1, repo: 1, issueNumber: 1 },
+      unique: true,
+      name: "github_links_org_repo_issue_live_uniq",
+      partialFilterExpression: { status: "linked" },
+    },
+    {
+      // The scheduler's pick-oldest-first sweep.
+      key: { status: 1, lastSyncedAt: 1 },
+      name: "github_links_status_synced",
+    },
+  ]);
+
   logger.debug(
-    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs, snapshots, grading_verdicts, integrations, hub_configs, companion_devices, companion_pairings, notifications, manager_goal_verdicts, manager_goal_verdict_events, goal_tier_policies, assigned_goals, notification_prefs, manager_report_notes",
+    "[db] indexes ensured for orgs, users, sessions, audit_log, auth_tokens, goals, goal_specs, goal_context, goal_inputs, snapshots, grading_verdicts, integrations, hub_configs, companion_devices, companion_pairings, notifications, manager_goal_verdicts, manager_goal_verdict_events, goal_tier_policies, assigned_goals, notification_prefs, manager_report_notes, github_links",
   );
 }
 

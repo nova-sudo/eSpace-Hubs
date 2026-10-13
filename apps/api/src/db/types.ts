@@ -598,10 +598,17 @@ export type GoalInputValue =
   | string[]
   | Record<string, unknown>;
 
-export type GoalInputSource = "manual" | "auto";
+/**
+ * `github` rows are written by the server only (modules/github-links sync)
+ * when an eSpace-created issue is closed as completed. The client append
+ * route never accepts it — a browser cannot claim a period was closed on
+ * GitHub.
+ */
+export type GoalInputSource = "manual" | "auto" | "github";
 export const ALL_GOAL_INPUT_SOURCES: readonly GoalInputSource[] = [
   "manual",
   "auto",
+  "github",
 ];
 
 export interface GoalInputEntry {
@@ -796,7 +803,13 @@ export type NotificationKind =
   | "approval_queue_stale"
   // A report acknowledged a manager grade with "I disagree" — sent to the
   // manager who set the grade (see notifyVerdictDisputed).
-  | "verdict_disputed";
+  | "verdict_disputed"
+  // GitHub links (modules/github-links): a manager asked the assignees of
+  // a shared goal to publish it as issues; an assignee did; a linked issue
+  // was closed on GitHub and logged as the period's reading.
+  | "github_publish_requested"
+  | "github_issues_published"
+  | "github_issue_closed";
 
 export const ALL_NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "manager_graded",
@@ -819,6 +832,9 @@ export const ALL_NOTIFICATION_KINDS: readonly NotificationKind[] = [
   "manager_changed",
   "approval_queue_stale",
   "verdict_disputed",
+  "github_publish_requested",
+  "github_issues_published",
+  "github_issue_closed",
 ] as const;
 
 // ─── assigned (shared) goals ─────────────────────────────────────────
@@ -854,8 +870,135 @@ export interface AssignedGoal {
   archivedAt: Date | null;
   /** Bumped on a structural plan change (cadence / cycle / period count). */
   specRevision: number;
+  /**
+   * The creator asked assignees to publish this goal's periods as GitHub
+   * issues (modules/github-links). `repo` is a suggestion the assignee's
+   * publish dialog prefills; the assignee publishes with their OWN token.
+   * Absent / null until requested.
+   */
+  github?: AssignedGoalGithubRequest | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface AssignedGoalGithubRequest {
+  /** "owner/name", lower-case, or null when the creator left it open. */
+  repo: string | null;
+  requestedAt: Date;
+  requestedBy: ObjectId;
+}
+
+// ─── github links (an eSpace tracker period ↔ a GitHub issue) ────────
+
+/**
+ * One row per (user, goal, period) that was published to GitHub as an
+ * issue. The row is CLAIMED before the GitHub call (status `pending`,
+ * unique `idempotencyKey`) so a retry, a double-click, or a crash between
+ * "issue created" and "row finalised" can never create a second issue:
+ * recovery lists the repo's `espace` issues, parses the marker in each
+ * body (shared/github-links) and adopts the match.
+ *
+ * `userId` is the token owner AND the row owner. On a shared goal every
+ * assignee has their own row for the same `goalId`.
+ *
+ * Ownership rule: GitHub owns `state` (read-only here, refreshed by sync);
+ * eSpace owns everything else. Nothing here is ever pushed back to GitHub
+ * except the one issue creation and, later, explicit comments.
+ */
+export type GithubLinkStatus = "pending" | "linked" | "failed" | "unlinked";
+
+export interface GithubLinkedPr {
+  repo: string;
+  number: number;
+  /** GitHub's numeric PR id — stable across renames, used for evidence ids. */
+  prId: number;
+  url: string;
+  title: string;
+  state: "open" | "closed" | "merged";
+  mergedAt: Date | null;
+  author: string | null;
+}
+
+export interface GithubLinkComment {
+  commentId: number;
+  author: string;
+  /** Capped at 2000 chars on write. */
+  body: string;
+  createdAt: Date;
+  url: string;
+}
+
+export interface GithubLinkState {
+  issueState: "open" | "closed" | "missing";
+  /** GitHub's `state_reason`: "completed" | "not_planned" | "reopened" | null. */
+  stateReason: string | null;
+  closedAt: Date | null;
+  updatedAt: Date | null;
+  title: string;
+  tasks: { done: number; total: number };
+  labels: string[];
+  assignees: string[];
+  commentsCount: number;
+  /** ≤ 10, from the issue timeline (Phase 3). */
+  linkedPrs: GithubLinkedPr[];
+  /** ≤ 20 newest developer replies; eSpace's own posts are filtered out (Phase 3). */
+  comments: GithubLinkComment[];
+}
+
+export type GithubLinkPostKind = "manager_note" | "tier_verdict";
+
+export interface GithubLinkPost {
+  kind: GithubLinkPostKind;
+  /** The note / verdict-event id the comment was composed from. */
+  sourceId: string;
+  commentId: number;
+  postedAt: Date;
+  postedBy: ObjectId;
+}
+
+export interface GithubLink {
+  _id: ObjectId;
+  orgId: ObjectId;
+  /** Token owner = row owner (the assignee on a shared goal). */
+  userId: ObjectId;
+  /** Own L2 id, or `asg_<hex>` for a shared goal. */
+  goalId: string;
+  assignedGoalId: ObjectId | null;
+  /** Positional period index — what resolvePeriodContent keys on. */
+  periodIndex: number;
+  /** Cadence key at publish time; null for a single-window plan. */
+  periodKey: string | null;
+  periodLabel: string;
+  /** "owner/name", lower-case. */
+  repo: string;
+  /** sha256 hex of "v1|org|user|goal|periodIndex" — unique. */
+  idempotencyKey: string;
+  status: GithubLinkStatus;
+  /** When the pending claim was taken; re-claimable after 10 minutes. */
+  claimedAt: Date;
+  issueNumber: number | null;
+  issueId: number | null;
+  issueNodeId: string | null;
+  /** html_url from GitHub's own response — never from a client. */
+  issueUrl: string | null;
+  /** False when label creation was refused (no push access) but the issue exists. */
+  labelsApplied: boolean;
+  createdBy: ObjectId;
+  createdAt: Date;
+  lastSyncedAt: Date | null;
+  lastSyncError: string | null;
+  /** Consecutive failures; the scheduler skips a link at 3, a manual sync resets it. */
+  syncFailures: number;
+  state: GithubLinkState | null;
+  /** The ONE goal_inputs row written when the issue closed as completed. */
+  readingInputId: ObjectId | null;
+  readingClosedAt: Date | null;
+  posts: GithubLinkPost[];
+  /** assigned goal's specRevision at publish time; null for own goals. */
+  specRevision: number | null;
+  /** The plan was re-keyed after publishing — the UI offers "Republish". */
+  stale: boolean;
+  unlinkedAt: Date | null;
 }
 
 // ─── scheduler stamps (job dedupe) ───────────────────────────────────
