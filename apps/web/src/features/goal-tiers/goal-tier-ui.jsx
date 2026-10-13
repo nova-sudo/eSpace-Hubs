@@ -11,7 +11,7 @@ import { useState } from "react";
 import { Check } from "lucide-react";
 import { Badge, InsightRow, Label, Button } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { updateSpecTiers } from "@/features/goal-specs";
+import { isSingleRecordWidget, specCadence, updateSpecTiers } from "@/features/goal-specs";
 import { isAssignedGoalId } from "@espace-devhub/shared/goal-specs";
 import { useGoalTier, TIER_ORDER, TIER_LABELS, TIER_FIELD } from "./use-goal-tier";
 import { readTierPolicy } from "./tier-policy-store";
@@ -168,7 +168,7 @@ export function GoalTierLadder({ spec, rubric = null, variant: _variant = "light
     <div className="mt-3 flex flex-col gap-2.5">
       <div className="flex items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <Label>Achievement levels</Label>
+          <Label>Achievement levels · whole cycle</Label>
           {tierGoverned ? (
             // "How you're graded" (hub-audit §5): name the policy that sets
             // the bar, not just that one exists.
@@ -278,30 +278,78 @@ export function GoalTierLadder({ spec, rubric = null, variant: _variant = "light
   );
 }
 
+/** A ladder → the editor's four text fields (missing rungs → ""). */
+function ladderDraft(ladder) {
+  return {
+    notAchieved: ladder?.notAchieved || "",
+    achieved: ladder?.achieved || "",
+    overAchieved: ladder?.overAchieved || "",
+    roleModel: ladder?.roleModel || "",
+  };
+}
+
+/** The editor's four text fields → a ladder (blank rungs → null). */
+function draftLadder(draft) {
+  return {
+    notAchieved: draft.notAchieved.trim() || null,
+    achieved: draft.achieved.trim() || null,
+    overAchieved: draft.overAchieved.trim() || null,
+    roleModel: draft.roleModel.trim() || null,
+  };
+}
+
+/** Four labelled textareas for one ladder. */
+function LadderFields({ draft, onChange }) {
+  return (
+    <div className="flex flex-col gap-2.5">
+      {TIER_ORDER.map((t) => {
+        const field = TIER_FIELD[t];
+        return (
+          <label key={t} className="flex flex-col gap-1">
+            <Badge tone={tierTone(t)} className="w-fit">
+              {TIER_LABELS[t]}
+            </Badge>
+            <textarea
+              rows={2}
+              value={draft[field]}
+              onChange={(e) => onChange({ ...draft, [field]: e.target.value })}
+              className="w-full resize-y rounded-[var(--radius-lg)] bg-card p-3 text-[13px] leading-[1.4] text-fg border border-field-line outline-none focus:ring-2 focus:ring-ink"
+            />
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
- * Inline editor for the four tier criteria. The criteria are the goal
- * owner's contract — the AI only drafts them — so this lets the user
- * correct mis-extractions. Saving writes the criteria back onto the spec
- * (`saveSpec`), which re-grades the goal against the new criteria.
+ * Inline editor for the goal's two achievement ladders: the whole-cycle
+ * ladder (`spec.tiers`) and the one-window ladder (`spec.cadenceTiers`).
+ * The criteria are the goal owner's contract — the AI only drafts them — so
+ * this lets the user correct mis-extractions. Saving writes both back onto
+ * the spec (`updateSpecTiers`), which re-grades against the new criteria.
+ * The window ladder is offered only for a goal with windows, and not when a
+ * manager's cadence policy already sets it; left blank, each window is held
+ * to the whole-cycle ladder.
  */
 function TierEditor({ spec, tiers, onClose }) {
-  const [draft, setDraft] = useState(() => ({
-    notAchieved: tiers.notAchieved || "",
-    achieved: tiers.achieved || "",
-    overAchieved: tiers.overAchieved || "",
-    roleModel: tiers.roleModel || "",
-  }));
+  const [draft, setDraft] = useState(() => ladderDraft(tiers));
+  const [windowDraft, setWindowDraft] = useState(() => ladderDraft(spec?.cadenceTiers));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const locked = spec?.tiersLocked === true;
+  const cadenceGoverned = !!readTierPolicy(spec?.goalId)?.cadenceTiers;
+  const hasWindows = !!specCadence(spec) && !isSingleRecordWidget(spec?.widget);
+  const editsWindow = !cadenceGoverned && (hasWindows || !!spec?.cadenceTiers);
 
-  function draftTiers() {
-    return {
-      notAchieved: draft.notAchieved.trim() || null,
-      achieved: draft.achieved.trim() || null,
-      overAchieved: draft.overAchieved.trim() || null,
-      roleModel: draft.roleModel.trim() || null,
-    };
+  function draftLadders() {
+    const ladders = { tiers: draftLadder(draft) };
+    if (editsWindow) {
+      const windowLadder = draftLadder(windowDraft);
+      // All four blank → no window ladder of its own (falls back).
+      ladders.cadenceTiers = Object.values(windowLadder).some(Boolean) ? windowLadder : null;
+    }
+    return ladders;
   }
 
   // `updateSpecTiers` validates synchronously and returns `{ ok, errors }`;
@@ -309,7 +357,7 @@ function TierEditor({ spec, tiers, onClose }) {
   function commit(keepOnReanalyze) {
     setSaving(true);
     setError(null);
-    const res = updateSpecTiers(spec.goalId, draftTiers(), keepOnReanalyze);
+    const res = updateSpecTiers(spec.goalId, draftLadders(), keepOnReanalyze);
     setSaving(false);
     if (!res?.ok) {
       setError((res?.errors || []).join(", ") || "Couldn't save these criteria.");
@@ -335,24 +383,20 @@ function TierEditor({ spec, tiers, onClose }) {
           </Badge>
         ) : null}
       </div>
-      <div className="flex flex-col gap-2.5">
-        {TIER_ORDER.map((t) => {
-          const field = TIER_FIELD[t];
-          return (
-            <label key={t} className="flex flex-col gap-1">
-              <Badge tone={tierTone(t)} className="w-fit">
-                {TIER_LABELS[t]}
-              </Badge>
-              <textarea
-                rows={2}
-                value={draft[field]}
-                onChange={(e) => setDraft((d) => ({ ...d, [field]: e.target.value }))}
-                className="w-full resize-y rounded-[var(--radius-lg)] bg-card p-3 text-[13px] leading-[1.4] text-fg border border-field-line outline-none focus:ring-2 focus:ring-ink"
-              />
-            </label>
-          );
-        })}
+      <div className="flex flex-col gap-2">
+        <Label>Whole cycle</Label>
+        <LadderFields draft={draft} onChange={setDraft} />
       </div>
+      {editsWindow ? (
+        <div className="flex flex-col gap-2">
+          <Label>Each window</Label>
+          <p className="text-[12px] leading-[1.5] text-muted-fg">
+            What one window on its own has to show. Leave these blank to hold each
+            window to the whole-cycle levels.
+          </p>
+          <LadderFields draft={windowDraft} onChange={setWindowDraft} />
+        </div>
+      ) : null}
       {error ? <div className="text-[12.5px] leading-[1.4] text-peach-text">{error}</div> : null}
       <div className="flex flex-wrap items-center gap-2">
         <Button

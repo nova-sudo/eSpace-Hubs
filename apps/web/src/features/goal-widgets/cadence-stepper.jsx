@@ -37,7 +37,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check } from "lucide-react";
-import { Button, Label } from "@/components/ui";
+import { Badge, Button, Label } from "@/components/ui";
 import {
   useGoalInputs,
   buildCycleWindows,
@@ -459,13 +459,15 @@ function NestedStepperLevel({
 const WINDOW_TIER_COLOR = TIER_COLOR;
 
 /**
- * This ONE window's own achievement tier — same criteria as the whole-goal
- * ladder (section 01), graded against only this window's data. On demand
+ * This ONE window's own achievement tier — held to the per-window ladder
+ * (`cadenceTiers`, or a manager's cadence policy), else the whole-goal ladder
+ * (section 01) with a note saying so, graded against only this window's
+ * data. Renders whenever a per-window ladder resolves. On demand
  * only: no cached verdict shows "not graded yet" with a "grade this window"
  * button, rather than auto-grading the moment the fields are filled.
  */
 function WindowTierPanel({ goalId, spec, periodKey, windowStart, windowEnd }) {
-  const { hasTiers, tiers, tierGoverned, verdict, grading, grade } = useGoalWindowTier(
+  const { hasTiers, tiers, tierGoverned, cadenceFallback, verdict, grading, grade } = useGoalWindowTier(
     goalId,
     spec,
     periodKey,
@@ -481,15 +483,25 @@ function WindowTierPanel({ goalId, spec, periodKey, windowStart, windowEnd }) {
   return (
     <div className="mt-3 flex flex-col gap-2.5 border-t border-line pt-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0 text-[12px] font-semibold text-muted-fg">
-          This window&apos;s tier{tierGoverned ? " (manager-governed)" : ""} —{" "}
-          {verdict?.tier ? (
-            <span className="font-bold" style={{ color }} title={verdict.reasoning || ""}>
-              {TIER_LABELS[verdict.tier]}
-            </span>
-          ) : (
-            <span>not graded yet</span>
-          )}
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="min-w-0 text-[12px] font-semibold text-muted-fg">
+            This window&apos;s tier{tierGoverned ? " (manager-governed)" : ""} —{" "}
+            {verdict?.tier ? (
+              <span className="font-bold" style={{ color }} title={verdict.reasoning || ""}>
+                {TIER_LABELS[verdict.tier]}
+              </span>
+            ) : (
+              <span>not graded yet</span>
+            )}
+          </div>
+          {tiers && cadenceFallback ? (
+            <Badge
+              tone="neutral"
+              title="This goal has no per-window levels, so each window is held to the whole-goal levels."
+            >
+              Same ladder as the whole goal
+            </Badge>
+          ) : null}
         </div>
         <Button
           type="button"
@@ -772,15 +784,14 @@ export function CadenceStepper({ spec, onEditingWindowChange }) {
           periodWord={periodWord}
         />
       )}
-      {spec?.tiers ? (
-        <WindowTierPanel
-          goalId={goalId}
-          spec={spec}
-          periodKey={selected.key}
-          windowStart={selected.start}
-          windowEnd={selected.end}
-        />
-      ) : null}
+      {/* Renders nothing when no ladder resolves for a window. */}
+      <WindowTierPanel
+        goalId={goalId}
+        spec={spec}
+        periodKey={selected.key}
+        windowStart={selected.start}
+        windowEnd={selected.end}
+      />
     </div>
   ) : null;
 

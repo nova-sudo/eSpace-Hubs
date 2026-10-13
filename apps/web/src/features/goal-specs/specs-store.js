@@ -247,7 +247,7 @@ export function saveSpec(spec, { replace = false } = {}) {
   if (isAssignedGoalId(spec?.goalId)) return READONLY;
   // Locked tiers are the user's contract — a re-analysis (or any external
   // save) must NOT overwrite them. When the stored spec is locked, carry its
-  // tiers/ladder + the lock flag onto the incoming spec before validating.
+  // tiers/ladders + the lock flag onto the incoming spec before validating.
   // (Explicit tier edits go through `updateSpecTiers`, which bypasses this;
   // a `replace` save bypasses it too — see the opts doc above.)
   let input = spec;
@@ -256,6 +256,7 @@ export function saveSpec(spec, { replace = false } = {}) {
     input = {
       ...spec,
       tiers: existing.tiers,
+      cadenceTiers: existing.cadenceTiers,
       tierScale: existing.tierScale,
       tiersLocked: true,
     };
@@ -279,15 +280,20 @@ export function saveSpec(spec, { replace = false } = {}) {
 
 /**
  * Set a goal's achievement-tier criteria (the tier editor's save path).
- * `locked` true marks the criteria as user-owned so re-analysis preserves
- * them; false drops the lock (next re-analysis may regenerate). Bypasses
- * saveSpec's preserve guard because this IS the explicit user edit.
+ * `ladders` is `{ tiers, cadenceTiers }` — the whole-cycle ladder and the
+ * one-window ladder; a key left out leaves that ladder untouched (null
+ * clears it). `locked` true marks the criteria as user-owned so re-analysis
+ * preserves them; false drops the lock (next re-analysis may regenerate).
+ * Bypasses saveSpec's preserve guard because this IS the explicit user edit.
  */
-export function updateSpecTiers(goalId, tiers, locked) {
+export function updateSpecTiers(goalId, ladders, locked) {
   if (isAssignedGoalId(goalId)) return READONLY;
   const existing = goalId ? state.specs[goalId] : null;
   if (!existing) return { ok: false, errors: ["no spec for goal"] };
-  const res = validateSpec({ ...existing, tiers, tiersLocked: locked === true });
+  const next = { ...existing, tiersLocked: locked === true };
+  if (ladders && "tiers" in ladders) next.tiers = ladders.tiers;
+  if (ladders && "cadenceTiers" in ladders) next.cadenceTiers = ladders.cadenceTiers;
+  const res = validateSpec(next);
   if (!res.ok) return res;
   setState({ specs: { ...state.specs, [goalId]: res.spec }, error: null });
   void putSpecRemote(goalId, res.spec, existing);

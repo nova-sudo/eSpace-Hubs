@@ -26,7 +26,7 @@ import {
   cycleEvidenceToText,
 } from "@/features/goal-inputs";
 import { useGoalContext, useIsContextComplete } from "@/features/goal-context";
-import { SPEC_KINDS, specCadence, isSingleRecordWidget } from "@/features/goal-specs";
+import { SPEC_KINDS, specCadence, isSingleRecordWidget, resolveLadders } from "@/features/goal-specs";
 import { fieldsForPeriodKey } from "./composed-field-resolution.js";
 import { useEvidenceManifest, evidenceManifestToText } from "./use-evidence-manifest.js";
 import { readLocks, useGoalLocks } from "@/features/goal-locks";
@@ -920,10 +920,11 @@ export function useGoalTier(goalId, spec) {
   // hydration — used below to defer grading until the live data is loaded.
   const inputsHydrated = getInputsState().fetched;
   const isScorecard = spec?.widget === SPEC_KINDS.SCORECARD;
-  // Manager-authored FINAL criteria (by Goal Code) outrank the goal's own
-  // AI-extracted/self-authored spec.tiers when set.
-  const tiers = tierPolicy?.finalTiers || spec?.tiers || null;
-  const tierGoverned = !!tierPolicy?.finalTiers;
+  // The whole-cycle ladder: manager-authored FINAL criteria (by Goal Code)
+  // outrank the goal's own AI-extracted/self-authored spec.tiers when set.
+  const finalLadder = resolveLadders(spec, tierPolicy);
+  const tiers = finalLadder.final;
+  const tierGoverned = finalLadder.finalGoverned;
   // The classifier's contract is to never emit tierScale for SCORECARD (it's
   // graded qualitatively — the AI reads the composite + component readings
   // as prose). Enforced here too, defensively: liveReading.score is a "%
@@ -1325,16 +1326,17 @@ export function useGoalTier(goalId, spec) {
 
 /**
  * AI tier verdict for ONE cadence window on its own (e.g. just Q1 of a
- * quarterly goal), independent of every other submitted window — same tier
- * ladder + criteria text as the whole-goal verdict (`useGoalTier`), graded
- * against only that window's data.
+ * quarterly goal), independent of every other submitted window — held to the
+ * per-window ladder (`resolveLadders(...).cadence`: a manager cadence policy,
+ * else `spec.cadenceTiers`, else the whole-cycle ladder with
+ * `cadenceFallback: true`), graded against only that window's data.
  *
  * On-demand only, by design: unlike the whole-goal verdict there is no
  * automatic grading effect here — filling a window's fields does NOT spend
  * an AI call on its own. The caller (the cadence stepper's "Save & grade")
  * triggers `grade()` explicitly, matching the existing on-demand pattern.
  *
- *   const { hasTiers, verdict, grading, grade } =
+ *   const { hasTiers, cadenceFallback, verdict, grading, grade } =
  *     useGoalWindowTier(goalId, spec, periodKey, windowStart, windowEnd);
  */
 export function useGoalWindowTier(goalId, spec, periodKey, windowStart, windowEnd) {
@@ -1344,8 +1346,8 @@ export function useGoalWindowTier(goalId, spec, periodKey, windowStart, windowEn
     getGoalTiersServerSnapshot,
   );
   // Manager-authored CADENCE criteria (by Goal Code) outrank the goal's own
-  // spec.tiers when set — independent of the final-tier policy, which is
-  // read separately by useGoalTier and never consulted here.
+  // per-window ladder when set — independent of the final-tier policy,
+  // which only matters here as the fallback when no per-window ladder exists.
   useSyncExternalStore(
     subscribeTierPolicies,
     getTierPoliciesSnapshot,
@@ -1357,8 +1359,12 @@ export function useGoalWindowTier(goalId, spec, periodKey, windowStart, windowEn
   }, []);
   const { entries } = useGoalInputs(goalId);
   const [grading, setGrading] = useState(false);
-  const tiers = tierPolicy?.cadenceTiers || spec?.tiers || null;
-  const tierGoverned = !!tierPolicy?.cadenceTiers;
+  // The resolved per-window ladder — and it alone feeds both hashes below,
+  // so editing cadenceTiers invalidates every window verdict.
+  const ladders = resolveLadders(spec, tierPolicy);
+  const tiers = ladders.cadence;
+  const tierGoverned = ladders.cadenceGoverned;
+  const cadenceFallback = !!tiers && ladders.cadenceFallback;
 
   const currentData = useMemo(() => {
     if (!periodKey) return "";
@@ -1396,6 +1402,7 @@ export function useGoalWindowTier(goalId, spec, periodKey, windowStart, windowEn
         gradedDay: localDayStamp(),
         aiProvider: getAiProvider(),
         periodKey,
+        scope: "window",
         force: true,
       });
     } finally {
@@ -1403,7 +1410,7 @@ export function useGoalWindowTier(goalId, spec, periodKey, windowStart, windowEn
     }
   }
 
-  return { hasTiers: !!tiers, tiers, tierGoverned, verdict, grading, grade };
+  return { hasTiers: !!tiers, tiers, tierGoverned, cadenceFallback, verdict, grading, grade };
 }
 
 /**
@@ -1445,7 +1452,7 @@ export function readCappedGoalTier(goalId, spec, entries, lockedKeys, snapReadin
   if (!stored || stored.awaiting || stored.pendingSetup || !stored.tier) {
     return null;
   }
-  const tiers = spec?.tiers || null;
+  const tiers = resolveLadders(spec, readTierPolicy(goalId)).final;
   const cadence = tiers ? (isSingleRecordWidget(spec?.widget) ? null : specCadence(spec)) : null;
   if (!cadence) return { tier: stored.tier, reasoning: stored.reasoning || "" };
   const cycle = buildCycleWindows({

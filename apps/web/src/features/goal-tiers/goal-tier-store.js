@@ -144,6 +144,43 @@ export function readGoalTier(goalId, periodKey) {
 }
 
 /**
+ * The `POST /ai/grade-goal-tier` body — pure, so the request shape is
+ * testable. `scope` ("goal" | "window") says which ladder the server should
+ * hold the verdict to; it's omitted when not given (the server defaults to
+ * the whole goal, and a real `periodKey` implies a window).
+ */
+export function gradeRequestBody({
+  goalId,
+  goalTitle,
+  tiers,
+  currentData,
+  key,
+  aiProvider,
+  periodKey,
+  scope,
+  force,
+  criteriaChanged,
+}) {
+  return {
+    goalTitle: goalTitle || "",
+    tiers,
+    currentData: currentData || "",
+    provider: aiProvider || undefined,
+    // Durable-cache coordinates: the server returns a persisted verdict
+    // for a matching hash instead of re-calling the model, and persists
+    // fresh grades under (goalId, periodKey, tierHash). `force` bypasses it.
+    goalId,
+    tierHash: key,
+    periodKey: periodKey || undefined,
+    ...(scope ? { scope } : {}),
+    force: force || undefined,
+    criteriaChanged: criteriaChanged || undefined,
+    // Lets the server's throttle count "today" in the user's zone.
+    tzOffsetMinutes: new Date().getTimezoneOffset(),
+  };
+}
+
+/**
  * Grade a goal's tier unless it's already been graded today against the same
  * criteria. Idempotent: skips when the stored verdict is same-criteria +
  * same-day, or a grade is already in flight for the goal. `force` re-grades
@@ -160,6 +197,7 @@ export async function gradeGoalTier({
   gradedDay,
   aiProvider,
   periodKey,
+  scope,
   force = false,
 }) {
   load();
@@ -200,7 +238,7 @@ export async function gradeGoalTier({
   // and offer the same call again (forced, so the freshness guard can't
   // swallow the retry).
   let failure = null;
-  const retryArgs = { goalId, goalTitle, tiers, currentData, key, criteriaKey, gradedDay, aiProvider, periodKey };
+  const retryArgs = { goalId, goalTitle, tiers, currentData, key, criteriaKey, gradedDay, aiProvider, periodKey, scope };
   try {
     // Whether the CRITERIA really changed since the grade we hold — the
     // server's once-a-day re-grade throttle lets a criteria edit through.
@@ -220,22 +258,20 @@ export async function gradeGoalTier({
           "Content-Type": "application/json",
           "x-ai-provider": aiProvider || "mistral",
         },
-        body: JSON.stringify({
-          goalTitle: goalTitle || "",
-          tiers,
-          currentData: currentData || "",
-          provider: aiProvider || undefined,
-          // Durable-cache coordinates: the server returns a persisted verdict
-          // for a matching hash instead of re-calling the model, and persists
-          // fresh grades under (goalId, periodKey, tierHash). `force` bypasses it.
-          goalId,
-          tierHash: key,
-          periodKey: periodKey || undefined,
-          force: force || undefined,
-          criteriaChanged: criteriaChanged || undefined,
-          // Lets the server's throttle count "today" in the user's zone.
-          tzOffsetMinutes: new Date().getTimezoneOffset(),
-        }),
+        body: JSON.stringify(
+          gradeRequestBody({
+            goalId,
+            goalTitle,
+            tiers,
+            currentData,
+            key,
+            aiProvider,
+            periodKey,
+            scope,
+            force,
+            criteriaChanged,
+          }),
+        ),
       },
       { provider: "ai" },
     ));

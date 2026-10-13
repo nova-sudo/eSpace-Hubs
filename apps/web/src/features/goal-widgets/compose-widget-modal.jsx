@@ -1072,13 +1072,37 @@ function describeSource(source) {
   }
 }
 
-/** Read-only preview of the generated COMPOSED spec: cycle + fields + tiers. */
+/** One ladder's criteria in the spec preview (blank rungs skipped). */
+function PreviewLadder({ title, ladder }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-[12px] font-bold text-fg">{title}</span>
+      <div className="flex flex-col gap-1 text-[13px] leading-[1.45]">
+        {[
+          ["Achieved", ladder.achieved],
+          ["Over-achieved", ladder.overAchieved],
+          ["Role model", ladder.roleModel],
+        ]
+          .filter(([, v]) => v)
+          .map(([label, v]) => (
+            <div key={label}>
+              <span className="mr-1.5 text-[12px] font-semibold text-muted-fg">{label}</span>
+              <span className="text-fg">{v}</span>
+            </div>
+          ))}
+      </div>
+    </div>
+  );
+}
+
+/** Read-only preview of the generated COMPOSED spec: cycle + fields + both tier ladders. */
 function SpecPreview({ preview, needsContext, planBounds }) {
   const spec = preview.spec;
   const fields = Array.isArray(spec.fields) ? spec.fields : [];
   const cadence = spec.composed?.cadence || null;
   const prompt = spec.composed?.prompt || null;
   const tiers = spec.tiers || null;
+  const cadenceTiers = spec.cadenceTiers || null;
   const unrepresented = Array.isArray(preview.unrepresented) ? preview.unrepresented : [];
   const autoCount = fields.filter(isAutoField).length;
 
@@ -1192,22 +1216,10 @@ function SpecPreview({ preview, needsContext, planBounds }) {
       </div>
 
       {tiers ? (
-        <div>
-          <Label className="mb-1.5 block">Achievement tiers</Label>
-          <div className="flex flex-col gap-1 text-[13px] leading-[1.45]">
-            {[
-              ["Achieved", tiers.achieved],
-              ["Over-achieved", tiers.overAchieved],
-              ["Role model", tiers.roleModel],
-            ]
-              .filter(([, v]) => v)
-              .map(([label, v]) => (
-                <div key={label}>
-                  <span className="mr-1.5 text-[12px] font-semibold text-muted-fg">{label}</span>
-                  <span className="text-fg">{v}</span>
-                </div>
-              ))}
-          </div>
+        <div className="flex flex-col gap-3">
+          <Label className="block">Achievement tiers</Label>
+          <PreviewLadder title="Whole cycle" ladder={tiers} />
+          {cadenceTiers ? <PreviewLadder title="Each window" ladder={cadenceTiers} /> : null}
         </div>
       ) : null}
     </div>
