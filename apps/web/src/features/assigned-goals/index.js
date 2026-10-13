@@ -8,6 +8,7 @@
 export {
   archiveAssignedGoal,
   createAssignedGoal,
+  requestGithubPublish,
   updateAssignedGoal,
   useAssignedProgress,
   useCreatedAssignedGoals,

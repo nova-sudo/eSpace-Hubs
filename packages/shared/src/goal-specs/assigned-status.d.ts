@@ -45,5 +45,9 @@ export declare function periodStatuses(args: {
   timeZone?: string;
   trackingStart?: number | null;
 }): AssignedPeriodCell[];
+export declare function entryInWindow(
+  entry: { ts?: unknown; value?: unknown } | null | undefined,
+  w: Pick<AssignedWindow, "key" | "start" | "end">,
+): boolean;
 export declare function localMidnight(isoDay: string, timeZone?: string): number | null;
 export declare function summarizeStatuses(cells: AssignedPeriodCell[]): AssignedStatusSummary;

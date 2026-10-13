@@ -17,6 +17,10 @@ const WidgetControlsContext = createContext({
   onMarkDelegated: null,
   onEditContext: null,
   onEditSetup: null,
+  // "Publish to GitHub…" (COMPOSED only). When the handler is null but a
+  // reason is set, the menu item renders disabled with that reason.
+  onPublishGithub: null,
+  publishGithubDisabledReason: null,
 });
 
 export function WidgetControlsProvider({ value, children }) {

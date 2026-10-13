@@ -6,6 +6,7 @@
 
 import { z } from "zod";
 import { ASSIGNEES_MAX, VIEWERS_MAX } from "../../lib/assigned-goals.js";
+import { normalizeRepo } from "../github-links/schemas.js";
 
 const objectIdHex = z.string().regex(/^[0-9a-f]{24}$/i, "Invalid user id.");
 
@@ -59,6 +60,28 @@ export const verdictSchema = z.object({
   tier: z.enum(["not_achieved", "achieved", "over_achieved", "role_model"]),
   note: z.string().max(4000).default(""),
 });
+
+/**
+ * POST /:id/github/request — `repo` is optional: absent, null or blank
+ * leaves the choice to each assignee; otherwise it must be a GitHub
+ * owner/name slug (same grammar as github-links publish), stored lower-case.
+ */
+export const githubRequestSchema = z
+  .object({
+    repo: z
+      .union([z.string(), z.null()])
+      .optional()
+      .transform((v, ctx) => {
+        if (v == null || v.trim() === "") return null;
+        const repo = normalizeRepo(v);
+        if (!repo) {
+          ctx.addIssue({ code: "custom", message: "Repository must be owner/name." });
+          return z.NEVER;
+        }
+        return repo;
+      }),
+  })
+  .strict();
 
 export const listQuerySchema = z.object({
   scope: z.enum(["created", "viewing", "assigned"]).default("created"),

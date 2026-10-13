@@ -17,6 +17,10 @@
  * The left pane reads top to bottom as the decision itself: what the
  * goal is → what the AI said → your rung → what your override costs →
  * your note → where this person stands, and save.
+ *
+ * When the goal has a period published as a GitHub issue and you have
+ * GitHub connected, a checkbox offers to post the grade on that issue
+ * too (with your own token), once the save resolves with its event id.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -27,12 +31,22 @@ import { TIER_ORDER, TIER_LABELS } from "@/features/goal-tiers";
 import {
   Badge,
   Button,
+  Checkbox,
   IconButton,
   InsightRow,
   Label,
   SegmentedControl,
+  Select,
   useFocusTrap,
 } from "@/components/ui";
+import {
+  defaultGradeLink,
+  isActiveLink,
+  linkOptionLabel,
+  postIssueComment,
+  useReportGithubLinks,
+} from "@/features/github-links";
+import { useIntegrations } from "@/features/integrations";
 import { cn } from "@/lib/cn";
 import { fmtNumber } from "@/lib/fmt";
 import { periodWords } from "@/features/goal-inputs";
@@ -151,6 +165,9 @@ export function ManagerGradeDrawer({
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState("readings");
   const [showWorkings, setShowWorkings] = useState(false);
+  // "Also post this grade on the GitHub issue" — off by default, per open.
+  const [postToGithub, setPostToGithub] = useState(false);
+  const [githubLinkId, setGithubLinkId] = useState(null);
   // Whether the manager has touched the note in this session. Until they
   // do, the note stays the server's — see the hydration effect below.
   const noteDirty = useRef(false);
@@ -163,6 +180,16 @@ export function ManagerGradeDrawer({
   // disputed the current one. A re-grade is a CHANGE the report is told
   // about — the manager should see what they're changing from.
   const verdicts = useVerdictHistory(userId, goal?.id, open);
+  // The goal's GitHub issues (one per published period) + whether the
+  // manager can speak on them (their own GitHub token).
+  const { isConnected } = useIntegrations();
+  const githubLinks = useReportGithubLinks(open ? userId : null, goal?.id);
+  const postable = githubLinks.links.filter(
+    (l) => isActiveLink(l) && l.status === "linked" && l.issueNumber,
+  );
+  const canPostToGithub = postable.length > 0 && isConnected("github");
+  const githubLink =
+    postable.find((l) => l.id === githubLinkId) ?? defaultGradeLink(postable);
 
   useEffect(() => {
     if (!open || !goal) return;
@@ -172,6 +199,8 @@ export function ManagerGradeDrawer({
     setSaving(false);
     setTab("readings");
     setShowWorkings(false);
+    setPostToGithub(false);
+    setGithubLinkId(null);
   }, [open, goal]);
 
   // The note you already wrote is the note you start from. Callers that
@@ -243,6 +272,22 @@ export function ManagerGradeDrawer({
       toast.success(`Graded · ${TIER_LABELS[tier]}`, {
         description: `${firstName} has been notified.`,
       });
+      const eventId = r.data?.eventId ?? r.data?.verdict?.eventId ?? null;
+      if (postToGithub && canPostToGithub && githubLink && eventId) {
+        // Best-effort and after the grade: a GitHub failure never undoes it.
+        const target = githubLink;
+        void postIssueComment(target.id, { kind: "tier_verdict", sourceId: eventId })
+          .then((out) => {
+            if (!out?.existing) {
+              toast.success(`Posted on GitHub · ${target.repo}#${target.issueNumber}`);
+            }
+          })
+          .catch((err) => {
+            toast.error("Couldn't post the grade on GitHub", {
+              description: err?.message || "Try again from the grade history.",
+            });
+          });
+      }
       onSaved?.();
     } else {
       toast.error("Couldn't save the grade", {
@@ -410,6 +455,42 @@ export function ManagerGradeDrawer({
               className="w-full rounded-[var(--radius-lg)] bg-card-alt p-3.5 text-[13px] leading-relaxed border border-field-line outline-none focus:ring-2 focus:ring-ink"
               style={{ minHeight: 92, resize: "vertical" }}
             />
+
+            {canPostToGithub && githubLink ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2.5 rounded-[var(--radius-lg)] bg-card-alt px-3.5 py-3">
+                <Checkbox
+                  checked={postToGithub}
+                  onChange={() => setPostToGithub((v) => !v)}
+                  label={`Also post this grade on the GitHub issue for ${githubLink.periodLabel}`}
+                />
+                <span
+                  className="min-w-0 flex-1 cursor-pointer text-[12.5px] text-fg"
+                  onClick={() => setPostToGithub((v) => !v)}
+                  aria-hidden="true"
+                >
+                  Also post this grade on the GitHub issue for{" "}
+                  <b>{githubLink.periodLabel}</b>
+                </span>
+                {postable.length > 1 ? (
+                  <Select
+                    size="sm"
+                    value={githubLink.id}
+                    onChange={(e) => setGithubLinkId(e.target.value)}
+                    aria-label="Which period's issue"
+                  >
+                    {postable.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {linkOptionLabel(l)}
+                      </option>
+                    ))}
+                  </Select>
+                ) : (
+                  <span className="font-mono text-[11.5px] text-muted-fg">
+                    {githubLink.repo}#{githubLink.issueNumber}
+                  </span>
+                )}
+              </div>
+            ) : null}
           </div>
 
           <div className="min-h-0 bg-card-alt px-5 pb-6 md:overflow-y-auto">
@@ -430,6 +511,8 @@ export function ManagerGradeDrawer({
               data={detail.data}
               verdicts={verdicts}
               firstName={firstName}
+              userId={userId}
+              goalId={goal.id}
             />
           </div>
         </div>

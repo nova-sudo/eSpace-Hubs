@@ -117,6 +117,8 @@ function formatAuto(value, extract) {
   switch (extract) {
     case "exists":
       return value ? "Present" : "Missing";
+    case "closed":
+      return value ? "Closed" : "Open";
     case "ratio": {
       const n = Number(value);
       return Number.isFinite(n) ? `${Math.round(n * 100)}%` : String(value);
@@ -474,6 +476,14 @@ export function ComposedFields({ goalId, fields, periodKey = null, periodPath = 
               while carrying no justification for any of it — which is the
               number the tier grader then had to judge. */}
           <span className="flex items-center gap-2">
+            {/* A period GitHub logged (the issue was closed) says so — it was
+                not typed here, and clearing the window won't stop the next
+                sync from writing it again. */}
+            {periodEntries[periodEntries.length - 1]?.source === "github" ? (
+              <Badge tone="neutral" title="Logged by eSpace when its GitHub issue was closed.">
+                From GitHub
+              </Badge>
+            ) : null}
             {summary.owed > 0 ? (
               <Badge tone="lemon">
                 {summary.owed} need{summary.owed === 1 ? "s" : ""} proof

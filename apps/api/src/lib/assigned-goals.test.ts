@@ -49,3 +49,21 @@ test("synthetic tree: weightage 0, asg_ ids, cycle dates, creator marker", () =>
   assert.equal(l2.assigned.byName, "Mona");
   assert.equal(l2.assigned.graceHours, 12);
 });
+
+test("synthetic L2 carries the creator's GitHub request so the widget can prefill the repo", () => {
+  type WithGithub = { assigned: { githubRepo: string | null; githubRequestedAt: string | null } };
+  const plain = syntheticAssignedL1([doc()])!.l2s[0] as unknown as WithGithub;
+  assert.equal(plain.assigned.githubRepo, null);
+  assert.equal(plain.assigned.githubRequestedAt, null);
+  const asked = syntheticAssignedL1([
+    doc({
+      github: {
+        repo: "acme/app",
+        requestedAt: new Date("2026-09-02T08:00:00Z"),
+        requestedBy: new ObjectId(),
+      },
+    }),
+  ])!.l2s[0] as unknown as WithGithub;
+  assert.equal(asked.assigned.githubRepo, "acme/app");
+  assert.equal(asked.assigned.githubRequestedAt, "2026-09-02T08:00:00.000Z");
+});

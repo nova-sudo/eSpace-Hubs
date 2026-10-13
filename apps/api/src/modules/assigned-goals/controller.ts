@@ -8,6 +8,7 @@
  *     `assigned_goals.manage`, enforced in routes.ts)
  *   - progress + cell detail   → creator or viewer
  *   - grading an assignee      → the creator (a manager verdict of record)
+ *   - asking assignees to publish to GitHub → the creator
  *   - meta (GET /:id), "my progress" → creator, viewer or assignee
  *   - anyone else              → 404, never 403 (don't leak existence)
  */
@@ -22,6 +23,7 @@ import {
 } from "@espace-devhub/shared/goal-specs";
 import {
   getAssignedGoalsCollection,
+  getGithubLinksCollection,
   getGoalInputsCollection,
   getUsersCollection,
 } from "../../db/collections.js";
@@ -31,10 +33,11 @@ import { canFillGoals } from "../../lib/assigned-goals.js";
 import { createNotification } from "../../lib/notifications.js";
 import { effectiveRoles } from "../../lib/user-roles.js";
 import { HttpError } from "../../middleware/error-handler.js";
-import { buildProgress } from "./progress.js";
+import { buildProgress, type ProgressLink } from "./progress.js";
 import {
   DEFAULT_TIME_ZONE,
   createAssignedGoalSchema,
+  githubRequestSchema,
   listQuerySchema,
   patchAssignedGoalSchema,
   verdictSchema,
@@ -207,6 +210,13 @@ async function toPublic(doc: AssignedGoal, opts: { withPeople?: boolean } = {}) 
     createdBy: { id: doc.createdBy.toHexString(), displayName: doc.createdByName },
     assigneeCount: doc.assigneeIds.length,
     viewerCount: doc.viewerIds.length,
+    github: doc.github
+      ? {
+          repo: doc.github.repo ?? null,
+          requestedAt: doc.github.requestedAt.toISOString(),
+          requestedBy: doc.github.requestedBy.toHexString(),
+        }
+      : null,
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
   };
@@ -228,6 +238,58 @@ async function resolvePeopleAnyStatus(orgId: ObjectId, ids: string[]) {
   const users = await getUsersCollection();
   const rows = await users.find({ _id: { $in: unique }, orgId }).toArray();
   return new Map(rows.map((u) => [u._id.toHexString(), u]));
+}
+
+/**
+ * Linked GitHub issues for some shared goals, grouped by assigned goal id
+ * (hex) — what the progress grid annotates its cells with.
+ */
+async function loadLinkedIssues(
+  orgId: ObjectId,
+  assignedGoalIds: ObjectId[],
+  userIds?: ObjectId[],
+): Promise<Map<string, ProgressLink[]>> {
+  const out = new Map<string, ProgressLink[]>();
+  if (assignedGoalIds.length === 0) return out;
+  const filter: Record<string, unknown> = {
+    orgId,
+    assignedGoalId: { $in: assignedGoalIds },
+    status: "linked",
+  };
+  if (userIds) filter.userId = { $in: userIds };
+  const rows = await (await getGithubLinksCollection())
+    .find(filter, {
+      projection: {
+        assignedGoalId: 1,
+        userId: 1,
+        periodIndex: 1,
+        issueNumber: 1,
+        issueUrl: 1,
+        state: 1,
+        lastSyncedAt: 1,
+        stale: 1,
+      },
+    })
+    .toArray();
+  for (const r of rows) {
+    if (!r.assignedGoalId) continue;
+    const key = r.assignedGoalId.toHexString();
+    const list = out.get(key) ?? [];
+    list.push({
+      userId: String(r.userId),
+      periodIndex: r.periodIndex,
+      issueState: r.state?.issueState ?? null,
+      stateReason: r.state?.stateReason ?? null,
+      issueNumber: r.issueNumber ?? null,
+      issueUrl: r.issueUrl ?? null,
+      tasks: r.state?.tasks ?? null,
+      closedAt: r.state?.closedAt ?? null,
+      lastSyncedAt: r.lastSyncedAt ?? null,
+      stale: Boolean(r.stale),
+    });
+    out.set(key, list);
+  }
+  return out;
 }
 
 function notifyMany(
@@ -369,6 +431,11 @@ export async function listAssignedGoalsHandler(req: Request, res: Response, next
           )
           .toArray()
       : [];
+    const linksByGoal = await loadLinkedIssues(
+      session.orgId,
+      docs.map((d) => d._id),
+      scope === "assigned" ? [session.userId] : undefined,
+    );
     const byGoal = new Map<string, typeof entries>();
     for (const e of entries) {
       const list = byGoal.get(e.goalId) ?? [];
@@ -391,6 +458,7 @@ export async function listAssignedGoalsHandler(req: Request, res: Response, next
           entries: (byGoal.get(gid) ?? [])
             .filter((e) => assigneeSet.has(String(e.userId)))
             .map((e) => ({ userId: String(e.userId), ts: e.ts, createdAt: e.createdAt, value: e.value })),
+          links: (linksByGoal.get(d._id.toHexString()) ?? []).filter((l) => assigneeSet.has(l.userId)),
         });
         const current = progress.windows.find((w) => w.counts.open > 0) ?? null;
         return {
@@ -501,6 +569,15 @@ export async function patchAssignedGoalHandler(req: Request, res: Response, next
     );
     if (!updated) notFound();
 
+    if (structural) {
+      // The period grid was re-keyed: issues published against the old
+      // plan no longer line up — the assignee's chip offers "Republish".
+      await (await getGithubLinksCollection()).updateMany(
+        { orgId: session.orgId, assignedGoalId: doc._id, status: "linked" },
+        { $set: { stale: true } },
+      );
+    }
+
     await writeAudit({
       orgId: session.orgId,
       actorUserId: session.userId,
@@ -534,6 +611,67 @@ export async function patchAssignedGoalHandler(req: Request, res: Response, next
         data: { assignedGoalId: id, goalId: assignedGoalId(id) },
       }));
     }
+
+    res.json({ goal: await toPublic(updated, { withPeople: true }) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── POST /:id/github/request ────────────────────────────────────────
+
+/**
+ * The creator asks every active assignee to publish this goal's periods as
+ * GitHub issues. Each assignee publishes with THEIR OWN token (the manager
+ * hub has no integrations, and GitHub only accepts assignees who are repo
+ * collaborators) — `repo` is only the suggestion their dialog prefills.
+ * Re-sending updates the repo and notifies again.
+ */
+export async function requestGithubPublishHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const session = requireSession(req);
+    const doc = await loadGoal(req, session.orgId);
+    if (!isCreator(doc, session.userId)) notFound();
+    if (doc.status !== "active") {
+      throw new HttpError(409, "assigned_goal_archived", "This shared goal is archived.");
+    }
+    const { repo } = githubRequestSchema.parse(req.body ?? {});
+    const now = new Date();
+    const github = { repo, requestedAt: now, requestedBy: session.userId };
+    const col = await getAssignedGoalsCollection();
+    const updated = await col.findOneAndUpdate(
+      { _id: doc._id, orgId: session.orgId },
+      { $set: { github, updatedAt: now } },
+      { returnDocument: "after" },
+    );
+    if (!updated) notFound();
+
+    await writeAudit({
+      orgId: session.orgId,
+      actorUserId: session.userId,
+      actorRole: session.role,
+      action: "assigned_goals.github_request",
+      targetType: "assigned_goal",
+      targetId: doc._id.toHexString(),
+      before: doc.github ? { repo: doc.github.repo ?? null } : null,
+      after: { repo },
+      ...networkMeta(req),
+    });
+
+    // Active assignees only — a deactivated account can't publish.
+    const active = await resolvePeople(session.orgId, updated.assigneeIds.map(String));
+    const recipients = updated.assigneeIds.filter((id) => active.has(String(id)));
+    const id = doc._id.toHexString();
+    const where = repo ? `in ${repo}` : "in a repository of your choice";
+    notifyMany(session.orgId, session.userId, recipients, () => ({
+      kind: "github_publish_requested",
+      title: `Publish «${updated.title}» to GitHub`.slice(0, 200),
+      body: `${updated.createdByName} asked you to publish "${updated.title}" as GitHub issues ${where}, one per period. Open it on your Goals page and choose Publish.`.slice(
+        0,
+        2_000,
+      ),
+      data: { assignedGoalId: id, goalId: assignedGoalId(id), repo },
+    }));
 
     res.json({ goal: await toPublic(updated, { withPeople: true }) });
   } catch (err) {
@@ -605,11 +743,15 @@ export async function getProgressHandler(req: Request, res: Response, next: Next
         },
       ]),
     );
+    const links = (await loadLinkedIssues(session.orgId, [doc._id], doc.assigneeIds)).get(
+      doc._id.toHexString(),
+    );
     const progress = buildProgress({
       spec: doc.spec,
       graceHours: doc.graceHours,
       timeZone: doc.timeZone || DEFAULT_TIME_ZONE,
       trackingStart: doc.createdAt instanceof Date ? doc.createdAt.getTime() : null,
+      links: links ?? [],
       users: doc.assigneeIds.map((id) => publicUser(people.get(String(id)), String(id))),
       entries: entries.map((e) => ({
         userId: String(e.userId),

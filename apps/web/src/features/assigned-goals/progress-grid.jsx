@@ -5,7 +5,9 @@
  *   mint   on time      peach  late / missing      lemon  open (due soon)
  *   card-alt upcoming
  * Each cell says its status in words too (color is never the only signal)
- * and opens the values behind it. Rows sort worst-first by default so the
+ * and opens the values behind it. A cell whose period was published to
+ * GitHub adds a second line with the issue's state — display only; the
+ * status above it comes from readings alone. Rows sort worst-first by default so the
  * people who need a nudge are at the top.
  */
 
@@ -57,6 +59,26 @@ export const TIER_META = {
   over_achieved: { label: "Over achieved", tone: "sky" },
   role_model: { label: "Role model", tone: "lav" },
 };
+
+/**
+ * The cell's GitHub line, or null when the period has no linked issue.
+ * Text tints only (the cell background already carries the status).
+ */
+export function githubLine(g) {
+  if (!g) return null;
+  if (g.state === "closed") {
+    return g.stateReason === "not_planned"
+      ? { text: "Closed · not planned", cls: "text-muted-fg" }
+      : { text: "Closed on GitHub", cls: "text-mint-text" };
+  }
+  if (g.state === "missing") return { text: "Issue missing", cls: "text-peach-text" };
+  const total = Number(g.tasks?.total) || 0;
+  const done = Number(g.tasks?.done) || 0;
+  return {
+    text: total > 0 ? `Open on GitHub · ${done}/${total}` : "Open on GitHub",
+    cls: "text-sky-text",
+  };
+}
 
 export function ProgressGrid({ windows, rows, onOpenCell, verdicts = {}, onGrade = null }) {
   const [sort, setSort] = useState("attention");
@@ -129,7 +151,9 @@ export function ProgressGrid({ windows, rows, onOpenCell, verdicts = {}, onGrade
                 </th>
                 {row.cells.map((c) => {
                   const meta = STATUS_META[c.status] ?? STATUS_META.upcoming;
-                  const clickable = (c.status !== "upcoming" && c.status !== "before") || c.submittedAt;
+                  const gh = githubLine(c.github);
+                  const clickable =
+                    (c.status !== "upcoming" && c.status !== "before") || c.submittedAt || c.github;
                   const tip =
                     c.submittedAt != null
                       ? `${meta.label} · submitted ${fmtStamp(c.submittedAt)}${c.approx ? " (approx.)" : ""}${
@@ -140,16 +164,17 @@ export function ProgressGrid({ windows, rows, onOpenCell, verdicts = {}, onGrade
                       : c.status === "before"
                         ? `${meta.label} · ended before this goal was assigned — optional backfill`
                         : `${meta.label} · due ${fmtStamp(c.deadline)}`;
+                  const fullTip = gh ? `${tip} · ${gh.text}${c.github?.stale ? " (plan changed since publishing)" : ""}` : tip;
                   return (
                     <td key={c.key ?? "once"} className="border-t border-line px-1 py-1.5">
                       <button
                         type="button"
                         disabled={!clickable}
                         onClick={() => onOpenCell?.(row.user, c)}
-                        title={tip}
-                        aria-label={`${row.user.displayName}, ${c.label}: ${tip}`}
+                        title={fullTip}
+                        aria-label={`${row.user.displayName}, ${c.label}: ${fullTip}`}
                         className={cn(
-                          "flex h-12 w-full flex-col justify-center rounded-[var(--radius-md)] px-2 text-left",
+                          "flex min-h-12 w-full flex-col justify-center rounded-[var(--radius-md)] px-2 py-1 text-left",
                           meta.cls,
                           clickable ? "hover:opacity-85" : "cursor-default",
                         )}
@@ -159,6 +184,11 @@ export function ProgressGrid({ windows, rows, onOpenCell, verdicts = {}, onGrade
                           <span className="text-[11px] font-semibold leading-tight opacity-80">
                             {fmtDay(c.submittedAt)}
                             {c.approx ? "~" : ""}
+                          </span>
+                        ) : null}
+                        {gh ? (
+                          <span className={cn("truncate text-[11px] font-bold leading-tight", gh.cls)}>
+                            {gh.text}
                           </span>
                         ) : null}
                       </button>
@@ -190,6 +220,15 @@ function Legend() {
           {STATUS_META[k].label}
         </span>
       ))}
+      <span
+        className="inline-flex items-center gap-1.5"
+        title="A second line shows the period's GitHub issue: closed, open with tasks done, or missing"
+      >
+        <span aria-hidden="true" className="text-[11px] font-bold text-sky-text">
+          GitHub
+        </span>
+        issue state
+      </span>
     </div>
   );
 }

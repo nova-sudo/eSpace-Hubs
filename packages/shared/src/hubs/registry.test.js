@@ -70,3 +70,8 @@ test("every hub exposes settings and the notifications inbox", () => {
     assert.ok(hub.pages.notifications, `${hub.id} has no notifications inbox`);
   }
 });
+
+test("the manager hub offers GitHub only (posting notes / grades on linked issues)", () => {
+  assert.deepEqual([...HUBS.manager.allowedIntegrations], ["github"]);
+  assert.ok(Object.isFrozen(HUBS.manager.allowedIntegrations));
+});

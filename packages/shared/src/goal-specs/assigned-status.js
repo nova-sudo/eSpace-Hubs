@@ -110,7 +110,12 @@ export function assignedWindows(spec, now = Date.now()) {
   }));
 }
 
-function entryInWindow(entry, w) {
+/**
+ * Does a goal_inputs row belong to window `w`? Exported so every surface
+ * that buckets entries by period (shared-goal status, the GitHub
+ * correlation report) uses this one membership rule.
+ */
+export function entryInWindow(entry, w) {
   const pk = entry?.value?.periodKey;
   // Nested levels write "<window>::<child>" — they count toward their
   // top-level window. The management half ("mgmt…") is its own track and

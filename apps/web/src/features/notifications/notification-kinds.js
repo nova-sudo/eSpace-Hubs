@@ -53,6 +53,12 @@ const KIND_PATH = {
   assigned_goal_overdue: goalPath,
   assigned_goal_shared: sharedGoalPath,
   assigned_goal_period_report: sharedGoalPath,
+  // GitHub issues for a shared goal: the assignee is asked to publish (their
+  // Goals page, on that goal); the creator hears it was published / an issue
+  // closed (the goal's progress grid).
+  github_publish_requested: goalPath,
+  github_issues_published: sharedGoalPath,
+  github_issue_closed: sharedGoalPath,
   // Reporting line changed — the recipient's own settings has nothing to
   // do; the manager side lands on their roster.
   manager_changed: (n) => (n?.data?.subjectUserId ? reportPath(n) : null),
@@ -99,6 +105,9 @@ export const NOTIFICATION_KIND_GROUPS = [
       { kind: "assigned_goal_overdue", label: "A shared goal's period is overdue" },
       { kind: "assigned_goal_shared", label: "A shared goal's analytics were shared with you" },
       { kind: "assigned_goal_period_report", label: "A shared goal's period report is ready" },
+      { kind: "github_publish_requested", label: "You were asked to publish a shared goal to GitHub" },
+      { kind: "github_issues_published", label: "Someone published a shared goal you own to GitHub" },
+      { kind: "github_issue_closed", label: "A GitHub issue for a shared goal you own was closed" },
     ],
   },
   {

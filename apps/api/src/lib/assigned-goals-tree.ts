@@ -12,7 +12,17 @@ import type { AssignedGoal, GoalL1, GoalL2 } from "../db/types.js";
 
 /** The synthetic L2 an assignee sees for one assigned goal. */
 export function syntheticAssignedL2(doc: AssignedGoal): GoalL2 & {
-  assigned: { id: string; by: string; byName: string; graceHours: number; timeZone: string };
+  assigned: {
+    id: string;
+    by: string;
+    byName: string;
+    graceHours: number;
+    timeZone: string;
+    /** The creator's suggested repo when they asked for GitHub issues. */
+    githubRepo: string | null;
+    /** ISO time the creator asked for GitHub issues; null when they haven't. */
+    githubRequestedAt: string | null;
+  };
 } {
   const composed = (doc.spec?.composed ?? {}) as Record<string, unknown>;
   return {
@@ -32,6 +42,8 @@ export function syntheticAssignedL2(doc: AssignedGoal): GoalL2 & {
       byName: doc.createdByName,
       graceHours: doc.graceHours,
       timeZone: doc.timeZone || "Africa/Cairo",
+      githubRepo: doc.github?.repo ?? null,
+      githubRequestedAt: doc.github?.requestedAt ? doc.github.requestedAt.toISOString() : null,
     },
   };
 }

@@ -2,9 +2,11 @@
  * A tiny in-memory stand-in for a Mongo `Collection`, for unit tests that
  * run without a database (the API test suite points MONGO_URI at a dead
  * port). Supports exactly the query shapes the code under test uses:
- * equality (ObjectId-aware, dotted paths), `$in`, `$ne`, `$exists`,
- * `null` matching a missing field, `sort` by one or more keys, `limit`,
- * and `$set` / `$unset` / upsert on update. Not a general Mongo emulator.
+ * equality (ObjectId-aware, dotted paths), `$in`, `$nin`, `$ne`, `$exists`,
+ * `$lt` / `$gte` (numbers and Dates), `null` matching a missing field,
+ * `$or`, `sort` by one or more keys, `limit`, and `$set` / `$unset` /
+ * `$inc` / `$setOnInsert` / upsert on update, plus `findOneAndUpdate`.
+ * Not a general Mongo emulator.
  */
 
 import { ObjectId } from "mongodb";
@@ -50,8 +52,11 @@ function matchCond(value: unknown, cond: unknown): boolean {
   ) {
     const c = cond as Doc;
     if ("$in" in c && !(c.$in as unknown[]).some((x) => eq(value, x))) return false;
+    if ("$nin" in c && (c.$nin as unknown[]).some((x) => eq(value, x))) return false;
     if ("$ne" in c && eq(value, c.$ne)) return false;
     if ("$exists" in c && (value !== undefined) !== Boolean(c.$exists)) return false;
+    if ("$lt" in c && !(value != null && compare(value, c.$lt) < 0)) return false;
+    if ("$gte" in c && !(value != null && compare(value, c.$gte) >= 0)) return false;
     return true;
   }
   return eq(value, cond);
@@ -96,9 +101,16 @@ function sortDocs(docs: Doc[], sort: Doc | undefined): Doc[] {
   });
 }
 
-function applyUpdate(doc: Doc, update: Doc): void {
-  for (const [k, v] of Object.entries(update.$set ?? {})) setPath(doc, k, v);
+function applyUpdate(doc: Doc, update: Doc, inserting = false): void {
+  if (inserting) {
+    for (const [k, v] of Object.entries(update.$setOnInsert ?? {})) setPath(doc, k, clone(v));
+  }
+  for (const [k, v] of Object.entries(update.$set ?? {})) setPath(doc, k, clone(v));
   for (const k of Object.keys(update.$unset ?? {})) unsetPath(doc, k);
+  for (const [k, v] of Object.entries(update.$inc ?? {})) {
+    const cur = getPath(doc, k);
+    setPath(doc, k, (typeof cur === "number" ? cur : 0) + (v as number));
+  }
 }
 
 export class FakeCollection {
@@ -146,15 +158,41 @@ export class FakeCollection {
       return { matchedCount: 1, modifiedCount: 1, upsertedCount: 0 };
     }
     if (opts.upsert) {
-      const row: Doc = { _id: new ObjectId() };
-      for (const [k, v] of Object.entries(filter)) {
-        if (!k.startsWith("$")) setPath(row, k, v);
-      }
-      applyUpdate(row, update);
-      this.docs.push(row);
-      return { matchedCount: 0, modifiedCount: 0, upsertedCount: 1 };
+      const row = this.upsertRow(filter, update);
+      return { matchedCount: 0, modifiedCount: 0, upsertedCount: 1, upsertedId: row._id };
     }
     return { matchedCount: 0, modifiedCount: 0, upsertedCount: 0 };
+  }
+
+  private upsertRow(filter: Doc, update: Doc): Doc {
+    const row: Doc = { _id: new ObjectId() };
+    for (const [k, v] of Object.entries(filter)) {
+      if (!k.startsWith("$")) setPath(row, k, v);
+    }
+    applyUpdate(row, update, true);
+    this.docs.push(row);
+    return row;
+  }
+
+  /**
+   * Driver-6 semantics (`includeResultMetadata: false`): resolves the
+   * document itself — the pre-update one for `returnDocument: "before"`
+   * (null when the upsert inserted), the post-update one for "after".
+   */
+  async findOneAndUpdate(
+    filter: Doc,
+    update: Doc,
+    opts: { upsert?: boolean; returnDocument?: "before" | "after" } = {},
+  ): Promise<any> {
+    const hit = this.docs.find((d) => matches(d, filter));
+    if (hit) {
+      const before = clone(hit);
+      applyUpdate(hit, update);
+      return opts.returnDocument === "after" ? clone(hit) : before;
+    }
+    if (!opts.upsert) return null;
+    const row = this.upsertRow(filter, update);
+    return opts.returnDocument === "after" ? clone(row) : null;
   }
 
   async updateMany(filter: Doc, update: Doc) {

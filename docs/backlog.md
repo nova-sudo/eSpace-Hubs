@@ -226,6 +226,22 @@
   - Per-engagement GitHub OAuth callback + token exchange verified for Crealogix.
   - A documented go / no-go marks the Crealogix engagement validated.
 
+### BL-020 · GitHub App + webhooks to replace hourly polling of github_links
+- **Priority:** P2 · **Type:** reliability · **Size:** L
+- **Why:** Published goal issues are read back by an hourly scheduler job with
+  each user's own OAuth token — one issue read plus timeline, comments and PR
+  hydration per link. That spends every user's rate limit, leaves the
+  correlation report and the "closed on GitHub" reading up to an hour behind,
+  and stops entirely when a token is revoked. A GitHub App with `issues`,
+  `issue_comment` and `pull_request` webhooks would push changes as they
+  happen and read with an installation token instead.
+- **Source:** [`scheduler/github-sync-job.ts`](../apps/api/src/scheduler/github-sync-job.ts), [`modules/github-links/sync.ts`](../apps/api/src/modules/github-links/sync.ts) (`syncLink`)
+- **Acceptance criteria:**
+  - A GitHub App (per engagement) with a verified-signature webhook endpoint updates `github_links.state` through the same `reduceIssue` / `readLinkExtras` path.
+  - The closed-as-completed reading is written once from the webhook, with the same idempotence (`readingInputId`) as today.
+  - Hourly polling becomes a low-frequency reconciliation (or is removed) for repos where the App is installed; user-token polling stays as the fallback.
+  - CLAUDE.md §4 and the settings privacy copy are updated for the new outbound/inbound GitHub contract.
+
 ---
 
 ## P3 — Later

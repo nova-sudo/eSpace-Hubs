@@ -30,6 +30,7 @@ import {
   sendWeeklyDigests,
 } from "./jobs.js";
 import { notifyAssignedGoalWindows } from "./assigned-goals-job.js";
+import { syncGithubLinks } from "./github-sync-job.js";
 
 const FIRST_TICK_DELAY_MS = 30_000; // let Mongo bootstrap settle
 const TICK_INTERVAL_MS = 3_600_000; // hourly
@@ -48,6 +49,9 @@ async function tick(): Promise<void> {
     // An approver's queue with an item > 3 days old — one nudge per
     // approver per week (hub-audit §3.4).
     ["stale-approvals", notifyStaleApprovals],
+    // Read published GitHub issues back BEFORE the shared-goal nudges so a
+    // period closed on GitHub counts as submitted in the same tick.
+    ["github-links", syncGithubLinks],
     ["shared-goals", notifyAssignedGoalWindows],
     ["digest", sendWeeklyDigests],
     // Snapshots BEFORE digest would be nicer (the digest could mention

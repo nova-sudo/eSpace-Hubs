@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { applyMarkRead } from "./inbox-model.js";
+import { NOTIFICATION_KIND_GROUPS, notificationPath } from "./notification-kinds.js";
 
 const base = {
   items: [
@@ -33,4 +34,38 @@ test("applyMarkRead: a second call on the result is a no-op (double click → on
 test("applyMarkRead: unread never goes negative", () => {
   const next = applyMarkRead({ items: [{ id: "a", read: false }], unread: 0 }, "a");
   assert.equal(next.unread, 0);
+});
+
+// ── GitHub kinds: deep links + settings copy (notification-kinds) ──
+
+const ASG = "65f0c0ffee0000000000abcd";
+
+test("github_publish_requested opens the assignee's Goals page on that goal", () => {
+  assert.equal(
+    notificationPath({
+      kind: "github_publish_requested",
+      data: { assignedGoalId: ASG, goalId: `asg_${ASG}`, repo: "acme/app" },
+    }),
+    `/goals?goal=asg_${ASG}`,
+  );
+  assert.equal(notificationPath({ kind: "github_publish_requested", data: {} }), "/goals");
+});
+
+test("github_issues_published and github_issue_closed open the shared goal's progress", () => {
+  for (const kind of ["github_issues_published", "github_issue_closed"]) {
+    assert.equal(
+      notificationPath({ kind, data: { assignedGoalId: ASG, goalId: `asg_${ASG}` } }),
+      `/shared-goals/${ASG}`,
+    );
+    assert.equal(notificationPath({ kind, data: {} }), "/shared-goals");
+  }
+});
+
+test("every github kind has a settings label (so it can be muted)", () => {
+  const labelled = new Map(
+    NOTIFICATION_KIND_GROUPS.flatMap((g) => g.kinds).map((k) => [k.kind, k.label]),
+  );
+  for (const kind of ["github_publish_requested", "github_issues_published", "github_issue_closed"]) {
+    assert.ok(labelled.get(kind), `${kind} is labelled`);
+  }
 });

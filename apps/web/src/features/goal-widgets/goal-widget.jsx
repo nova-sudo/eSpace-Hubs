@@ -38,6 +38,9 @@ import { useIsContextComplete, readContextFor } from "@/features/goal-context";
 import { saveSpec, specShapeChanged } from "@/features/goal-specs";
 import { clearGoalEntries, readGoalEntries } from "@/features/goal-inputs";
 import { clearGoalLocks } from "@/features/goal-locks";
+import { useIntegrations } from "@/features/integrations";
+import { PublishToGithubDialog, isActiveLink, useGithubLinks } from "@/features/github-links";
+import { Button } from "@/components/ui";
 import { isAssignedGoalId } from "@espace-devhub/shared/goal-specs";
 // analyst-page.jsx pulls GoalWidgetsGrid from @/features/goal-widgets, so
 // these barrel imports close a goal-widgets ↔ analyst ES-module cycle.
@@ -84,6 +87,10 @@ export function GoalWidget({
   // committed widget without re-running the AI.
   const [editSetupOpen, setEditSetupOpen] = useState(false);
   const [editPlanOpen, setEditPlanOpen] = useState(false);
+  // "Publish to GitHub…" — one issue per period of a COMPOSED tracker.
+  const [publishOpen, setPublishOpen] = useState(false);
+  const { isConnected } = useIntegrations();
+  const githubConnected = isConnected("github");
 
   // Optional handle to the analyst overlay (null when there's no provider
   // above — e.g. an isolated render). Re-analyze uses it to open the
@@ -92,7 +99,34 @@ export function GoalWidget({
 
   const contextComplete = useIsContextComplete(spec);
 
+  // A shared goal whose creator asked for GitHub issues: read this
+  // assignee's links (only then — every other widget skips the request) so
+  // the "publish" callout disappears once they have published.
+  const githubRequest = githubRequestOf(spec, goal);
+  const { links: githubLinks, isLoading: githubLinksLoading } = useGithubLinks(
+    githubRequest ? spec?.goalId || goal?.id : null,
+  );
+
   if (!spec) return null;
+
+  // A COMPOSED tracker with an approved (or never-gated) plan and at least one
+  // authored period can be published to GitHub as issues. The menu item shows
+  // either way; without a connected GitHub it is disabled and says why.
+  const publishable = isPublishableToGithub(spec);
+  const publishControls = publishable
+    ? githubConnected
+      ? { onPublishGithub: () => setPublishOpen(true), publishGithubDisabledReason: null }
+      : { onPublishGithub: null, publishGithubDisabledReason: "Connect GitHub to publish" }
+    : { onPublishGithub: null, publishGithubDisabledReason: null };
+  const publishDialog = publishable ? (
+    <PublishToGithubDialog
+      open={publishOpen}
+      onClose={() => setPublishOpen(false)}
+      spec={spec}
+      goal={goal}
+      defaultRepo={githubRequest?.repo ?? null}
+    />
+  ) : null;
 
   // A SHARED goal (assigned by a manager): the plan is theirs, so every
   // plan-changing control is withheld — the assignee only fills it in.
@@ -130,15 +164,31 @@ export function GoalWidget({
       onComposeOwn: null,
       onEditSetup: null,
       onEditPlan: null,
+      // Publishing is per assignee (the issue marker carries the user), so a
+      // shared plan can still go to the assignee's own repo.
+      ...publishControls,
       assigned: goal?.assigned ?? { byName: null, graceHours: 0 },
       bare,
     };
+    const showGithubAsk =
+      publishable && githubRequest && !githubLinksLoading && !githubLinks.some(isActiveLink);
     return (
-      <WidgetErrorBoundary>
-        <WidgetControlsProvider value={readOnlyControls}>
-          <Widget spec={spec} goal={goal} variant={variant} className={className} />
-        </WidgetControlsProvider>
-      </WidgetErrorBoundary>
+      <>
+        {showGithubAsk ? (
+          <GithubAskCallout
+            byName={goal?.assigned?.byName}
+            repo={githubRequest.repo}
+            connected={githubConnected}
+            onPublish={() => setPublishOpen(true)}
+          />
+        ) : null}
+        <WidgetErrorBoundary>
+          <WidgetControlsProvider value={readOnlyControls}>
+            <Widget spec={spec} goal={goal} variant={variant} className={className} />
+          </WidgetControlsProvider>
+        </WidgetErrorBoundary>
+        {publishDialog}
+      </>
     );
   }
 
@@ -363,6 +413,7 @@ export function GoalWidget({
     // "Edit plan": COMPOSED only — the cycle + per-window map. Other kinds
     // have no plan to lay out, so the chip stays hidden for them.
     onEditPlan: spec.widget === "COMPOSED" ? () => setEditPlanOpen(true) : null,
+    ...publishControls,
     bare,
     // Embedder overrides (e.g. sub-component modal disables re-analyze).
     ...(controlsOverride || {}),
@@ -384,7 +435,64 @@ export function GoalWidget({
       {composeModal}
       {editSetupModal}
       {editPlanModal}
+      {publishDialog}
     </>
+  );
+}
+
+/**
+ * Can this tracker's periods go to GitHub as issues? COMPOSED only, with a
+ * plan that is not waiting on (or sent back by) approval, and at least one
+ * authored period — a flat tracker has nothing to make an issue of.
+ */
+function isPublishableToGithub(spec) {
+  if (!spec || spec.widget !== "COMPOSED") return false;
+  const status = spec.approval?.status;
+  if (status === "pending" || status === "rejected") return false;
+  return Array.isArray(spec.composed?.periods) && spec.composed.periods.length > 0;
+}
+
+/**
+ * The creator's "please publish to GitHub" request on a shared goal, from
+ * the synthetic L2's `assigned` block — or null.
+ */
+function githubRequestOf(spec, goal) {
+  if (!isAssignedGoalId(spec?.goalId) && !isAssignedGoalId(goal?.id)) return null;
+  const a = goal?.assigned;
+  if (!a?.githubRequestedAt) return null;
+  return { repo: typeof a.githubRepo === "string" && a.githubRepo ? a.githubRepo : null };
+}
+
+/** "Your manager asked for GitHub issues" — above a shared goal's widget. */
+function GithubAskCallout({ byName, repo, connected, onPublish }) {
+  return (
+    <div className="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-lg)] bg-sky p-3.5 text-sky-ink">
+      <div className="min-w-0 flex-1 text-[13px] leading-[1.45]">
+        <div className="font-bold">
+          {byName ? `${byName} asked for GitHub issues` : "Your manager asked for GitHub issues"}
+        </div>
+        <div>
+          One issue per period
+          {repo ? (
+            <>
+              {" "}in <span className="font-mono">{repo}</span>
+            </>
+          ) : null}
+          , created with your GitHub account.
+          {connected ? "" : " Connect GitHub in Settings first."}
+        </div>
+      </div>
+      <Button
+        type="button"
+        variant="ink"
+        size="sm"
+        onClick={onPublish}
+        disabled={!connected}
+        title={connected ? undefined : "Connect GitHub to publish"}
+      >
+        Publish
+      </Button>
+    </div>
   );
 }
 

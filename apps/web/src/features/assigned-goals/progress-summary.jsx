@@ -33,6 +33,11 @@ export function ProgressSummary({ totals, windows }) {
         <Stat label="On time" value={pct(totals.onTimeRate)} sub={`${totals.onTime} on time · ${totals.late} late`} />
         <Stat label="Missing" value={totals.missing} sub={totals.open ? `${totals.open} open now` : null} />
       </div>
+      {totals.closedOnGithub > 0 ? (
+        <div className="text-[13px] font-semibold text-mint-text">
+          {totals.closedOnGithub} closed on GitHub
+        </div>
+      ) : null}
 
       {windows.length > 1 ? (
         <div className="flex flex-col gap-2">

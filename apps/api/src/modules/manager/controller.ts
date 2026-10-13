@@ -803,6 +803,8 @@ export async function putGoalVerdictHandler(
       res.json({
         ok: true,
         unchanged: true,
+        // The grade event on file — what "post this grade to GitHub" names.
+        eventId: written.eventId.toHexString(),
         verdict: {
           goalId,
           tier,
@@ -811,6 +813,7 @@ export async function putGoalVerdictHandler(
           source: "manager",
           periodKey: written.periodKey,
           changedFrom: null,
+          eventId: written.eventId.toHexString(),
         },
       });
       return;
@@ -876,6 +879,8 @@ export async function putGoalVerdictHandler(
 
     res.json({
       ok: true,
+      // The appended grade event — the web posts it to a linked GitHub issue.
+      eventId: written.eventId.toHexString(),
       verdict: {
         goalId,
         tier,
@@ -884,6 +889,7 @@ export async function putGoalVerdictHandler(
         source: "manager",
         periodKey: written.periodKey,
         changedFrom: written.before?.tier ?? null,
+        eventId: written.eventId.toHexString(),
       },
     });
   } catch (err) {

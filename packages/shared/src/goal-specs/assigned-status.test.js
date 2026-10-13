@@ -7,7 +7,7 @@ import {
   parseAssignedGoalId,
   ASSIGNED_ROOT_ID,
 } from "./assigned.js";
-import { assignedWindows, periodStatuses, summarizeStatuses } from "./assigned-status.js";
+import { assignedWindows, entryInWindow, periodStatuses, summarizeStatuses } from "./assigned-status.js";
 
 const DAY = 86_400_000;
 const HEX = "65f0c0ffee0000000000abcd";
@@ -164,4 +164,15 @@ test("nested entries count toward their window; the management half doesn't", ()
   });
   assert.equal(cells[0].status, "on_time");
   assert.equal(cells[1].status, "missing");
+});
+
+test("entryInWindow: periodKey, nested key, mgmt track and ts fallback", () => {
+  const w = { key: "2026-01", start: Date.UTC(2026, 0, 1), end: Date.UTC(2026, 1, 1) };
+  assert.equal(entryInWindow({ value: { periodKey: "2026-01" } }, w), true);
+  assert.equal(entryInWindow({ value: { periodKey: "2026-01::2026-W2" } }, w), true);
+  assert.equal(entryInWindow({ value: { periodKey: "2026-02" } }, w), false);
+  assert.equal(entryInWindow({ value: { periodKey: "mgmt::2026-01" } }, w), false);
+  assert.equal(entryInWindow({ ts: "2026-01-15T00:00:00Z", value: {} }, w), true);
+  assert.equal(entryInWindow({ ts: "2026-02-15T00:00:00Z", value: {} }, w), false);
+  assert.equal(entryInWindow({ value: {} }, { key: null, start: 0, end: 1 }), true);
 });

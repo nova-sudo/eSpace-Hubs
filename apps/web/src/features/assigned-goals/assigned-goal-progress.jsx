@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Badge, Button, Card, Label, SegmentedControl, useFocusTrap } from "@/components/ui";
 import { setAssignedVerdict, useAssignedProgress } from "./api";
 import { CellDetailDialog } from "./cell-detail-dialog";
+import { GithubRequestRow } from "./github-request-row";
 import { ProgressGrid, TIER_META, fmtDay, fmtStamp } from "./progress-grid";
 import { ProgressSummary } from "./progress-summary";
 
@@ -65,6 +66,11 @@ export function AssignedGoalProgress({ goalId, actions = null }) {
         <div className="mt-6 border-t border-line pt-5">
           <ProgressSummary totals={totals} windows={windows} />
         </div>
+        {progress.role === "creator" && goal.status === "active" ? (
+          <div className="mt-5 border-t border-line pt-5">
+            <GithubRequestRow goal={goal} rows={rows} />
+          </div>
+        ) : null}
       </Card>
 
       <Card padding={24}>

@@ -471,5 +471,8 @@ function toLocalEntry(s) {
     note: s.note ?? undefined,
     // Server write time — the "submitted at" shared-goal lateness keys on.
     ...(typeof s.createdAt === "string" ? { createdAt: Date.parse(s.createdAt) } : {}),
+    // Who wrote it: "manual" (typed here) or "github" (a closed issue the
+    // sync logged). Widgets badge the latter; nothing else keys on it.
+    ...(typeof s.source === "string" && s.source ? { source: s.source } : {}),
   };
 }

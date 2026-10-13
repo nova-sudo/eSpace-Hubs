@@ -11,7 +11,7 @@ import { X } from "lucide-react";
 import { resolvePeriodContent } from "@espace-devhub/shared/goal-specs";
 import { Badge, IconButton, Label, useFocusTrap } from "@/components/ui";
 import { useProgressCell } from "./api";
-import { STATUS_META, fmtStamp } from "./progress-grid";
+import { STATUS_META, fmtStamp, githubLine } from "./progress-grid";
 
 function formatValue(v, kind) {
   if (v == null || v === "") return "—";
@@ -77,6 +77,8 @@ export function CellDetailDialog({ goal, user, cell, onClose }) {
             <Badge>due {fmtStamp(cell.deadline)}</Badge>
           </div>
 
+          {cell.github ? <GithubIssueBlock github={cell.github} /> : null}
+
           {loading ? (
             <div className="text-[13px] text-muted-fg">Loading…</div>
           ) : error ? (
@@ -124,4 +126,41 @@ export function CellDetailDialog({ goal, user, cell, onClose }) {
     </div>,
     document.body,
   );
+}
+
+/** The period's linked GitHub issue: number, state, tasks, last sync. */
+function GithubIssueBlock({ github }) {
+  const line = githubLine(github);
+  const number = github.issueNumber ?? issueNumberFromUrl(github.issueUrl);
+  const total = Number(github.tasks?.total) || 0;
+  return (
+    <div className="mb-4 flex flex-col gap-1 rounded-[var(--radius-lg)] bg-card-alt p-3.5 text-[13px]">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold text-muted-fg">GitHub issue</span>
+        {github.issueUrl ? (
+          <a
+            href={github.issueUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-mono font-bold text-fg underline underline-offset-2"
+          >
+            {number ? `#${number}` : "Open issue"}
+          </a>
+        ) : null}
+        {line ? <span className={`font-bold ${line.cls}`}>{line.text}</span> : null}
+      </div>
+      <div className="text-muted-fg">
+        {total > 0 ? `${Number(github.tasks?.done) || 0} of ${total} tasks done · ` : ""}
+        {github.lastSyncedAt ? `synced ${fmtStamp(Date.parse(github.lastSyncedAt))}` : "never synced"}
+      </div>
+      {github.stale ? (
+        <div className="font-semibold text-peach-text">Plan changed since publishing</div>
+      ) : null}
+    </div>
+  );
+}
+
+function issueNumberFromUrl(url) {
+  const m = typeof url === "string" ? url.match(/\/issues\/(\d+)/) : null;
+  return m ? Number(m[1]) : null;
 }

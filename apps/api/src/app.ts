@@ -58,6 +58,7 @@ import { goalVerdictsRouter } from "./modules/goal-verdicts/routes.js";
 import { tierPoliciesRouter } from "./modules/tier-policies/routes.js";
 import { assignedGoalsRouter } from "./modules/assigned-goals/routes.js";
 import { companionRouter } from "./modules/companion/routes.js";
+import { githubLinksRouter } from "./modules/github-links/routes.js";
 
 /**
  * Cast a connect-style middleware to Express's RequestHandler. helmet,
@@ -189,6 +190,8 @@ export function buildApp(): Application {
   app.use("/api/v1/tier-policies", tierPoliciesRouter);
   app.use("/api/v1/assigned-goals", assignedGoalsRouter);
   app.use("/api/v1/companion", companionRouter);
+  // Tracker periods published to GitHub as issues (claim-first, read back hourly).
+  app.use("/api/v1/github-links", githubLinksRouter);
 
   // ─── tail handlers ─────────────────────────────────────────────────
   app.use(notFoundHandler);
