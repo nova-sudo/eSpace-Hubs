@@ -27,6 +27,7 @@ import {
   buildCycleWindows,
   composedCycleBounds,
   isSingleRecordWidget,
+  resolveLadders,
   specCadence,
 } from "@espace-devhub/shared/goal-specs";
 import {
@@ -97,6 +98,9 @@ export interface SpecProjection {
   source: { provider: string; metric: string; window: string } | null;
   fields: FieldProjection[] | null;
   tiers: TierProjection[] | null;
+  /** One-window ladder; mirrors `tiers` when `cadenceFallback`. */
+  cadenceTiers: TierProjection[] | null;
+  cadenceFallback: boolean;
 }
 
 const TIER_SPEC_KEYS: readonly { key: GoalTier; specKey: string }[] = [
@@ -115,14 +119,25 @@ function projectTarget(
   return { op: o.op, value: o.value, period: str(o.period) };
 }
 
-function projectSpec(spec: Spec | null): SpecProjection | null {
+/** A ladder object -> ordered tier rows; null when it has no usable prose. */
+function projectLadder(ladder: unknown): TierProjection[] | null {
+  const obj = asObj(ladder);
+  if (!obj) return null;
+  const rows = TIER_SPEC_KEYS.map(({ key, specKey }) => ({
+    key,
+    criterion: str(obj[specKey]),
+  }));
+  return rows.some((t) => t.criterion != null) ? rows : null;
+}
+
+export function projectSpec(spec: Spec | null): SpecProjection | null {
   if (!spec) return null;
   const manual = asObj(spec.manual);
   const composed = asObj(spec.composed);
   const source = asObj(spec.source);
   const delegated = asObj(spec.delegated);
   const untrackable = asObj(spec.untrackable);
-  const tiersObj = asObj(spec.tiers);
+  const ladders = resolveLadders(spec, null);
 
   const rawFields = Array.isArray(spec.fields) ? spec.fields : null;
   const fields: FieldProjection[] | null = rawFields
@@ -141,16 +156,6 @@ function projectSpec(spec: Spec | null): SpecProjection | null {
           help: str(f.help),
         }))
     : null;
-
-  const tiers: TierProjection[] | null = tiersObj
-    ? TIER_SPEC_KEYS.map(({ key, specKey }) => ({
-        key,
-        criterion: str(tiersObj[specKey]),
-      }))
-    : null;
-  // Collapse to null when the block carries no usable prose (all four blank).
-  const tiersOut =
-    tiers && tiers.some((t) => t.criterion != null) ? tiers : null;
 
   return {
     widget: str(spec.widget),
@@ -175,7 +180,9 @@ function projectSpec(spec: Spec | null): SpecProjection | null {
         }
       : null,
     fields: fields && fields.length > 0 ? fields : null,
-    tiers: tiersOut,
+    tiers: projectLadder(ladders.final),
+    cadenceTiers: projectLadder(ladders.cadence),
+    cadenceFallback: ladders.cadenceFallback,
   };
 }
 
