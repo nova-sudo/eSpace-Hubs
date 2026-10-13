@@ -296,12 +296,15 @@ export function updateSpecTiers(goalId, ladders, locked) {
   const res = validateSpec(next);
   if (!res.ok) return res;
   setState({ specs: { ...state.specs, [goalId]: res.spec }, error: null });
-  void putSpecRemote(goalId, res.spec, existing);
+  // The ONLY save that may change a locked (manager-edited) ladder: every
+  // other path omits `tiersEdit`, so the server keeps the stored ladders.
+  void putSpecRemote(goalId, res.spec, existing, { tiersEdit: true });
   return res;
 }
 
-async function putSpecRemote(goalId, spec, prior) {
-  const r = await apiPut(`/goal-specs/${encodeURIComponent(goalId)}`, spec);
+async function putSpecRemote(goalId, spec, prior, { tiersEdit = false } = {}) {
+  const path = `/goal-specs/${encodeURIComponent(goalId)}${tiersEdit ? "?tiersEdit=1" : ""}`;
+  const r = await apiPut(path, spec);
   if (r.ok) {
     // Server owns generatedAt — thread it into lastAnalyzedAt so the
     // "last analyzed" marker tracks the server clock.
@@ -313,14 +316,20 @@ async function putSpecRemote(goalId, spec, prior) {
     // even when this client didn't ask (the hard BYO gate), and a forged
     // block is dropped. Adopt what was stored so the UI shows the pending
     // shell now, not after the next reload.
-    const storedApproval = r.data?.spec ? r.data.spec.approval ?? null : undefined;
-    if (
-      storedApproval !== undefined &&
-      state.specs[goalId] === spec &&
-      JSON.stringify(storedApproval) !== JSON.stringify(spec.approval ?? null)
-    ) {
-      const { approval: _local, ...rest } = spec;
-      const adopted = storedApproval ? { ...rest, approval: storedApproval } : rest;
+    // Same for a locked ladder the server kept over this (stale) save.
+    const stored = r.data?.spec;
+    const adoptKeys = stored
+      ? ["approval", ...(stored.tiersLocked === true ? ["tiers", "cadenceTiers", "tiersLocked"] : [])]
+      : [];
+    const differs = adoptKeys.filter(
+      (k) => JSON.stringify(stored[k] ?? null) !== JSON.stringify(spec[k] ?? null),
+    );
+    if (differs.length && state.specs[goalId] === spec) {
+      const adopted = { ...spec };
+      for (const k of differs) {
+        if (stored[k] == null) delete adopted[k];
+        else adopted[k] = stored[k];
+      }
       setState({ specs: { ...state.specs, [goalId]: adopted } });
     }
     return true;

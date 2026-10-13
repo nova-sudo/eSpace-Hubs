@@ -28,6 +28,7 @@ import {
   withApprovalRouting,
 } from "./approval.js";
 import { notifyApprovalRoute, resolveApprovalRoute } from "./route-approval.js";
+import { preserveLockedLadders } from "./preserve-locked-ladders.js";
 import type { ValidatedSpec } from "@espace-devhub/shared/goal-specs";
 
 const goalIdParam = (req: Request): string => {
@@ -252,7 +253,32 @@ export async function putGoalSpecHandler(
       );
     }
 
-    const result = validateSpec({ ...candidate, goalId });
+    const col = await getGoalSpecsCollection();
+
+    // `approval` is server-owned (see resolveStoredApproval): the client may
+    // only (re)submit — never approve, reject, or revert a decision. The
+    // ladder fields ride along so a locked (manager-edited) ladder survives
+    // a stale tab's unrelated save — only `?tiersEdit=1` may change it.
+    const stored = await col.findOne(
+      { orgId: session.orgId, userId: session.userId, goalId },
+      {
+        projection: {
+          "spec.approval": 1,
+          "spec.widget": 1,
+          "spec.tiers": 1,
+          "spec.cadenceTiers": 1,
+          "spec.tiersLocked": 1,
+        },
+      },
+    );
+    const tiersEdit = req.query?.tiersEdit === "1";
+    const merged = preserveLockedLadders(
+      stored?.spec as Record<string, unknown> | undefined,
+      { ...candidate, goalId },
+      { tiersEdit },
+    );
+
+    const result = validateSpec(merged);
     if (!result.ok) {
       throw new HttpError(
         400,
@@ -268,14 +294,6 @@ export async function putGoalSpecHandler(
         ? (candidate.classifierVersion as string).slice(0, 200)
         : null;
 
-    const col = await getGoalSpecsCollection();
-
-    // `approval` is server-owned (see resolveStoredApproval): the client may
-    // only (re)submit — never approve, reject, or revert a decision.
-    const stored = await col.findOne(
-      { orgId: session.orgId, userId: session.userId, goalId },
-      { projection: { "spec.approval": 1, "spec.widget": 1 } },
-    );
     const resolved = resolveStoredApproval(
       stored?.spec?.approval,
       (result.spec as { approval?: unknown }).approval,

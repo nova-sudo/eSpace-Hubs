@@ -62,3 +62,35 @@ test("updateSpecTiers with only cadenceTiers leaves tiers intact", async () => {
     globalThis.fetch = original;
   }
 });
+
+test("only updateSpecTiers sends ?tiersEdit=1", async () => {
+  const original = globalThis.fetch;
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    return new Response(JSON.stringify({}), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const seeded = saveSpec({
+      schemaVersion: 1,
+      goalId: "g-edit-flag",
+      title: "Ship",
+      kind: "manual",
+      widget: "COUNTER",
+      reasoning: "",
+      manual: { cadence: "monthly", prompt: "How many?" },
+      tiers: T,
+      classifiedAt: Date.now(),
+    });
+    await seeded.persisted;
+    assert.equal(urls.length, 1);
+    assert.equal(urls[0].includes("tiersEdit"), false);
+
+    updateSpecTiers("g-edit-flag", { tiers: C }, true);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(urls.length, 2);
+    assert.match(urls[1], /\/goal-specs\/g-edit-flag\?tiersEdit=1$/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
