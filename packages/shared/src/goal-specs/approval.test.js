@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { validateSpec } from "./validator.js";
+import { buildSpec, validateSpec } from "./validator.js";
 
 const base = {
   goalId: "g1",
@@ -62,4 +62,16 @@ test("cadenceTiers round-trips and is omitted when absent", () => {
   const C = { notAchieved: "n", achieved: "a", overAchieved: "o", roleModel: "r" };
   assert.deepEqual(validateSpec({ ...base, cadenceTiers: C }).spec.cadenceTiers, C);
   assert.equal("cadenceTiers" in validateSpec(base).spec, false);
+});
+
+test("buildSpec passes cadenceTiers through", () => {
+  const C = { notAchieved: "n", achieved: "a", overAchieved: "o", roleModel: "r" };
+  const built = buildSpec({
+    goalId: "g", title: "t", kind: "manual", widget: "COMPOSED",
+    fields: [{ id: "done", kind: "checkbox", label: "Done" }],
+    composed: { cadence: "weekly", prompt: "p" },
+    tiers: C, cadenceTiers: C,
+  });
+  assert.ok(built.ok, JSON.stringify(built.errors));
+  assert.deepEqual(built.spec.cadenceTiers, C);
 });

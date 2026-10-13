@@ -34,6 +34,8 @@ export interface BuildSpecInput {
   composed?: unknown;
   /** Achievement-tier criteria + numeric tier ladder. */
   tiers?: unknown;
+  /** One-window ladder (two-ladder tiers); same shape as `tiers`. */
+  cadenceTiers?: unknown;
   tierScale?: unknown;
   firstReviewOnly?: unknown;
   classifiedAt?: number;
