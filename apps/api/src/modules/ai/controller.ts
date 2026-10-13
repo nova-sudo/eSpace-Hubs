@@ -974,7 +974,7 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   "      `cadenceTiers` = ONE <cadence> on its own (must NOT reference totals",
   '        across periods, e.g. achieved = "logged >= 5 chapters this quarter").',
   '    Never write "this week/month/quarter" in `tiers`, and never write',
-  '    "all 24 deliverables" or "6 of 6 months" in `cadenceTiers`.',
+  '    "all 24 deliverables" or "6 of 6 milestones" in `cadenceTiers`.',
   "  - HARD RULE on tiers: each tier must be decidable from the fields you just",
   "    defined, using only data this tracker collects. Do NOT write a tier that",
   "    needs information you did not capture — \"all 13 weekly deliverables",
@@ -2239,19 +2239,30 @@ export function dropPeriodEchoFields(
 }
 
 /**
- * Whole-cycle claims a per-period tracker cannot actually settle — "all 13
- * weekly deliverables", "6 of 6 monthly checkpoints", "every one of the 12
- * months".
+ * Totals across the whole cycle — "all 13 weekly deliverables", "6 of 6
+ * monthly checkpoints", "every one of the 12 months". Built per noun set: a
+ * per-period ladder must cite none of them, but a whole-plan ladder may.
  */
+const cycleTotalPattern = (noun: string): RegExp =>
+  new RegExp(
+    // "all 13 weekly deliverables", "every one of the 12 months"
+    `\\b(?:all|every|each)\\s+(?:one\\s+)?(?:of\\s+)?(?:the\\s+)?\\d{1,3}\\s+(?:\\w+\\s+)?${noun}\\b` +
+      // "6 of 6 monthly checkpoints", "13/13 weeks" — the optional adjective
+      // between the count and the noun is why this can't be one branch.
+      `|\\b\\d{1,3}\\s*(?:/|of)\\s*\\d{1,3}\\s+(?:\\w+\\s+)?${noun}\\b`,
+    "i",
+  );
 const CYCLE_NOUN =
   "(?:day|week|month|quarter|period|sprint|milestone|checkpoint|deliverable)s?";
-const WHOLE_CYCLE_TIER = new RegExp(
-  // "all 13 weekly deliverables", "every one of the 12 months"
-  `\\b(?:all|every|each)\\s+(?:one\\s+)?(?:of\\s+)?(?:the\\s+)?\\d{1,3}\\s+(?:\\w+\\s+)?${CYCLE_NOUN}\\b` +
-    // "6 of 6 monthly checkpoints", "13/13 weeks" — the optional adjective
-    // between the count and the noun is why this can't be one branch.
-    `|\\b\\d{1,3}\\s*(?:/|of)\\s*\\d{1,3}\\s+(?:\\w+\\s+)?${CYCLE_NOUN}\\b`,
-  "i",
+/** Any whole-cycle total, time or item — wrong inside a per-period ladder. */
+const WHOLE_CYCLE_TIER = cycleTotalPattern(CYCLE_NOUN);
+/**
+ * Only ITEM totals. "6 of 6 months logged" is gradeable on a one-record-per-
+ * period tracker (count the logged windows); "all 6 milestones" is not, unless
+ * something records which milestone each period covered.
+ */
+const ITEM_TOTAL_TIER = cycleTotalPattern(
+  "(?:milestone|checkpoint|deliverable)s?",
 );
 
 /**
@@ -2295,7 +2306,7 @@ export function findUngradeableTiers(
   // down, so only they exempt.
 
   const offenders = Object.entries(tiers)
-    .filter(([, text]) => WHOLE_CYCLE_TIER.test(text))
+    .filter(([, text]) => ITEM_TOTAL_TIER.test(text))
     .map(([tier]) => tier);
   if (offenders.length === 0) return [];
   return [
@@ -2571,7 +2582,7 @@ export async function composeWidgetHandler(
         cadenceTiers = cleanTiers(fixed?.cadenceTiers) ?? cadenceTiers;
         scopeNotes = findCrossScopeTiers(tiers, cadenceTiers);
       } catch (err) {
-        logger.debug(
+        logger.warn(
           {
             userId: session.userId.toHexString(),
             goalId: payload.goalId,
@@ -2630,7 +2641,8 @@ export async function composeWidgetHandler(
     if (scopeNotes.length > 0) {
       cadenceTiers = null;
       for (const note of scopeNotes) {
-        if (unrepresented.length >= 6 || unrepresented.includes(note)) break;
+        if (unrepresented.length >= 6) break;
+        if (unrepresented.includes(note)) continue;
         unrepresented.push(note);
       }
     }

@@ -132,6 +132,22 @@ test("stays quiet on ordinary per-period tiers", () => {
   assert.deepEqual(notes, []);
 });
 
+test("a time-period total on a flat tracker is gradeable — no note", () => {
+  // One record per period IS a roster of periods: counting logged windows is
+  // exactly what such a tracker can grade. Only ITEM totals (milestones,
+  // deliverables, checkpoints) need fields that record which item was which.
+  assert.deepEqual(findUngradeableTiers({ achieved: "6 of 6 months logged" }), []);
+  assert.deepEqual(
+    findUngradeableTiers({ roleModel: "All 13 weeks logged on time" }),
+    [],
+  );
+});
+
+test("findCrossScopeTiers still flags a time-period total in cadenceTiers", () => {
+  const notes = findCrossScopeTiers(null, { achieved: "6 of 6 months logged" });
+  assert.equal(notes.length, 1);
+});
+
 test("handles a null tier set", () => {
   assert.deepEqual(findUngradeableTiers(null), []);
 });
