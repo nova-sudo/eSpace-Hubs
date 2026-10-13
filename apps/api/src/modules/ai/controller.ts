@@ -428,7 +428,6 @@ export async function gradePrHandler(
 
 // ─── POST /api/v1/ai/grade-goal-tier ─────────────────────────────────
 
-
 function buildTierUserPrompt(
   goalTitle: string,
   tiers: {
