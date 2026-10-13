@@ -9,7 +9,7 @@
 
 import { RotateCcw } from "lucide-react";
 import { Badge, Button, Label } from "@/components/ui";
-import { editRow, resetLadder, TIER_ROWS } from "./approval-ladders";
+import { editRow, isBlankLadder, resetLadder, TIER_ROWS } from "./approval-ladders";
 
 export function ApprovalLaddersEditor({ item, state, onChange, cadenceLabel }) {
   const ladders = [
@@ -42,7 +42,7 @@ export function ApprovalLaddersEditor({ item, state, onChange, cadenceLabel }) {
                     onClick={() => onChange(resetLadder(state, ladder, item))}
                   >
                     <RotateCcw size={13} />
-                    Reset to AI
+                    {item.tiersSource === "user" ? "Reset" : "Reset to AI"}
                   </Button>
                 ) : null}
               </div>
@@ -61,6 +61,11 @@ export function ApprovalLaddersEditor({ item, state, onChange, cadenceLabel }) {
                   </label>
                 ))}
               </div>
+              {draft.touched && isBlankLadder(draft) ? (
+                <p className="mt-2 text-[12.5px] text-muted-fg">
+                  Blank — the suggested levels will be kept.
+                </p>
+              ) : null}
             </div>
           );
         })}

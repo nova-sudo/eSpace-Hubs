@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { editRow, initLadders, ladderPayload, resetLadder } from "./approval-ladders.js";
+import { editRow, initLadders, isBlankLadder, ladderPayload, resetLadder } from "./approval-ladders.js";
 
 const item = {
   tiers: { notAchieved: "< 2 talks", achieved: "2 talks", overAchieved: "3 talks", roleModel: null },
@@ -48,4 +48,16 @@ test("reset restores the item's ladder and clears touched", () => {
   assert.equal(state.cadenceTiers.touched, false);
   assert.equal(state.cadenceTiers.rows.achieved, "One note");
   assert.deepEqual(ladderPayload(state), {});
+});
+
+test("isBlankLadder: true only when every row is empty or whitespace", () => {
+  assert.equal(isBlankLadder(initLadders({ tiers: null }).tiers), true);
+  assert.equal(isBlankLadder(initLadders(item).tiers), false);
+  let state = initLadders(item);
+  for (const field of ["notAchieved", "achieved", "overAchieved"]) {
+    state = editRow(state, "tiers", field, "  ");
+  }
+  assert.equal(state.tiers.touched, true);
+  assert.equal(isBlankLadder(state.tiers), true);
+  assert.equal(isBlankLadder(editRow(state, "tiers", "roleModel", "x").tiers), false);
 });

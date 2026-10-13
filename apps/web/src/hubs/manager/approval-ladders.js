@@ -42,6 +42,15 @@ export function resetLadder(state, ladder, item) {
   return { ...state, [ladder]: draftOf(item?.[ladder]) };
 }
 
+/**
+ * Every row empty (whitespace counts as empty). A touched-but-blank ladder
+ * sends four nulls, which the server ignores — the suggested levels stay —
+ * so the editor says so instead of letting the blank look like a clear.
+ */
+export function isBlankLadder(draft) {
+  return TIER_ROWS.every(([field]) => !String(draft?.rows?.[field] ?? "").trim());
+}
+
 export function ladderPayload(state) {
   const out = {};
   for (const ladder of LADDERS) {
