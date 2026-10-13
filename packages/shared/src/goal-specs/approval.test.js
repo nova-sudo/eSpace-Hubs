@@ -57,3 +57,9 @@ test("approverScope round-trips for manager / admins; anything else drops", () =
   const junk = validateSpec({ ...base, approval: { status: "pending", approverScope: "hr" } });
   assert.deepEqual(junk.spec.approval, { status: "pending" });
 });
+
+test("cadenceTiers round-trips and is omitted when absent", () => {
+  const C = { notAchieved: "n", achieved: "a", overAchieved: "o", roleModel: "r" };
+  assert.deepEqual(validateSpec({ ...base, cadenceTiers: C }).spec.cadenceTiers, C);
+  assert.equal("cadenceTiers" in validateSpec(base).spec, false);
+});

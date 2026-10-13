@@ -179,3 +179,6 @@ export {
   worstStatus,
 } from "./goal-status.js";
 export type { GoalStatusKey, GoalStatusMeta, GoalStatusResult, LoggedSoFar } from "./goal-status.js";
+
+export { resolveLadders } from "./ladders.js";
+export type { LadderPolicy, ResolvedLadders } from "./ladders.js";

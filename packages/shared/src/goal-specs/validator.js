@@ -1148,6 +1148,7 @@ export function validateSpec(obj) {
   const context = validateContext(obj.context, errors);
   const delegated = validateDelegated(obj.delegated, errors);
   const tiers = validateTiers(obj.tiers);
+  const cadenceTiers = validateTiers(obj.cadenceTiers);
   const tierScale = validateTierScale(obj.tierScale);
   const approval = validateApproval(obj.approval);
 
@@ -1172,6 +1173,8 @@ export function validateSpec(obj) {
     ...(fields ? { fields } : {}),
     ...(composed ? { composed } : {}),
     tiers,
+    // Two-ladder tiers: optional one-window ladder, omitted when absent.
+    ...(cadenceTiers ? { cadenceTiers } : {}),
     // W1: optional numeric ladder for deterministic grading. Kept as
     // undefined when absent so older specs serialise byte-identically.
     ...(tierScale ? { tierScale } : {}),

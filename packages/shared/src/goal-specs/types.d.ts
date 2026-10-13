@@ -518,6 +518,8 @@ export interface ValidatedSpec {
    * rubric. null when the goal has no gradeable tiers.
    */
   tiers: SpecTiers | null;
+  /** One-window ladder; omitted when absent (cadence falls back to `tiers`). */
+  cadenceTiers?: SpecTiers | null;
   /** P4: manager-approval gate for COMPOSED "Build Your Own" trackers. */
   approval?: SpecApproval | null;
   classifiedAt: number;
