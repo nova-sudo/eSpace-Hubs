@@ -120,6 +120,7 @@ export {
 } from "./assigned.js";
 export {
   assignedWindows,
+  entryInWindow,
   localMidnight,
   periodStatuses,
   summarizeStatuses,

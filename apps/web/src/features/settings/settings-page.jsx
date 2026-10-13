@@ -85,7 +85,7 @@ const TAB_HEADERS = {
     crumb: "Settings · your tokens, your data",
     title: "Your keys. Your terms.",
     subtitle:
-      "Provider tokens are encrypted at rest and only ever used to fetch your own data. Goals, check-ins, and grades are stored in your account so they follow you across devices.",
+      "Provider tokens are encrypted at rest and only ever used to fetch your own data. Goals, check-ins, and grades are stored in your account so they follow you across devices. For goals you publish to GitHub, eSpace creates those issues with your GitHub account and reads them back (about hourly) to log closed periods. If you are a manager, a note or grade you choose to post to an issue is posted with your own GitHub account.",
   },
   account: {
     crumb: "Settings · your account",

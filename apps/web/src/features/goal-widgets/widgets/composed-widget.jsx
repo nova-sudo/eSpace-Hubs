@@ -63,6 +63,7 @@ import {
   saveSpec,
 } from "@/features/goal-specs";
 import { dueStatus } from "@/lib/date";
+import { GithubIssueChip, findLink, syncGithubLinks, useGithubLinks } from "@/features/github-links";
 import { ComposedFields } from "./composed-fields.jsx";
 import { PeriodDetail, NotesAffordance } from "../period-detail.jsx";
 import { EvidenceAttachments } from "../evidence-attachments.jsx";
@@ -301,6 +302,15 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
   const autoCount = useMemo(() => autoFieldCount(fields), [fields]);
   const overdue = period.dueAt && dueStatus(period.dueAt)?.state === "overdue";
 
+  // GitHub issue for THIS period, if the tracker was published. Read once
+  // here (one SWR key per goal); the chip for the current window sits in the
+  // period header. A tracker never published shows no chip at all.
+  const linksGoalId = goal?.id || spec.goalId;
+  const { links } = useGithubLinks(linksGoalId);
+  const currentLink = links.length > 0 ? findLink(links, windowIndex) : null;
+  const showChip = links.length > 0 && period.authored;
+  const syncLinks = () => syncGithubLinks(linksGoalId, { force: true });
+
   return (
     <WidgetShell
       spec={spec}
@@ -314,14 +324,17 @@ export function ComposedWidget({ spec, goal, variant = "light", className, onRet
         {/* An authored period names what THIS window is for. Without it the
             user sees a generic prompt and has to remember which week of the
             plan they're in — the exact gap per-period content closes. */}
-        {period.authored && period.label ? (
-          <div className="flex flex-wrap items-baseline gap-x-2 text-[13px]">
-            <span className="font-bold text-fg">{period.label}</span>
+        {period.authored && (period.label || showChip) ? (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
+            {period.label ? <span className="font-bold text-fg">{period.label}</span> : null}
             {period.dueAt ? (
               // F4: an overdue period says so instead of blending in.
               <span className={overdue ? "text-peach-text" : "text-muted-fg"}>
                 {overdue ? "overdue" : "due"} {period.dueAt}
               </span>
+            ) : null}
+            {showChip ? (
+              <GithubIssueChip link={currentLink} onSync={syncLinks} className="min-w-0" />
             ) : null}
           </div>
         ) : null}

@@ -14,6 +14,8 @@ import { DocumentPreview } from "./document-preview";
 import { EvidenceDialog } from "./evidence-dialog";
 import { ReviewPrepChecklist } from "./review-prep-checklist";
 import { StarredEvidenceCard } from "./starred-evidence-card";
+import { LinkedOnGithubCard } from "./linked-on-github-card";
+import { GithubCorrelationSection } from "./github-correlation-section";
 import { useStarredEvidence } from "./use-evidence";
 import { useGoalReadings } from "./goal-readings";
 import { buildGoalEvidenceGroups } from "./goal-evidence";
@@ -532,10 +534,15 @@ export function EvidencePage() {
               />
               <SubmitCard />
               <StarredEvidenceCard />
+              <LinkedOnGithubCard />
             </div>
           </div>
         )
-      ) : (
+      ) : null}
+
+      {view === "board" && !(goalsError && !ready) ? <GithubCorrelationSection /> : null}
+
+      {view === "board" ? null : (
         <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
           <div className="flex flex-col gap-4 no-print">
             <ConfigPanel

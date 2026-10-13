@@ -45,6 +45,7 @@ import { DEFAULT_ENGAGEMENT, type Engagement } from "../../db/types.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import { requireAuth } from "../../middleware/require-auth.js";
 import { resolveQuery } from "./query-runner.js";
+import { reservedGithubAnswers } from "../github-links/controller.js";
 
 /**
  * How long until this limiter's window reopens for the caller, in ms —
@@ -228,12 +229,15 @@ export async function queryFieldHandler(
       { projection: { engagement: 1 } },
     );
     const engagement = (user?.engagement ?? DEFAULT_ENGAGEMENT) as Engagement;
+    // The window's published GitHub issue (if any) as reserved, never-stored
+    // answers for the issue_state / issue_tasklist templates.
+    const reserved = await reservedGithubAnswers(session, goalId, periodPath);
 
     const result = await resolveQuery(source, {
       userId: session.userId,
       orgId: session.orgId,
       engagement,
-      contextAnswers: contextDoc?.answers ?? {},
+      contextAnswers: { ...(contextDoc?.answers ?? {}), ...reserved },
     });
 
     res.json({ goalId, fieldId, ...result });
@@ -310,6 +314,8 @@ export async function queryFieldsHandler(
       { projection: { engagement: 1 } },
     );
     const engagement = (user?.engagement ?? DEFAULT_ENGAGEMENT) as Engagement;
+    const reserved = await reservedGithubAnswers(session, goalId, periodPath);
+    const contextAnswers = { ...(contextDoc?.answers ?? {}), ...reserved };
 
     const results: Record<string, unknown> = {};
     for (const fieldId of [...new Set(fieldIds)]) {
@@ -325,7 +331,7 @@ export async function queryFieldsHandler(
           userId: session.userId,
           orgId: session.orgId,
           engagement,
-          contextAnswers: contextDoc?.answers ?? {},
+          contextAnswers,
         });
         results[fieldId] = { goalId, fieldId, ...result };
       } catch (err) {

@@ -68,7 +68,7 @@ check-in slice are gone; `/[hub]/checkin` only redirects old bookmarks.
 
 `auth` · `hubs` · `integrations` · `goal-specs` · `goal-inputs` · `goal-context`
 · `goal-tiers` · `goal-locks` · `goal-widgets` · `goal-editors` · `snapshots`
-· `grading` · `notifications` · `date-range` · `assigned-goals`
+· `grading` · `notifications` · `date-range` · `assigned-goals` · `github-links`
 
 **Platform utilities** — infrastructure helpers with no page of their own:
 
@@ -196,7 +196,12 @@ results (PRs, tickets, builds — never tokens) are cached per user in the
 browser (IndexedDB, `lib/provider-cache.js`) so pages paint the last-known
 value at once, and that cache is cleared on sign-out. The settings page's
 privacy copy mirrors this contract — keep the two in sync. Key custody /
-rotation: see BL-004 in `docs/backlog.md`.
+rotation: see BL-004 in `docs/backlog.md`. For goals published to GitHub
+(`apps/api/src/modules/github-links/`), the API also reads those issues back
+hourly with the user's own token. The only outbound GitHub writes are issue
+creations (by the goal's owner) and issue comments (a manager's shared note or
+grade, posted with the manager's own token), both confined to that module's
+`github-client.ts`; `GITHUB_LINKS_SYNC=false` disables the hourly read-back.
 
 ### 5. Design tokens are the source of truth
 
@@ -243,6 +248,7 @@ npm run dev                  # http://localhost:3000
 | Plan cycle on a COMPOSED spec | ✅ | `composed.cycleStart` + `cycleEnd`, or `periodCount` for a flat plan. The composer stamps them from the document's stated length (shared `cycleEndForCount`); `goal-widgets/plan-editor/` is where a user reviews or fixes them. Without a length a cycle still falls back to the calendar year — that is what the plan step exists to catch. |
 | Period detail + risks on a COMPOSED spec | ✅ | `composed.periods[].detail` (focus / activities / deliverables with format + criteria) and `.notes` / `composed.notes` (risks with likelihood + mitigation). Display-only — never graded. |
 | Evidence FILES per period | ✅ | GridFS (`goal_evidence` bucket) via `/api/v1/goal-evidence`; 10 MB, allow-listed types, always served as a download |
+| GitHub links (period ↔ issue) | ✅ | `github_links` via `/api/v1/github-links`: one issue per COMPOSED period, read back hourly (state, task list, linked PRs, replies); closing as completed writes one `source: "github"` reading. Correlation report (`/github-links/correlation`, manager `/reports/:userId/github-correlation`) joins both layers per period and flags gaps — Evidence → GitHub, report board → GitHub |
 | Management plan half | ✅ | `composed.management` — a second composed block for a lead's team-facing track, plus a roster read from `/api/v1/my-reports` |
 | Tier grading | ✅ | AI verdicts (`goal_tier_verdicts`, with `gradedAt`) · manager verdicts outrank and are append-only per `periodKey` (`manager_goal_verdict_events`; reports can acknowledge or dispute) · manager tier POLICIES by Goal Code, scoped per year |
 | Shared (assigned) goals | ✅ | `assigned_goals` + `/api/v1/assigned-goals`. A manager authors one COMPOSED goal on Goals & policies (`/[hub]/tier-policies`), assigns it org-wide and shares analytics with viewers (`/[hub]/shared-goals`). Merged into each assignee's tree at READ time as a read-only `asg_<id>` L2 under `asg__root` (weight 0) via `lib/assigned-goals.ts` — never stored in their `goals`/`goal_specs`. Lateness = first `goal_inputs.createdAt` vs end of due day in the goal's time zone + grace (`periodStatuses` in shared). |

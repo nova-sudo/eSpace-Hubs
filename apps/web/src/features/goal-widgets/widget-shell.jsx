@@ -43,6 +43,10 @@ export function WidgetShell({
   footer,
   provenance,
   onRetry,
+  // "Publish to GitHub…" — a COMPOSED tracker's periods as issues. Wired by
+  // <GoalWidget> through the controls context; a direct prop wins when a host
+  // renders the shell itself. Rendered only when something is provided.
+  onPublishGithub: onPublishGithubProp,
   className = "",
   style,
   children,
@@ -61,6 +65,9 @@ export function WidgetShell({
     onComposeOwn,
     onEditSetup,
     onEditPlan,
+    onPublishGithub: onPublishGithubCtx,
+    // Why the publish item is shown but disabled (e.g. GitHub not connected).
+    publishGithubDisabledReason,
     // Set only for a SHARED goal — renders the "Shared by X · due …" strip.
     assigned,
     // Host already shows the title + a card (see GoalWidget `bare`).
@@ -95,6 +102,8 @@ export function WidgetShell({
     }
   }
   const canReanalyze = !!(onReanalyze || onRetry);
+  const onPublishGithub = onPublishGithubProp ?? onPublishGithubCtx ?? null;
+  const showPublishGithub = Boolean(onPublishGithub || publishGithubDisabledReason);
 
   return (
     <div
@@ -159,7 +168,7 @@ export function WidgetShell({
         </div>
       ) : null}
 
-      {(spec?.reasoning || onRetry || onReanalyze || footer || onMarkDelegated || onEditContext || onComposeOwn || onEditSetup || onEditPlan) ? (
+      {(spec?.reasoning || onRetry || onReanalyze || footer || onMarkDelegated || onEditContext || onComposeOwn || onEditSetup || onEditPlan || showPublishGithub) ? (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             {/* Primary: the two things people do most. Everything else
@@ -184,6 +193,15 @@ export function WidgetShell({
             <MoreMenu
               items={[
                 onEditPlan ? { key: "plan", label: "Edit plan", onClick: onEditPlan } : null,
+                showPublishGithub
+                  ? {
+                      key: "github",
+                      label: "Publish to GitHub…",
+                      onClick: onPublishGithub || undefined,
+                      disabled: !onPublishGithub,
+                      title: !onPublishGithub ? publishGithubDisabledReason || undefined : undefined,
+                    }
+                  : null,
                 onEditContext
                   ? { key: "definitions", label: "Edit definitions", onClick: onEditContext }
                   : null,
@@ -276,11 +294,15 @@ function MoreMenu({ items }) {
               key={it.key}
               type="button"
               role="menuitem"
+              disabled={it.disabled || undefined}
+              aria-disabled={it.disabled || undefined}
+              title={it.title}
               onClick={() => {
+                if (it.disabled) return;
                 setOpen(false);
                 it.onClick?.();
               }}
-              className="rounded-[var(--radius-md)] px-2.5 py-1.5 text-left text-[12.5px] font-semibold text-fg hover:bg-card-alt focus-visible:bg-card-alt focus-visible:outline-none"
+              className="rounded-[var(--radius-md)] px-2.5 py-1.5 text-left text-[12.5px] font-semibold text-fg hover:bg-card-alt focus-visible:bg-card-alt focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
             >
               {it.label}
             </button>

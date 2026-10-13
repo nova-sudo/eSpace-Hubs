@@ -13,7 +13,9 @@
  * rung. Same data, same projections — only the container changed.
  *
  *   readings  what was logged, one row per cadence window (opens here)
- *   evidence  what the engineer attached, plus the goal's own rubric
+ *   evidence  what the engineer attached, the goal's GitHub issues per
+ *             period (state, linked PRs, the developer's replies and what
+ *             you posted there), plus the goal's own rubric
  *   history   who graded it, when, on what reasoning — every grade ever
  *             set (append-only), and whether the report saw / disputes it
  *
@@ -24,6 +26,13 @@
 
 import { Badge, Label } from "@/components/ui";
 import { TIER_LABELS } from "@/features/goal-tiers";
+import {
+  GithubIssueChip,
+  GithubThread,
+  LinkedPrs,
+  isActiveLink,
+  useReportGithubLinks,
+} from "@/features/github-links";
 import { fmtNumber, fmtTarget } from "@/lib/fmt";
 import {
   ago,
@@ -101,6 +110,51 @@ function EvidenceSection({ evidence }) {
         <EvidencePoint key={`${p.ts}-${i}`} point={p} />
       ))}
     </ul>
+  );
+}
+
+// ─── GitHub (the goal's published issues, per period) ────────────────
+
+/**
+ * One block per published period: the issue chip, the PRs it links to,
+ * and the thread (the developer's replies + what you posted). Renders
+ * nothing when the goal was never published to GitHub.
+ */
+function GithubSection({ userId, goalId }) {
+  const { links, isLoading, error } = useReportGithubLinks(userId, goalId);
+  const live = links.filter(isActiveLink);
+  if (!userId || !goalId) return null;
+  if (isLoading && live.length === 0) return null;
+  if (error) {
+    return (
+      <section>
+        <SectionLabel>GitHub</SectionLabel>
+        <PanelNote>Couldn&apos;t load this goal&apos;s GitHub issues right now.</PanelNote>
+      </section>
+    );
+  }
+  if (live.length === 0) return null;
+  return (
+    <section>
+      <SectionLabel count={live.length}>GitHub</SectionLabel>
+      <div className="grid gap-2">
+        {live.map((link) => (
+          <div key={link.id} className="grid gap-2 rounded-[var(--radius-lg)] bg-card px-3 py-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="truncate text-[12.5px] font-bold text-fg">{link.periodLabel}</span>
+              <GithubIssueChip link={link} />
+            </div>
+            <LinkedPrs link={link} />
+            <GithubThread
+              comments={link.state?.comments}
+              posts={link.posts}
+              issueUrl={link.issueUrl}
+              emptyText="No replies on the issue yet."
+            />
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -397,6 +451,8 @@ export function ManagerGoalReview({
   data,
   verdicts,
   firstName = "They",
+  userId = null,
+  goalId = null,
 }) {
   if (loading) {
     return <PanelNote>Loading the goal…</PanelNote>;
@@ -492,6 +548,8 @@ export function ManagerGoalReview({
         <SectionLabel count={evidence?.length || 0}>Evidence</SectionLabel>
         <EvidenceSection evidence={evidence} />
       </section>
+
+      <GithubSection userId={userId} goalId={goalId} />
 
       {spec?.tiers ? (
         <section>

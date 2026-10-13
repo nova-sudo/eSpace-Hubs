@@ -34,6 +34,7 @@ import { schedulerStampsValidator } from "./scheduler-stamps.schema.js";
 import { assignedGoalsValidator } from "./assigned-goals.schema.js";
 import { notificationPrefsValidator } from "./notification-prefs.schema.js";
 import { managerReportNotesValidator } from "./manager-report-notes.schema.js";
+import { githubLinksValidator } from "./github-links.schema.js";
 import type { Document } from "mongodb";
 
 export interface CollectionDef {
@@ -73,4 +74,5 @@ export const COLLECTION_DEFS: readonly CollectionDef[] = [
   { name: "assigned_goals", validator: assignedGoalsValidator },
   { name: "notification_prefs", validator: notificationPrefsValidator },
   { name: "manager_report_notes", validator: managerReportNotesValidator },
+  { name: "github_links", validator: githubLinksValidator },
 ] as const;

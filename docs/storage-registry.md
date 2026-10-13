@@ -60,6 +60,7 @@ logout via the `auth:user-storage-cleared` event, not via `localStorage.removeIt
 | Goals | `GET /api/v1/goals` | `features/goals/goals-store.js` | Canonical goal list. Loaded once per session; incremental updates via optimistic mutations. |
 | Grading verdicts | `GET/POST /api/v1/ai/grade-pr` | `features/grading/verdicts-store.js` | Per-PR rubric verdicts. Hydrated from the API on mount; new verdicts POSTed as they stream in. |
 | Hub configs | `GET /api/v1/hubs`, `POST/PATCH /api/v1/hubs/:id` | `features/hubs/` | Multi-hub (team) configurations. Server is the source of truth; in-memory SWR cache. |
+| GitHub links (`github_links`) | `GET /api/v1/github-links[?goalId=]`, `/manifests`, `/correlation`, `POST /publish`, `/sync`, `/:linkId/republish`, `/:linkId/comments`, `DELETE /:linkId`; manager `GET /api/v1/manager/reports/:userId/github-links` + `/github-correlation` | `features/github-links/api.js` (SWR only) | One row per (org, user, goal, periodIndex) → a GitHub issue. Server-owned: GitHub's `state` (issue state, tasks, ≤ 10 linked PRs, ≤ 20 replies) is rewritten whole on every sync; eSpace owns the rest (`status`, `stale`, `posts`, `readingInputId`). Unlink is a soft `status: "unlinked"`. Never holds a token; nothing in browser storage. |
 
 ---
 

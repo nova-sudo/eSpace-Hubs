@@ -137,3 +137,20 @@ export async function setAssignedVerdict(id, userId, { tier, note }) {
   void revalidateAll();
   return data.verdict;
 }
+
+/**
+ * Ask every assignee to publish this goal's periods as GitHub issues (each
+ * with their own token). `repo` is an optional owner/name suggestion; null
+ * leaves the choice to them.
+ */
+export async function requestGithubPublish(id, { repo = null } = {}) {
+  const trimmed = typeof repo === "string" ? repo.trim() : "";
+  const data = unwrap(
+    await apiPost(`${BASE}/${encodeURIComponent(id)}/github/request`, {
+      repo: trimmed || null,
+    }),
+    "Couldn't send the request.",
+  );
+  void revalidateAll();
+  return data.goal;
+}

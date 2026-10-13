@@ -72,6 +72,7 @@ import {
   TIER_COLOR,
   useTierFillFeedback,
 } from "@/features/goal-tiers";
+import { LinkedPrs, findLink, useGithubLinks } from "@/features/github-links";
 import { ComposedFields } from "./widgets/composed-fields.jsx";
 import { PeriodDetail } from "./period-detail.jsx";
 import { EvidenceAttachments } from "./evidence-attachments.jsx";
@@ -530,6 +531,25 @@ function WindowTierPanel({ goalId, spec, periodKey, windowStart, windowEnd }) {
   );
 }
 
+/**
+ * The pull requests linked to this period's GitHub issue (Phase 3) — shown
+ * beside the period's evidence files. Read-only here: starring lives on
+ * the Evidence page (a product surface), not in this shared domain.
+ * Renders nothing when the period has no issue or the issue has no PRs.
+ */
+function PeriodLinkedPrs({ goalId, periodIndex }) {
+  const { links } = useGithubLinks(goalId);
+  const link = findLink(links, periodIndex);
+  const prs = link?.state?.linkedPrs;
+  if (!Array.isArray(prs) || prs.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label>Linked pull requests</Label>
+      <LinkedPrs link={link} />
+    </div>
+  );
+}
+
 export function CadenceStepper({ spec, onEditingWindowChange }) {
   const goalId = spec?.goalId;
   const { entries } = useGoalInputs(goalId);
@@ -721,6 +741,7 @@ export function CadenceStepper({ spec, onEditingWindowChange }) {
             writeTs={Math.floor((selected.start + selected.end) / 2)}
           />
           <EvidenceAttachments goalId={goalId} periodKey={selected.key} />
+          <PeriodLinkedPrs goalId={goalId} periodIndex={selectedIndex} />
           {selectedPeriod?.nested ? (
             <NestedStepperLevel
               goalId={goalId}

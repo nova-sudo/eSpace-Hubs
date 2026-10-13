@@ -202,10 +202,12 @@ const MANAGER_HUB = Object.freeze({
     accent: "#d2540a",
     accentSurface: "rgba(210,84,10,0.10)",
   }),
-  // Managers read their reports' data server-side; they don't connect
-  // personal provider tokens, so the hub exposes no Integrations surface
-  // (settings hides the tab when this is empty).
-  allowedIntegrations: Object.freeze([]),
+  // Managers read their reports' data server-side. The one personal token
+  // they connect is GitHub: posting a shared 1:1 note or a tier verdict on
+  // a report's linked issue speaks as the manager, with their own token
+  // (modules/github-links/comments.ts). Settings shows the Integrations
+  // tab whenever this list is non-empty, and offers only these providers.
+  allowedIntegrations: Object.freeze(["github"]),
   pages: Object.freeze({
     dashboard: "manager:dashboard",
     employees: "manager:employees",

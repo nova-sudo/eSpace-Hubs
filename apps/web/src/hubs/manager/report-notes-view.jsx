@@ -8,10 +8,24 @@
  * first, each editable in place and deletable behind a confirmation.
  * "Only you" notes are private to their author; "Shared" notes are
  * readable by the report too. Data: use-report-notes.js.
+ *
+ * A SHARED note can also be posted on one of the report's GitHub issues
+ * ("Post to GitHub…" → pick the issue → post). The server composes the
+ * comment from the stored note and posts it with your own GitHub token;
+ * a note already posted on an issue says so instead of posting twice.
  */
 
 import { useState } from "react";
-import { Badge, Button, Card, Label, SegmentedControl } from "@/components/ui";
+import { toast } from "sonner";
+import { Badge, Button, Card, Label, SegmentedControl, Select } from "@/components/ui";
+import {
+  hasPost,
+  isActiveLink,
+  linkOptionLabel,
+  postIssueComment,
+  useReportGithubLinks,
+} from "@/features/github-links";
+import { useIntegrations } from "@/features/integrations";
 import { ConfirmDialog } from "./confirm-dialog";
 import { EmptyCard } from "./manager-ui";
 import { onDate } from "./manager-format";
@@ -30,6 +44,13 @@ function visibilityOptions(firstName) {
 export function ReportNotesView({ userId, user }) {
   const firstName = (user?.displayName ?? "them").split(/\s+/)[0];
   const { loading, error, notes, create, update, remove } = useReportNotes(userId);
+  // Every GitHub issue the report has published (all goals) — the targets
+  // a shared note can be posted on. Only offered with your own GitHub token.
+  const { isConnected } = useIntegrations();
+  const { links: reportLinks } = useReportGithubLinks(userId);
+  const githubLinks = isConnected("github")
+    ? reportLinks.filter((l) => isActiveLink(l) && l.status === "linked" && l.issueNumber)
+    : [];
   const [body, setBody] = useState("");
   const [visibility, setVisibility] = useState("private");
   const [busy, setBusy] = useState(false);
@@ -105,6 +126,7 @@ export function ReportNotesView({ userId, user }) {
               key={n.id}
               note={n}
               firstName={firstName}
+              githubLinks={githubLinks}
               onSave={(patch) => update(n.id, patch)}
               onDelete={() => setConfirmId(n.id)}
             />
@@ -134,7 +156,7 @@ export function ReportNotesView({ userId, user }) {
   );
 }
 
-function NoteCard({ note, firstName, onSave, onDelete }) {
+function NoteCard({ note, firstName, githubLinks = [], onSave, onDelete }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(note.body);
   const [visibility, setVisibility] = useState(note.visibility);
@@ -142,6 +164,7 @@ function NoteCard({ note, firstName, onSave, onDelete }) {
   const [error, setError] = useState(null);
   const shared = note.visibility === "shared-with-report";
   const edited = note.updatedAt && note.updatedAt !== note.createdAt;
+  const [picking, setPicking] = useState(false);
 
   async function save() {
     if (!draft.trim() || busy) return;
@@ -179,12 +202,21 @@ function NoteCard({ note, firstName, onSave, onDelete }) {
             >
               Edit
             </Button>
+            {shared && githubLinks.length > 0 && !picking ? (
+              <Button type="button" size="sm" variant="ghost" onClick={() => setPicking(true)}>
+                Post to GitHub…
+              </Button>
+            ) : null}
             <Button type="button" size="sm" variant="ghost" onClick={onDelete}>
               Delete
             </Button>
           </>
         ) : null}
       </div>
+
+      {picking && shared && !editing ? (
+        <PostNoteToGithub note={note} links={githubLinks} onDone={() => setPicking(false)} />
+      ) : null}
 
       {editing ? (
         <div className="mt-3 flex flex-col gap-2.5">
@@ -217,5 +249,60 @@ function NoteCard({ note, firstName, onSave, onDelete }) {
         <p className="mt-2.5 whitespace-pre-wrap text-[13px] leading-[1.6] text-fg">{note.body}</p>
       )}
     </Card>
+  );
+}
+
+/** Pick one of the report's issues and post this shared note there. */
+function PostNoteToGithub({ note, links, onDone }) {
+  const [linkId, setLinkId] = useState(links[0]?.id ?? "");
+  const [busy, setBusy] = useState(false);
+  const link = links.find((l) => l.id === linkId) ?? null;
+  const already = link ? hasPost(link, "manager_note", note.id) : false;
+
+  async function post() {
+    if (!link || busy || already) return;
+    setBusy(true);
+    try {
+      const out = await postIssueComment(link.id, { kind: "manager_note", sourceId: note.id });
+      toast.success(
+        out?.existing
+          ? `Already on ${link.repo}#${link.issueNumber}`
+          : `Posted on GitHub · ${link.repo}#${link.issueNumber}`,
+      );
+      onDone?.();
+    } catch (err) {
+      toast.error("Couldn't post the note on GitHub", {
+        description: err?.message || "Try again in a moment.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[var(--radius-lg)] bg-card-alt px-3 py-2.5">
+      <span className="text-[12.5px] font-semibold text-fg">Post on</span>
+      <Select
+        size="sm"
+        value={linkId}
+        onChange={(e) => setLinkId(e.target.value)}
+        aria-label="GitHub issue to post this note on"
+        className="min-w-0 max-w-full"
+      >
+        {links.map((l) => (
+          <option key={l.id} value={l.id}>
+            {linkOptionLabel(l)}
+            {hasPost(l, "manager_note", note.id) ? " (posted)" : ""}
+          </option>
+        ))}
+      </Select>
+      <span className="flex-1" />
+      <Button type="button" size="sm" variant="ghost" onClick={onDone} disabled={busy}>
+        Cancel
+      </Button>
+      <Button type="button" size="sm" onClick={post} disabled={busy || !link || already}>
+        {already ? "Posted" : busy ? "Posting…" : "Post"}
+      </Button>
+    </div>
   );
 }

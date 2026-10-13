@@ -48,6 +48,7 @@ export const QUERY_PARAM_KINDS = Object.freeze([
   "search_query",
   "label",
   "branch",
+  "issue_number",
 ]);
 
 /**
@@ -58,19 +59,21 @@ export const QUERY_PARAM_KINDS = Object.freeze([
  *   latest_date — ISO date of the newest matching commit
  *   ratio       — numerator/denominator, where the TEMPLATE defines both
  *
- * `ratio` is part of the vocabulary because the field contract declares it, but
- * no shipped template claims it: a ratio needs two upstream calls and
- * buildProviderRequest returns exactly one request by design. The honest way to
- * express ">80% of medium stories have a spec" today is two count fields on the
- * same COMPOSED widget with the target on the derived field — the widget, not
- * the template, does the division. A future two-request template would need a
- * contract change here, not a quiet second fetch.
+ *   closed      — a GitHub issue closed as completed (never "not planned")
+ *
+ * `ratio` needs a numerator and a denominator from ONE response, because
+ * buildProviderRequest returns exactly one request by design. The only shipped
+ * template that claims it is `issue_tasklist`, where both numbers are counted
+ * off a single issue body. ">80% of medium stories have a spec" is still two
+ * count fields on the same COMPOSED widget with the target on the derived
+ * field — the widget, not the template, does the division.
  */
 export const QUERY_EXTRACTS = Object.freeze([
   "exists",
   "count",
   "latest_date",
   "ratio",
+  "closed",
 ]);
 
 /**
@@ -221,12 +224,22 @@ function validateBranch(value) {
   return segments.every((s) => isSafeSegment(s));
 }
 
+/**
+ * A GitHub issue number. Digits only, no leading zero, bounded to nine
+ * digits — "0", "-1", "1e3" and "12/../x" are all rejects, never coerced.
+ */
+function validateIssueNumber(value) {
+  if (!passesUniversalChecks(value)) return false;
+  return /^[1-9][0-9]{0,8}$/.test(value);
+}
+
 const PARAM_VALIDATORS = Object.freeze({
   repo_slug: validateRepoSlug,
   file_path: validateFilePath,
   search_query: validateSearchQuery,
   label: validateLabel,
   branch: validateBranch,
+  issue_number: validateIssueNumber,
 });
 
 /** True when a param defers to a context answer instead of carrying a literal. */
@@ -529,6 +542,59 @@ export const QUERY_TEMPLATES = Object.freeze({
     }),
     describe: ({ repo }) => `Counts the open pull requests in ${repo}`,
   }),
+
+  // ── eSpace-created issues ───────────────────────────────────────────
+  //
+  // A tracker period that was published to GitHub has an issue whose body
+  // is the period's deliverables as a task list. These two templates read
+  // that issue back. They are GitHub-only (GitLab issues are a later
+  // binding, not a branch here) and they take the repo and number as
+  // ordinary params, which the API fills from the stored link through
+  // reserved context answers — the AI never names an issue.
+
+  issue_state: Object.freeze({
+    id: "issue_state",
+    label: "Issue closed",
+    description:
+      "Whether a GitHub issue is closed as completed — the period's \u201cdone\u201d, ticked where the work happens.",
+    params: Object.freeze({ repo: "repo_slug", issue: "issue_number" }),
+    extracts: Object.freeze(["closed", "latest_date"]),
+    // The API runner's generic reducers read commits and search payloads;
+    // an issue is neither, so this template owns its reductions.
+    extractors: Object.freeze({
+      closed: (raw) => extractQueryValue("closed", "github", raw),
+      latest_date: (raw) => issueClosedAt(raw?.body),
+    }),
+    github: ({ repo, issue }) => ({
+      path: `repos/${githubRepo(repo)}/issues/${issue}`,
+    }),
+    web: Object.freeze({
+      github: ({ repo, issue }) => `${GITHUB_WEB}/${repo}/issues/${issue}`,
+    }),
+    describe: ({ repo, issue }) =>
+      `Reads whether issue #${issue} in ${repo} is closed`,
+  }),
+
+  issue_tasklist: Object.freeze({
+    id: "issue_tasklist",
+    label: "Issue task list",
+    description:
+      "How much of a GitHub issue's task list is ticked \u2014 deliverables done over deliverables planned.",
+    params: Object.freeze({ repo: "repo_slug", issue: "issue_number" }),
+    extracts: Object.freeze(["ratio", "count"]),
+    extractors: Object.freeze({
+      ratio: (raw) => extractQueryValue("ratio", "github", raw),
+      count: (raw) => extractQueryValue("count", "github", raw),
+    }),
+    github: ({ repo, issue }) => ({
+      path: `repos/${githubRepo(repo)}/issues/${issue}`,
+    }),
+    web: Object.freeze({
+      github: ({ repo, issue }) => `${GITHUB_WEB}/${repo}/issues/${issue}`,
+    }),
+    describe: ({ repo, issue }) =>
+      `Reads how many task-list items are ticked on issue #${issue} in ${repo}`,
+  }),
 });
 
 export function getQueryTemplate(id) {
@@ -815,6 +881,9 @@ export function extractQueryValue(extract, provider, { status, body } = {}) {
     case "count": {
       if (body && typeof body.total_count === "number") return body.total_count;
       if (Array.isArray(body)) return body.length;
+      // An issue: "count" is the ticked task-list items.
+      const progress = issueTaskList(body);
+      if (progress) return progress.done;
       return null;
     }
     case "latest_date": {
@@ -826,10 +895,56 @@ export function extractQueryValue(extract, provider, { status, body } = {}) {
           : first?.committed_date ?? first?.created_at;
       return typeof iso === "string" && iso.length > 0 ? iso : null;
     }
+    case "closed": {
+      // Only "completed" counts. "not_planned" is a closed issue that says
+      // the work was NOT done, and grading it as done is the one lie this
+      // extract must never tell.
+      if (!body || typeof body !== "object") return null;
+      if (body.state === "closed") return body.state_reason !== "not_planned";
+      if (body.state === "open") return false;
+      return null;
+    }
+    case "ratio": {
+      // The only ratio shipped is an issue body's task list: both numbers
+      // come from ONE response, so the single-request rule holds.
+      const progress = issueTaskList(body);
+      if (!progress || progress.total === 0) return null;
+      return progress.done / progress.total;
+    }
     default:
-      // "ratio" lands here: no shipped template declares it, and inventing a
-      // denominator would be the exact silent-wrongness this file exists to
-      // prevent.
       return null;
   }
+}
+
+/**
+ * Task-list progress of an issue body, or null when the response is not an
+ * issue. Duplicated from github-links/issue-body.js on purpose: this module
+ * is the API's security boundary and keeps zero imports so nothing outside
+ * the registry can reach a path builder through a shared dependency.
+ */
+function issueClosedAt(body) {
+  const iso = body && typeof body === "object" ? body.closed_at : null;
+  return typeof iso === "string" && !Number.isNaN(Date.parse(iso))
+    ? new Date(iso).toISOString()
+    : null;
+}
+
+function issueTaskList(body) {
+  const text = body && typeof body === "object" ? body.body : null;
+  if (typeof text !== "string") return null;
+  let inFence = false;
+  let done = 0;
+  let total = 0;
+  for (const raw of text.split(/\r?\n/)) {
+    if (/^(```|~~~)/.test(raw.trim())) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const m = /^\s*(?:[-*+]|\d+[.)])\s+\[([ xX])\]\s+\S/.exec(raw);
+    if (!m) continue;
+    total += 1;
+    if (m[1] !== " ") done += 1;
+  }
+  return { done, total };
 }

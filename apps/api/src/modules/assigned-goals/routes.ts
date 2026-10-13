@@ -7,6 +7,7 @@
  *   GET    /:id                            meta (creator, viewer or assignee)
  *   PATCH  /:id                            edit (creator)
  *   POST   /:id/archive                    archive (creator)
+ *   POST   /:id/github/request             ask assignees to publish to GitHub (creator)
  *   GET    /:id/progress                   analytics grid (creator or viewer)
  *   GET    /:id/progress/:userId/:periodKey   one cell's values (creator or viewer)
  *   GET    /:id/mine                       my own statuses (assignee, incl. archived)
@@ -27,6 +28,7 @@ import {
   getAssignedGoalHandler,
   getMyProgressHandler,
   putVerdictHandler,
+  requestGithubPublishHandler,
   getProgressCellHandler,
   getProgressHandler,
   listAssignedGoalsHandler,
@@ -44,6 +46,7 @@ assignedGoalsRouter.get("/", requireAuth(), listAssignedGoalsHandler);
 assignedGoalsRouter.get("/:id", requireAuth(), getAssignedGoalHandler);
 assignedGoalsRouter.patch("/:id", requireAuth(), patchAssignedGoalHandler);
 assignedGoalsRouter.post("/:id/archive", requireAuth(), archiveAssignedGoalHandler);
+assignedGoalsRouter.post("/:id/github/request", requireAuth(), requestGithubPublishHandler);
 assignedGoalsRouter.get("/:id/progress", requireAuth(), getProgressHandler);
 assignedGoalsRouter.get(
   "/:id/progress/:userId/:periodKey",

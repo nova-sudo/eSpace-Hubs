@@ -14,6 +14,8 @@
  *                the delta — so twelve grades can be read on one scale
  *   Notes        your running 1:1 journal on this report (private, or
  *                shared with them)
+ *   GitHub       their published goals, GitHub and eSpace per period, with
+ *                the gaps flagged (GET /manager/reports/:userId/github-correlation)
  *
  * The header carries a one-click download of their latest review packet
  * (the frozen evidence document they submitted), when there is one.
@@ -27,6 +29,7 @@ import Link from "next/link";
 import { ArrowLeft, Download } from "lucide-react";
 import { Button, PageHeader, SegmentedControl, PageContainer } from "@/components/ui";
 import { useHubLink } from "@/features/hubs";
+import { CorrelationReport, useReportGithubCorrelation } from "@/features/github-links";
 import { useReportHealth } from "./use-report-health";
 import { useManagerView } from "./use-manager-view";
 import { BOARD_VIEW_KEY } from "./manager-view-store";
@@ -37,11 +40,12 @@ import { ManagerGradeDrawer } from "./manager-grade-drawer";
 import { ReportNotesView } from "./report-notes-view";
 import { downloadPacketMarkdown, useReviewPackets } from "./use-review-packets";
 
-const VIEWS = ["board", "consistency", "notes"];
+const VIEWS = ["board", "consistency", "notes", "github"];
 const VIEW_OPTIONS = [
   { value: "board", label: "Board" },
   { value: "consistency", label: "Consistency" },
   { value: "notes", label: "Notes" },
+  { value: "github", label: "GitHub" },
 ];
 
 export function ManagerEmployeeBoard({ userId }) {
@@ -128,6 +132,8 @@ export function ManagerEmployeeBoard({ userId }) {
 
       {view === "notes" ? (
         <ReportNotesView userId={userId} user={user} />
+      ) : view === "github" ? (
+        <ReportGithubView userId={userId} />
       ) : view === "consistency" ? (
         <EmployeeConsistencyView
           user={user}
@@ -165,4 +171,10 @@ export function ManagerEmployeeBoard({ userId }) {
       />
     </PageContainer>
   );
+}
+
+/** The GitHub tab — fetched only while it is the open view. */
+function ReportGithubView({ userId }) {
+  const { data, isLoading, error } = useReportGithubCorrelation(userId);
+  return <CorrelationReport data={data} loading={isLoading} error={error} />;
 }

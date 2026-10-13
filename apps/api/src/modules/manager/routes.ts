@@ -10,6 +10,8 @@
  *   POST   /reports/:userId/goals/:goalId/approval      approve / request changes
  *   GET    /reports/:userId/review-packets              submitted evidence docs
  *   GET    /reports/:userId/snapshots                   weekly headline series
+ *   GET    /reports/:userId/github-links[?goalId=]      published issues (one goal, or all)
+ *   GET    /reports/:userId/github-correlation[?goalId=] GitHub ↔ eSpace per period, with gap flags
  *   GET    /reports/:userId/notes                       my 1:1 notes on them
  *   POST   /reports/:userId/notes                       add a note
  *   PATCH  /reports/:userId/notes/:noteId               edit a note
@@ -58,6 +60,10 @@ import {
   listReportNotesHandler,
   updateReportNoteHandler,
 } from "./surfaces-controller.js";
+import {
+  listReportGithubLinksHandler,
+  reportCorrelationHandler,
+} from "../github-links/controller.js";
 
 export const managerRouter: Router = Router();
 
@@ -172,6 +178,9 @@ const gate = [requireAuth(), requireCapability(CAPABILITIES.MANAGER_TEAM_VIEW)];
 managerRouter.get("/grading-progress", ...gate, getGradingProgressHandler);
 managerRouter.get("/team-trends", ...gate, getTeamTrendsHandler);
 managerRouter.get("/reports/:userId/snapshots", ...gate, getReportSnapshotsHandler);
+// A report's GitHub-published periods for one goal (modules/github-links).
+managerRouter.get("/reports/:userId/github-links", ...gate, listReportGithubLinksHandler);
+managerRouter.get("/reports/:userId/github-correlation", ...gate, reportCorrelationHandler);
 managerRouter.get("/reports/:userId/notes", ...gate, listReportNotesHandler);
 managerRouter.post("/reports/:userId/notes", ...gate, createReportNoteHandler);
 managerRouter.patch("/reports/:userId/notes/:noteId", ...gate, updateReportNoteHandler);

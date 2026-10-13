@@ -26,9 +26,38 @@ export interface ProgressEntry {
   value: unknown;
 }
 
+/** One assignee's linked GitHub issue for one period (github_links). */
+export interface ProgressLink {
+  userId: string;
+  periodIndex: number;
+  issueState: "open" | "closed" | "missing" | null;
+  /** GitHub's state_reason; "not_planned" never counts as closed-done. */
+  stateReason?: string | null;
+  issueNumber?: number | null;
+  issueUrl: string | null;
+  tasks: { done: number; total: number } | null;
+  closedAt: Date | string | null;
+  lastSyncedAt: Date | string | null;
+  stale: boolean;
+}
+
+/** What a grid cell says about its GitHub issue — display only, never a status. */
+export interface CellGithub {
+  state: "open" | "closed" | "missing" | null;
+  stateReason: string | null;
+  issueNumber: number | null;
+  issueUrl: string | null;
+  tasks: { done: number; total: number } | null;
+  closedAt: string | null;
+  lastSyncedAt: string | null;
+  stale: boolean;
+}
+
+export type ProgressCell = Omit<AssignedPeriodCell, "start" | "end"> & { github: CellGithub | null };
+
 export interface ProgressRow {
   user: ProgressUser;
-  cells: Array<Omit<AssignedPeriodCell, "start" | "end">>;
+  cells: ProgressCell[];
   summary: AssignedStatusSummary;
 }
 
@@ -38,13 +67,21 @@ export interface ProgressWindow {
   start: number;
   end: number;
   deadline: number;
-  counts: { onTime: number; late: number; missing: number; open: number; upcoming: number; before: number };
+  counts: {
+    onTime: number;
+    late: number;
+    missing: number;
+    open: number;
+    upcoming: number;
+    before: number;
+    closedOnGithub: number;
+  };
 }
 
 export interface ProgressResult {
   windows: ProgressWindow[];
   rows: ProgressRow[];
-  totals: AssignedStatusSummary & { assignees: number };
+  totals: AssignedStatusSummary & { assignees: number; closedOnGithub: number };
 }
 
 function ms(v: Date | number | string | null | undefined): number | null {
@@ -53,6 +90,29 @@ function ms(v: Date | number | string | null | undefined): number | null {
   if (typeof v === "number") return v;
   const n = Date.parse(v);
   return Number.isNaN(n) ? null : n;
+}
+
+function iso(v: Date | string | null | undefined): string | null {
+  const n = ms(v ?? null);
+  return n == null ? null : new Date(n).toISOString();
+}
+
+function toCellGithub(l: ProgressLink): CellGithub {
+  return {
+    state: l.issueState ?? null,
+    stateReason: l.stateReason ?? null,
+    issueNumber: l.issueNumber ?? null,
+    issueUrl: l.issueUrl ?? null,
+    tasks: l.tasks ?? null,
+    closedAt: iso(l.closedAt),
+    lastSyncedAt: iso(l.lastSyncedAt),
+    stale: Boolean(l.stale),
+  };
+}
+
+/** Closed on GitHub as done (a "not planned" close is not). */
+function isClosedDone(g: CellGithub | null | undefined): boolean {
+  return g?.state === "closed" && g.stateReason !== "not_planned";
 }
 
 export function buildProgress(args: {
@@ -68,6 +128,12 @@ export function buildProgress(args: {
    * backfill), never "missing".
    */
   trackingStart?: number | null;
+  /**
+   * Linked GitHub issues, keyed onto cells by (userId, cell.index). They
+   * only annotate a cell — a closed issue already became a reading via the
+   * github-links sync, so the status rules never look at this.
+   */
+  links?: ProgressLink[];
 }): ProgressResult {
   const now = args.now ?? Date.now();
   const trackingStart = args.trackingStart ?? null;
@@ -79,6 +145,9 @@ export function buildProgress(args: {
     list.push(e);
     byUser.set(e.userId, list);
   }
+
+  const linkBy = new Map<string, ProgressLink>();
+  for (const l of args.links ?? []) linkBy.set(`${l.userId}|${l.periodIndex}`, l);
 
   const rows: ProgressRow[] = args.users.map((user) => {
     const cells = periodStatuses({
@@ -95,7 +164,10 @@ export function buildProgress(args: {
     });
     return {
       user,
-      cells: cells.map(({ start: _s, end: _e, ...rest }) => rest),
+      cells: cells.map(({ start: _s, end: _e, ...rest }) => {
+        const link = linkBy.get(`${user.id}|${rest.index}`);
+        return { ...rest, github: link ? toCellGithub(link) : null };
+      }),
       summary: summarizeStatuses(cells),
     };
   });
@@ -107,8 +179,9 @@ export function buildProgress(args: {
       ? null
       : periodStatuses({ spec: args.spec, now, graceMs, timeZone: args.timeZone, trackingStart, entries: [] });
   const windows: ProgressWindow[] = assignedWindows(args.spec, now).map((w, i) => {
-    const counts = { onTime: 0, late: 0, missing: 0, open: 0, upcoming: 0, before: 0 };
+    const counts = { onTime: 0, late: 0, missing: 0, open: 0, upcoming: 0, before: 0, closedOnGithub: 0 };
     for (const r of rows) {
+      if (isClosedDone(r.cells[i]?.github)) counts.closedOnGithub += 1;
       const s = r.cells[i]?.status;
       if (s === "on_time") counts.onTime += 1;
       else if (s === "late") counts.late += 1;
@@ -132,6 +205,10 @@ export function buildProgress(args: {
   return {
     windows,
     rows,
-    totals: { ...summarizeStatuses(allCells as AssignedPeriodCell[]), assignees: rows.length },
+    totals: {
+      ...summarizeStatuses(allCells as unknown as AssignedPeriodCell[]),
+      assignees: rows.length,
+      closedOnGithub: allCells.filter((c) => isClosedDone(c.github)).length,
+    },
   };
 }
