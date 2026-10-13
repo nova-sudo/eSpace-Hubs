@@ -924,6 +924,10 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   '    "notAchieved": <string>, "achieved": <string>,',
   '    "overAchieved": <string>, "roleModel": <string>',
   "  },",
+  '  "cadenceTiers": {  <same four keys — ONE <cadence> on its own; see tiers rules>',
+  '    "notAchieved": <string>, "achieved": <string>,',
+  '    "overAchieved": <string>, "roleModel": <string>',
+  "  },",
   '  "unrepresented": [<strings — only when a reference document is attached;',
   "                    see REFERENCE DOCUMENT below. Omit or [] otherwise>]",
   "}",
@@ -963,8 +967,14 @@ const COMPOSE_WIDGET_SYSTEM_PROMPT = [
   "    completed\"), so a light period and a finished heavy one stay",
   "    distinguishable.",
   "  - tiers describe what not-achieved / achieved / over-achieved / role-model",
-  "    look like FOR THIS tracker, in terms of the fields (e.g. achieved =",
-  '    "logged >= 5 chapters this quarter"). Keep each under ~200 chars.',
+  "    look like FOR THIS tracker, in terms of the fields. Keep each under",
+  "    ~200 chars. Write TWO ladders:",
+  "      `tiers` = the WHOLE plan (may reference totals across periods, e.g.",
+  '        achieved = "logged >= 20 chapters across the year");',
+  "      `cadenceTiers` = ONE <cadence> on its own (must NOT reference totals",
+  '        across periods, e.g. achieved = "logged >= 5 chapters this quarter").',
+  '    Never write "this week/month/quarter" in `tiers`, and never write',
+  '    "all 24 deliverables" or "6 of 6 months" in `cadenceTiers`.',
   "  - HARD RULE on tiers: each tier must be decidable from the fields you just",
   "    defined, using only data this tracker collects. Do NOT write a tier that",
   "    needs information you did not capture — \"all 13 weekly deliverables",
@@ -2293,6 +2303,48 @@ export function findUngradeableTiers(
   ];
 }
 
+/** "this week", "this quarter" — wording that only makes sense for ONE window. */
+const SINGLE_WINDOW_TIER = /\bthis (week|month|quarter|period|window)\b/i;
+
+/**
+ * Flag a ladder written for the wrong scope.
+ *
+ * A composed tracker carries two ladders: `tiers` grades the WHOLE plan (and
+ * may cite totals across periods), `cadenceTiers` grades ONE window on its own
+ * (and must not). A per-window bar that says "all 24 weekly deliverables" can
+ * never be met inside a week, and a whole-plan bar that says "this week" has no
+ * week to look at — either way the grader is handed a question it can't
+ * answer. Returns one note per offending ladder, empty when both are clean.
+ */
+export function findCrossScopeTiers(
+  tiers: Record<string, string> | null,
+  cadenceTiers: Record<string, string> | null,
+): string[] {
+  const offenders = (
+    ladder: Record<string, string> | null,
+    pattern: RegExp,
+  ): string[] =>
+    ladder
+      ? Object.entries(ladder)
+          .filter(([, text]) => pattern.test(text))
+          .map(([tier]) => tier)
+      : [];
+  const notes: string[] = [];
+  const cycleInWindow = offenders(cadenceTiers, WHOLE_CYCLE_TIER);
+  if (cycleInWindow.length > 0) {
+    notes.push(
+      `Per-period bar (cadenceTiers: ${cycleInWindow.join(", ")}) cites a total across the whole plan — one period on its own can't meet it.`,
+    );
+  }
+  const windowInCycle = offenders(tiers, SINGLE_WINDOW_TIER);
+  if (windowInCycle.length > 0) {
+    notes.push(
+      `Whole-plan bar (tiers: ${windowInCycle.join(", ")}) is worded for a single period — the whole-cycle grade has no one period to read it against.`,
+    );
+  }
+  return notes;
+}
+
 function cleanTiers(raw: unknown): Record<string, string> | null {
   if (!raw || typeof raw !== "object") return null;
   const t = raw as Record<string, unknown>;
@@ -2304,6 +2356,21 @@ function cleanTiers(raw: unknown): Record<string, string> | null {
     if (v) tiers[key] = v;
   }
   return Object.keys(tiers).length ? tiers : null;
+}
+
+/** Below this much budget left, a scope retry would only risk the compose. */
+const COMPOSE_SCOPE_RETRY_MIN_MS = 5_000;
+
+function scopeRetryPrompt(notes: string[]): string {
+  return [
+    "Your tier ladders mix up their scopes:",
+    ...notes.map((n) => `  - ${n}`),
+    "",
+    "`tiers` grades the WHOLE plan (may reference totals across periods);",
+    "`cadenceTiers` grades ONE period on its own (must NOT reference totals",
+    "across periods). Return ONLY a JSON object with corrected `tiers` and",
+    "`cadenceTiers` (same four keys each) — nothing else.",
+  ].join("\n");
 }
 
 export async function composeWidgetHandler(
@@ -2347,15 +2414,6 @@ export async function composeWidgetHandler(
       shared,
     );
 
-    let content: string;
-    let modelName: string | undefined;
-    let providerId: string;
-    let providerLabel: string;
-    // Set when the model hit its output ceiling. A cut-off reply is a
-    // half-written JSON object, which would otherwise surface as the
-    // misleading "returned non-JSON content".
-    let truncated = false;
-
     // From here on the work can outlast the proxy's idle ceiling, so start
     // the stream before the model call rather than after it.
     if (streaming) sse = openSse(res);
@@ -2365,24 +2423,43 @@ export async function composeWidgetHandler(
     const budgetMs = streaming ? COMPOSE_STREAM_TIMEOUT_MS : COMPOSE_TIMEOUT_MS;
     const maxTokens = streaming ? COMPOSE_STREAM_MAX_TOKENS : COMPOSE_MAX_TOKENS;
 
-    if (
-      isAnthropicId(
-        resolveRequestedId({ request: req, bodyProvider: payload.provider ?? null }),
-      )
-    ) {
-      const r = await anthropicComplete({
-        system: COMPOSE_WIDGET_SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userPrompt }],
-        maxTokens,
-        timeoutMs: budgetMs,
-        ...(sse ? { onDelta: (t: string) => sse?.tick(t.length) } : {}),
-      });
-      content = r.content;
-      modelName = r.model;
-      providerId = "anthropic";
-      providerLabel = "Claude";
-      truncated = r.stopReason === "max_tokens";
-    } else {
+    type ComposeTurn = { role: "user" | "assistant"; content: string };
+    // One closure for every compose round trip, so the scope-check retry below
+    // goes out exactly the way the first call did (same provider, same system
+    // prompt, same ceiling).
+    const askModel = async (
+      messages: ComposeTurn[],
+      timeoutMs: number,
+    ): Promise<{
+      content: string;
+      model?: string;
+      providerId: string;
+      providerLabel: string;
+      // Set when the model hit its output ceiling. A cut-off reply is a
+      // half-written JSON object, which would otherwise surface as the
+      // misleading "returned non-JSON content".
+      truncated: boolean;
+    }> => {
+      if (
+        isAnthropicId(
+          resolveRequestedId({ request: req, bodyProvider: payload.provider ?? null }),
+        )
+      ) {
+        const r = await anthropicComplete({
+          system: COMPOSE_WIDGET_SYSTEM_PROMPT,
+          messages,
+          maxTokens,
+          timeoutMs,
+          ...(sse ? { onDelta: (t: string) => sse?.tick(t.length) } : {}),
+        });
+        return {
+          content: r.content,
+          model: r.model,
+          providerId: "anthropic",
+          providerLabel: "Claude",
+          truncated: r.stopReason === "max_tokens",
+        };
+      }
       const provider = selectProvider({
         request: req,
         bodyProvider: payload.provider ?? null,
@@ -2394,22 +2471,35 @@ export async function composeWidgetHandler(
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: COMPOSE_WIDGET_SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
+          ...messages,
         ],
-      }, budgetMs);
+      }, timeoutMs);
       const data = upstream.data as CompletionResponse;
-      content = data.choices?.[0]?.message?.content ?? "";
-      modelName = data.model;
-      providerId = provider.id;
-      providerLabel = provider.label;
-      truncated = data.choices?.[0]?.finish_reason === "length";
-    }
+      return {
+        content: data.choices?.[0]?.message?.content ?? "",
+        model: data.model,
+        providerId: provider.id,
+        providerLabel: provider.label,
+        truncated: data.choices?.[0]?.finish_reason === "length",
+      };
+    };
+
+    const startedAt = Date.now();
+    const firstTurn: ComposeTurn[] = [{ role: "user", content: userPrompt }];
+    const {
+      content,
+      model: modelName,
+      providerId,
+      providerLabel,
+      truncated,
+    } = await askModel(firstTurn, budgetMs);
 
     let parsed: {
       fields?: unknown;
       composed?: unknown;
       context?: unknown;
       tiers?: unknown;
+      cadenceTiers?: unknown;
       unrepresented?: unknown;
     };
     try {
@@ -2455,7 +2545,42 @@ export async function composeWidgetHandler(
     };
 
     const composed = cleanComposedBlock(parsed?.composed, cleanCtx);
-    const tiers = cleanTiers(parsed?.tiers);
+    let tiers = cleanTiers(parsed?.tiers);
+    let cadenceTiers = cleanTiers(parsed?.cadenceTiers);
+    // Each ladder must be written for its own scope (see findCrossScopeTiers).
+    // One corrective round trip — the original turns plus the notes — and only
+    // while the budget still has room for it; a timed-out retry would cost the
+    // user the whole compose over two ladders.
+    let scopeNotes = findCrossScopeTiers(tiers, cadenceTiers);
+    const retryBudgetMs = budgetMs - (Date.now() - startedAt);
+    if (scopeNotes.length > 0 && retryBudgetMs >= COMPOSE_SCOPE_RETRY_MIN_MS) {
+      try {
+        const retry = await askModel(
+          [
+            ...firstTurn,
+            { role: "assistant", content },
+            { role: "user", content: scopeRetryPrompt(scopeNotes) },
+          ],
+          retryBudgetMs,
+        );
+        const fixed = parseJsonLoose(retry.content) as {
+          tiers?: unknown;
+          cadenceTiers?: unknown;
+        };
+        tiers = cleanTiers(fixed?.tiers) ?? tiers;
+        cadenceTiers = cleanTiers(fixed?.cadenceTiers) ?? cadenceTiers;
+        scopeNotes = findCrossScopeTiers(tiers, cadenceTiers);
+      } catch (err) {
+        logger.debug(
+          {
+            userId: session.userId.toHexString(),
+            goalId: payload.goalId,
+            err: (err as Error).message,
+          },
+          "[ai] compose-widget tier scope retry failed",
+        );
+      }
+    }
     // Only meaningful when a document was attached — a model that volunteers
     // omissions for a hand-typed sentence is answering a question nobody
     // asked, and the UI has nothing to warn about.
@@ -2499,6 +2624,16 @@ export async function composeWidgetHandler(
       if (unrepresented.length >= 6 || unrepresented.includes(note)) break;
       unrepresented.push(note);
     }
+    // Still crossed after the retry: keep the whole-plan ladder (surfaced as
+    // a note, like the check above) and drop the per-period one rather than
+    // grade a window against a bar it can never meet.
+    if (scopeNotes.length > 0) {
+      cadenceTiers = null;
+      for (const note of scopeNotes) {
+        if (unrepresented.length >= 6 || unrepresented.includes(note)) break;
+        unrepresented.push(note);
+      }
+    }
 
     // Keep only the questions something still consumes — computed from the
     // FINAL field list, after the drops above, not from what the model asked
@@ -2528,6 +2663,7 @@ export async function composeWidgetHandler(
       context,
       fields,
       tiers,
+      cadenceTiers,
     });
 
     if (!built.ok) {
@@ -2561,6 +2697,7 @@ export async function composeWidgetHandler(
             : null,
         fields: seededFields,
         tiers,
+        cadenceTiers,
       });
       if (!fallback.ok) {
         throw new HttpError(

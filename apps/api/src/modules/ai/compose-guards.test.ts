@@ -5,6 +5,7 @@ import {
   cleanComposedBlock,
   cleanComposedPeriods,
   dropPeriodEchoFields,
+  findCrossScopeTiers,
   findUngradeableTiers,
 } from "./controller.js";
 
@@ -133,6 +134,49 @@ test("stays quiet on ordinary per-period tiers", () => {
 
 test("handles a null tier set", () => {
   assert.deepEqual(findUngradeableTiers(null), []);
+});
+
+// ─── findCrossScopeTiers ─────────────────────────────────────────────
+
+test("findCrossScopeTiers flags whole-cycle wording in cadenceTiers", () => {
+  const notes = findCrossScopeTiers(null, {
+    roleModel: "All 24 weekly deliverables logged across the 6-month plan",
+  });
+  assert.equal(notes.length, 1);
+  assert.match(notes[0], /cadenceTiers/);
+});
+
+test("findCrossScopeTiers flags 'this week' in the whole-cycle ladder", () => {
+  const notes = findCrossScopeTiers(
+    { achieved: "Deliverable marked complete this week" },
+    null,
+  );
+  assert.equal(notes.length, 1);
+  assert.match(notes[0], /\btiers\b/);
+});
+
+test("findCrossScopeTiers gives one note per offending ladder", () => {
+  const notes = findCrossScopeTiers(
+    {
+      achieved: "Deliverable marked complete this week",
+      roleModel: "Shipped early this month",
+    },
+    { roleModel: "All 24 weekly deliverables logged" },
+  );
+  assert.equal(notes.length, 2);
+});
+
+test("clean ladders pass", () => {
+  const T = {
+    notAchieved: "Fewer than 18 of the 24 weekly deliverables logged.",
+    achieved: "All 24 weekly deliverables logged across the plan.",
+  };
+  const C = {
+    notAchieved: "No deliverable logged this week.",
+    achieved: "This week's deliverable logged with a link.",
+  };
+  assert.deepEqual(findCrossScopeTiers(T, C), []);
+  assert.deepEqual(findCrossScopeTiers(null, null), []);
 });
 
 // ─── cleanComposedPeriods ────────────────────────────────────────────
