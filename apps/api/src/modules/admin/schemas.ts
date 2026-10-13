@@ -184,6 +184,9 @@ export const reassignReportsSchema = z.object({
 export const approvalDecisionSchema = z.object({
   decision: z.enum(["approve", "request_changes"]),
   note: z.string().max(2_000).optional(),
+  // Optional ladder edits on approve — shape-checked by applyApprovedLadders.
+  tiers: z.unknown().optional(),
+  cadenceTiers: z.unknown().optional(),
 });
 
 // ─── GET /api/v1/admin/audit/export.csv ──────────────────────────────

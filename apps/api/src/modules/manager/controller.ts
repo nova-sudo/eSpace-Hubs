@@ -78,6 +78,11 @@ import {
   specVariant,
   type GoalStatusKey,
 } from "./goal-health.js";
+import {
+  applyApprovedLadders,
+  projectApprovalLadders,
+  type ApprovalLadders,
+} from "./approval-ladders.js";
 import { buildGoalDetail } from "./goal-detail.js";
 import { resolveReportFor } from "./resolve-report.js";
 import {
@@ -1486,7 +1491,10 @@ interface ApprovalItem {
    * queue, and the thing most worth reviewing is invisible.
    */
   periods: { label: string; dueAt: string | null }[];
-  tiers: Record<string, string> | null;
+  /** Both ladders + whether the user (or an approver) locked them. */
+  tiers: ApprovalLadders["tiers"];
+  cadenceTiers: ApprovalLadders["cadenceTiers"];
+  tiersSource: ApprovalLadders["tiersSource"];
 }
 
 /**
@@ -1625,15 +1633,6 @@ export async function listApprovalsHandler(
         })
         .slice(0, 10);
       const autoFields = collectAutoFields(rawFields, composed?.periods);
-      const tiersObj =
-        spec.tiers && typeof spec.tiers === "object"
-          ? (spec.tiers as Record<string, unknown>)
-          : null;
-      const tiers = tiersObj
-        ? (Object.fromEntries(
-            Object.entries(tiersObj).filter(([, v]) => typeof v === "string"),
-          ) as Record<string, string>)
-        : null;
 
       items.push({
         user: {
@@ -1651,7 +1650,7 @@ export async function listApprovalsHandler(
         fields,
         autoFields,
         periods,
-        tiers,
+        ...projectApprovalLadders(spec),
       });
     }
 
@@ -1676,7 +1675,12 @@ export async function putApprovalDecisionHandler(
     const { session, target } = await resolveReport(req);
     const goalId = req.params.goalId;
 
-    const body = (req.body ?? {}) as { decision?: unknown; note?: unknown };
+    const body = (req.body ?? {}) as {
+      decision?: unknown;
+      note?: unknown;
+      tiers?: unknown;
+      cadenceTiers?: unknown;
+    };
     if (body.decision !== "approve" && body.decision !== "request_changes") {
       throw new HttpError(
         400,
@@ -1714,6 +1718,12 @@ export async function putApprovalDecisionHandler(
     if (existing.status !== "pending") {
       throw new HttpError(409, "not_pending", "This goal isn't waiting for approval any more.");
     }
+    // Ladder edits ride along on approve only; request_changes ignores them.
+    const ladders = applyApprovedLadders(doc.spec, approved ? body : {});
+    if (ladders.errors.length > 0) {
+      throw new HttpError(400, "invalid_tiers", ladders.errors.join("; "));
+    }
+    const laddersChanged = ladders.changed.tiers || ladders.changed.cadenceTiers;
 
     const manager = await getUsersCollection().then((c) =>
       c.findOne({ _id: session.userId, orgId: session.orgId }),
@@ -1738,7 +1748,7 @@ export async function putApprovalDecisionHandler(
         goalId,
         "spec.approval.status": "pending",
       },
-      { $set: { "spec.approval": approval } },
+      { $set: { "spec.approval": approval, ...ladders.set } },
     );
     if (upd.matchedCount === 0) {
       throw new HttpError(409, "not_pending", "This goal isn't waiting for approval any more.");
@@ -1764,6 +1774,8 @@ export async function putApprovalDecisionHandler(
         decision: body.decision,
         status: approval.status,
         hasNote: note.length > 0,
+        tiersChanged: ladders.changed.tiers,
+        cadenceTiersChanged: ladders.changed.cadenceTiers,
       },
       ...networkMeta(req),
     });
@@ -1778,7 +1790,8 @@ export async function putApprovalDecisionHandler(
         ? "Your goal was approved"
         : "Your manager requested changes",
       body: approved
-        ? `${managerName} approved "${goalTitle}" — it's live now.`
+        ? `${managerName} approved "${goalTitle}" — it's live now.` +
+          (laddersChanged ? " Your manager adjusted the achievement levels." : "")
         : `${managerName} asked for changes to "${goalTitle}" before it goes live.`,
       data: { goalId, goalTitle, decision: body.decision, note },
       createdBy: session.userId,

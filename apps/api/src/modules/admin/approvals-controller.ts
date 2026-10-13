@@ -29,6 +29,11 @@ import type { User } from "../../db/types.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { createNotification } from "../../lib/notifications.js";
 import { HttpError } from "../../middleware/error-handler.js";
+import {
+  applyApprovedLadders,
+  projectApprovalLadders,
+  type ApprovalLadders,
+} from "../manager/approval-ladders.js";
 import { approvalDecisionSchema } from "./schemas.js";
 
 interface AdminApprovalItem {
@@ -40,7 +45,10 @@ interface AdminApprovalItem {
   cadence: string | null;
   fields: { kind: string; label: string }[];
   periods: { label: string; dueAt: string | null }[];
-  tiers: Record<string, string> | null;
+  /** Both ladders + whether the user (or an approver) locked them. */
+  tiers: ApprovalLadders["tiers"];
+  cadenceTiers: ApprovalLadders["cadenceTiers"];
+  tiersSource: ApprovalLadders["tiersSource"];
 }
 
 /**
@@ -158,10 +166,6 @@ export async function listAdminApprovalsHandler(
           };
         })
         .slice(0, 10);
-      const tiersObj =
-        spec.tiers && typeof spec.tiers === "object"
-          ? (spec.tiers as Record<string, unknown>)
-          : null;
       items.push({
         user: {
           id: uid,
@@ -176,11 +180,7 @@ export async function listAdminApprovalsHandler(
         cadence: typeof composed?.cadence === "string" ? composed.cadence : null,
         fields,
         periods,
-        tiers: tiersObj
-          ? (Object.fromEntries(
-              Object.entries(tiersObj).filter(([, v]) => typeof v === "string"),
-            ) as Record<string, string>)
-          : null,
+        ...projectApprovalLadders(spec),
       });
     }
     items.sort(
@@ -197,7 +197,8 @@ export async function listAdminApprovalsHandler(
 // ─── POST /admin/approvals/:userId/:goalId ───────────────────────────
 
 /**
- * Body: { decision: "approve" | "request_changes", note? }
+ * Body: { decision: "approve" | "request_changes", note?, tiers?, cadenceTiers? }
+ * (the ladders apply on approve only; see `applyApprovedLadders`)
  * → { ok: true, status: "approved" | "rejected" }
  *
  * 404 unknown user/goal in this org · 409 `has_manager` (their manager
@@ -254,6 +255,12 @@ export async function decideAdminApprovalHandler(
     if (existing.status !== "pending") {
       throw new HttpError(409, "not_pending", "This goal isn't waiting for approval any more.");
     }
+    // Ladder edits ride along on approve only; request_changes ignores them.
+    const ladders = applyApprovedLadders(doc.spec, approved ? body : {});
+    if (ladders.errors.length > 0) {
+      throw new HttpError(400, "invalid_tiers", ladders.errors.join("; "));
+    }
+    const laddersChanged = ladders.changed.tiers || ladders.changed.cadenceTiers;
 
     const admin = await users.findOne(
       { _id: session.userId, orgId: session.orgId },
@@ -280,7 +287,7 @@ export async function decideAdminApprovalHandler(
         goalId,
         "spec.approval.status": "pending",
       },
-      { $set: { "spec.approval": approval } },
+      { $set: { "spec.approval": approval, ...ladders.set } },
     );
     if (upd.matchedCount === 0) {
       throw new HttpError(409, "not_pending", "This goal isn't waiting for approval any more.");
@@ -297,6 +304,8 @@ export async function decideAdminApprovalHandler(
         subjectUserId: owner._id.toHexString(),
         decision: body.decision,
         hasNote: note.length > 0,
+        tiersChanged: ladders.changed.tiers,
+        cadenceTiersChanged: ladders.changed.cadenceTiers,
         reason: routed.get(owner._id.toHexString()) ?? null,
       },
       ...networkMeta(req),
@@ -312,7 +321,8 @@ export async function decideAdminApprovalHandler(
       kind: approved ? "goal_approved" : "goal_changes_requested",
       title: approved ? "Your goal was approved" : "An admin requested changes",
       body: approved
-        ? `${adminName} (admin) approved "${goalTitle}" — it's live now.`
+        ? `${adminName} (admin) approved "${goalTitle}" — it's live now.` +
+          (laddersChanged ? " The approver adjusted the achievement levels." : "")
         : `${adminName} (admin) asked for changes to "${goalTitle}" before it goes live.`,
       data: { goalId, goalTitle, decision: body.decision, note, approverScope: "admins" },
       createdBy: session.userId,
