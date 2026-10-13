@@ -158,6 +158,7 @@ export function gradeRequestBody({
   aiProvider,
   periodKey,
   scope,
+  ladderFallback,
   force,
   criteriaChanged,
 }) {
@@ -173,6 +174,9 @@ export function gradeRequestBody({
     tierHash: key,
     periodKey: periodKey || undefined,
     ...(scope ? { scope } : {}),
+    // The window is graded against the whole-cycle ladder (no per-window
+    // one) — the server asks for the window's pro-rated share instead.
+    ...(ladderFallback ? { ladderFallback: true } : {}),
     force: force || undefined,
     criteriaChanged: criteriaChanged || undefined,
     // Lets the server's throttle count "today" in the user's zone.
@@ -198,6 +202,7 @@ export async function gradeGoalTier({
   aiProvider,
   periodKey,
   scope,
+  ladderFallback = false,
   force = false,
 }) {
   load();
@@ -238,7 +243,7 @@ export async function gradeGoalTier({
   // and offer the same call again (forced, so the freshness guard can't
   // swallow the retry).
   let failure = null;
-  const retryArgs = { goalId, goalTitle, tiers, currentData, key, criteriaKey, gradedDay, aiProvider, periodKey, scope };
+  const retryArgs = { goalId, goalTitle, tiers, currentData, key, criteriaKey, gradedDay, aiProvider, periodKey, scope, ladderFallback };
   try {
     // Whether the CRITERIA really changed since the grade we hold — the
     // server's once-a-day re-grade throttle lets a criteria edit through.
@@ -268,6 +273,7 @@ export async function gradeGoalTier({
             aiProvider,
             periodKey,
             scope,
+            ladderFallback,
             force,
             criteriaChanged,
           }),

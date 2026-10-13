@@ -1403,6 +1403,7 @@ export function useGoalWindowTier(goalId, spec, periodKey, windowStart, windowEn
         aiProvider: getAiProvider(),
         periodKey,
         scope: "window",
+        ...(cadenceFallback ? { ladderFallback: true } : {}),
         force: true,
       });
     } finally {

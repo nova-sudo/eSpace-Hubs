@@ -497,9 +497,9 @@ function WindowTierPanel({ goalId, spec, periodKey, windowStart, windowEnd }) {
           {tiers && cadenceFallback ? (
             <Badge
               tone="neutral"
-              title="This goal has no per-window levels, so each window is held to the whole-goal levels."
+              title="This goal has no per-window levels, so each window is graded on its share of the whole-goal levels."
             >
-              Same ladder as the whole goal
+              Same ladder as the whole goal — add per-window levels under Edit levels
             </Badge>
           ) : null}
         </div>

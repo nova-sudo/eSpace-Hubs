@@ -20,6 +20,13 @@ test("gradeRequestBody carries scope only when given", () => {
   assert.equal(whole.periodKey, undefined);
 });
 
+test("gradeRequestBody flags a fallback ladder only when true", () => {
+  const base = { goalId: "g1", goalTitle: "Ship", tiers: T, currentData: "data", key: "k1", periodKey: "2026-W3", scope: "window" };
+  assert.equal(gradeRequestBody({ ...base, ladderFallback: true }).ladderFallback, true);
+  assert.equal("ladderFallback" in gradeRequestBody({ ...base, ladderFallback: false }), false);
+  assert.equal("ladderFallback" in gradeRequestBody(base), false);
+});
+
 test("updateSpecTiers with only cadenceTiers leaves tiers intact", async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async () =>

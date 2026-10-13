@@ -91,6 +91,9 @@ export const gradeGoalTierSchema = z.object({
   // Which ladder applies: whole-cycle `tiers` ("goal") or per-window
   // `cadenceTiers` ("window"). Omitted: inferred from periodKey.
   scope: z.enum(["goal", "window"]).optional(),
+  // The window has no per-window ladder, so `tiers` is the whole-cycle one:
+  // grade the window's pro-rated share instead of the full totals.
+  ladderFallback: z.boolean().optional(),
   // Bypass the server cache (the "re-analyze" affordance).
   force: z.boolean().optional(),
   // The client knows the tier CRITERIA changed since its last grade — lets

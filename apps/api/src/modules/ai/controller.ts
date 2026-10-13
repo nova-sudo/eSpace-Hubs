@@ -576,7 +576,9 @@ export async function gradeGoalTierHandler(
       payload.currentData,
     );
 
-    const tierSystemPrompt = tierSystemPromptFor(resolveGradeScope(payload));
+    const tierSystemPrompt = tierSystemPromptFor(resolveGradeScope(payload), {
+      ladderFallback: payload.ladderFallback === true,
+    });
 
     let content: string;
     let modelName: string | undefined;

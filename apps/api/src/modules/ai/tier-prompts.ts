@@ -46,6 +46,14 @@ const WINDOW_SCOPE = [
   "",
 ];
 
+const WINDOW_FALLBACK = [
+  "WINDOW SCOPE: The ladder below is written for the WHOLE cycle. Grade ONLY",
+  "this window: judge whether this window did its pro-rated share of each",
+  "tier's bar (e.g. for 'all 13 weekly milestones', did this week's milestone",
+  "land). Do not fail the window for totals that only the full cycle can reach.",
+  "",
+];
+
 const TAIL = [
   "OUTPUT: ONE JSON object, no prose, no markdown:",
   "  {",
@@ -57,8 +65,14 @@ const TAIL = [
   "  directly measurable from what's provided.",
 ];
 
-export function tierSystemPromptFor(scope: GradeScope): string {
-  const middle = scope === "window" ? WINDOW_SCOPE : PACING;
+export function tierSystemPromptFor(
+  scope: GradeScope,
+  opts: { ladderFallback?: boolean } = {},
+): string {
+  // A window with no per-window ladder falls back to the whole-cycle one;
+  // grading that literally would fail every window, so ask for its share.
+  const middle =
+    scope === "window" ? (opts.ladderFallback ? WINDOW_FALLBACK : WINDOW_SCOPE) : PACING;
   return [...HEAD, ...middle, ...TAIL].join("\n");
 }
 
