@@ -64,6 +64,5 @@ export function tierSystemPromptFor(scope: GradeScope): string {
 
 export function resolveGradeScope(payload: { scope?: string; periodKey?: string }): GradeScope {
   if (payload.scope === "window") return "window";
-  if (payload.scope === "goal") return "goal";
   return payload.periodKey && payload.periodKey !== WHOLE_GOAL_TIER_KEY ? "window" : "goal";
 }

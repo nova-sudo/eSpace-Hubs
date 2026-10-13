@@ -11,9 +11,9 @@
  * apps/web/src/features/analyst/ai/, not a route change.
  */
 
-import { resolveGradeScope, tierSystemPromptFor } from "./tier-prompts.js";
 import type { NextFunction, Request, Response } from "express";
 import type { ObjectId } from "mongodb";
+import { resolveGradeScope, tierSystemPromptFor } from "./tier-prompts.js";
 import { logger } from "../../lib/logger.js";
 import {
   fetchWithRateLimitRetry,
@@ -427,7 +427,6 @@ export async function gradePrHandler(
 }
 
 // ─── POST /api/v1/ai/grade-goal-tier ─────────────────────────────────
-
 
 
 function buildTierUserPrompt(

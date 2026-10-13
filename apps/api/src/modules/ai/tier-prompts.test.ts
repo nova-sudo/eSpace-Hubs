@@ -17,4 +17,5 @@ test("resolveGradeScope: periodKey alone means window", () => {
 test("resolveGradeScope: explicit scope window wins", () => {
   assert.equal(resolveGradeScope({ scope: "window" }), "window");
   assert.equal(resolveGradeScope({ scope: "goal", periodKey: "__goal__" }), "goal");
+  assert.equal(resolveGradeScope({ scope: "goal", periodKey: "2026-W12" }), "window");
 });
