@@ -63,7 +63,9 @@ import {
   listQueryTemplates,
   validateQuerySource,
 } from "@espace-devhub/shared/goal-specs";
-import { deriveCadenceTiers } from "./cadence-tiers.js";
+import { cycleTotalPattern, findCrossScopeTiers, settleScopedLadders } from "./compose-ladders.js";
+
+export { findCrossScopeTiers };
 import { aiUnconfigured } from "./unconfigured.js";
 import { isRegradeThrottled } from "./tier-throttle.js";
 
@@ -2242,24 +2244,6 @@ export function dropPeriodEchoFields(
 }
 
 /**
- * Totals across the whole cycle — "all 13 weekly deliverables", "6 of 6
- * monthly checkpoints", "every one of the 12 months". Built per noun set: a
- * per-period ladder must cite none of them, but a whole-plan ladder may.
- */
-const cycleTotalPattern = (noun: string): RegExp =>
-  new RegExp(
-    // "all 13 weekly deliverables", "every one of the 12 months"
-    `\\b(?:all|every|each)\\s+(?:one\\s+)?(?:of\\s+)?(?:the\\s+)?\\d{1,3}\\s+(?:\\w+\\s+)?${noun}\\b` +
-      // "6 of 6 monthly checkpoints", "13/13 weeks" — the optional adjective
-      // between the count and the noun is why this can't be one branch.
-      `|\\b\\d{1,3}\\s*(?:/|of)\\s*\\d{1,3}\\s+(?:\\w+\\s+)?${noun}\\b`,
-    "i",
-  );
-const CYCLE_NOUN =
-  "(?:day|week|month|quarter|period|sprint|milestone|checkpoint|deliverable)s?";
-/** Any whole-cycle total, time or item — wrong inside a per-period ladder. */
-const WHOLE_CYCLE_TIER = cycleTotalPattern(CYCLE_NOUN);
-/**
  * Only ITEM totals. "6 of 6 months logged" is gradeable on a one-record-per-
  * period tracker (count the logged windows); "all 6 milestones" is not, unless
  * something records which milestone each period covered.
@@ -2315,48 +2299,6 @@ export function findUngradeableTiers(
   return [
     `Achievement bar spanning the whole cycle (${offenders.join(", ")}) — this tracker logs one record per period and doesn't capture which item each period covered, so that total can't be graded from it.`,
   ];
-}
-
-/** "this week", "this quarter" — wording that only makes sense for ONE window. */
-const SINGLE_WINDOW_TIER = /\bthis (week|month|quarter|period|window)\b/i;
-
-/**
- * Flag a ladder written for the wrong scope.
- *
- * A composed tracker carries two ladders: `tiers` grades the WHOLE plan (and
- * may cite totals across periods), `cadenceTiers` grades ONE window on its own
- * (and must not). A per-window bar that says "all 24 weekly deliverables" can
- * never be met inside a week, and a whole-plan bar that says "this week" has no
- * week to look at — either way the grader is handed a question it can't
- * answer. Returns one note per offending ladder, empty when both are clean.
- */
-export function findCrossScopeTiers(
-  tiers: Record<string, string> | null,
-  cadenceTiers: Record<string, string> | null,
-): string[] {
-  const offenders = (
-    ladder: Record<string, string> | null,
-    pattern: RegExp,
-  ): string[] =>
-    ladder
-      ? Object.entries(ladder)
-          .filter(([, text]) => pattern.test(text))
-          .map(([tier]) => tier)
-      : [];
-  const notes: string[] = [];
-  const cycleInWindow = offenders(cadenceTiers, WHOLE_CYCLE_TIER);
-  if (cycleInWindow.length > 0) {
-    notes.push(
-      `Per-period bar (cadenceTiers: ${cycleInWindow.join(", ")}) cites a total across the whole plan — one period on its own can't meet it.`,
-    );
-  }
-  const windowInCycle = offenders(tiers, SINGLE_WINDOW_TIER);
-  if (windowInCycle.length > 0) {
-    notes.push(
-      `Whole-plan bar (tiers: ${windowInCycle.join(", ")}) is worded for a single period — the whole-cycle grade has no one period to read it against.`,
-    );
-  }
-  return notes;
 }
 
 function cleanTiers(raw: unknown): Record<string, string> | null {
@@ -2559,42 +2501,48 @@ export async function composeWidgetHandler(
     };
 
     const composed = cleanComposedBlock(parsed?.composed, cleanCtx);
-    let tiers = cleanTiers(parsed?.tiers);
-    let cadenceTiers = cleanTiers(parsed?.cadenceTiers);
     // Each ladder must be written for its own scope (see findCrossScopeTiers).
     // One corrective round trip — the original turns plus the notes — and only
     // while the budget still has room for it; a timed-out retry would cost the
     // user the whole compose over two ladders.
-    let scopeNotes = findCrossScopeTiers(tiers, cadenceTiers);
-    const retryBudgetMs = budgetMs - (Date.now() - startedAt);
-    if (scopeNotes.length > 0 && retryBudgetMs >= COMPOSE_SCOPE_RETRY_MIN_MS) {
-      try {
-        const retry = await askModel(
-          [
-            ...firstTurn,
-            { role: "assistant", content },
-            { role: "user", content: scopeRetryPrompt(scopeNotes) },
-          ],
-          retryBudgetMs,
-        );
-        const fixed = parseJsonLoose(retry.content) as {
-          tiers?: unknown;
-          cadenceTiers?: unknown;
-        };
-        tiers = cleanTiers(fixed?.tiers) ?? tiers;
-        cadenceTiers = cleanTiers(fixed?.cadenceTiers) ?? cadenceTiers;
-        scopeNotes = findCrossScopeTiers(tiers, cadenceTiers);
-      } catch (err) {
-        logger.warn(
-          {
-            userId: session.userId.toHexString(),
-            goalId: payload.goalId,
-            err: (err as Error).message,
-          },
-          "[ai] compose-widget tier scope retry failed",
-        );
-      }
-    }
+    const settled = await settleScopedLadders({
+      tiers: cleanTiers(parsed?.tiers),
+      cadenceTiers: cleanTiers(parsed?.cadenceTiers),
+      retry: async (notes) => {
+        const retryBudgetMs = budgetMs - (Date.now() - startedAt);
+        if (retryBudgetMs < COMPOSE_SCOPE_RETRY_MIN_MS) return null;
+        try {
+          const retry = await askModel(
+            [
+              ...firstTurn,
+              { role: "assistant", content },
+              { role: "user", content: scopeRetryPrompt(notes) },
+            ],
+            retryBudgetMs,
+          );
+          const fixed = parseJsonLoose(retry.content) as {
+            tiers?: unknown;
+            cadenceTiers?: unknown;
+          };
+          return {
+            tiers: cleanTiers(fixed?.tiers),
+            cadenceTiers: cleanTiers(fixed?.cadenceTiers),
+          };
+        } catch (err) {
+          logger.warn(
+            {
+              userId: session.userId.toHexString(),
+              goalId: payload.goalId,
+              err: (err as Error).message,
+            },
+            "[ai] compose-widget tier scope retry failed",
+          );
+          throw err;
+        }
+      },
+    });
+    const { tiers, cadenceTiers } = settled;
+    const scopeNotes = settled.notes;
     // Only meaningful when a document was attached — a model that volunteers
     // omissions for a hand-typed sentence is answering a question nobody
     // asked, and the UI has nothing to warn about.
@@ -2638,11 +2586,10 @@ export async function composeWidgetHandler(
       if (unrepresented.length >= 6 || unrepresented.includes(note)) break;
       unrepresented.push(note);
     }
-    // Still crossed after the retry: keep the whole-plan ladder (surfaced as
-    // a note, like the check above) and drop the per-period one rather than
-    // grade a window against a bar it can never meet.
+    // Still crossed after the retry: settleScopedLadders kept the whole-plan
+    // ladder and swapped a bad per-period one for the derived ladder; the
+    // notes are surfaced, like the check above.
     if (scopeNotes.length > 0) {
-      cadenceTiers = deriveCadenceTiers("COMPOSED", tiers);
       for (const note of scopeNotes) {
         if (unrepresented.length >= 6) break;
         if (unrepresented.includes(note)) continue;
