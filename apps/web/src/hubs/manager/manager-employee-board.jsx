@@ -17,8 +17,8 @@
  *   GitHub       their published goals, GitHub and eSpace per period, with
  *                the gaps flagged (GET /manager/reports/:userId/github-correlation)
  *
- * The header carries a one-click download of their latest review packet
- * (the frozen evidence document they submitted), when there is one.
+ * The header opens their latest review packet (the rendered page for v2,
+ * a markdown download for v1), when there is one.
  *
  * Both open the same grading drawer. Data: GET
  * /manager/reports/:userId/goal-health.
@@ -26,9 +26,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Download } from "lucide-react";
+import { ArrowLeft, Download, FileText } from "lucide-react";
 import { Button, PageHeader, SegmentedControl, PageContainer } from "@/components/ui";
-import { useHubLink } from "@/features/hubs";
+import { useActiveHub, useHubLink } from "@/features/hubs";
 import { CorrelationReport, useReportGithubCorrelation } from "@/features/github-links";
 import { useReportHealth } from "./use-report-health";
 import { useManagerView } from "./use-manager-view";
@@ -38,7 +38,12 @@ import { EmployeeBoardView } from "./employee-board-view";
 import { EmployeeConsistencyView } from "./employee-consistency-view";
 import { ManagerGradeDrawer } from "./manager-grade-drawer";
 import { ReportNotesView } from "./report-notes-view";
-import { downloadPacketMarkdown, useReviewPackets } from "./use-review-packets";
+import {
+  downloadPacketMarkdown,
+  isStructuredPacket,
+  packetHref,
+  useReviewPackets,
+} from "./use-review-packets";
 
 const VIEWS = ["board", "consistency", "notes", "github"];
 const VIEW_OPTIONS = [
@@ -54,7 +59,10 @@ export function ManagerEmployeeBoard({ userId }) {
   const [grading, setGrading] = useState(null);
   const { loading, data, error, refresh } = useReportHealth(userId);
   const { packets } = useReviewPackets(userId);
-  const latestPacket = packets.find((p) => p.markdown) ?? null;
+  const hub = useActiveHub();
+  const newest = packets[0] ?? null;
+  const openPacket = newest && isStructuredPacket(newest) && hub ? newest : null;
+  const latestPacket = openPacket ? null : (packets.find((p) => p.markdown) ?? null);
 
   // "Back to team" rides in the header's action slot — the same place every
   // other drill-in page (shared goal detail) puts its way back.
@@ -108,7 +116,17 @@ export function ManagerEmployeeBoard({ userId }) {
               onChange={setView}
               size="sm"
             />
-            {latestPacket ? (
+            {openPacket ? (
+              <Button
+                as={Link}
+                href={packetHref(hub.id, openPacket.id)}
+                variant="soft"
+                size="sm"
+                title="Open the review packet they submitted"
+              >
+                <FileText size={13} /> Review packet
+              </Button>
+            ) : latestPacket ? (
               <Button
                 type="button"
                 variant="soft"

@@ -37,3 +37,13 @@ export function downloadPacketMarkdown(packet, personName) {
   // and Firefox before it has read the blob.
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
+
+/** The rendered packet page for a submitted packet. */
+export function packetHref(hubId, id) {
+  return `/${hubId}/packets/${encodeURIComponent(id)}`;
+}
+
+/** v2 packets carry a structured payload; v1 are markdown-only. */
+export function isStructuredPacket(packet) {
+  return packet?.version != null && packet.version !== 1;
+}

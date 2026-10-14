@@ -24,6 +24,12 @@ function reportPath(n) {
   return typeof id === "string" && id ? `/employees/${encodeURIComponent(id)}` : "/employees";
 }
 
+/** The rendered review packet when the row names it, else the roster. */
+function packetPath(n) {
+  const id = n?.data?.packetId;
+  return typeof id === "string" && id ? `/packets/${encodeURIComponent(id)}` : "/employees";
+}
+
 /**
  * kind → path (string or fn(n)). Rows used to only mark-as-read — an
  * inbox with no follow-through — so every kind leads somewhere.
@@ -37,7 +43,7 @@ const KIND_PATH = {
   // on the admin hub's — same slot id, so one path serves both.
   goal_submitted: "/approvals",
   user_pending_approval: "/users",
-  review_packet_submitted: "/employees",
+  review_packet_submitted: packetPath,
   // F4 scheduler kinds.
   goal_due_soon: goalPath,
   goal_overdue: goalPath,

@@ -13,10 +13,26 @@
  * Data: GET /manager/reports/:userId/review-packets.
  */
 
+import Link from "next/link";
 import { Download } from "lucide-react";
 import { Badge, Button, Card, Label } from "@/components/ui";
-import { TIER_LABELS } from "@/features/goal-tiers";
-import { downloadPacketMarkdown, useReviewPackets } from "./use-review-packets";
+import { TIER_LABELS, tierTone } from "@/features/goal-tiers";
+import { useActiveHub } from "@/features/hubs";
+import { PACKET_TEMPLATES } from "@/features/review-packet";
+import {
+  downloadPacketMarkdown,
+  isStructuredPacket,
+  packetHref,
+  useReviewPackets,
+} from "./use-review-packets";
+
+// payload.totals.byTier key -> tier id (labels + tint come from goal-tiers).
+const TIER_KEYS = [
+  ["achieved", "achieved"],
+  ["overAchieved", "over_achieved"],
+  ["roleModel", "role_model"],
+  ["notAchieved", "not_achieved"],
+];
 
 function fmtWhen(iso) {
   if (!iso) return "";
@@ -29,6 +45,7 @@ function fmtWhen(iso) {
 
 export function ReviewPacketCard({ userId, personName }) {
   const state = useReviewPackets(userId);
+  const hub = useActiveHub();
 
   if (state.loading) return null;
   const [latest, ...history] = state.packets;
@@ -65,70 +82,136 @@ export function ReviewPacketCard({ userId, personName }) {
           .join(" · ")}
       </div>
 
-      {latest.narrative?.trim() ? (
-        <p className="mt-2 text-[12.5px] leading-[1.55] text-muted-fg">
-          {latest.narrative.trim()}
-        </p>
+      {isStructuredPacket(latest) ? (
+        <StructuredPreview latest={latest} hub={hub} personName={personName} />
+      ) : (
+        <>
+          {latest.narrative?.trim() ? (
+            <p className="mt-2 text-[12.5px] leading-[1.55] text-muted-fg">
+              {latest.narrative.trim()}
+            </p>
+          ) : null}
+
+          {latest.markdown ? (
+            <>
+              {/* #238: managers couldn't export a report's packet — HR wants
+                the file, not a scroll box. Plain blob download; the
+                markdown is already the frozen document. */}
+              <Button
+                type="button"
+                variant="soft"
+                size="sm"
+                className="mt-3"
+                onClick={() => downloadPacketMarkdown(latest, personName)}
+              >
+                <Download size={13} /> Download .md
+              </Button>
+            </>
+          ) : null}
+
+          <details className="mt-3 border-t border-line pt-3">
+            <summary className="cursor-pointer text-[12.5px] font-bold text-fg">
+              Read the frozen document
+            </summary>
+
+            {Array.isArray(latest.goals) && latest.goals.length > 0 ? (
+              <ul className="mt-3 flex flex-col gap-1.5">
+                {latest.goals.map((g) => (
+                  <li
+                    key={g.goalId}
+                    className="flex items-baseline gap-2 text-[12px]"
+                  >
+                    <span
+                      className="min-w-0 flex-1 truncate text-fg"
+                      title={g.title}
+                    >
+                      {g.title || "(untitled)"}
+                      {g.l1Title ? (
+                        <span className="ml-1.5 text-[11px] text-muted-fg">
+                          · {g.l1Title}
+                        </span>
+                      ) : null}
+                    </span>
+                    {g.reading ? (
+                      <span className="shrink-0 text-[11px] text-muted-fg">
+                        {g.reading}
+                      </span>
+                    ) : null}
+                    <span
+                      className={`shrink-0 text-[11px] font-bold ${g.tier ? "text-fg" : "text-muted-fg"}`}
+                    >
+                      {g.tier ? (TIER_LABELS[g.tier] ?? g.tier) : "ungraded"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            {latest.markdown ? (
+              <pre className="mt-3 max-h-[420px] overflow-auto whitespace-pre-wrap rounded-[var(--radius-lg)] bg-card-alt p-3 text-[11px] leading-[1.55] text-fg">
+                {latest.markdown}
+              </pre>
+            ) : null}
+          </details>
+        </>
+      )}
+
+      {history.length > 0 ? (
+        <div className="mt-3 border-t border-line pt-3 text-[11.5px] text-muted-fg">
+          {history.length} earlier version{history.length === 1 ? "" : "s"} ·
+          last {fmtWhen(history[0].submittedAt)}
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+/** v2: a compact preview of the frozen payload and the way into the page. */
+function StructuredPreview({ latest, hub, personName }) {
+  const totals = latest.payload?.totals ?? null;
+  const byTier = totals?.byTier ?? {};
+  const template = PACKET_TEMPLATES.find((t) => t.id === latest.template);
+
+  return (
+    <>
+      {totals ? (
+        <div className="mt-2 text-[12.5px] leading-[1.5] text-muted-fg">
+          {totals.goals ?? 0} goals · {totals.tracked ?? 0} tracked
+          {template ? ` · ${template.label}` : ""}
+        </div>
+      ) : template ? (
+        <div className="mt-2 text-[12.5px] leading-[1.5] text-muted-fg">
+          {template.label}
+        </div>
       ) : null}
 
-      {latest.markdown ? (
-        <>
-          {/* #238: managers couldn't export a report's packet — HR wants
-              the file, not a scroll box. Plain blob download; the
-              markdown is already the frozen document. */}
+      {totals ? (
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {TIER_KEYS.map(([key, tier]) => (
+            <Badge key={key} tone={tierTone(tier)}>
+              {byTier[key] ?? 0} {(TIER_LABELS[tier] ?? tier).toLowerCase()}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {hub ? (
+          <Button as={Link} href={packetHref(hub.id, latest.id)} size="sm">
+            Open packet
+          </Button>
+        ) : null}
+        {latest.markdown ? (
           <Button
             type="button"
             variant="soft"
             size="sm"
-            className="mt-3"
             onClick={() => downloadPacketMarkdown(latest, personName)}
           >
             <Download size={13} /> Download .md
           </Button>
-        </>
-      ) : null}
-
-      <details className="mt-3 border-t border-line pt-3">
-        <summary className="cursor-pointer text-[12.5px] font-bold text-fg">
-          Read the frozen document
-        </summary>
-
-        {Array.isArray(latest.goals) && latest.goals.length > 0 ? (
-          <ul className="mt-3 flex flex-col gap-1.5">
-            {latest.goals.map((g) => (
-              <li key={g.goalId} className="flex items-baseline gap-2 text-[12px]">
-                <span className="min-w-0 flex-1 truncate text-fg" title={g.title}>
-                  {g.title || "(untitled)"}
-                  {g.l1Title ? (
-                    <span className="ml-1.5 text-[11px] text-muted-fg">· {g.l1Title}</span>
-                  ) : null}
-                </span>
-                {g.reading ? (
-                  <span className="shrink-0 text-[11px] text-muted-fg">{g.reading}</span>
-                ) : null}
-                <span
-                  className={`shrink-0 text-[11px] font-bold ${g.tier ? "text-fg" : "text-muted-fg"}`}
-                >
-                  {g.tier ? (TIER_LABELS[g.tier] ?? g.tier) : "ungraded"}
-                </span>
-              </li>
-            ))}
-          </ul>
         ) : null}
-
-        {latest.markdown ? (
-          <pre className="mt-3 max-h-[420px] overflow-auto whitespace-pre-wrap rounded-[var(--radius-lg)] bg-card-alt p-3 text-[11px] leading-[1.55] text-fg">
-            {latest.markdown}
-          </pre>
-        ) : null}
-      </details>
-
-      {history.length > 0 ? (
-        <div className="mt-3 border-t border-line pt-3 text-[11.5px] text-muted-fg">
-          {history.length} earlier version{history.length === 1 ? "" : "s"} · last{" "}
-          {fmtWhen(history[0].submittedAt)}
-        </div>
-      ) : null}
-    </Card>
+      </div>
+    </>
   );
 }

@@ -69,3 +69,11 @@ test("every github kind has a settings label (so it can be muted)", () => {
     assert.ok(labelled.get(kind), `${kind} is labelled`);
   }
 });
+
+test("review_packet_submitted opens the packet page, else the roster", () => {
+  assert.equal(
+    notificationPath({ kind: "review_packet_submitted", data: { packetId: "p1" } }),
+    "/packets/p1",
+  );
+  assert.equal(notificationPath({ kind: "review_packet_submitted", data: {} }), "/employees");
+});
