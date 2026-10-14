@@ -29,6 +29,10 @@ import { apiGet, apiPost } from "@/lib/api-client";
 import { generateEvidencePdf } from "./pdf/generate-pdf";
 import { windowsForGoal } from "./packet-windows";
 
+// Stay under the API's 1 MB express.json limit (apps/api/src/app.ts); past
+// this the optional v2 markdown side export is dropped from the POST.
+const PACKET_BODY_SOFT_LIMIT = 900_000;
+
 const NARRATIVE_DRAFT_KEY = "espace-devhub:evidence-narrative";
 /** Readings the export prints when a live-only widget hasn't published on
  *  this device — a packet containing them isn't the record you want frozen. */
@@ -186,18 +190,26 @@ export function EvidencePage() {
 
   // The structured v2 payload the templates render — live-bound to the tier
   // and manager-verdict stores, so it re-derives whenever the readings do.
+  // One args builder shared by the preview memo and the submit, so they
+  // can't drift. Reads stores (verdicts, policies, inputs) at call time.
+  function packetArgs() {
+    return {
+      goalReadings,
+      untracked,
+      submitter: { displayName: docName, level, department: docTeam },
+      rangeLabel,
+      rangeStart: new Date(new Date().getFullYear(), 0, 1),
+      rangeEnd: new Date(),
+      cycleKey: String(new Date().getFullYear()),
+      windowsFor: (goalId, spec) => windowsForGoal(goalId, spec),
+    };
+  }
+
+  // Preview only (TemplatePicker). Submit rebuilds fresh — this memo does not
+  // track the stores it reads.
   const packetPayload = useMemo(
-    () =>
-      buildPacketPayload({
-        goalReadings,
-        untracked,
-        submitter: { displayName: docName, level, department: docTeam },
-        rangeLabel,
-        rangeStart: new Date(new Date().getFullYear(), 0, 1),
-        rangeEnd: new Date(),
-        cycleKey: String(new Date().getFullYear()),
-        windowsFor: (goalId, spec) => windowsForGoal(goalId, spec),
-      }),
+    () => buildPacketPayload(packetArgs()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [goalReadings, untracked, docName, level, docTeam, rangeLabel],
   );
 
@@ -227,20 +239,19 @@ export function EvidencePage() {
     if (submitting) return;
     if (blockWhilePending()) return;
     setSubmitting(true);
+    const payload = buildPacketPayload(packetArgs());
     // Goals-only side export: the narrative and starred proof are not part
     // of the v2 packet, so they stay out of its markdown too.
     const markdown = renderMarkdown({
       ...buildDocProps(),
       include: { ...include, narrative: false, starred: false },
     });
-    const r = await apiPost("/review-packets", {
-      version: 2,
-      template,
-      level,
-      rangeLabel,
-      payload: packetPayload,
-      markdown,
-    });
+    const body = { version: 2, template, level, rangeLabel, payload, markdown };
+    if (JSON.stringify(body).length > PACKET_BODY_SOFT_LIMIT) {
+      delete body.markdown;
+      toast.info("Packet is large — the .md side export was skipped.");
+    }
+    const r = await apiPost("/review-packets", body);
     setSubmitting(false);
     if (!r.ok) {
       toast.error(
@@ -255,7 +266,7 @@ export function EvidencePage() {
     // sent so "View last submitted packet" is instant for this version.
     setPacketView({
       status: "ready",
-      packet: packet ? { ...packet, version: 2, template, payload: packetPayload, markdown } : null,
+      packet: packet ? { ...packet, version: 2, template, payload, markdown: body.markdown } : null,
       error: null,
     });
     if (packet?.hasManager) {
