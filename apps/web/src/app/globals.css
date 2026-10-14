@@ -387,7 +387,7 @@ em.accent {
     display: none !important;
   }
   .packet-dossier {
-    background: white;
+    background: var(--card);
     box-shadow: none;
   }
   .packet-dossier section {

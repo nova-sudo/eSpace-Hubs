@@ -8,6 +8,7 @@ import { CountUp } from "./shared/count-up";
 import { useMotionPresets } from "./shared/motion";
 import { TierChip } from "./shared/tier-chip";
 import { useDeckNav } from "./shared/use-deck-nav";
+import { windowTint } from "./shared/window-state";
 import { WeightRing } from "./shared/weight-ring";
 
 const TIER_STATS = [
@@ -16,15 +17,6 @@ const TIER_STATS = [
   { key: "overAchieved", label: "Over achieved", tone: "sky" },
   { key: "roleModel", label: "Role model", tone: "lav" },
 ];
-
-const DOT_CLASS = {
-  done: "bg-mint",
-  complete: "bg-mint",
-  missed: "bg-peach",
-  open: "bg-sky",
-  current: "bg-sky",
-  before: "bg-card-alt opacity-60",
-};
 
 const SWIPE = 80;
 const SLIDE = {
@@ -114,7 +106,7 @@ function GoalCard({ objective, goal }) {
             const label = `${w.label ?? w.key}: ${w.state ?? "unknown"}${w.verdict?.tier ? `, ${TIER_LABELS[w.verdict.tier] ?? w.verdict.tier}` : ""}`;
             return (
               <span key={w.key} role="listitem" aria-label={label} title={label}
-                className={`h-3 w-3 rounded-full ${DOT_CLASS[w.state] ?? "bg-card-alt"}`} />
+                className={`h-3 w-3 rounded-full ${windowTint(w.state).bg}`} />
             );
           })}
         </div>

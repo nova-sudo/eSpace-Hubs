@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Card, Label } from "@/components/ui";
 import { useMotionPresets } from "./shared/motion";
 import { TierSeal } from "./shared/tier-seal";
+import { windowSummary } from "./shared/window-state";
 import { WeightRing } from "./shared/weight-ring";
 
 function shortDate(v) {
@@ -13,21 +14,12 @@ function shortDate(v) {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
-/** "8 of 12 weeks complete, 2 missed", or null when there are no counted windows. */
-export function windowSummary(windows) {
-  const counted = (windows ?? []).filter((w) => w && w.state !== "before");
-  if (!counted.length) return null;
-  const done = counted.filter((w) => w.state === "filled" || w.state === "settled").length;
-  const missed = counted.filter((w) => w.state === "owed").length;
-  return `${done} of ${counted.length} periods complete${missed ? `, ${missed} missed` : ""}`;
-}
-
 function GoalBlock({ goal, mode, item }) {
   const tier = goal.managerVerdict?.tier || goal.verdict?.tier || null;
   const manager = !!goal.managerVerdict?.tier;
   const hasReading = goal.reading != null && goal.reading !== "";
   const hasTarget = goal.target != null && goal.target !== "";
-  const summary = windowSummary(goal.windows);
+  const summary = (goal.windows ?? []).length ? windowSummary(goal.windows).text : null;
   const evidence = mode === "page" ? (goal.evidence ?? []) : [];
   const reasoning = goal.verdict?.reasoning;
   return (

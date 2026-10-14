@@ -7,16 +7,8 @@ import { TIER_LABELS, tierTextColor } from "@/features/goal-tiers";
 import { useMotionPresets, stagger } from "./shared/motion";
 import { TierChip } from "./shared/tier-chip";
 import { WeightRing } from "./shared/weight-ring";
+import { windowTint } from "./shared/window-state";
 import { WindowStrip, trackColumns, journeyMinWidth } from "./shared/window-strip";
-
-const STATE_CLASS = {
-  done: "bg-mint text-mint-ink",
-  complete: "bg-mint text-mint-ink",
-  missed: "bg-peach text-peach-ink",
-  before: "bg-card-alt text-muted-fg opacity-60",
-  open: "bg-sky text-sky-ink",
-  current: "bg-sky text-sky-ink",
-};
 
 function fmt(v) {
   return v == null || v === "" ? null : String(v);
@@ -35,7 +27,7 @@ function unionWindows(objectives) {
 }
 
 function Cell({ w, index, reduced }) {
-  const cls = w ? (STATE_CLASS[w.state] ?? "bg-card-alt text-fg") : "bg-card-alt opacity-40";
+  const cls = w ? (() => { const t = windowTint(w.state); return `${t.bg} ${t.text}`; })() : "bg-card-alt opacity-40";
   const tier = w?.verdict?.tier ?? (typeof w?.verdict === "string" ? w.verdict : null);
   const label = w ? `${w.label ?? w.key}: ${w.state ?? "unknown"}${tier ? `, ${TIER_LABELS[tier] ?? tier}` : ""}` : undefined;
   return (
