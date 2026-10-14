@@ -1,13 +1,13 @@
 "use client";
 
 import { useRef } from "react";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion, useScroll } from "framer-motion";
 import { Badge, Card, Label } from "@/components/ui";
 import { TIER_LABELS, tierTextColor } from "@/features/goal-tiers";
 import { useMotionPresets, stagger } from "./shared/motion";
 import { TierChip } from "./shared/tier-chip";
 import { WeightRing } from "./shared/weight-ring";
-import { WindowStrip, trackColumns } from "./shared/window-strip";
+import { WindowStrip, trackColumns, journeyMinWidth } from "./shared/window-strip";
 
 const STATE_CLASS = {
   done: "bg-mint text-mint-ink",
@@ -31,7 +31,7 @@ function unionWindows(objectives) {
       }
     }
   }
-  return [...seen.values()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  return [...seen.values()].sort((a, b) => String(a.key).localeCompare(String(b.key), undefined, { numeric: true }));
 }
 
 function Cell({ w, index, reduced }) {
@@ -68,37 +68,36 @@ function GoalRow({ goal, columns, mode, reduced, item }) {
   const hasWindows = byKey.size > 0 && columns.length > 0;
   const evidence = mode === "page" ? (goal.evidence ?? []) : [];
   return (
-    <motion.li variants={item} className="flex flex-col gap-3 rounded-[var(--radius-lg)] bg-card px-4 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <div className="min-w-0 flex-1 basis-48">
-          <p className="break-words text-[14px] font-semibold text-fg">{goal.title}</p>
-          {reading || target ? (
-            <p className="mt-0.5 text-[12.5px] text-muted-fg">
-              {reading ?? "No reading"}
-              {target ? <> <span aria-hidden="true">/</span> target {target}</> : null}
-            </p>
-          ) : goal.statusLabel ? (
-            <p className="mt-0.5 text-[12.5px] text-muted-fg">{goal.statusLabel}</p>
-          ) : null}
-        </div>
-        <TierChip tier={tier} manager={!!goal.managerVerdict?.tier} />
+    <motion.li variants={item} className="grid items-center gap-1 rounded-[var(--radius-lg)] bg-card px-4 py-3" style={trackColumns(columns.length)}>
+      <div className="min-w-0 pr-2">
+        <p className="break-words text-[14px] font-semibold text-fg">{goal.title}</p>
+        {reading || target ? (
+          <p className="mt-0.5 text-[12.5px] text-muted-fg">
+            {reading ?? "No reading"}
+            {target ? <> <span aria-hidden="true">/</span> target {target}</> : null}
+          </p>
+        ) : goal.statusLabel ? (
+          <p className="mt-0.5 text-[12.5px] text-muted-fg">{goal.statusLabel}</p>
+        ) : null}
+        {hasWindows ? (
+          <div className="mt-1.5">
+            <TierChip tier={tier} manager={!!goal.managerVerdict?.tier} />
+          </div>
+        ) : null}
       </div>
       {hasWindows ? (
-        <div className="overflow-x-auto">
-          <div className="grid gap-1" style={trackColumns(columns.length)}>
-            {columns.map((c, i) => (
-              <Cell key={c.key} w={byKey.get(c.key) ?? null} index={i} reduced={reduced} />
-            ))}
-          </div>
-        </div>
+        columns.map((c, i) => <Cell key={c.key} w={byKey.get(c.key) ?? null} index={i} reduced={reduced} />)
       ) : (
-        <div className="flex w-full items-center justify-between gap-3 rounded-[var(--radius-md)] bg-card-alt px-3 py-2 text-[13px] text-fg">
+        <div
+          className="flex items-center justify-between gap-3 rounded-[var(--radius-md)] bg-card-alt px-3 py-2 text-[13px] text-fg"
+          style={{ gridColumn: "2 / -1" }}
+        >
           <span className="min-w-0 break-words">{reading ?? goal.statusLabel ?? "No windows"}</span>
           <TierChip tier={tier} manager={!!goal.managerVerdict?.tier} />
         </div>
       )}
       {evidence.length ? (
-        <details className="group">
+        <details className="group" style={{ gridColumn: "1 / -1" }}>
           <summary className="cursor-pointer select-none text-[12px] font-semibold text-muted-fg">
             Evidence ({evidence.length})
           </summary>
@@ -125,8 +124,11 @@ function GoalRow({ goal, columns, mode, reduced, item }) {
 export function Journey({ payload, mode = "page" }) {
   const { reduced, container, item } = useMotionPresets();
   const ref = useRef(null);
+  const stripRef = useRef(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end end"] });
-  const scaleX = useTransform(scrollYProgress, [0, 1], [0, 1]);
+  const syncStrip = (e) => {
+    if (stripRef.current) stripRef.current.style.transform = `translateX(${-e.currentTarget.scrollLeft}px)`;
+  };
 
   const all = payload?.objectives ?? [];
   const goalCount = all.reduce((n, o) => n + (o.goals?.length ?? 0), 0);
@@ -134,7 +136,7 @@ export function Journey({ payload, mode = "page" }) {
 
   if (goalCount === 0) {
     return (
-      <div className="px-4 sm:px-0" data-mode={mode}>
+      <div ref={ref} className="px-4 sm:px-0" data-mode={mode}>
         <Card className="text-[14px] text-muted-fg">Nothing tracked yet.</Card>
       </div>
     );
@@ -147,11 +149,13 @@ export function Journey({ payload, mode = "page" }) {
   return (
     <div ref={ref} className="flex flex-col gap-4 px-4 sm:px-0" data-mode={mode}>
       {columns.length ? (
-        <WindowStrip windows={columns} progress={reduced ? null : scaleX} />
+        <WindowStrip windows={columns} progress={reduced ? null : scrollYProgress} innerRef={stripRef} />
       ) : (
         <Card className="text-[14px] text-muted-fg">No windows in this cycle.</Card>
       )}
 
+      <div className="overflow-x-auto" onScroll={syncStrip}>
+        <div className="flex flex-col gap-4" style={{ minWidth: journeyMinWidth(columns.length) }}>
       {objectives.map((o) => (
         <motion.section key={o.id} variants={container} initial={initial} animate="show">
           <Card className="flex flex-col gap-4 bg-card-alt">
@@ -170,6 +174,8 @@ export function Journey({ payload, mode = "page" }) {
           </Card>
         </motion.section>
       ))}
+        </div>
+      </div>
 
       {mode === "page" && untracked.length ? (
         <Card className="flex flex-col gap-2">
