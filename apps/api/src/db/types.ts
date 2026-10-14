@@ -569,7 +569,10 @@ export interface PacketTierLadder {
 export interface PacketGoalWindow {
   key: string;
   label: string;
-  /** Short state word, e.g. "done" | "missed" | "open" | "before". */
+  /**
+   * Window state vocabulary: "filled" | "settled" | "owed" | "current" |
+   * "future" | "before" (older aliases are tolerated by the web classifier).
+   */
   state: string;
   verdict?: PacketTier | null;
 }
