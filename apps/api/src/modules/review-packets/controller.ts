@@ -173,7 +173,7 @@ export async function listMyReviewPacketsHandler(
       .find(
         { orgId: session.orgId, userId: session.userId },
         {
-          projection: { markdown: 0, goals: 0, narrative: 0 },
+          projection: { markdown: 0, goals: 0, narrative: 0, payload: 0 },
           sort: { submittedAt: -1 },
           limit: MAX_VERSIONS,
         },

@@ -949,12 +949,30 @@ export async function listReportReviewPacketsHandler(
   try {
     const { session, target } = await resolveReport(req);
     const col = await getReviewPacketsCollection();
-    const rows = await col
-      .find(
-        { orgId: session.orgId, userId: target._id },
-        { sort: { submittedAt: -1 }, limit: 20 },
-      )
+    const filter = { orgId: session.orgId, userId: target._id };
+    // Meta-only for the whole history; the heavy content is fetched once,
+    // for the newest row only.
+    const metaRows = await col
+      .find(filter, {
+        projection: { payload: 0, markdown: 0, narrative: 0, goals: 0 },
+        sort: { submittedAt: -1 },
+        limit: 20,
+      })
       .toArray();
+    const latest = metaRows.length
+      ? await col.findOne(filter, { sort: { submittedAt: -1 } })
+      : null;
+    const rows = metaRows.map((r, i) =>
+      i === 0 && latest
+        ? {
+            ...r,
+            narrative: latest.narrative,
+            goals: latest.goals,
+            markdown: latest.markdown,
+            payload: latest.payload,
+          }
+        : r,
+    );
     res.json({
       packets: rows.map((r, i) => ({
         id: r._id.toHexString(),
