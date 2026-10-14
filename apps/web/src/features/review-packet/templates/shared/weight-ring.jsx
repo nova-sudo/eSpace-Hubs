@@ -23,7 +23,7 @@ export function WeightRing({ weight, size = 56, color = "var(--sky-text)" }) {
       aria-label={has ? `Weight ${w}%` : "No weight"}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
-        <circle cx={c} cy={c} r={r} fill="none" stroke="var(--line)" strokeWidth={stroke} />
+        <circle cx={c} cy={c} r={r} fill="none" stroke="var(--field-line)" strokeOpacity={0.35} strokeWidth={stroke} />
         {has ? (
           <motion.circle
             cx={c}
@@ -40,7 +40,7 @@ export function WeightRing({ weight, size = 56, color = "var(--sky-text)" }) {
           />
         ) : null}
       </svg>
-      <span className="absolute text-[12px] font-bold text-fg tabular-nums">{has ? `${w}%` : "-"}</span>
+      <span className="absolute text-[12px] font-bold text-fg tabular-nums">{has ? `${Math.round(w)}%` : "-"}</span>
     </div>
   );
 }

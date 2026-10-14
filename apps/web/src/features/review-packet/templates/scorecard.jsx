@@ -26,7 +26,7 @@ function GoalRow({ goal, mode, item }) {
   const target = fmtReading(goal.target);
   const evidence = mode === "page" ? (goal.evidence ?? []) : [];
   return (
-    <motion.li variants={item} className="flex flex-col gap-2 rounded-[var(--radius-lg)] bg-card-alt px-4 py-3">
+    <motion.li variants={item} className="flex flex-col gap-2 rounded-[var(--radius-lg)] bg-card px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="min-w-0 flex-1 basis-48">
           <p className="break-words text-[14px] font-semibold text-fg">{goal.title}</p>
@@ -111,7 +111,7 @@ export function Scorecard({ payload, mode = "page" }) {
 
       {objectives.map((o) => (
         <motion.section key={o.id} variants={container} initial={initial} animate="show">
-          <Card className="flex flex-col gap-4">
+          <Card className="flex flex-col gap-4 bg-card-alt">
             <div className="flex items-center gap-4">
               <WeightRing weight={o.weight} />
               <div className="min-w-0">
@@ -129,7 +129,7 @@ export function Scorecard({ payload, mode = "page" }) {
       ))}
 
       {mode === "page" && untracked.length ? (
-        <Card tone={undefined} className="flex flex-col gap-2 bg-card-alt">
+        <Card className="flex flex-col gap-2">
           <Label caps>Not yet tracked</Label>
           <ul className="flex flex-col gap-1">
             {untracked.map((u) => (

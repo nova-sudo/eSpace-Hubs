@@ -25,7 +25,7 @@ export function useMotionPresets() {
     container: { hidden: {}, show: { transition: { staggerChildren: 0.06, delayChildren: 0.05 } } },
     item: {
       hidden: { opacity: 0, y: 12 },
-      show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] } },
+      show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1], delayChildren: 0.15 } },
     },
     pop: {
       hidden: { opacity: 0, scale: 0.85 },

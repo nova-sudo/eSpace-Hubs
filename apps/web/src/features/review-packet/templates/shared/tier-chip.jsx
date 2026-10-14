@@ -7,16 +7,15 @@ import { useMotionPresets } from "./motion";
 
 /**
  * The tier pill. Pops in (scale 0.85 to 1) inside a staggered parent, or on its
- * own. A null tier is a neutral "Not graded"; `manager` adds a small badge.
+ * own (`standalone`). Nested, it inherits the parent row's variant timing. A null tier is a neutral "Not graded"; `manager` adds a small badge.
  */
-export function TierChip({ tier, manager = false }) {
+export function TierChip({ tier, manager = false, standalone = false }) {
   const { reduced, pop } = useMotionPresets();
   const graded = !!tier;
   return (
     <motion.span
       variants={pop}
-      initial={reduced ? false : "hidden"}
-      animate="show"
+      {...(standalone ? { initial: reduced ? false : "hidden", animate: "show" } : {})}
       className="inline-flex shrink-0 items-center gap-1.5"
     >
       <Badge tone={graded ? tierTone(tier) : "neutral"} dot={graded}>
