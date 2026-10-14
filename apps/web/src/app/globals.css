@@ -386,4 +386,14 @@ em.accent {
   .no-print {
     display: none !important;
   }
+  .packet-dossier {
+    background: white;
+    box-shadow: none;
+  }
+  .packet-dossier section {
+    break-inside: avoid;
+  }
+  .packet-dossier section ~ section {
+    break-before: page;
+  }
 }

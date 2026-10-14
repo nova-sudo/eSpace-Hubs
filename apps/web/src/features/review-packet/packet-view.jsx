@@ -24,5 +24,5 @@ export function PacketView({ packet, mode = "page" }) {
       </Card>
     );
   }
-  return <Template payload={packet.payload} mode={mode} />;
+  return <Template payload={packet.payload} mode={mode} submittedAt={packet.submittedAt} />;
 }
