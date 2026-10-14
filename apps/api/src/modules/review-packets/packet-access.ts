@@ -26,9 +26,11 @@ export interface PacketAccessInput {
 }
 
 /**
- * Owner → always. Manager → only the submitter's CURRENT manager, and
- * only while the submitter is active (same rule as resolveReportFor —
- * a reassignment moves the packets with the report). Admin → anyone
+ * Owner → always. Manager → only the submitter's CURRENT manager, only
+ * while the submitter is active (same rule as resolveReportFor — a
+ * reassignment moves the packets with the report), and only while the
+ * caller still holds manager.team.view (revoking the manager role does
+ * not clear reports' managerId; the manager routes demand it too). Admin → anyone
  * holding admin.users.manage. A packet in another org → null for all.
  */
 export function packetAccess({
@@ -41,7 +43,8 @@ export function packetAccess({
   if (
     owner &&
     owner.status !== "disabled" &&
-    owner.managerId?.equals(session.userId)
+    owner.managerId?.equals(session.userId) &&
+    session.capabilities.has(CAPABILITIES.MANAGER_TEAM_VIEW)
   ) {
     return "manager";
   }

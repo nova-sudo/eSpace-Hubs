@@ -16,6 +16,7 @@ const OTHER = new ObjectId();
 
 const packet = { orgId: ORG, userId: DEV };
 const none = new Set<string>();
+const managerCaps = resolveCapabilities(["manager"]);
 
 test("packetAccess: the submitter reads their own packet as owner", () => {
   assert.equal(
@@ -31,7 +32,7 @@ test("packetAccess: the submitter reads their own packet as owner", () => {
 test("packetAccess: the owner's current manager reads it as manager", () => {
   assert.equal(
     packetAccess({
-      session: { userId: MANAGER, orgId: ORG, capabilities: none },
+      session: { userId: MANAGER, orgId: ORG, capabilities: managerCaps },
       packet,
       owner: { managerId: MANAGER, status: "active" },
     }),
@@ -42,7 +43,7 @@ test("packetAccess: the owner's current manager reads it as manager", () => {
 test("packetAccess: a manager the report was reassigned away from gets null", () => {
   assert.equal(
     packetAccess({
-      session: { userId: MANAGER, orgId: ORG, capabilities: none },
+      session: { userId: MANAGER, orgId: ORG, capabilities: managerCaps },
       packet,
       owner: { managerId: OTHER, status: "active" },
     }),
@@ -53,12 +54,24 @@ test("packetAccess: a manager the report was reassigned away from gets null", ()
 test("packetAccess: a disabled report's manager gets null", () => {
   assert.equal(
     packetAccess({
-      session: { userId: MANAGER, orgId: ORG, capabilities: none },
+      session: { userId: MANAGER, orgId: ORG, capabilities: managerCaps },
       packet,
       owner: { managerId: MANAGER, status: "disabled" },
     }),
     null,
   );
+});
+
+test("packetAccess: the current managerId without manager.team.view gets null", () => {
+  assert.equal(
+    packetAccess({
+      session: { userId: MANAGER, orgId: ORG, capabilities: resolveCapabilities(["dev"]) },
+      packet,
+      owner: { managerId: MANAGER, status: "active" },
+    }),
+    null,
+  );
+  assert.ok(managerCaps.has(CAPABILITIES.MANAGER_TEAM_VIEW));
 });
 
 test("packetAccess: an org admin reads any packet as admin", () => {

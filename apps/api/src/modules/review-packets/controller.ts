@@ -24,8 +24,7 @@ import {
 import type { ReviewPacket } from "../../db/types.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { createNotification } from "../../lib/notifications.js";
-import { resolveCapabilities } from "@espace-devhub/shared/capabilities";
-import { rolesOf } from "../../middleware/capability-guard.js";
+import { effectiveCapabilities } from "../../lib/user-roles.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import { loadGuardUser } from "../../middleware/require-capability.js";
 import { packetAccess } from "./packet-access.js";
@@ -283,6 +282,13 @@ export async function getReviewPacketHandler(
     if (!session) {
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
+    // The caller's CURRENT roles, as the capability guard reads them. A
+    // missing or disabled account is a 401 — the session outlived it.
+    const caller = await loadGuardUser(session.userId, session.orgId);
+    if (!caller || caller.status === "disabled") {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const capabilities = effectiveCapabilities(caller);
     const notFound = () => new HttpError(404, "not_found", "No such packet.");
     const raw = String(req.params.id ?? "");
     if (!/^[0-9a-fA-F]{24}$/.test(raw)) throw notFound();
@@ -295,19 +301,24 @@ export async function getReviewPacketHandler(
       { _id: row.userId, orgId: session.orgId },
       { projection: { displayName: 1, email: 1, managerId: 1, status: 1 } },
     );
-    // Capabilities from the caller's CURRENT roles, as the capability
-    // guard computes them; a disabled caller holds none.
-    const caller = await loadGuardUser(session.userId, session.orgId);
-    const capabilities =
-      caller && caller.status !== "disabled"
-        ? resolveCapabilities(rolesOf(caller))
-        : new Set<string>();
     const access = packetAccess({
       session: { userId: session.userId, orgId: session.orgId, capabilities },
       packet: row,
       owner,
     });
     if (!access) throw notFound();
+    if (access === "admin") {
+      await writeAudit({
+        orgId: session.orgId,
+        actorUserId: session.userId,
+        actorRole: session.role,
+        action: "review_packet.admin_read",
+        targetType: "review_packet",
+        targetId: row._id.toHexString(),
+        after: { subjectUserId: row.userId.toHexString() },
+        ...networkMeta(req),
+      });
+    }
 
     res.json({
       packet: {
