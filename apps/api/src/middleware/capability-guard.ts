@@ -40,7 +40,8 @@ export type Middleware = (
   next: NextFunction,
 ) => Promise<void>;
 
-function rolesOf(u: GuardUser): UserRole[] {
+/** The user's full role set — `roles` when set, else the primary `role`. */
+export function rolesOf(u: GuardUser): UserRole[] {
   return Array.isArray(u.roles) && u.roles.length > 0 ? u.roles : [u.role];
 }
 

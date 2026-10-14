@@ -84,6 +84,7 @@ import {
   type ApprovalLadders,
 } from "./approval-ladders.js";
 import { buildGoalDetail } from "./goal-detail.js";
+import { latestReadingMap } from "../review-packets/packet-access.js";
 import { resolveReportFor } from "./resolve-report.js";
 import {
   findGovernedGoal,
@@ -351,11 +352,12 @@ async function computeGoalHealth(orgId: ObjectId, target: User, viewerId?: Objec
     // Latest review packet: the one server-side source of a real number
     // for AUTO goals (the dev's client froze it at submit time).
     const latestPacket = await getReviewPacketsCollection().then((c) =>
-      c.findOne(scope, { sort: { submittedAt: -1 }, projection: { _id: 1, goals: 1, submittedAt: 1 } }),
+      c.findOne(scope, {
+        sort: { submittedAt: -1 },
+        projection: { _id: 1, goals: 1, submittedAt: 1, payload: 1, version: 1 },
+      }),
     );
-    const readingMap = new Map(
-      (latestPacket?.goals ?? []).map((g) => [g.goalId, g.reading]),
-    );
+    const readingMap = latestReadingMap(latestPacket);
     const readingAsOf = latestPacket?.submittedAt.toISOString() ?? null;
 
     const specMap = new Map(specDocs.map((s) => [s.goalId, s.spec]));
@@ -956,6 +958,8 @@ export async function listReportReviewPacketsHandler(
     res.json({
       packets: rows.map((r, i) => ({
         id: r._id.toHexString(),
+        version: r.version ?? 1,
+        template: r.template ?? null,
         submittedAt: r.submittedAt.toISOString(),
         level: r.level,
         rangeLabel: r.rangeLabel,
@@ -966,6 +970,7 @@ export async function listReportReviewPacketsHandler(
               narrative: r.narrative,
               goals: r.goals,
               markdown: r.markdown,
+              ...(r.payload ? { payload: r.payload } : {}),
             }
           : {}),
       })),

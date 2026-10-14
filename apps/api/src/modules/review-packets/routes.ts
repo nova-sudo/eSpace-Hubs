@@ -4,6 +4,9 @@
  *   POST /      submit the compiled evidence document (new frozen version)
  *   GET  /mine      my submitted versions, newest first (meta only)
  *   GET  /mine/:id  one of my versions with its frozen markdown
+ *   GET  /:id       one packet for its owner, their current manager or
+ *                   an org admin (declared after /mine/:id so "mine" is
+ *                   never read as an id)
  *
  * Full session required. The manager-side reads are on
  * /api/v1/manager/reports/:userId/review-packets (resolveReport-guarded).
@@ -13,6 +16,7 @@ import { Router } from "express";
 import { requireAuth } from "../../middleware/require-auth.js";
 import {
   getMyReviewPacketHandler,
+  getReviewPacketHandler,
   listMyReviewPacketsHandler,
   submitReviewPacketHandler,
 } from "./controller.js";
@@ -22,3 +26,4 @@ export const reviewPacketsRouter: Router = Router();
 reviewPacketsRouter.post("/", requireAuth(), submitReviewPacketHandler);
 reviewPacketsRouter.get("/mine", requireAuth(), listMyReviewPacketsHandler);
 reviewPacketsRouter.get("/mine/:id", requireAuth(), getMyReviewPacketHandler);
+reviewPacketsRouter.get("/:id", requireAuth(), getReviewPacketHandler);

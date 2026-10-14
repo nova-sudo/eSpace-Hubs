@@ -9,6 +9,8 @@
  *
  *   POST /api/v1/review-packets       submit (insert a new version)
  *   GET  /api/v1/review-packets/mine  my versions, newest first (meta only)
+ *   GET  /api/v1/review-packets/:id   one packet — owner, their current
+ *                                     manager, or an org admin (packet-access)
  *
  * Manager reads live in modules/manager (resolveReport-guarded).
  */
@@ -22,7 +24,11 @@ import {
 import type { ReviewPacket } from "../../db/types.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { createNotification } from "../../lib/notifications.js";
+import { resolveCapabilities } from "@espace-devhub/shared/capabilities";
+import { rolesOf } from "../../middleware/capability-guard.js";
 import { HttpError } from "../../middleware/error-handler.js";
+import { loadGuardUser } from "../../middleware/require-capability.js";
+import { packetAccess } from "./packet-access.js";
 import { parsePacketBody } from "./packet-body.js";
 
 /** Keep at most this many versions per dev — the history that matters
@@ -253,6 +259,73 @@ export async function getMyReviewPacketHandler(
         starredCount: row.starredCount,
         hasManager: row.managerId != null,
         markdown: row.markdown,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── GET /api/v1/review-packets/:id ──────────────────────────────────
+
+/**
+ * One packet by id — the single URL the owner, their current manager
+ * and an org admin all open. Anything else (bad id, other org, no
+ * access) 404s, never 403s, so ids can't be probed.
+ */
+export async function getReviewPacketHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const notFound = () => new HttpError(404, "not_found", "No such packet.");
+    const raw = String(req.params.id ?? "");
+    if (!/^[0-9a-fA-F]{24}$/.test(raw)) throw notFound();
+    const col = await getReviewPacketsCollection();
+    const row = await col.findOne({ _id: new ObjectId(raw), orgId: session.orgId });
+    if (!row) throw notFound();
+
+    const users = await getUsersCollection();
+    const owner = await users.findOne(
+      { _id: row.userId, orgId: session.orgId },
+      { projection: { displayName: 1, email: 1, managerId: 1, status: 1 } },
+    );
+    // Capabilities from the caller's CURRENT roles, as the capability
+    // guard computes them; a disabled caller holds none.
+    const caller = await loadGuardUser(session.userId, session.orgId);
+    const capabilities =
+      caller && caller.status !== "disabled"
+        ? resolveCapabilities(rolesOf(caller))
+        : new Set<string>();
+    const access = packetAccess({
+      session: { userId: session.userId, orgId: session.orgId, capabilities },
+      packet: row,
+      owner,
+    });
+    if (!access) throw notFound();
+
+    res.json({
+      packet: {
+        id: row._id.toHexString(),
+        version: row.version ?? 1,
+        template: row.template ?? null,
+        submittedAt: row.submittedAt.toISOString(),
+        level: row.level,
+        rangeLabel: row.rangeLabel,
+        goalCount: row.goalCount,
+        submitter: {
+          id: row.userId.toHexString(),
+          displayName: owner ? owner.displayName || owner.email : null,
+        },
+        ...(row.payload ? { payload: row.payload } : {}),
+        ...(row.markdown != null ? { markdown: row.markdown } : {}),
+        ...(row.narrative != null ? { narrative: row.narrative } : {}),
+        goals: row.goals ?? [],
       },
     });
   } catch (err) {
