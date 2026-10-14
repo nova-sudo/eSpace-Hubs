@@ -1,11 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button, Label, Select } from "@/components/ui";
 import { WidgetShell } from "../widget-shell";
 import { useGoalContext } from "@/features/goal-context";
 import { RepoMultiPicker, isRepoQuestion } from "./repo-multi-picker";
 import { LabelMultiPicker, isLabelQuestion } from "./label-multi-picker";
+import {
+  answerProblem,
+  boundPlaceholder,
+  contextAnswerKinds,
+  normalizeBoundAnswer,
+} from "./answer-shape";
 
 /**
  * Renders in place of a widget when `spec.context.required` and not all
@@ -39,6 +45,11 @@ export function ContextCollector({
 }) {
   const { answers, setAnswers } = useGoalContext(spec.goalId);
   const questions = spec.context?.questions || [];
+  // Which query-param kinds each answer feeds (e.g. a "framework-path" text
+  // question bound to a file_path param). A typed answer is checked against
+  // those kinds HERE, with the reason shown, instead of being saved and
+  // refused by the executor on every tile it feeds.
+  const boundKinds = useMemo(() => contextAnswerKinds(spec), [spec]);
   // Local draft — persist only on blur / submit so every keystroke doesn't
   // fire a localStorage write.
   const [draft, setDraft] = useState(() => seedDraft(questions, answers));
@@ -64,10 +75,15 @@ export function ContextCollector({
   // Blank answers used to save silently and count as "answered". The active
   // question must have something in it before Next / Save is enabled.
   const activeQuestion = questions[activeStep] || null;
+  const activeProblem = activeQuestion
+    ? answerProblem(activeQuestion, draft[activeQuestion.id], boundKinds[activeQuestion.id])
+    : null;
   const activeAnswered = activeQuestion
-    ? isAnswered(draft[activeQuestion.id], activeQuestion.kind)
+    ? isAnswered(draft[activeQuestion.id], activeQuestion.kind) && !activeProblem
     : true;
-  const unansweredCount = questions.filter((q) => !isAnswered(draft[q.id], q.kind)).length;
+  const unansweredCount = questions.filter(
+    (q) => !isAnswered(draft[q.id], q.kind) || answerProblem(q, draft[q.id], boundKinds[q.id]),
+  ).length;
 
   /**
    * Persist the draft. Called on blur (silent — the user is still
@@ -77,7 +93,7 @@ export function ContextCollector({
    * accidentally close the form.
    */
   function commit() {
-    const normalized = normalizeAnswers(questions, draft);
+    const normalized = normalizeAnswers(questions, draft, boundKinds);
     setAnswers(normalized);
     return normalized;
   }
@@ -104,7 +120,7 @@ export function ContextCollector({
       // makes GoalWidget unmount this collector mid-await; deferring the
       // commit until AFTER the classifier resolves keeps us mounted so the
       // busy state + error banner stay reliable.
-      const normalized = normalizeAnswers(questions, draft);
+      const normalized = normalizeAnswers(questions, draft, boundKinds);
       const pairs = buildAnswerPairs(questions, normalized);
       await onReclassify(pairs);
       // Success: persist the answers, then hand off — the parent saved the
@@ -176,9 +192,13 @@ export function ContextCollector({
               key={questions[activeStep].id}
               question={questions[activeStep]}
               value={draft[questions[activeStep].id]}
+              placeholder={boundPlaceholder(questions[activeStep], boundKinds[questions[activeStep].id])}
               onChange={(v) => update(questions[activeStep].id, v)}
               onBlur={persistOnBlur}
             />
+          ) : null}
+          {activeProblem ? (
+            <div className="text-[12.5px] leading-[1.4] text-peach-text">{activeProblem}</div>
           ) : null}
         </div>
         {reclassifyError ? (
@@ -198,13 +218,15 @@ export function ContextCollector({
             size="sm"
             disabled={busy || !activeAnswered || (onLastStep && unansweredCount > 0)}
             title={
-              !activeAnswered
-                ? "Answer this question first"
-                : onLastStep && unansweredCount > 0
-                  ? `${unansweredCount} question${unansweredCount === 1 ? "" : "s"} still unanswered — go back and fill them in`
-                  : onReclassify
-                    ? "Save your answers and re-run the AI classifier so it re-scopes this goal to your definitions (it may pick a different tracker)."
-                    : undefined
+              activeProblem
+                ? activeProblem
+                : !activeAnswered
+                  ? "Answer this question first"
+                  : onLastStep && unansweredCount > 0
+                    ? `${unansweredCount} question${unansweredCount === 1 ? "" : "s"} still unanswered — go back and fill them in`
+                    : onReclassify
+                      ? "Save your answers and re-run the AI classifier so it re-scopes this goal to your definitions (it may pick a different tracker)."
+                      : undefined
             }
           >
             {!onLastStep
@@ -299,7 +321,7 @@ function serializeAnswer(value, kind) {
 const FIELD_CLASS =
   "w-full rounded-[var(--radius-lg)] bg-card-alt px-3 py-2 text-[13.5px] text-fg border border-field-line outline-none placeholder:text-dim-fg focus:ring-2 focus:ring-ink";
 
-function QuestionField({ question: q, value, onChange, onBlur }) {
+function QuestionField({ question: q, value, placeholder = "", onChange, onBlur }) {
   return (
     <label className="flex flex-col gap-1.5">
       <Label>{q.prompt}</Label>
@@ -314,7 +336,7 @@ function QuestionField({ question: q, value, onChange, onBlur }) {
         <input
           type="text"
           value={typeof value === "string" ? value : ""}
-          placeholder={q.placeholder || ""}
+          placeholder={placeholder || q.placeholder || ""}
           onChange={(e) => onChange(e.target.value)}
           onBlur={onBlur}
           className={FIELD_CLASS}
@@ -385,10 +407,10 @@ function seedDraft(questions, answers) {
   return draft;
 }
 
-function normalizeAnswers(questions, draft) {
+function normalizeAnswers(questions, draft, boundKinds = {}) {
   const out = {};
   for (const q of questions) {
-    const raw = draft[q.id];
+    const raw = normalizeBoundAnswer(q, draft[q.id], boundKinds[q.id]);
     if (isListKind(q.kind)) {
       // Accept either the stored array or a textarea string.
       const items = Array.isArray(raw)

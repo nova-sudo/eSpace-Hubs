@@ -64,6 +64,7 @@ export {
 // second thing to forget to tighten.
 export {
   buildProviderRequest,
+  contextAnswerKinds,
   contextPlaceholderId,
   describeQuerySource,
   extractQueryValue,
@@ -71,11 +72,14 @@ export {
   isContextPlaceholder,
   isValidQueryParam,
   listQueryTemplates,
+  normalizeQueryParamInput,
   QUERY_EXTRACTS,
   QUERY_PARAM_KINDS,
   QUERY_SOURCE_PROVIDERS,
   QUERY_TEMPLATES,
   QueryTemplateError,
+  queryParamExample,
+  queryParamHint,
   queryWebLink,
   validateQuerySource,
 } from "./query-templates.js";

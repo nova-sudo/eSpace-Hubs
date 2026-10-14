@@ -177,43 +177,52 @@ const CTX_PLACEHOLDER_RE = /^\{\{ctx:([A-Za-z0-9_-]{1,64})\}\}$/;
 const MAX_PARAM_LENGTH = 500;
 
 /**
- * True for anything at or below U+0020, plus DEL. Written as a code-point
- * scan rather than a regex because CR/LF are the whole point — a newline
- * that survives into a concatenated URL is a request-splitting primitive,
- * and an escaped control-character class is exactly the kind of thing that
- * gets "tidied" by a later reformat without anyone noticing.
+ * C0 controls and DEL. Written as a code-point scan rather than a regex
+ * because CR/LF are the whole point — a newline that survives into a
+ * concatenated URL is a request-splitting primitive, and an escaped
+ * control-character class is exactly the kind of thing that gets "tidied"
+ * by a later reformat without anyone noticing. A plain space is NOT in
+ * this set: the registry's per-kind validators decide where a space is a
+ * legal character (a file path, a label) and every template URL-encodes
+ * the value before it reaches a path.
  */
-function hasControlOrSpace(value: string): boolean {
+function hasControlChars(value: string): boolean {
   for (let i = 0; i < value.length; i += 1) {
     const code = value.charCodeAt(i);
-    if (code <= 0x20 || code === 0x7f) return true;
+    if (code < 0x20 || code === 0x7f) return true;
   }
   return false;
 }
 
 /**
- * Shape checks applied to a SUBSTITUTED answer before it is handed back
- * to the registry's own paramKind validation. Deliberately duplicated
- * defence: the answer is raw user input that arrived long after the spec
- * was validated, and a permissive registry must not be the only thing
- * standing between it and a URL.
+ * Why a SUBSTITUTED answer is refused before it is handed back to the
+ * registry's own paramKind validation, or null when it passes. Deliberately
+ * duplicated defence: the answer is raw user input that arrived long after
+ * the spec was validated, and a permissive registry must not be the only
+ * thing standing between it and a URL. The reason is phrased for the
+ * person who typed the answer — the tile they see it on is not the form
+ * they typed it into.
  */
+export function answerShapeProblem(raw: string): string | null {
+  if (raw.length === 0) return "it is empty";
+  if (raw.length > MAX_PARAM_LENGTH) return `it is longer than ${MAX_PARAM_LENGTH} characters`;
+  if (hasControlChars(raw)) return "it contains a line break or control character";
+  if (raw.includes("://") || raw.includes("//")) return "it looks like a URL — enter just the name or path";
+  if (raw.includes("..") || /%2e%2e/i.test(raw)) return 'it contains ".."';
+  if (raw.startsWith("/") || raw.startsWith("\\")) {
+    return "it starts with a slash — paths are relative to the repository root";
+  }
+  if (raw.includes("@")) return 'it contains "@"';
+  return null;
+}
+
 function assertAnswerShape(raw: string, questionId: string): void {
-  const bad =
-    raw.length === 0 ||
-    raw.length > MAX_PARAM_LENGTH ||
-    hasControlOrSpace(raw) ||
-    raw.includes("://") ||
-    raw.includes("..") ||
-    raw.startsWith("/") ||
-    raw.startsWith("\\") ||
-    raw.includes("@") ||
-    /%2e%2e/i.test(raw);
-  if (bad) {
+  const problem = answerShapeProblem(raw);
+  if (problem) {
     throw new HttpError(
       400,
       "context_answer_rejected",
-      `The answer to "${questionId}" isn't a valid value for this field. Enter a plain name or path.`,
+      `The answer to "${questionId}" can't be used: ${problem}. Open the tracker's setup to change it.`,
     );
   }
 }
@@ -430,7 +439,9 @@ function assertSafePath(path: unknown): string {
   if (typeof path !== "string" || path.length === 0) invalid();
   const p = path as string;
   if (p.length > MAX_PATH_LENGTH) invalid();
-  if (hasControlOrSpace(p)) invalid();
+  // A BUILT path is post-encoding: a raw space here means a template
+  // forgot to encode, which is a bug to fail on, not a value to pass.
+  if (hasControlChars(p) || p.includes(" ")) invalid();
   if (p.startsWith("/") || p.startsWith("\\")) invalid();
   if (p.includes("://") || p.includes("#")) invalid();
   if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(p)) invalid();

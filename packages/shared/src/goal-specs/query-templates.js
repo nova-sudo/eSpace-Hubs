@@ -266,6 +266,102 @@ export function isValidQueryParam(kind, value) {
   return validator(value);
 }
 
+/**
+ * Every param kind a context question's answer is substituted into, keyed by
+ * question id — walked from every `source` in the spec: top-level fields,
+ * per-period fields, nested cadence levels, the management half. A question
+ * bound to no source maps to nothing (free text, no shape rule).
+ *
+ * This is what lets the setup form apply the SAME per-kind rule the executor
+ * applies, before a bad answer is saved — the executor's rejection is a 400
+ * on a tile the user is no longer looking at.
+ */
+export function contextAnswerKinds(spec) {
+  const out = {};
+  const seen = new Set();
+  const visit = (node, depth) => {
+    if (!node || typeof node !== "object" || depth > 16 || seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item, depth + 1);
+      return;
+    }
+    const src = node.source;
+    if (
+      src &&
+      typeof src === "object" &&
+      typeof src.query === "string" &&
+      src.params &&
+      typeof src.params === "object"
+    ) {
+      const template = getQueryTemplate(src.query);
+      if (template) {
+        for (const [name, kind] of Object.entries(template.params)) {
+          const id = contextPlaceholderId(src.params[name]);
+          if (!id) continue;
+          const list = out[id] || (out[id] = []);
+          if (!list.includes(kind)) list.push(kind);
+        }
+      }
+    }
+    for (const [key, value] of Object.entries(node)) {
+      if (key !== "source") visit(value, depth + 1);
+    }
+  };
+  visit(spec, 0);
+  return out;
+}
+
+/**
+ * What a typed answer for this kind should look like, for the form's hint
+ * and placeholder. Phrased as the example a person can copy, not as the
+ * rule — the rule is the validator's job.
+ */
+const PARAM_EXAMPLES = Object.freeze({
+  repo_slug: "owner/name",
+  file_path: "docs/framework.md",
+  search_query: "is:pr label:spec",
+  label: "has-spec",
+  branch: "main",
+  issue_number: "42",
+});
+
+const PARAM_HINTS = Object.freeze({
+  repo_slug: "Enter the repository as owner/name (GitLab groups may nest: group/subgroup/project).",
+  file_path: "Enter a path relative to the repository root, like docs/framework.md — no leading slash, no URL, no \"..\".",
+  search_query: "Enter a short search fragment like is:pr label:spec — letters, digits and search punctuation only.",
+  label: "Enter a label name like has-spec or type::bug.",
+  branch: "Enter a branch name like main or release/2026-q3.",
+  issue_number: "Enter the issue number only, like 42.",
+});
+
+export function queryParamExample(kind) {
+  return PARAM_EXAMPLES[kind] || null;
+}
+
+export function queryParamHint(kind) {
+  return PARAM_HINTS[kind] || null;
+}
+
+/**
+ * The repairs a form may make to a typed answer BEFORE validation: the ones
+ * that only remove what a person adds by habit and never change which
+ * resource is named. "/docs/x.md", "./docs/x.md" and "docs/x.md/" all mean
+ * docs/x.md; a validator that rejects the first two teaches nothing. Anything
+ * beyond this (traversal, schemes, "@") is left for the validator to refuse
+ * out loud — silently repairing those is how an allowlist turns into a
+ * suggestion.
+ */
+export function normalizeQueryParamInput(kind, value) {
+  if (typeof value !== "string") return value;
+  let v = value.trim();
+  if (kind === "file_path" || kind === "branch" || kind === "repo_slug") {
+    v = v.replace(/^(?:\.\/|\/)+/, "").replace(/\/+$/, "");
+  }
+  if (kind === "issue_number") v = v.replace(/^#/, "");
+  return v;
+}
+
 // ─── path helpers ────────────────────────────────────────────────────
 
 const enc = encodeURIComponent;

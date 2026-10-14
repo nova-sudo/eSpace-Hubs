@@ -228,6 +228,51 @@ test("a traversal or scheme smuggled through a context answer is rejected", asyn
   }
 });
 
+test("a rejected context answer says which rule it broke", async () => {
+  const cases: Array<[string, RegExp]> = [
+    ["/docs/framework.md", /starts with a slash/],
+    ["../docs", /"\.\."/],
+    ["https://evil.example/repo", /looks like a URL/],
+    ["user@evil.example", /"@"/],
+    ["a\nb", /line break/],
+  ];
+  for (const [answer, re] of cases) {
+    const { impl } = recordingFetch(() => jsonResponse(200, {}));
+    await assert.rejects(
+      resolveQuery(
+        { ...source, params: { repo: "{{ctx:q_repo}}", path: "AGENTS.md" } },
+        ctx({ q_repo: answer }),
+        deps(permissiveRegistry((s) => ({ path: `repos/${s.params.repo}/x` })), impl),
+      ),
+      (err: unknown) => {
+        const e = err as HttpError;
+        assert.equal(e.code, "context_answer_rejected", answer);
+        assert.match(e.message, re, answer);
+        assert.ok(e.message.includes('"q_repo"'), answer);
+        return true;
+      },
+    );
+  }
+});
+
+test("a plain space in a context answer is left for the per-kind validator", async () => {
+  // The registry allows spaces in a file path and every template encodes
+  // the value; the shape gate must not refuse what the kind permits.
+  const { calls, impl } = recordingFetch(() => jsonResponse(200, {}));
+  await resolveQuery(
+    { ...source, params: { repo: "espace/devhub", path: "{{ctx:q_path}}" } },
+    ctx({ q_path: "docs/my framework.md" }),
+    deps(
+      permissiveRegistry((s) => ({
+        path: `repos/espace/devhub/contents/${encodeURIComponent(s.params.path as string)}`,
+      })),
+      impl,
+    ),
+  );
+  assert.equal(calls.length, 1);
+  assert.match(calls[0]!.url, /my%20framework\.md/);
+});
+
 test("a clean context answer substitutes into the path", async () => {
   const { calls, impl } = recordingFetch(() => jsonResponse(200, {}));
   await resolveQuery(

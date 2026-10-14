@@ -130,6 +130,10 @@ export function extractQueryValue(
 export function isContextPlaceholder(value: unknown): boolean;
 export function contextPlaceholderId(value: unknown): string | null;
 export function isValidQueryParam(kind: string, value: unknown): boolean;
+export function contextAnswerKinds(spec: unknown): Record<string, QueryParamKind[]>;
+export function queryParamExample(kind: string): string | null;
+export function queryParamHint(kind: string): string | null;
+export function normalizeQueryParamInput<T>(kind: string, value: T): T | string;
 
 export class QueryTemplateError extends Error {
   constructor(code: string, message: string);
