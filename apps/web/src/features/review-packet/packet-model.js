@@ -10,3 +10,10 @@ export const PACKET_TEMPLATES = Object.freeze([
 ]);
 
 export const TEMPLATE_IDS = Object.freeze(PACKET_TEMPLATES.map((t) => t.id));
+
+/** Which view renders a packet: v1 (markdown only) is "legacy". */
+export function selectTemplate(packet) {
+  const version = packet?.version;
+  if (version == null || version === 1) return "legacy";
+  return TEMPLATE_IDS.includes(packet?.template) ? packet.template : "unknown";
+}

@@ -80,6 +80,8 @@ export const PAGE_SLOTS = Object.freeze([
   "sharedgoals",
   // Every hub: the full notifications inbox (the bell's "View all").
   "notifications",
+  // Every hub: one frozen review packet (/[hub]/packets/:id).
+  "packets",
   // Admin: the reporting tree built from users.managerId.
   "orgchart",
 ]);
@@ -111,6 +113,7 @@ const ADMIN_HUB = Object.freeze({
     approvals: "admin:approvals",
     orgchart: "admin:org-chart",
     notifications: "admin:notifications",
+    packets: "admin:packets",
   }),
   /** Admins are assigned by role, not department mapping. */
   departments: Object.freeze([]),
@@ -139,6 +142,7 @@ const DEV_HUB = Object.freeze({
     analyst: "dev:analyst",
     sharedgoals: "dev:shared-goals",
     notifications: "dev:notifications",
+    packets: "dev:packets",
   }),
   departments: Object.freeze([
     "engineering",
@@ -169,6 +173,7 @@ const QA_HUB = Object.freeze({
     settings: "qa:settings",
     sharedgoals: "qa:shared-goals",
     notifications: "qa:notifications",
+    packets: "qa:packets",
   }),
   // The only `widgets` list left (hub-audit §2.5): the other hubs' lists
   // were dead data and were removed. This one is still READ — the QA
@@ -217,6 +222,7 @@ const MANAGER_HUB = Object.freeze({
     settings: "manager:settings",
     sharedgoals: "manager:shared-goals",
     notifications: "manager:notifications",
+    packets: "manager:packets",
   }),
   departments: Object.freeze([]),
   requires: Object.freeze([CAPABILITIES.HUB_MANAGER_ACCESS]),
