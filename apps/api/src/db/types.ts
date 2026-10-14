@@ -553,6 +553,92 @@ export interface ReviewPacketGoalRow {
   statusLabel: string | null;
 }
 
+/** How a v2 packet renders on the web. */
+export type PacketTemplate = "scorecard" | "journey" | "deck" | "dossier";
+
+export type PacketTier = "not_achieved" | "achieved" | "over_achieved" | "role_model";
+
+/** One ladder: the text of each of the four levels (null = unset). */
+export interface PacketTierLadder {
+  notAchieved: string | null;
+  achieved: string | null;
+  overAchieved: string | null;
+  roleModel: string | null;
+}
+
+export interface PacketGoalWindow {
+  key: string;
+  label: string;
+  /** Short state word, e.g. "done" | "missed" | "open" | "before". */
+  state: string;
+  verdict?: PacketTier | null;
+}
+
+export interface PacketGoalEvidence {
+  at: string;
+  text: string;
+  link?: string | null;
+}
+
+export interface PacketGoal {
+  id: string;
+  title: string;
+  kind: string;
+  cadence?: string | null;
+  target?: string | number | null;
+  reading?: string | null;
+  statusLabel?: string | null;
+  statusReason?: string | null;
+  tiers?: PacketTierLadder | null;
+  cadenceTiers?: PacketTierLadder | null;
+  verdict?: {
+    tier: PacketTier;
+    reasoning: string;
+    lowConfidence: boolean;
+    gradedAt: string | null;
+  } | null;
+  managerVerdict?: {
+    tier: PacketTier;
+    note: string | null;
+    gradedAt: string | null;
+  } | null;
+  windows: PacketGoalWindow[];
+  evidence: PacketGoalEvidence[];
+}
+
+export interface PacketObjective {
+  id: string;
+  title: string;
+  weight: number | null;
+  reading?: string | null;
+  goals: PacketGoal[];
+}
+
+/** The structured v2 packet — what the web templates render. Shape is
+ *  enforced by zod at submit (modules/review-packets/packet-body.ts),
+ *  not by the Mongo validator. */
+export interface ReviewPacketPayload {
+  range: { label: string; start: string | null; end: string | null };
+  cycleKey: string | null;
+  submitter: {
+    displayName: string | null;
+    level: string | null;
+    department: string | null;
+  };
+  objectives: PacketObjective[];
+  untracked: { id: string; title: string; l1Title: string }[];
+  totals: {
+    goals: number;
+    tracked: number;
+    byTier: {
+      notAchieved: number;
+      achieved: number;
+      overAchieved: number;
+      roleModel: number;
+    };
+  };
+}
+
 /**
  * An immutable, timestamped freeze of the evidence document at the
  * moment the dev clicked "Submit for review" — the artifact BOTH sides
@@ -561,6 +647,11 @@ export interface ReviewPacketGoalRow {
  * dev's laptop and no record existed of what was reviewed, when, or
  * against which readings. New submits insert new versions (append-only);
  * the manager reads the latest.
+ *
+ * v1 rows (no `version`) carry `narrative` + `markdown`. v2 rows carry
+ * `template` + `payload`, may omit `markdown`, and never carry
+ * `narrative`. Both carry the flat `goals` rows (derived from the
+ * payload on v2) so list views read either version the same way.
  */
 export interface ReviewPacket {
   _id: ObjectId;
@@ -570,14 +661,18 @@ export interface ReviewPacket {
   /** Their manager at submit time (null = submitted without one). */
   managerId: ObjectId | null;
   submittedAt: Date;
+  /** Absent on v1 rows. */
+  version?: 1 | 2;
+  template?: PacketTemplate;
+  payload?: ReviewPacketPayload;
   level: string;
   rangeLabel: string;
-  narrative: string;
+  narrative?: string;
   /** The full rendered markdown — the frozen document itself. */
-  markdown: string;
+  markdown?: string;
   goals: ReviewPacketGoalRow[];
   goalCount: number;
-  starredCount: number;
+  starredCount?: number;
 }
 
 // ─── goal inputs (manual time-series entries) ────────────────────────

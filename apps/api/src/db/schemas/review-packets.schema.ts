@@ -5,6 +5,11 @@
  * Append-only: a new submit inserts a new version; nothing updates rows
  * after insert, which is the point — the packet is the record of what
  * was reviewed.
+ *
+ * v1 rows (no `version`) carry `narrative` + `markdown`; v2 rows carry
+ * `version: 2`, `template` and a structured `payload` (its shape is
+ * enforced by zod at submit — modules/review-packets/packet-body.ts —
+ * not here), and may omit `markdown`. Both carry the flat `goals` rows.
  */
 
 import type { Document } from "mongodb";
@@ -19,11 +24,8 @@ export const reviewPacketsValidator: Document = {
       "submittedAt",
       "level",
       "rangeLabel",
-      "narrative",
-      "markdown",
       "goals",
       "goalCount",
-      "starredCount",
     ],
     additionalProperties: false,
     properties: {
@@ -32,6 +34,9 @@ export const reviewPacketsValidator: Document = {
       userId: { bsonType: "objectId" },
       managerId: { bsonType: ["objectId", "null"] },
       submittedAt: { bsonType: "date" },
+      version: { enum: [1, 2] },
+      template: { enum: ["scorecard", "journey", "deck", "dossier"] },
+      payload: { bsonType: "object" },
       level: { bsonType: "string", maxLength: 100 },
       rangeLabel: { bsonType: "string", maxLength: 200 },
       narrative: { bsonType: "string", maxLength: 20_000 },

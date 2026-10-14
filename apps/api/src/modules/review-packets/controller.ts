@@ -15,7 +15,6 @@
 
 import type { NextFunction, Request, Response } from "express";
 import { ObjectId } from "mongodb";
-import { z } from "zod";
 import {
   getReviewPacketsCollection,
   getUsersCollection,
@@ -24,24 +23,7 @@ import type { ReviewPacket } from "../../db/types.js";
 import { networkMeta, writeAudit } from "../../lib/audit.js";
 import { createNotification } from "../../lib/notifications.js";
 import { HttpError } from "../../middleware/error-handler.js";
-
-const goalRowSchema = z.object({
-  goalId: z.string().min(1).max(200),
-  title: z.string().max(1_000).default(""),
-  l1Title: z.string().max(1_000).default(""),
-  tier: z.string().max(50).nullable().default(null),
-  reading: z.string().max(500).nullable().default(null),
-  statusLabel: z.string().max(100).nullable().default(null),
-});
-
-const submitPacketSchema = z.object({
-  level: z.string().max(100).default(""),
-  rangeLabel: z.string().max(200).default(""),
-  narrative: z.string().max(20_000).default(""),
-  markdown: z.string().min(1).max(400_000),
-  goals: z.array(goalRowSchema).max(500).default([]),
-  starredCount: z.number().int().min(0).max(10_000).default(0),
-});
+import { parsePacketBody } from "./packet-body.js";
 
 /** Keep at most this many versions per dev — the history that matters
  *  is recent; unbounded growth of 400KB markdown blobs is not. */
@@ -59,7 +41,7 @@ export async function submitReviewPacketHandler(
     if (!session) {
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
-    const payload = submitPacketSchema.parse(req.body);
+    const body = parsePacketBody(req.body);
 
     const users = await getUsersCollection();
     const me = await users.findOne({
@@ -78,19 +60,37 @@ export async function submitReviewPacketHandler(
     const col = await getReviewPacketsCollection();
     const now = new Date();
     // _id omitted — the driver mints it (OptionalUnlessRequiredId).
-    const doc: Omit<ReviewPacket, "_id"> = {
+    const base = {
       orgId: session.orgId,
       userId: session.userId,
       managerId,
       submittedAt: now,
-      level: payload.level,
-      rangeLabel: payload.rangeLabel,
-      narrative: payload.narrative,
-      markdown: payload.markdown,
-      goals: payload.goals,
-      goalCount: payload.goals.length,
-      starredCount: payload.starredCount,
     };
+    const doc: Omit<ReviewPacket, "_id"> =
+      body.version === 2
+        ? {
+            ...base,
+            version: 2,
+            template: body.template,
+            payload: body.payload,
+            level: body.level,
+            rangeLabel: body.rangeLabel,
+            ...(body.markdown ? { markdown: body.markdown } : {}),
+            goals: body.goals,
+            goalCount: body.goalCount,
+            starredCount: 0,
+          }
+        : {
+            // v1 rows stay as they always were — no `version` field.
+            ...base,
+            level: body.level,
+            rangeLabel: body.rangeLabel,
+            narrative: body.narrative,
+            markdown: body.markdown,
+            goals: body.goals,
+            goalCount: body.goals.length,
+            starredCount: body.starredCount,
+          };
     const inserted = await col.insertOne(doc as ReviewPacket);
 
     // Version housekeeping — drop anything beyond the newest MAX_VERSIONS.
@@ -112,6 +112,7 @@ export async function submitReviewPacketHandler(
       targetType: "review_packet",
       targetId: inserted.insertedId.toHexString(),
       after: {
+        version: body.version,
         goalCount: doc.goalCount,
         starredCount: doc.starredCount,
         hasManager: managerId != null,
