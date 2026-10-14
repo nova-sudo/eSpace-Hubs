@@ -5,3 +5,4 @@ export { PACKET_TEMPLATES, TEMPLATE_IDS } from "./packet-model";
 export { useReviewPacket } from "./use-review-packet";
 export { PacketView, selectTemplate } from "./packet-view";
 export { PacketPage } from "./packet-page";
+export { TemplatePicker, usePacketTemplate } from "./template-picker";

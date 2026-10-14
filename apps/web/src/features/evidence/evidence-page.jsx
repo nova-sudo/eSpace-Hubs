@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Badge, Button, Card, PageContainer, PageHeader, SegmentedControl } from "@/components/ui";
 import { useIntegrations } from "@/features/integrations";
 import { useSession } from "@/features/auth";
-import { useHubLink } from "@/features/hubs";
+import { useActiveHub, useHubLink } from "@/features/hubs";
+import { PacketView, TemplatePicker, buildPacketPayload, usePacketTemplate } from "@/features/review-packet";
 import { useGoalWidgetItems } from "@/features/goal-widgets";
 import { readInputsTruncated } from "@/features/goal-inputs";
 import { ConfigPanel } from "./config-panel";
@@ -25,6 +27,7 @@ import { downloadMarkdown, renderMarkdown } from "./markdown-export";
 import { yearToDateLabel } from "@/lib/date";
 import { apiGet, apiPost } from "@/lib/api-client";
 import { generateEvidencePdf } from "./pdf/generate-pdf";
+import { windowsForGoal } from "./packet-windows";
 
 const NARRATIVE_DRAFT_KEY = "espace-devhub:evidence-narrative";
 /** Readings the export prints when a live-only widget hasn't published on
@@ -63,6 +66,8 @@ export function EvidencePage() {
   // "board" = the goal evidence board (primary); "compile" = the document builder.
   const [view, setView] = useState("board");
   const link = useHubLink();
+  const hub = useActiveHub();
+  const [template, setTemplate] = usePacketTemplate();
 
   // Deep-link (`?view=compile` / legacy `?print=1`) opens the builder directly.
   useEffect(() => {
@@ -179,6 +184,23 @@ export function EvidencePage() {
     };
   }
 
+  // The structured v2 payload the templates render — live-bound to the tier
+  // and manager-verdict stores, so it re-derives whenever the readings do.
+  const packetPayload = useMemo(
+    () =>
+      buildPacketPayload({
+        goalReadings,
+        untracked,
+        submitter: { displayName: docName, level, department: docTeam },
+        rangeLabel,
+        rangeStart: new Date(new Date().getFullYear(), 0, 1),
+        rangeEnd: new Date(),
+        cycleKey: String(new Date().getFullYear()),
+        windowsFor: (goalId, spec) => windowsForGoal(goalId, spec),
+      }),
+    [goalReadings, untracked, docName, level, docTeam, rangeLabel],
+  );
+
   // What the confirm dialog needs to say before the user freezes anything.
   const pendingMarkdown = useMemo(
     () => (confirmOpen ? renderMarkdown(buildDocProps()) : ""),
@@ -205,42 +227,19 @@ export function EvidencePage() {
     if (submitting) return;
     if (blockWhilePending()) return;
     setSubmitting(true);
-    const markdown = renderMarkdown(buildDocProps());
-    // Clamp to the server's field caps so one long reading string can't
-    // fail validation for the whole submit.
-    const clip = (v, n) => (typeof v === "string" ? v.slice(0, n) : null);
-    const goals = goalReadings
-      .filter((r) => r.level === "L2")
-      .map((r) => ({
-        goalId: r.goal.id,
-        title: clip(r.goal.title, 1000) || "",
-        l1Title: clip(r.parentL1?.title, 1000) || "",
-        tier: clip(r.verdict?.tier, 50),
-        reading: clip(r.reading?.value, 500),
-        statusLabel: clip(r.reading?.statusLabel, 100),
-      }))
-      // Untracked goals ride along with no verdict, so the manager's copy
-      // shows the whole year too.
-      .concat(
-        untracked.map((g) => ({
-          goalId: g.id,
-          title: clip(g.title, 1000) || "",
-          l1Title: clip(g.l1Title, 1000) || "",
-          tier: null,
-          reading: null,
-          statusLabel: "No tracker yet",
-        })),
-      )
-      .slice(0, 500);
+    // Goals-only side export: the narrative and starred proof are not part
+    // of the v2 packet, so they stay out of its markdown too.
+    const markdown = renderMarkdown({
+      ...buildDocProps(),
+      include: { ...include, narrative: false, starred: false },
+    });
     const r = await apiPost("/review-packets", {
+      version: 2,
+      template,
       level,
       rangeLabel,
-      // The narrative only travels when the Summary section is on — what
-      // the manager gets is exactly what the preview shows.
-      narrative: include.narrative ? narrative : "",
+      payload: packetPayload,
       markdown,
-      goals,
-      starredCount: starred.length,
     });
     setSubmitting(false);
     if (!r.ok) {
@@ -256,7 +255,7 @@ export function EvidencePage() {
     // sent so "View last submitted packet" is instant for this version.
     setPacketView({
       status: "ready",
-      packet: packet ? { ...packet, markdown } : null,
+      packet: packet ? { ...packet, version: 2, template, payload: packetPayload, markdown } : null,
       error: null,
     });
     if (packet?.hasManager) {
@@ -297,14 +296,14 @@ export function EvidencePage() {
     }
   }
 
-  // The frozen markdown lives on the server (GET /review-packets/mine/:id),
+  // The frozen markdown lives on the server (GET /review-packets/:id),
   // so the viewer works from any device, not just the one that submitted.
   async function openPacketViewer() {
     setViewerOpen(true);
     if (!lastPacket?.id) return;
     if (packetView.status === "ready" && packetView.packet?.id === lastPacket.id) return;
     setPacketView({ status: "loading", packet: null, error: null });
-    const r = await apiGet(`/review-packets/mine/${lastPacket.id}`);
+    const r = await apiGet(`/review-packets/${lastPacket.id}`);
     if (r.ok) {
       setPacketView({ status: "ready", packet: r.data?.packet ?? null, error: null });
     } else {
@@ -331,6 +330,7 @@ export function EvidencePage() {
             until one is.
           </p>
         ) : null}
+        <TemplatePicker value={template} onChange={setTemplate} payload={packetPayload} />
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
@@ -433,21 +433,28 @@ export function EvidencePage() {
         </p>
         {packetView.status === "ready" && packetView.packet ? (
           <>
-            <pre className="mt-3 min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-[var(--radius-lg)] bg-card-alt p-4 font-sans text-[13px] leading-[1.55] text-fg">
-              {packetView.packet.markdown}
-            </pre>
+            <div className="mt-3 min-h-0 flex-1 overflow-auto">
+              <PacketView packet={packetView.packet} mode="page" />
+            </div>
             <div className="mt-4 flex justify-end gap-2.5">
-              <Button
-                variant="soft"
-                onClick={() =>
-                  downloadMarkdown(
-                    `${exportStem(docName)}-submitted.md`,
-                    packetView.packet.markdown,
-                  )
-                }
-              >
-                Download .md
-              </Button>
+              {packetView.packet.markdown ? (
+                <Button
+                  variant="soft"
+                  onClick={() =>
+                    downloadMarkdown(
+                      `${exportStem(docName)}-submitted.md`,
+                      packetView.packet.markdown,
+                    )
+                  }
+                >
+                  Download .md
+                </Button>
+              ) : null}
+              {hub ? (
+                <Button variant="soft" as={Link} href={`/${hub.id}/packets/${packetView.packet.id}`}>
+                  Open full page
+                </Button>
+              ) : null}
               <Button onClick={() => setViewerOpen(false)}>Close</Button>
             </div>
           </>
