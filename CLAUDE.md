@@ -256,7 +256,7 @@ npm run dev                  # http://localhost:3000
 | Scheduler | ✅ | `apps/api/src/scheduler/` — hourly: due/overdue/stale nudges, approval waits, Monday digest email, weekly snapshots |
 | Notifications | ✅ | Inbox rows + 90s bell poll + email (Resend, log-mode without a key); rows deep-link; cursor-paged inbox page `/[hub]/notifications`; per-kind mute + email opt-out (`notification_prefs`, Settings → Notifications) |
 | Goal approvals | ✅ | BYO trackers wait for the submitter's manager; with no (or a disabled) manager they route to org admins (`approverScope: "admins"`, admin hub → Approvals) — never auto-approved |
-| Review packets | ✅ | Frozen markdown per submission; managers read + download; latest headline shows on the team board |
+| Review packets | ✅ | Frozen structured payload (v2, `review_packets.payload`) built client-side by `features/review-packet` and rendered as one of four templates (scorecard / journey / deck / dossier); one URL `/[hub]/packets/[id]` for owner, current manager (needs `manager.team.view`) and admins (audited); v1 markdown packets still readable; `.md` stays as a goals-only side export |
 | Cycle archives | ✅ | Replace-import freezes the tree + a per-goal report card (`goal_cycles`); "Past cycles" viewer |
 | Evidence export (.md / .pdf) | ✅ | Client renderer → blob; `@react-pdf/renderer` (dynamic import) |
 | Companion (Crealogix) | ✅ | Desktop app tunnels `/integrations/*`; a stale heartbeat now 502s provider routes instead of serving cloud data |
