@@ -68,7 +68,7 @@ check-in slice are gone; `/[hub]/checkin` only redirects old bookmarks.
 
 `auth` · `hubs` · `integrations` · `goal-specs` · `goal-inputs` · `goal-context`
 · `goal-tiers` · `goal-locks` · `goal-widgets` · `goal-editors` · `snapshots`
-· `grading` · `notifications` · `date-range` · `assigned-goals` · `github-links`
+· `grading` · `notifications` · `date-range` · `assigned-goals` · `review-packet` · `github-links`
 
 **Platform utilities** — infrastructure helpers with no page of their own:
 
