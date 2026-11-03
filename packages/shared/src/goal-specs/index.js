@@ -148,3 +148,7 @@ export {
 } from "./goal-status.js";
 
 export { resolveLadders } from "./ladders.js";
+
+// Goal ids are unique per tree — the API repairs duplicates on read and
+// write so an import can't collapse objectives on the Goals page.
+export { uniqueGoalIds } from "./unique-ids.js";

@@ -15,6 +15,7 @@
 
 import type { NextFunction, Request, Response } from "express";
 import { ObjectId } from "mongodb";
+import { uniqueGoalIds } from "@espace-devhub/shared/goal-specs";
 import {
   getGoalCyclesCollection,
   getGoalTierVerdictsCollection,
@@ -63,7 +64,10 @@ function toPublic(tree: GoalTree | null, assigned: GoalL1[] = []): PublicGoalTre
   }
   return {
     schemaVersion: GOALS_SCHEMA_VERSION,
-    l1s: stripAssigned(tree.l1s),
+    // Repair duplicate ids on the way out (an older Zoho import stamped one
+    // link id on every objective) — deterministic, so the ids a client
+    // reads are the ids it writes back and the next PUT persists them.
+    l1s: uniqueGoalIds(stripAssigned(tree.l1s)),
     assigned,
     cycleId: tree.cycleId ? tree.cycleId.toHexString() : null,
     updatedAt: tree.updatedAt.toISOString(),
@@ -110,7 +114,7 @@ export async function putGoalsHandler(
     const payload = goalsUpsertSchema.parse(req.body);
     // Shared goals are merged in at read time and never belong to the own
     // tree — drop any a client echoed back.
-    payload.l1s = stripAssigned(payload.l1s);
+    payload.l1s = uniqueGoalIds(stripAssigned(payload.l1s));
     const goals = await getGoalsCollection();
     const now = new Date();
 

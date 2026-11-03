@@ -186,3 +186,5 @@ export type { GoalStatusKey, GoalStatusMeta, GoalStatusResult, LoggedSoFar } fro
 
 export { resolveLadders } from "./ladders.js";
 export type { LadderPolicy, ResolvedLadders } from "./ladders.js";
+
+export { uniqueGoalIds } from "./unique-ids.js";

@@ -205,6 +205,33 @@ export async function parseImportFile(file, { forceType } = {}) {
 }
 
 /**
+ * Choose each imported row's id. A Zoho link id is the stable choice —
+ * except that the L1 export stamps the EMPLOYEE's link id on every KRA
+ * row, so a link id shared by several rows is no id at all. Those rows
+ * fall back to their goal code (stable across re-imports), then to a
+ * random id. Every id handed out is unique within the import.
+ */
+function importIdPicker(level, rows) {
+  const seen = new Map();
+  for (const r of rows) {
+    const id = r.sourceId || "";
+    if (id) seen.set(id, (seen.get(id) || 0) + 1);
+  }
+  const taken = new Set();
+  const fresh = () => `${level}-${Math.random().toString(36).slice(2, 9)}`;
+  return (r) => {
+    const candidates = [
+      seen.get(r.sourceId) === 1 ? r.sourceId : "",
+      r.code ? `${level}-${r.code}` : "",
+    ];
+    let id = candidates.find((c) => c && !taken.has(c)) || fresh();
+    while (taken.has(id)) id = fresh();
+    taken.add(id);
+    return id;
+  };
+}
+
+/**
  * Merge parsed L1 rows and L2 rows into the goal-tree shape used by
  * `features/goals/goals-store`. Matches each L2 to its parent L1 by exact
  * title; falls back to matching by L1 code prefix if exact match fails.
@@ -214,10 +241,12 @@ export async function parseImportFile(file, { forceType } = {}) {
 export function mergeImport({ l1Rows = [], l2Rows = [] }) {
   const byTitle = new Map();
   const byCode = new Map();
+  const l1Id = importIdPicker("l1", l1Rows);
+  const l2Id = importIdPicker("l2", l2Rows);
 
   const l1s = l1Rows.map((r) => {
     const l1 = {
-      id: r.sourceId || `l1-${Math.random().toString(36).slice(2, 9)}`,
+      id: l1Id(r),
       code: r.code,
       title: r.title,
       description: "",
@@ -242,7 +271,7 @@ export function mergeImport({ l1Rows = [], l2Rows = [] }) {
     }
 
     const l2Entry = {
-      id: l2.sourceId || `l2-${Math.random().toString(36).slice(2, 9)}`,
+      id: l2Id(l2),
       code: l2.code,
       title: l2.title,
       description: l2.description,

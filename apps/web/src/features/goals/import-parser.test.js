@@ -90,3 +90,35 @@ test("applyOrphanAssignments with no assignments returns the input unchanged", (
   });
   assert.equal(applyOrphanAssignments(merged, {}), merged);
 });
+
+test("mergeImport never reuses one Zoho link id for several L1s", () => {
+  // The Zoho L1 export carries the EMPLOYEE's link id on every KRA row, so
+  // every objective arrives with the same ZOHO_LINK_ID. Keyed by that id,
+  // the Goals page collapsed four objectives into one.
+  const merged = mergeImport({
+    l1Rows: [
+      l1Row({ sourceId: "637720000016191500", code: "R-L0-3-PSCS-L1-01", title: "Capability" }),
+      l1Row({ sourceId: "637720000016191500", code: "R-L0-3-PSCS-L1-02", title: "Uptime" }),
+      l1Row({ sourceId: "637720000016191500", code: "", title: "No code" }),
+    ],
+    l2Rows: [],
+  });
+  const ids = merged.tree.l1s.map((l1) => l1.id);
+  assert.equal(new Set(ids).size, 3, `duplicate ids: ${ids.join(", ")}`);
+  assert.ok(ids.every((id) => id.length > 0));
+  // A unique link id is still the preferred, stable id.
+  const unique = mergeImport({ l1Rows: [l1Row({ sourceId: "z-1" }), l1Row({ sourceId: "z-2" })], l2Rows: [] });
+  assert.deepEqual(unique.tree.l1s.map((l1) => l1.id), ["z-1", "z-2"]);
+});
+
+test("mergeImport never reuses one Zoho link id for several L2s", () => {
+  const merged = mergeImport({
+    l1Rows: [l1Row()],
+    l2Rows: [
+      l2Row({ sourceId: "dup", code: "R-L0-3-PSCS-L2-06-01" }),
+      l2Row({ sourceId: "dup", code: "R-L0-3-PSCS-L2-06-02", title: "Second" }),
+    ],
+  });
+  const ids = merged.tree.l1s[0].l2s.map((l2) => l2.id);
+  assert.equal(new Set(ids).size, 2, `duplicate ids: ${ids.join(", ")}`);
+});
