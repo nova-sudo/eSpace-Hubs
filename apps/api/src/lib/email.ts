@@ -89,6 +89,14 @@ class SmtpEmailService implements EmailService {
       port: cfg.port,
       secure: cfg.secure,
       auth: { user: cfg.user, pass: cfg.pass },
+      // Fan-outs (admin notices, schedulers) reuse a few connections and
+      // pace themselves instead of opening one per message — Gmail
+      // throttles bursts and caps a free account at ~500 messages/day.
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 100,
+      rateDelta: 1000,
+      rateLimit: 5,
     });
     this.from = cfg.from;
   }
@@ -131,7 +139,7 @@ function buildSmtpService(): EmailService | null {
   const fromName =
     process.env.SMTP_FROM_NAME?.trim() ||
     process.env.RESEND_FROM_NAME?.trim() ||
-    "eSpace Dev Hub";
+    "eSpace Hubs";
   const fromEmail = process.env.SMTP_FROM_EMAIL?.trim() || user;
   const from = `${fromName} <${fromEmail}>`;
   logger.info({ mode: "smtp", host, port, secure, from }, "[email] initialising SMTP transport");
@@ -220,7 +228,7 @@ function buildEmailService(): EmailService {
     process.env.RESEND_DOMAIN_MODE?.trim().toLowerCase() === "verified"
       ? "verified"
       : "sandbox";
-  const fromName = process.env.RESEND_FROM_NAME?.trim() || "eSpace Dev Hub";
+  const fromName = process.env.RESEND_FROM_NAME?.trim() || "eSpace Hubs";
 
   let fromEmail: string;
   if (mode === "verified") {

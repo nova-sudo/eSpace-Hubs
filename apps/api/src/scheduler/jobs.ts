@@ -37,6 +37,7 @@ import {
 import { createNotification, emailAllowed } from "../lib/notifications.js";
 import { effectiveRoles } from "../lib/user-roles.js";
 import { sendEmail } from "../lib/email.js";
+import { renderDigestEmail } from "../lib/email-templates.js";
 import { logger } from "../lib/logger.js";
 import { ObjectId as OID } from "mongodb";
 import { assignedPeriodsOwed } from "./assigned-goals-job.js";
@@ -557,39 +558,19 @@ export async function sendWeeklyDigests(now: Date): Promise<void> {
 
       if (dueSoon.length + overdue.length + unread + pendingApprovals + sharedOwed === 0) continue;
 
-      const lines = [
-        `Your week at eSpace Dev Hub (${week})`,
-        "",
-        ...(overdue.length
-          ? [
-              `OVERDUE (${overdue.length}):`,
-              ...overdue.slice(0, 10).map((d) => `  - ${d.title} — was due ${formatDueDay(d.dueDate, now)}`),
-              "",
-            ]
-          : []),
-        ...(dueSoon.length
-          ? [
-              `DUE THIS WEEK (${dueSoon.length}):`,
-              ...dueSoon.slice(0, 10).map((d) => `  - ${d.title} — due ${formatDueDay(d.dueDate, now)}`),
-              "",
-            ]
-          : []),
-        ...(sharedOwed
-          ? [`SHARED GOALS OWED: ${sharedOwed} period${sharedOwed === 1 ? "" : "s"} open or missing`, ""]
-          : []),
-        ...(pendingApprovals
-          ? [`APPROVALS WAITING ON YOU: ${pendingApprovals}`, ""]
-          : []),
-        ...(unread ? [`Unread notifications: ${unread}`, ""] : []),
-        "Open your Dev Hub to act on any of these.",
-      ];
       // Settings → Notifications "Email me" off: the digest is the one
       // routine email, so honour it here.
       if (!(await emailAllowed(user.orgId, user._id))) continue;
       void sendEmail({
         to: user.email,
-        subject: `Dev Hub weekly — ${overdue.length ? `${overdue.length} overdue, ` : ""}${dueSoon.length} due this week`,
-        text: lines.join("\n"),
+        ...renderDigestEmail({
+          week,
+          overdue: overdue.map((d) => ({ title: d.title, when: formatDueDay(d.dueDate, now) })),
+          dueSoon: dueSoon.map((d) => ({ title: d.title, when: formatDueDay(d.dueDate, now) })),
+          approvals: pendingApprovals,
+          sharedOwed,
+          unread,
+        }),
       });
     } catch (err) {
       logger.warn(

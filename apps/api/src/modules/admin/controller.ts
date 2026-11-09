@@ -53,7 +53,7 @@ import { logger } from "../../lib/logger.js";
 import { createNotification } from "../../lib/notifications.js";
 import { effectiveRoles, primaryRole } from "../../lib/user-roles.js";
 import { syncSessionRolesForUser } from "../auth/session.js";
-import { appOrigin } from "../auth/controller.js";
+import { appOrigin } from "../../lib/app-url.js";
 import { sendVerificationEmail } from "../auth/signup-policy.js";
 import { emailService } from "../../lib/email.js";
 import { mintToken } from "../../lib/tokens.js";

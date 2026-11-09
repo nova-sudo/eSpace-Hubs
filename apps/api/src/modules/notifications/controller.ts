@@ -4,6 +4,7 @@
  *   GET  /api/v1/notifications              my notifications (paged) + unread count
  *   GET  /api/v1/notifications/preferences  my muted kinds + email opt-in
  *   PUT  /api/v1/notifications/preferences  update them
+ *   GET  /api/v1/notifications/:id          one of mine (email deep links)
  *   POST /api/v1/notifications/read-all     mark all mine read
  *   POST /api/v1/notifications/:id/read     mark one mine read
  *
@@ -205,6 +206,34 @@ export async function putPreferencesHandler(
       { upsert: true },
     );
     res.json({ muted, email });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** GET /api/v1/notifications/:id → { notification } · 404 unless it's mine. */
+export async function getNotificationHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const rawId = req.params.id;
+    if (!ObjectId.isValid(rawId)) {
+      throw new HttpError(404, "not_found", "No such notification.");
+    }
+    const col = await getNotificationsCollection();
+    const row = await col.findOne({
+      _id: new ObjectId(rawId),
+      orgId: session.orgId,
+      userId: session.userId,
+    });
+    if (!row) throw new HttpError(404, "not_found", "No such notification.");
+    res.json({ notification: toPublic(row) });
   } catch (err) {
     next(err);
   }

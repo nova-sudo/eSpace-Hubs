@@ -23,11 +23,9 @@ import {
 import {
   getAssignedGoalsCollection,
   getGoalInputsCollection,
-  getUsersCollection,
 } from "../db/collections.js";
 import type { AssignedGoal } from "../db/types.js";
 import { createNotification } from "../lib/notifications.js";
-import { sendEmail } from "../lib/email.js";
 import { logger } from "../lib/logger.js";
 import { claimStamp } from "./jobs.js";
 
@@ -90,7 +88,6 @@ async function cellsByAssignee(
 export async function notifyAssignedGoalWindows(now: Date): Promise<void> {
   const nowMs = now.getTime();
   const col = await getAssignedGoalsCollection();
-  const users = await getUsersCollection();
 
   for await (const doc of col.find({ status: "active" })) {
     try {
@@ -126,17 +123,6 @@ export async function notifyAssignedGoalWindows(now: Date): Promise<void> {
               body: `${c.label} of "${doc.title}" was due ${fmtDay(c.deadline)}. ${doc.createdByName} can see it's missing.`,
               data: { assignedGoalId: id, goalId, periodKey: c.key },
             });
-            const u = await users.findOne(
-              { _id: userId, orgId: doc.orgId, status: "active" },
-              { projection: { email: 1, displayName: 1 } },
-            );
-            if (u?.email) {
-              void sendEmail({
-                to: u.email,
-                subject: `Overdue: ${doc.title} · ${c.label}`,
-                text: `Hi ${u.displayName || ""},\n\n${c.label} of the shared goal "${doc.title}" (from ${doc.createdByName}) was due ${fmtDay(c.deadline)} and nothing has been submitted yet. You can still fill it in from your Goals page — it will show as late.\n`,
-              }).catch(() => undefined);
-            }
           }
         }
       }

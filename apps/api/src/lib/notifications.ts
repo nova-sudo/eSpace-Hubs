@@ -23,6 +23,21 @@ import {
 import type { Notification, NotificationKind } from "../db/types.js";
 import { logger } from "./logger.js";
 import { withAssignedTree } from "./assigned-goals.js";
+import { sendEmail } from "./email.js";
+import { decideNotificationEmail, renderNotificationEmail } from "./notification-email.js";
+import {
+  DEFAULT_NOTIFICATION_PREFS,
+  kindDelivered,
+  type ResolvedNotificationPrefs,
+} from "./notification-prefs.js";
+
+export {
+  DEFAULT_NOTIFICATION_PREFS,
+  UNMUTABLE_NOTIFICATION_KINDS,
+  isMutableKind,
+  kindDelivered,
+  type ResolvedNotificationPrefs,
+} from "./notification-prefs.js";
 
 export interface CreateNotificationInput {
   orgId: ObjectId;
@@ -34,18 +49,9 @@ export interface CreateNotificationInput {
   data?: Record<string, unknown> | null;
   /** Actor who triggered it (the manager), or null for system events. */
   createdBy?: ObjectId | null;
+  /** false = inbox only, no email. Default true. */
+  email?: boolean;
 }
-
-/** Resolved preferences — the defaults when the user never saved any. */
-export interface ResolvedNotificationPrefs {
-  muted: NotificationKind[];
-  email: boolean;
-}
-
-export const DEFAULT_NOTIFICATION_PREFS: ResolvedNotificationPrefs = Object.freeze({
-  muted: [],
-  email: true,
-}) as ResolvedNotificationPrefs;
 
 /** The recipient's preferences, or the defaults. Throws on a DB error. */
 export async function readNotificationPrefs(
@@ -62,36 +68,6 @@ export async function readNotificationPrefs(
     muted: Array.isArray(row.muted) ? row.muted : [],
     email: row.email !== false,
   };
-}
-
-/**
- * Kinds nobody may mute: each is sent only to the person who has to ACT on
- * it (an approver deciding a tracker or a sign-up, a dev whose tracker was
- * sent back, a report or manager told about a reassignment). Muting them
- * would strand work only the recipient can clear — the org-admin queue is
- * the only path for no-manager trackers. Filtered out of stored mutes on
- * write, and ignored on delivery even if an old prefs row lists them.
- */
-export const UNMUTABLE_NOTIFICATION_KINDS: readonly NotificationKind[] = Object.freeze([
-  "goal_submitted",
-  "approval_waiting",
-  "approval_queue_stale",
-  "goal_changes_requested",
-  "user_pending_approval",
-  "manager_changed",
-] as NotificationKind[]);
-
-/** Pure: may a user mute this kind? */
-export function isMutableKind(kind: NotificationKind): boolean {
-  return !UNMUTABLE_NOTIFICATION_KINDS.includes(kind);
-}
-
-/** Pure: would this kind reach the inbox under these preferences? */
-export function kindDelivered(
-  prefs: ResolvedNotificationPrefs,
-  kind: NotificationKind,
-): boolean {
-  return !isMutableKind(kind) || !prefs.muted.includes(kind);
 }
 
 /** May the app email this user? Fails open (true) on a read error. */
@@ -136,6 +112,7 @@ export async function createNotification(
       readAt: null,
     };
     await col.insertOne(doc);
+    void emailNotification(doc, prefs, input.email === false);
     return doc._id;
   } catch (err) {
     logger.warn(
@@ -143,6 +120,41 @@ export async function createNotification(
       "[notifications] create failed",
     );
     return null;
+  }
+}
+
+/**
+ * The email half of an inbox row (spec: every notification also emails).
+ * Best-effort: never throws, never delays the caller beyond the insert.
+ * `prefs` is the copy createNotification already read.
+ */
+async function emailNotification(
+  doc: Notification,
+  prefs: ResolvedNotificationPrefs,
+  optOut: boolean,
+): Promise<void> {
+  // Something the user did to themselves (e.g. self-assigned) is already
+  // in front of them — the inbox row is enough.
+  if (doc.createdBy && doc.createdBy.equals(doc.userId)) return;
+  try {
+    const recipient = optOut
+      ? null
+      : await (await getUsersCollection()).findOne(
+          { _id: doc.userId, orgId: doc.orgId },
+          { projection: { email: 1, status: 1 } },
+        );
+    const decision = decideNotificationEmail({ prefs, kind: doc.kind, optOut, recipient });
+    if (!decision.send || !recipient?.email) {
+      const skip = decision.send ? "no-recipient" : decision.skip;
+      logger.debug({ kind: doc.kind, userId: String(doc.userId), skip }, "[notifications] email skipped");
+      return;
+    }
+    await sendEmail({ to: recipient.email, ...renderNotificationEmail(doc) });
+  } catch (err) {
+    logger.warn(
+      { kind: doc.kind, userId: String(doc.userId), err: err instanceof Error ? err.message : String(err) },
+      "[notifications] email failed",
+    );
   }
 }
 
