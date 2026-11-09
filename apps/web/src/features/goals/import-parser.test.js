@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { applyOrphanAssignments, mergeImport } from "./import-parser.js";
+import { applyOrphanAssignments, mergeImport, parseImportFile, repairMojibake } from "./import-parser.js";
 
 function l1Row(over = {}) {
   return {
@@ -121,4 +121,28 @@ test("mergeImport never reuses one Zoho link id for several L2s", () => {
   });
   const ids = merged.tree.l1s[0].l2s.map((l2) => l2.id);
   assert.equal(new Set(ids).size, 2, `duplicate ids: ${ids.join(", ")}`);
+});
+
+test("repairMojibake undoes UTF-8 read as Latin-1 or Windows-1252", () => {
+  const good = "Ensure ≥ 85% of deliverables … maintain ≤ 10% — “first review”";
+  const bytes = new TextEncoder().encode(good);
+  const latin1 = String.fromCharCode(...bytes);
+  assert.equal(repairMojibake(latin1), good);
+  const cp1252 = new TextDecoder("windows-1252").decode(bytes);
+  assert.equal(repairMojibake(cp1252), good);
+});
+
+test("repairMojibake leaves clean text alone", () => {
+  for (const s of ["café résumé", "Ensure ≥ 85%", "plain ascii", "Âge"]) {
+    assert.equal(repairMojibake(s), s);
+  }
+});
+
+test("parseImportFile reads a BOM-less UTF-8 CSV without garbling symbols", async () => {
+  const csv =
+    'ZOHO_LINK_ID,L1,KRA Description,Weightage\n' +
+    '1,Quality,"Ensure ≥ 85% on first review and ≤ 10% defects",20\n';
+  const file = new File([new TextEncoder().encode(csv)], "l1.csv");
+  const res = await parseImportFile(file, { forceType: "l1" });
+  assert.equal(res.rows[0].rubric, "Ensure ≥ 85% on first review and ≤ 10% defects");
 });
