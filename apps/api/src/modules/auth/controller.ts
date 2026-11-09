@@ -18,6 +18,7 @@ import type { Request, Response, NextFunction } from "express";
 import type { ObjectId } from "mongodb";
 import {
   getOrgsCollection,
+  getSessionsCollection,
   getUsersCollection,
 } from "../../db/collections.js";
 import type { User } from "../../db/types.js";
@@ -51,6 +52,7 @@ import {
   resolveSignupGate,
   sendVerificationEmail,
 } from "./signup-policy.js";
+import { verifyEmail } from "./email-verification.js";
 import { logger } from "../../lib/logger.js";
 import {
   buildProvisioningUri,
@@ -86,6 +88,7 @@ import {
   passwordResetSchema,
   profileUpdateSchema,
   signupSchema,
+  verifyEmailSchema,
   backupCodesRegenerateSchema,
   totpDisableSchema,
   totpLoginVerifySchema,
@@ -175,7 +178,9 @@ export async function loginHandler(
     const validCredentials =
       !!user &&
       !lockedOut &&
-      (user.status === "active" || user.status === "pending_admin") &&
+      (user.status === "active" ||
+        user.status === "pending_admin" ||
+        user.status === "pending_email") &&
       !!user.passwordHash &&
       passwordOk;
 
@@ -1668,6 +1673,87 @@ export async function signupHandler(
     res.json({
       user: toPublicUser({ ...userDoc, _id: insertedId }),
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── POST /api/v1/auth/verify-email (public) ─────────────────────────
+
+/**
+ * Redeem the emailed verification link. Public: the link is often
+ * opened on another device than the one that signed up. Activates the
+ * user and unblocks all of their sessions (see email-verification.ts).
+ */
+export async function verifyEmailHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { token } = verifyEmailSchema.parse(req.body);
+    const users = await getUsersCollection();
+    const sessions = await getSessionsCollection();
+    const result = await verifyEmail(
+      {
+        redeem: (t) => redeemToken(t, "email_verify"),
+        users,
+        sessions,
+        now: () => new Date(),
+      },
+      token,
+    );
+    if (result.status === "verified") {
+      await writeAudit({
+        orgId: result.user.orgId,
+        actorUserId: result.user._id,
+        actorRole: result.user.role,
+        action: "user.email_verified",
+        targetType: "user",
+        targetId: result.user._id.toHexString(),
+        after: { email: result.user.email },
+        ...networkMeta(req),
+      });
+    }
+    res.json({ status: result.status, user: toPublicUser(result.user) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── POST /api/v1/auth/resend-verification ───────────────────────────
+
+/** Send a fresh verification link to the signed-in, unverified user. */
+export async function resendVerificationHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session!;
+    const users = await getUsersCollection();
+    const user = await users.findOne({ _id: session.userId });
+    if (!user || user.status !== "pending_email") {
+      throw new HttpError(409, "already_verified", "This email is already verified.");
+    }
+    const org = await (await getOrgsCollection()).findOne({ _id: user.orgId });
+    const sent = await sendVerificationEmail(
+      {
+        mintToken,
+        send: (m) => emailService.send(m),
+        appUrl: appOrigin(),
+        orgName: org?.name ?? "eSpace",
+      },
+      user,
+      networkMeta(req),
+    );
+    if (!sent.ok) {
+      logger.warn(
+        { email: user.email, reason: sent.reason },
+        "[auth.resend-verification] email send failed",
+      );
+    }
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

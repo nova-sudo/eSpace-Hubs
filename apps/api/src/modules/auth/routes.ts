@@ -42,6 +42,7 @@ import {
   loginLimiter,
   passwordResetLimiter,
   passwordResetRequestLimiter,
+  resendVerificationLimiter,
   signupLimiter,
   totpLimiter,
 } from "../../middleware/rate-limit.js";
@@ -58,6 +59,7 @@ import {
   meHandler,
   passwordResetHandler,
   passwordResetRequestHandler,
+  resendVerificationHandler,
   signupHandler,
   totpDisableHandler,
   totpEnrolHandler,
@@ -66,6 +68,7 @@ import {
   totpVerifyEnrolmentHandler,
   totpVerifyLoginHandler,
   updateMeHandler,
+  verifyEmailHandler,
 } from "./controller.js";
 
 export const authRouter: Router = Router();
@@ -77,6 +80,13 @@ export const authRouter: Router = Router();
 authRouter.post("/login", loginLimiter, loginHandler);
 authRouter.post("/logout", logoutHandler);
 authRouter.post("/signup", signupLimiter, signupHandler);
+authRouter.post("/verify-email", inviteAcceptLimiter, verifyEmailHandler);
+authRouter.post(
+  "/resend-verification",
+  requireAuth({ requireEmailVerified: false, requireTotpEnrolled: false }),
+  resendVerificationLimiter,
+  resendVerificationHandler,
+);
 authRouter.post("/accept-invite", inviteAcceptLimiter, acceptInviteHandler);
 authRouter.post(
   "/password/reset-request",
@@ -106,7 +116,7 @@ authRouter.post(
 // frontend can't fetch /me to decide what gate to render.
 authRouter.get(
   "/me",
-  requireAuth({ requireTotpEnrolled: false }),
+  requireAuth({ requireTotpEnrolled: false, requireEmailVerified: false }),
   meHandler,
 );
 // PATCH /me requires enrolment — un-enrolled users shouldn't be
@@ -120,7 +130,7 @@ authRouter.patch("/me", requireAuth(), updateMeHandler);
 // sees eSpace URLs.
 authRouter.get(
   "/me/engagement-config",
-  requireAuth({ requireTotpEnrolled: false }),
+  requireAuth({ requireTotpEnrolled: false, requireEmailVerified: false }),
   meEngagementConfigHandler,
 );
 

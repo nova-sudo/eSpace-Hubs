@@ -227,6 +227,26 @@ export const signupLimiter = buildLimiter({
 });
 
 /**
+ * /resend-verification — 1 per minute AND 5 per hour per USER. Each
+ * call sends an email, so the caps protect the mailbox (and our SMTP
+ * reputation) from a double-clicking or looping client.
+ */
+export const resendVerificationLimiter = [
+  buildLimiter({
+    windowMs: 60 * 1000,
+    max: 1,
+    label: "verification-email",
+    keyGenerator: (req) => `verify-1m:${userKey(req)}`,
+  }),
+  buildLimiter({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    label: "verification-email",
+    keyGenerator: (req) => `verify-1h:${userKey(req)}`,
+  }),
+];
+
+/**
  * POST /goal-verdicts/mine/:goalId/acknowledge — 20 per 10 minutes per
  * USER. A dispute notifies the report's manager, so a double-clicking
  * report or a looping script must not flood the manager's inbox. (The

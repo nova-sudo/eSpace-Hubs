@@ -72,6 +72,10 @@ const oneTimeToken = z
   .max(128)
   .regex(/^[A-Za-z0-9_-]+$/, "malformed token");
 
+export const verifyEmailSchema = z.object({
+  token: oneTimeToken,
+});
+
 export const acceptInviteSchema = z.object({
   token: oneTimeToken,
   password: newPassword,

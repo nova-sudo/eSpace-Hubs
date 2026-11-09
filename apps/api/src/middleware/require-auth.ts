@@ -36,10 +36,20 @@ import { HttpError } from "./error-handler.js";
 export interface RequireAuthOptions {
   requireTotp?: boolean;
   requireTotpEnrolled?: boolean;
+  /**
+   * Default true. `pending_email` self-signups carry
+   * `session.emailVerified === false`; only me / logout /
+   * resend-verification opt out.
+   */
+  requireEmailVerified?: boolean;
 }
 
 export function requireAuth(options: RequireAuthOptions = {}) {
-  const { requireTotp = true, requireTotpEnrolled = true } = options;
+  const {
+    requireTotp = true,
+    requireTotpEnrolled = true,
+    requireEmailVerified = true,
+  } = options;
   return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.session) {
       return next(new HttpError(401, "unauthenticated", "Login required."));
@@ -66,6 +76,11 @@ export function requireAuth(options: RequireAuthOptions = {}) {
           "totp_enrolment_required",
           "Two-factor enrolment required. Set it up before continuing.",
         ),
+      );
+    }
+    if (requireEmailVerified && req.session.emailVerified === false) {
+      return next(
+        new HttpError(403, "email_unverified", "Verify your email to continue."),
       );
     }
     next();
