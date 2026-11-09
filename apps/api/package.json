@@ -25,7 +25,8 @@
     "ai:check": "tsx scripts/litellm-check.ts",
     "admin:create": "tsx scripts/admin-create.ts",
     "admin:reset-password": "tsx scripts/reset-password.ts",
-    "admin:reset-totp": "tsx scripts/reset-totp.ts"
+    "admin:reset-totp": "tsx scripts/reset-totp.ts",
+    "email:preview": "tsx scripts/email-preview.ts"
   },
   "dependencies": {
     "@anthropic-ai/bedrock-sdk": "^0.30.2",
