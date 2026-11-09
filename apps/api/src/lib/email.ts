@@ -131,7 +131,7 @@ function buildSmtpService(): EmailService | null {
   const fromName =
     process.env.SMTP_FROM_NAME?.trim() ||
     process.env.RESEND_FROM_NAME?.trim() ||
-    "eSpace Dev Hub";
+    "eSpace Hubs";
   const fromEmail = process.env.SMTP_FROM_EMAIL?.trim() || user;
   const from = `${fromName} <${fromEmail}>`;
   logger.info({ mode: "smtp", host, port, secure, from }, "[email] initialising SMTP transport");
@@ -220,7 +220,7 @@ function buildEmailService(): EmailService {
     process.env.RESEND_DOMAIN_MODE?.trim().toLowerCase() === "verified"
       ? "verified"
       : "sandbox";
-  const fromName = process.env.RESEND_FROM_NAME?.trim() || "eSpace Dev Hub";
+  const fromName = process.env.RESEND_FROM_NAME?.trim() || "eSpace Hubs";
 
   let fromEmail: string;
   if (mode === "verified") {
