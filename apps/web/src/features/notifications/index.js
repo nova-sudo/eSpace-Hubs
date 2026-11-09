@@ -9,3 +9,5 @@ export { fetchNotifications, resetNotifications } from "./notifications-store";
 export { NotificationsPage } from "./notifications-page.jsx";
 export { NotificationPreferences } from "./notification-preferences.jsx";
 export { notificationPath, NOTIFICATION_KIND_GROUPS } from "./notification-kinds";
+export { EmailLinkRedirect } from "./email-link-redirect.jsx";
+export { resolveEmailTarget, EMAIL_SETTINGS } from "./email-target.js";
