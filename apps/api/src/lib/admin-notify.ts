@@ -16,8 +16,7 @@
 import type { ObjectId } from "mongodb";
 import { getUsersCollection } from "../db/collections.js";
 import type { NotificationKind } from "../db/types.js";
-import { createNotification, emailAllowed } from "./notifications.js";
-import { sendEmail } from "./email.js";
+import { createNotification } from "./notifications.js";
 import { logger } from "./logger.js";
 
 export interface NotifyOrgAdminsInput {
@@ -54,22 +53,10 @@ export async function notifyOrgAdmins(input: NotifyOrgAdminsInput): Promise<void
           body: input.body,
           data: input.data ?? null,
           createdBy: input.createdBy ?? null,
+          // The email half (and the admin's "Email me" pref) is handled
+          // inside createNotification.
+          email: !input.inboxOnly,
         });
-        if (input.inboxOnly) return;
-        // Respect the admin's own "email me" preference (Settings →
-        // Notifications) — the inbox row above still lands.
-        if (!(await emailAllowed(input.orgId, admin._id))) return;
-        const r = await sendEmail({
-          to: admin.email,
-          subject: input.title,
-          text: input.body,
-        });
-        if (!r.ok) {
-          logger.warn(
-            { adminId: admin._id.toHexString(), reason: r.reason },
-            "[admin-notify] email failed",
-          );
-        }
       }),
     );
   } catch (err) {

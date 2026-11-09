@@ -23,6 +23,8 @@ import {
 import type { Notification, NotificationKind } from "../db/types.js";
 import { logger } from "./logger.js";
 import { withAssignedTree } from "./assigned-goals.js";
+import { sendEmail } from "./email.js";
+import { decideNotificationEmail, renderNotificationEmail } from "./notification-email.js";
 import {
   DEFAULT_NOTIFICATION_PREFS,
   kindDelivered,
@@ -47,6 +49,8 @@ export interface CreateNotificationInput {
   data?: Record<string, unknown> | null;
   /** Actor who triggered it (the manager), or null for system events. */
   createdBy?: ObjectId | null;
+  /** false = inbox only, no email. Default true. */
+  email?: boolean;
 }
 
 /** The recipient's preferences, or the defaults. Throws on a DB error. */
@@ -108,6 +112,7 @@ export async function createNotification(
       readAt: null,
     };
     await col.insertOne(doc);
+    void emailNotification(doc, prefs, input.email === false);
     return doc._id;
   } catch (err) {
     logger.warn(
@@ -115,6 +120,38 @@ export async function createNotification(
       "[notifications] create failed",
     );
     return null;
+  }
+}
+
+/**
+ * The email half of an inbox row (spec: every notification also emails).
+ * Best-effort: never throws, never delays the caller beyond the insert.
+ * `prefs` is the copy createNotification already read.
+ */
+async function emailNotification(
+  doc: Notification,
+  prefs: ResolvedNotificationPrefs,
+  optOut: boolean,
+): Promise<void> {
+  try {
+    const recipient = optOut
+      ? null
+      : await (await getUsersCollection()).findOne(
+          { _id: doc.userId, orgId: doc.orgId },
+          { projection: { email: 1, status: 1 } },
+        );
+    const decision = decideNotificationEmail({ prefs, kind: doc.kind, optOut, recipient });
+    if (!decision.send || !recipient?.email) {
+      const skip = decision.send ? "no-recipient" : decision.skip;
+      logger.debug({ kind: doc.kind, userId: String(doc.userId), skip }, "[notifications] email skipped");
+      return;
+    }
+    await sendEmail({ to: recipient.email, ...renderNotificationEmail(doc) });
+  } catch (err) {
+    logger.warn(
+      { kind: doc.kind, userId: String(doc.userId), err: err instanceof Error ? err.message : String(err) },
+      "[notifications] email failed",
+    );
   }
 }
 
