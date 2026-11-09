@@ -13,7 +13,12 @@ export function Footer() {
   return (
     <footer className="mt-8 flex justify-between py-4 text-[12.5px] text-muted-fg">
       <div>eSpace Hubs{me?.team ? ` · ${me.team}` : ""}</div>
-      <div className="text-muted-fg">{new Date().getFullYear()} · eSpace</div>
+      <div className="flex gap-4 text-muted-fg">
+        <a href="/docs" className="text-muted-fg underline-offset-2 hover:text-fg hover:underline">
+          Docs
+        </a>
+        <span>{new Date().getFullYear()} · eSpace</span>
+      </div>
     </footer>
   );
 }

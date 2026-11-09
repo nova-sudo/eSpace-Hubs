@@ -263,6 +263,9 @@ export function LoginForm({ onSuccess, expired = false, verified = false }) {
               Create one
             </Link>
           </div>
+          <Link href="/docs/getting-started" className="text-muted-fg">
+            New here? Read the getting-started guide
+          </Link>
         </div>
       </form>
     </AuthCard>

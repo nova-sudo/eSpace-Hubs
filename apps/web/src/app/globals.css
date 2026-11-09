@@ -397,3 +397,27 @@ em.accent {
     break-before: page;
   }
 }
+
+/* ── User manual (/docs) — Markdown rendered by features/docs ── */
+.docs-prose { font-size: 15px; line-height: 1.65; color: var(--fg); max-width: 76ch; }
+.docs-prose > :first-child { margin-top: 0; }
+.docs-prose h1 { font-size: 30px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; margin: 0 0 16px; }
+.docs-prose h2 { font-size: 21px; font-weight: 800; letter-spacing: -0.02em; margin: 36px 0 10px; scroll-margin-top: 24px; }
+.docs-prose h3 { font-size: 16.5px; font-weight: 800; margin: 26px 0 8px; scroll-margin-top: 24px; }
+.docs-prose h4 { font-size: 15px; font-weight: 700; margin: 20px 0 6px; }
+.docs-prose p { margin: 0 0 12px; }
+.docs-prose ul, .docs-prose ol { margin: 0 0 12px; padding-left: 22px; }
+.docs-prose li { margin: 4px 0; }
+.docs-prose li > ul, .docs-prose li > ol { margin: 4px 0 0; }
+.docs-prose a { color: var(--fg); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--dim-fg); }
+.docs-prose a:hover { text-decoration-color: var(--fg); }
+.docs-prose strong { font-weight: 700; }
+.docs-prose code { font-family: var(--font-mono), ui-monospace, monospace; font-size: 0.86em; background: var(--card-alt); border-radius: 6px; padding: 1px 6px; }
+.docs-prose pre { background: var(--card-alt); border-radius: 14px; padding: 14px 16px; overflow-x: auto; margin: 0 0 14px; }
+.docs-prose pre code { background: none; padding: 0; }
+.docs-prose blockquote { margin: 0 0 14px; padding: 10px 16px; background: var(--sky); color: var(--sky-ink); border-radius: 14px; }
+.docs-prose blockquote p:last-child { margin: 0; }
+.docs-prose hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.docs-prose table { display: block; overflow-x: auto; border-collapse: collapse; margin: 0 0 16px; font-size: 14px; max-width: 100%; }
+.docs-prose th, .docs-prose td { text-align: left; vertical-align: top; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.docs-prose th { font-size: 12.5px; font-weight: 700; color: var(--muted-fg); white-space: nowrap; }
