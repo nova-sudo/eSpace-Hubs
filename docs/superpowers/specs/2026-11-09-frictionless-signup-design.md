@@ -112,7 +112,7 @@ Accessor in `db/collections.ts`, validator in `db/schemas/`.
   (UI default true).
 - On a correct **TOTP** code with `trustDevice`: 32 random bytes → base64url token;
   store `sha256(token)`; set cookie `dh_trusted` = token, httpOnly, Secure,
-  SameSite=Lax, Path=/api, Max-Age 30d (helper in `modules/auth/cookies.ts`).
+  SameSite=Lax, signed, Path=/ (same base options as the session cookie), Max-Age 30d (helper in `modules/auth/cookies.ts`).
 - Backup-code verification never issues trust.
 
 ### Use
