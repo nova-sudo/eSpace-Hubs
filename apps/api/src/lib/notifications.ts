@@ -133,6 +133,9 @@ async function emailNotification(
   prefs: ResolvedNotificationPrefs,
   optOut: boolean,
 ): Promise<void> {
+  // Something the user did to themselves (e.g. self-assigned) is already
+  // in front of them — the inbox row is enough.
+  if (doc.createdBy && doc.createdBy.equals(doc.userId)) return;
   try {
     const recipient = optOut
       ? null

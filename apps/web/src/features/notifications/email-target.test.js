@@ -39,6 +39,17 @@ test("approvals fall back to the admin hub when the user has no manager hub", ()
   );
 });
 
+test("admin-scoped goal approval lands on the admin hub even for a manager+admin user", () => {
+  assert.equal(
+    resolveEmailTarget({
+      row: { kind: "goal_submitted", data: { approverScope: "admins" } },
+      hubs: [dev, manager, admin],
+      pick: "manager",
+    }),
+    "/admin/approvals",
+  );
+});
+
 test("missing row (404) → the inbox", () => {
   assert.equal(resolveEmailTarget({ row: null, hubs: [dev], pick: null }), "/dev/notifications");
 });

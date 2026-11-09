@@ -89,6 +89,14 @@ class SmtpEmailService implements EmailService {
       port: cfg.port,
       secure: cfg.secure,
       auth: { user: cfg.user, pass: cfg.pass },
+      // Fan-outs (admin notices, schedulers) reuse a few connections and
+      // pace themselves instead of opening one per message — Gmail
+      // throttles bursts and caps a free account at ~500 messages/day.
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 100,
+      rateDelta: 1000,
+      rateLimit: 5,
     });
     this.from = cfg.from;
   }

@@ -35,7 +35,11 @@ export function resolveEmailTarget({ row, hubs, pick = null, primaryHubId = null
   if (ids.length === 0) return "/";
 
   const segment = path.replace(/^\//, "").split(/[/?]/)[0];
-  const owner = (OWNING_HUBS[segment] ?? []).find((id) => ids.includes(id));
+  // A goal with no (or a disabled) manager routes to org admins — that
+  // approval lives on the admin hub even for a user who also manages.
+  const owning =
+    row?.data?.approverScope === "admins" ? ["admin", ...(OWNING_HUBS[segment] ?? [])] : OWNING_HUBS[segment] ?? [];
+  const owner = owning.find((id) => ids.includes(id));
   const hub =
     owner ??
     (pick && ids.includes(pick) ? pick : null) ??

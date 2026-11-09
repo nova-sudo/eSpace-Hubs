@@ -27,7 +27,7 @@ export const EMAIL_PALETTE = Object.freeze({
   fg: "#18181b",
   muted: "#6d6d76",
   wordmarkMuted: "#71717a",
-  line: "rgba(24,24,27,0.07)",
+  line: "#ededee", // solid (Outlook ignores rgba) ≈ rgba(24,24,27,.07) on white
   ink: "#18181b",
   inkOn: "#ffffff",
   tones: {
@@ -123,10 +123,10 @@ export function renderEmail(c: EmailContent): { html: string; text: string } {
     .join("");
   const list = c.list?.length ? `<div style="margin:2px 0 6px 0;">${listHtml(c.list)}</div>` : "";
   const note = c.note
-    ? `<p style="margin:14px 0 0 0;font-size:13px;line-height:1.5;color:${P.muted};">${esc(c.note)}</p>`
+    ? `<p style="margin:${c.cta ? "16px" : "4px"} 0 0 0;font-size:13px;line-height:1.5;color:${P.muted};">${esc(c.note)}</p>`
     : "";
   const cta = c.cta
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:${list ? "20px" : "6px"};"><tr>
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:${list ? "20px" : "8px"};"><tr>
   <td bgcolor="${P.ink}" style="background:${P.ink};border-radius:999px;">
     <a href="${esc(c.cta.url)}" style="display:inline-block;padding:12px 22px;border-radius:999px;color:${P.inkOn};font-size:14px;font-weight:700;text-decoration:none;font-family:${FONT};">${esc(c.cta.label)}</a>
   </td>
@@ -143,9 +143,10 @@ export function renderEmail(c: EmailContent): { html: string; text: string } {
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body style="margin:0;padding:0;background:${P.canvas};font-family:${FONT};color:${P.fg};">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${esc(c.preheader)}</div>
+<div style="display:none;mso-hide:all;max-height:0;overflow:hidden;opacity:0;color:transparent;">${esc(c.preheader)}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${P.canvas}" style="background:${P.canvas};">
 <tr><td align="center" style="padding:32px 16px;">
+  <!--[if mso]><table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
     <tr><td style="padding:0 6px 16px 6px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
@@ -160,7 +161,7 @@ export function renderEmail(c: EmailContent): { html: string; text: string } {
           ${c.subtitle ? `<div style="margin-top:4px;font-size:14px;line-height:1.5;color:${tone.ink};">${esc(c.subtitle)}</div>` : ""}
         </td></tr>
         <tr><td style="padding:22px 24px 24px 24px;">
-          ${paragraphs}${list}${note}${cta}
+          ${paragraphs}${list}${cta}${note}
         </td></tr>
       </table>
     </td></tr>
@@ -168,6 +169,7 @@ export function renderEmail(c: EmailContent): { html: string; text: string } {
       ${footerHtml(c.footer)}
     </td></tr>
   </table>
+  <!--[if mso]></td></tr></table><![endif]-->
 </td></tr>
 </table>
 </body></html>`;

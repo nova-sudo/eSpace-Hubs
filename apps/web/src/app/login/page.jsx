@@ -18,10 +18,15 @@ import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LoginForm } from "@/features/auth";
 
+/** Same-origin paths only — `//evil.com` and `/\\evil.com` are off-site. */
+function safeNext(raw) {
+  return raw && raw.startsWith("/") && !raw.startsWith("//") && !raw.startsWith("/\\") ? raw : "/";
+}
+
 function LoginInner() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") || "/";
+  const next = safeNext(params.get("next"));
   // `?reason=expired` is appended by lib/api-client when a request came
   // back 401 mid-session — the form explains the bounce instead of
   // dropping the user on a bare sign-in screen.
