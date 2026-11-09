@@ -19,6 +19,7 @@ import type { ObjectId } from "mongodb";
 import {
   getOrgsCollection,
   getSessionsCollection,
+  getTrustedDevicesCollection,
   getUsersCollection,
 } from "../../db/collections.js";
 import type { User } from "../../db/types.js";
@@ -53,6 +54,12 @@ import {
   sendVerificationEmail,
 } from "./signup-policy.js";
 import { verifyEmail } from "./email-verification.js";
+import {
+  checkTrustedDevice,
+  countTrustedDevices,
+  issueTrustedDevice,
+  revokeTrustedDevices,
+} from "./trusted-devices.js";
 import { logger } from "../../lib/logger.js";
 import {
   buildProvisioningUri,
@@ -77,7 +84,10 @@ import {
 } from "./session.js";
 import {
   clearSessionCookie,
+  clearTrustedCookie,
+  readTrustedCookie,
   setSessionCookie,
+  setTrustedCookie,
 } from "./cookies.js";
 import {
   acceptInviteSchema,
@@ -88,13 +98,13 @@ import {
   passwordResetSchema,
   profileUpdateSchema,
   signupSchema,
+  totpEnrolVerifySchema,
   verifyEmailSchema,
   backupCodesRegenerateSchema,
   totpDisableSchema,
   totpLoginVerifySchema,
   totpReenrolConfirmSchema,
   totpReenrolStartSchema,
-  totpVerifySchema,
   type PublicUser,
 } from "./schemas.js";
 import { resolveCompanionPrincipal } from "../companion/bearer-auth.js";
@@ -238,7 +248,18 @@ export async function loginHandler(
     // (totpVerified=false), let the client know via `needsTotp: true`,
     // and require a /totp/verify call before this session can reach
     // protected routes.
-    const needsTotp = u.totpEnrolledAt !== null && u.totpSecret !== null;
+    // A browser this user trusted after a TOTP code (≤ 30 days ago)
+    // skips step 2. Someone else's cookie never counts.
+    const totpRequired = u.totpEnrolledAt !== null && u.totpSecret !== null;
+    const trustedDevice =
+      totpRequired &&
+      (await checkTrustedDevice(
+        await getTrustedDevicesCollection(),
+        readTrustedCookie(req),
+        u._id,
+        now,
+      ));
+    const needsTotp = totpRequired && !trustedDevice;
 
     const { sessionId } = await mintSession({
       userId: u._id,
@@ -261,7 +282,7 @@ export async function loginHandler(
       action: "auth.login",
       targetType: "user",
       targetId: u._id.toHexString(),
-      after: { needsTotp },
+      after: { needsTotp, trustedDevice },
       ...meta,
     });
 
@@ -907,6 +928,7 @@ export async function passwordResetHandler(
     // request has no session (public endpoint), so we don't mint a
     // new one — the user lands at /login.
     await destroySessionsForUser(user._id);
+    await revokeTrustedDevices(await getTrustedDevicesCollection(), user._id);
 
     // Wipe any stray reset/invite tokens for this user — successful
     // reset invalidates pending links.
@@ -1027,7 +1049,7 @@ export async function totpVerifyEnrolmentHandler(
     if (!session) {
       throw new HttpError(401, "unauthenticated", "Login required.");
     }
-    const { code } = totpVerifySchema.parse(req.body);
+    const { code, trustDevice } = totpEnrolVerifySchema.parse(req.body);
 
     const users = await getUsersCollection();
     const user = await users.findOne({ _id: session.userId });
@@ -1094,6 +1116,10 @@ export async function totpVerifyEnrolmentHandler(
     // doc, which happens every request.
     if (session._id) {
       await setSessionTotpEnrolled(session._id, true);
+    }
+
+    if (trustDevice) {
+      await trustThisBrowser(res, user, req, now);
     }
 
     await writeAudit({
@@ -1193,6 +1219,11 @@ export async function totpVerifyLoginHandler(
       true,
       usedBackupCode ? new Date() : null,
     );
+
+    // Backup codes never earn trust — only a real authenticator code.
+    if (!usedBackupCode && "trustDevice" in input && input.trustDevice) {
+      await trustThisBrowser(res, user, req, new Date());
+    }
 
     await writeAudit({
       orgId: user.orgId,
@@ -1414,6 +1445,9 @@ export async function totpReenrolConfirmHandler(
       ...networkMeta(req),
     });
 
+    // New authenticator — browsers trusted under the old one re-prove.
+    await revokeTrustedDevices(await getTrustedDevicesCollection(), session.userId);
+
     res.json({ ok: true, backupCodes: result.backupCodes });
   } catch (err) {
     next(asHttpError(err));
@@ -1484,6 +1518,8 @@ export async function totpDisableHandler(
         },
       },
     );
+
+    await revokeTrustedDevices(await getTrustedDevicesCollection(), user._id);
 
     // Flip the current session's totpEnrolled flag false. Subsequent
     // requests will hit the requireTotpEnrolled gate and bounce to
@@ -1662,6 +1698,72 @@ export async function signupHandler(
     res.json({
       user: toPublicUser({ ...userDoc, _id: insertedId }),
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── trusted browsers ────────────────────────────────────────────────
+
+async function trustThisBrowser(
+  res: Response,
+  user: User,
+  req: Request,
+  now: Date,
+): Promise<void> {
+  const meta = networkMeta(req);
+  const token = await issueTrustedDevice(await getTrustedDevicesCollection(), {
+    orgId: user.orgId,
+    userId: user._id,
+    ip: meta.ip,
+    userAgent: meta.ua,
+    now,
+  });
+  setTrustedCookie(res, token);
+}
+
+/** GET /auth/trusted-devices — how many browsers skip the TOTP prompt. */
+export async function trustedDevicesCountHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const count = await countTrustedDevices(
+      await getTrustedDevicesCollection(),
+      req.session!.userId,
+      new Date(),
+    );
+    res.json({ count });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** DELETE /auth/trusted-devices — forget every trusted browser. */
+export async function trustedDevicesForgetHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session!;
+    const removed = await revokeTrustedDevices(
+      await getTrustedDevicesCollection(),
+      session.userId,
+    );
+    clearTrustedCookie(res);
+    await writeAudit({
+      orgId: session.orgId,
+      actorUserId: session.userId,
+      actorRole: session.role,
+      action: "auth.trusted_devices_forgotten",
+      targetType: "user",
+      targetId: session.userId.toHexString(),
+      after: { removed },
+      ...networkMeta(req),
+    });
+    res.json({ ok: true, removed });
   } catch (err) {
     next(err);
   }

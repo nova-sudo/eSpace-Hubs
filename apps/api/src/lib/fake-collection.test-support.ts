@@ -56,6 +56,7 @@ function matchCond(value: unknown, cond: unknown): boolean {
     if ("$ne" in c && eq(value, c.$ne)) return false;
     if ("$exists" in c && (value !== undefined) !== Boolean(c.$exists)) return false;
     if ("$lt" in c && !(value != null && compare(value, c.$lt) < 0)) return false;
+    if ("$gt" in c && !(value != null && compare(value, c.$gt) > 0)) return false;
     if ("$gte" in c && !(value != null && compare(value, c.$gte) >= 0)) return false;
     return true;
   }
@@ -206,6 +207,16 @@ export class FakeCollection {
     if (i < 0) return { deletedCount: 0 };
     this.docs.splice(i, 1);
     return { deletedCount: 1 };
+  }
+
+  async deleteMany(filter: Doc) {
+    const before = this.docs.length;
+    this.docs = this.docs.filter((d) => !matches(d, filter));
+    return { deletedCount: before - this.docs.length };
+  }
+
+  async countDocuments(filter: Doc = {}) {
+    return this.docs.filter((d) => matches(d, filter)).length;
   }
 }
 

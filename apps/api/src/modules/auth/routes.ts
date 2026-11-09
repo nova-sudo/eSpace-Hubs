@@ -67,6 +67,8 @@ import {
   totpReenrolStartHandler,
   totpVerifyEnrolmentHandler,
   totpVerifyLoginHandler,
+  trustedDevicesCountHandler,
+  trustedDevicesForgetHandler,
   updateMeHandler,
   verifyEmailHandler,
 } from "./controller.js";
@@ -155,6 +157,8 @@ authRouter.post(
 
 // ─── authenticated, full session + enrolment required ────────────────
 authRouter.post("/totp/disable", requireAuth(), totpDisableHandler);
+authRouter.get("/trusted-devices", requireAuth(), trustedDevicesCountHandler);
+authRouter.delete("/trusted-devices", requireAuth(), trustedDevicesForgetHandler);
 // Same limiter as /totp/verify — the body carries a 6-digit code, so it
 // is as guessable as the login step.
 authRouter.post(

@@ -39,6 +39,7 @@ import {
   getOrgsCollection,
   getSessionsCollection,
   getSnapshotsCollection,
+  getTrustedDevicesCollection,
   getUsersCollection,
 } from "../../db/collections.js";
 import type {
@@ -56,6 +57,7 @@ import { appOrigin } from "../auth/controller.js";
 import { sendVerificationEmail } from "../auth/signup-policy.js";
 import { emailService } from "../../lib/email.js";
 import { mintToken } from "../../lib/tokens.js";
+import { revokeTrustedDevices } from "../auth/trusted-devices.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import {
   createSignupCodeSchema,
@@ -492,6 +494,11 @@ export async function updateUserHandler(
       );
     }
 
+    // A disabled account must not come back through a trusted browser.
+    if (diff.set.status === "disabled") {
+      await revokeTrustedDevices(await getTrustedDevicesCollection(), targetId);
+    }
+
     // The role changed under this user — push it into any of THEIR live
     // sessions immediately (mirrors setSessionTotpEnrolled). Without this,
     // requireRole() keeps authorizing off the stale role captured at their
@@ -661,6 +668,9 @@ export async function resetUserTotpHandler(
       after: { totpEnrolledAt: null },
       ...networkMeta(req),
     });
+
+    // Browsers trusted under the old authenticator must re-prove.
+    await revokeTrustedDevices(await getTrustedDevicesCollection(), targetId);
 
     res.json({ user: toPublicUser(updated), reset: true });
   } catch (err) {

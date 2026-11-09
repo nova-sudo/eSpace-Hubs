@@ -162,6 +162,11 @@ const totpCode = z.string().regex(/^\d{6}$/, "code must be 6 digits");
 export const totpVerifySchema = z.object({ code: totpCode });
 export type TotpVerifyInput = z.infer<typeof totpVerifySchema>;
 
+/** POST /totp/verify-enrolment — the first code, optionally trusting this browser. */
+export const totpEnrolVerifySchema = totpVerifySchema.extend({
+  trustDevice: z.boolean().optional(),
+});
+
 export const totpDisableSchema = z.object({ code: totpCode });
 export type TotpDisableInput = z.infer<typeof totpDisableSchema>;
 
@@ -179,7 +184,13 @@ const backupCode = z
  * authenticator `code` or a single-use `backupCode`.
  */
 export const totpLoginVerifySchema = z.union([
-  z.object({ code: totpCode, backupCode: z.undefined().optional() }),
+  // trustDevice: remember this browser for 30 days (TOTP codes only —
+  // the backup-code variant has no such field on purpose).
+  z.object({
+    code: totpCode,
+    backupCode: z.undefined().optional(),
+    trustDevice: z.boolean().optional(),
+  }),
   z.object({ backupCode, code: z.undefined().optional() }),
 ]);
 export type TotpLoginVerifyInput = z.infer<typeof totpLoginVerifySchema>;

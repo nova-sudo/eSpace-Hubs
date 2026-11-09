@@ -24,6 +24,7 @@ import type {
   CompanionPairing,
   EvidenceItem,
   GithubLink,
+  TrustedDevice,
   GoalContextDoc,
   GoalCycleArchive,
   GoalInputEntry,
@@ -227,6 +228,13 @@ export async function getGithubLinksCollection(): Promise<
 > {
   const db = await getDb();
   return db.collection<GithubLink>("github_links");
+}
+
+export async function getTrustedDevicesCollection(): Promise<
+  Collection<TrustedDevice>
+> {
+  const db = await getDb();
+  return db.collection<TrustedDevice>("trusted_devices");
 }
 
 export async function getAssignedGoalsCollection(): Promise<
@@ -785,6 +793,13 @@ async function ensureIndexes(): Promise<void> {
       unique: true,
       name: "notification_prefs_org_user_uniq",
     },
+  ]);
+
+  const trustedDevices = await getTrustedDevicesCollection();
+  await trustedDevices.createIndexes([
+    { key: { userId: 1 }, name: "trusted_devices_user" },
+    { key: { tokenHash: 1 }, unique: true, name: "trusted_devices_hash_uniq" },
+    { key: { expiresAt: 1 }, expireAfterSeconds: 0, name: "trusted_devices_ttl" },
   ]);
 
   const githubLinks = await getGithubLinksCollection();

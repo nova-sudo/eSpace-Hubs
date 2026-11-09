@@ -31,6 +31,7 @@ import {
 } from "./manager-goal-verdicts.schema.js";
 import { goalTierPoliciesValidator } from "./goal-tier-policies.schema.js";
 import { schedulerStampsValidator } from "./scheduler-stamps.schema.js";
+import { trustedDevicesValidator } from "./trusted-devices.schema.js";
 import { assignedGoalsValidator } from "./assigned-goals.schema.js";
 import { notificationPrefsValidator } from "./notification-prefs.schema.js";
 import { managerReportNotesValidator } from "./manager-report-notes.schema.js";
@@ -75,4 +76,5 @@ export const COLLECTION_DEFS: readonly CollectionDef[] = [
   { name: "notification_prefs", validator: notificationPrefsValidator },
   { name: "manager_report_notes", validator: managerReportNotesValidator },
   { name: "github_links", validator: githubLinksValidator },
+  { name: "trusted_devices", validator: trustedDevicesValidator },
 ] as const;

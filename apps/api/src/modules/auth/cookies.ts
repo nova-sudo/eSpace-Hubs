@@ -19,7 +19,7 @@
  * `domain: ".espace.test"` here.
  */
 
-import type { CookieOptions, Response } from "express";
+import type { CookieOptions, Request, Response } from "express";
 import { isProd } from "../../config/env.js";
 import { SESSION_TTL_MS } from "./session.js";
 
@@ -42,4 +42,26 @@ export function setSessionCookie(res: Response, sessionId: string): void {
 
 export function clearSessionCookie(res: Response): void {
   res.clearCookie(SESSION_COOKIE_NAME, baseOptions);
+}
+
+// ─── trusted browser (skip TOTP for 30 days) ─────────────────────────
+
+export const TRUSTED_COOKIE_NAME = "dh_trusted";
+const TRUSTED_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+export function setTrustedCookie(res: Response, token: string): void {
+  res.cookie(TRUSTED_COOKIE_NAME, token, {
+    ...baseOptions,
+    maxAge: TRUSTED_COOKIE_MAX_AGE_MS,
+  });
+}
+
+export function clearTrustedCookie(res: Response): void {
+  res.clearCookie(TRUSTED_COOKIE_NAME, baseOptions);
+}
+
+/** The signed `dh_trusted` value, or null when absent / tampered. */
+export function readTrustedCookie(req: Request): string | null {
+  const v = req.signedCookies?.[TRUSTED_COOKIE_NAME];
+  return typeof v === "string" && v ? v : null;
 }

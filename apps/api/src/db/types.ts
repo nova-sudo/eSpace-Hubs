@@ -1585,3 +1585,22 @@ export interface ManagerReportNote {
   createdAt: Date;
   updatedAt: Date;
 }
+
+// ─── trusted browsers (skip TOTP for 30 days) ────────────────────────
+
+/**
+ * One browser a user chose to trust after a successful TOTP code.
+ * The browser holds a random token in the `dh_trusted` cookie; only
+ * its sha256 lives here. TTL index on `expiresAt` reaps old rows.
+ */
+export interface TrustedDevice {
+  _id: ObjectId;
+  orgId: ObjectId;
+  userId: ObjectId;
+  tokenHash: string;
+  userAgent: string | null;
+  ip: string | null;
+  createdAt: Date;
+  lastUsedAt: Date;
+  expiresAt: Date;
+}
