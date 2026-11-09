@@ -24,6 +24,8 @@ function setup(status: User["status"]) {
   const token = { _id: "h", userId, kind: "email_verify" } as unknown as AuthToken;
   const deps = {
     redeem: async (t: string) => (t === "good" ? token : null),
+    // "used" = a link that was already redeemed (double click, mail scanner).
+    findAny: async (t: string) => (t === "good" || t === "used" ? token : null),
     users: asCollection<any>(users),
     sessions: asCollection<any>(sessions),
     now: () => NOW,
@@ -70,6 +72,20 @@ test("disabled user cannot be verified", async () => {
   const { deps } = setup("disabled");
   await assert.rejects(
     () => verifyEmail(deps, "good"),
+    (err: unknown) => err instanceof HttpError && err.code === "invalid_token",
+  );
+});
+
+test("already-used link for a now-active user is already_verified, not an error", async () => {
+  const { deps } = setup("active");
+  const r = await verifyEmail(deps, "used");
+  assert.equal(r.status, "already_verified");
+});
+
+test("already-used link for a still-unverified user stays invalid", async () => {
+  const { deps } = setup("pending_email");
+  await assert.rejects(
+    () => verifyEmail(deps, "used"),
     (err: unknown) => err instanceof HttpError && err.code === "invalid_token",
   );
 });

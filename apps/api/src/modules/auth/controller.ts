@@ -45,6 +45,7 @@ import {
   PASSWORD_RESET_TTL_MS,
   deleteTokensFor,
   mintToken,
+  findTokenAnyState,
   redeemToken,
 } from "../../lib/tokens.js";
 import {
@@ -54,6 +55,7 @@ import {
   sendVerificationEmail,
 } from "./signup-policy.js";
 import { verifyEmail } from "./email-verification.js";
+import { loginSessionFlags } from "./login-flags.js";
 import {
   checkTrustedDevice,
   countTrustedDevices,
@@ -259,8 +261,11 @@ export async function loginHandler(
         u._id,
         now,
       ));
-    const needsTotp = totpRequired && !trustedDevice;
+    const flags = loginSessionFlags(u, trustedDevice);
+    const { needsTotp } = flags;
 
+    // Pin TOTP-enrolment and email-verification state at mint time —
+    // requireAuth reads both on every request without a user lookup.
     const { sessionId } = await mintSession({
       userId: u._id,
       orgId: u.orgId,
@@ -268,10 +273,9 @@ export async function loginHandler(
       roles: effectiveRoles(u),
       ip: meta.ip,
       userAgent: meta.ua,
-      totpVerified: !needsTotp,
-      // Pin the enrolment state at mint time. requireTotpEnrolled
-      // reads this on every subsequent request without a user lookup.
-      totpEnrolled: u.totpEnrolledAt !== null,
+      totpVerified: flags.totpVerified,
+      totpEnrolled: flags.totpEnrolled,
+      emailVerified: flags.emailVerified,
     });
     setSessionCookie(res, sessionId);
 
@@ -1788,6 +1792,7 @@ export async function verifyEmailHandler(
     const result = await verifyEmail(
       {
         redeem: (t) => redeemToken(t, "email_verify"),
+        findAny: (t) => findTokenAnyState(t, "email_verify"),
         users,
         sessions,
         now: () => new Date(),

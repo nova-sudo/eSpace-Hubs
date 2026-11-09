@@ -13,6 +13,12 @@ import { HttpError } from "../../middleware/error-handler.js";
 
 export interface VerifyEmailDeps {
   redeem: (token: string) => Promise<AuthToken | null>;
+  /**
+   * The token row whatever its used/expired state — lets a second click
+   * on an already-redeemed link answer "already verified" instead of
+   * an error. Never activates anyone by itself.
+   */
+  findAny: (token: string) => Promise<AuthToken | null>;
   users: Pick<Collection<User>, "findOne" | "findOneAndUpdate">;
   sessions: Pick<Collection<Session>, "updateMany">;
   now: () => Date;
@@ -32,7 +38,18 @@ export async function verifyEmail(
   token: string,
 ): Promise<VerifyEmailResult> {
   const redeemed = await deps.redeem(token);
-  if (!redeemed) throw invalid();
+  if (!redeemed) {
+    // Used or expired. If its user is active anyway (link clicked
+    // twice, or pre-opened by a mail scanner), say so — the person
+    // just needs to sign in. Anyone still unverified gets the error
+    // and can request a new link.
+    const seen = await deps.findAny(token);
+    const owner = seen ? await deps.users.findOne({ _id: seen.userId }) : null;
+    if (owner && owner.status === "active") {
+      return { status: "already_verified", user: owner };
+    }
+    throw invalid();
+  }
 
   const user = await deps.users.findOne({ _id: redeemed.userId });
   if (!user || user.status === "disabled" || user.status === "invited") throw invalid();

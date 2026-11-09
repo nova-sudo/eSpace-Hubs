@@ -133,6 +133,20 @@ export async function redeemToken(
  * (e.g. "this user just changed their password — kill any pending
  * resets").
  */
+/**
+ * Look a token up by plaintext WITHOUT redeeming it, whatever its
+ * used / expired state. Read-only; callers must not grant anything
+ * from it (email verification uses it only to say "already verified").
+ */
+export async function findTokenAnyState(
+  plaintextCandidate: string,
+  expectedKind: AuthTokenKind,
+): Promise<AuthToken | null> {
+  if (typeof plaintextCandidate !== "string" || !plaintextCandidate) return null;
+  const col = await getAuthTokensCollection();
+  return col.findOne({ _id: hashToken(plaintextCandidate), kind: expectedKind });
+}
+
 export async function deleteTokensFor(
   userId: ObjectId,
   kind?: AuthTokenKind,

@@ -21,6 +21,7 @@ import { apiGet } from "@/lib/api-client";
 import { useSession } from "@/features/auth";
 import { onHubsRefetch, resetHubsStore, setHubsState, getHubsState } from "./hubs-store";
 import { clearActivePick } from "./hub-pick-store.js";
+import { canFetchHubs } from "./hubs-fetch-gate.js";
 
 const LOG_PREFIX = "[hubs-fetcher]";
 
@@ -56,6 +57,10 @@ export function HubsFetcher() {
       }
       return;
     }
+
+    // Unverified email: the API admits nothing but /auth/me until the
+    // link is opened. Fetch once they're verified (status changes).
+    if (!canFetchHubs(user)) return;
 
     if (lastUserIdRef.current === user.id) {
       // Already fetched for this user. Future invalidation hooks
