@@ -29,6 +29,7 @@ import {
   toPublicEngagementConfig,
 } from "../../lib/engagement-config.js";
 import { emailService } from "../../lib/email.js";
+import { appOrigin } from "../../lib/app-url.js";
 import {
   renderInviteEmail,
   renderPasswordResetEmail,
@@ -506,22 +507,6 @@ const DUMMY_HASH =
 export { type ObjectId };
 
 // ─── POST /api/v1/auth/invite (admin-only) ───────────────────────────
-
-/**
- * App origin used to build absolute URLs in outbound emails. Without
- * this the invite/reset links would be relative — fine inside the app,
- * useless in an email client.
- *
- * Set APP_URL (or NEXT_PUBLIC_APP_URL as a fallback) in production.
- * Defaults to localhost:3000 for dev.
- */
-function appOrigin(): string {
-  const raw =
-    process.env.APP_URL?.trim() ||
-    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-    "http://localhost:3000";
-  return raw.replace(/\/$/, "");
-}
 
 /**
  * Public URL the user clicks to accept an invite. Frontend renders the
