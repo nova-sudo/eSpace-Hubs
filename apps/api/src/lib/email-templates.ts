@@ -154,3 +154,44 @@ export function renderPasswordResetEmail(vars: PasswordResetVars): {
     html: shell({ preheader: `Reset your eSpace Dev Hub password`, bodyHtml }),
   };
 }
+
+interface VerifyEmailVars {
+  displayName: string;
+  orgName: string;
+  verifyUrl: string;
+}
+
+export function renderVerifyEmail(vars: VerifyEmailVars): {
+  subject: string;
+  text: string;
+  html: string;
+} {
+  const subject = `Confirm your email for ${vars.orgName} on eSpace Dev Hub`;
+  const text = [
+    `Hi ${vars.displayName},`,
+    ``,
+    `Confirm your email to finish setting up your ${vars.orgName} account on eSpace Dev Hub:`,
+    vars.verifyUrl,
+    ``,
+    `This link expires in 24 hours. You can ask for a new one from the sign-in screen.`,
+    ``,
+    `If you didn't sign up, ignore this message — nothing happens until the link is opened.`,
+  ].join("\n");
+  const bodyHtml = `
+    <p style="margin:0 0 12px 0;">Hi ${esc(vars.displayName)},</p>
+    <p style="margin:0 0 16px 0;">Confirm your email to finish setting up your <strong>${esc(vars.orgName)}</strong> account on eSpace Dev Hub.</p>
+    <p style="margin:0 0 24px 0;">
+      <a href="${esc(vars.verifyUrl)}" style="display:inline-block;padding:10px 18px;background:#0a7a5a;color:#ffffff;text-decoration:none;border-radius:4px;font-weight:600;font-size:13px;">
+        Confirm my email
+      </a>
+    </p>
+    <p style="margin:0 0 8px 0;font-size:12px;color:#6e6a5e;">Or paste this link into your browser:</p>
+    <p style="margin:0 0 16px 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all;color:#3a3833;">${esc(vars.verifyUrl)}</p>
+    <p style="margin:0;color:#6e6a5e;font-size:12px;">This link expires in 24 hours.</p>
+  `;
+  return {
+    subject,
+    text,
+    html: shell({ preheader: `Confirm your eSpace Dev Hub email`, bodyHtml }),
+  };
+}

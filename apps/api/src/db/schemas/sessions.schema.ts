@@ -54,6 +54,7 @@ export const sessionsValidator: Document = {
       // startup migration `backfill-totp-enrolled-sessions` backfills
       // pre-existing rows.
       totpEnrolled: { bsonType: ["bool", "null"] },
+      emailVerified: { bsonType: ["bool", "null"] },
       // Set when login step 2 was cleared with a backup code — the
       // lost-phone re-enrol shortcut reads it. Optional/nullable.
       verifiedWithBackupCodeAt: { bsonType: ["date", "null"] },

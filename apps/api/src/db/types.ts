@@ -111,12 +111,14 @@ export const ALL_USER_ROLES: readonly UserRole[] = [
 export type UserStatus =
   | "invited"
   | "pending_admin"
+  | "pending_email"
   | "active"
   | "disabled";
 
 export const ALL_USER_STATUSES: readonly UserStatus[] = [
   "invited",
   "pending_admin",
+  "pending_email",
   "active",
   "disabled",
 ] as const;
@@ -224,6 +226,13 @@ export interface User {
    * /onboarding regardless of which URL they typed.
    */
   onboardingCompletedAt?: Date | null;
+  /**
+   * Set when a self-signup clicks the emailed verification link
+   * (status `pending_email` → `active`). Null for unverified
+   * self-signups; missing on invited / pre-existing users, whose
+   * ownership was proven by the invite link.
+   */
+  emailVerifiedAt?: Date | null;
   /**
    * Free-text employee identifier the user types in onboarding.
    * Distinct from `zohoEmployeeId` (canonical, set by Zoho sync in
@@ -350,6 +359,12 @@ export interface Session {
    * `mintSession` calls always write it.
    */
   totpEnrolled?: boolean;
+  /**
+   * `false` while the user is `pending_email` — requireAuth then only
+   * admits routes that opt out. `undefined` (legacy sessions) counts
+   * as verified. Flipped for every session of the user on verify.
+   */
+  emailVerified?: boolean;
   /**
    * When this session cleared login step 2 with a BACKUP code (null /
    * absent for an authenticator code). Lets the lost-phone path start
@@ -1461,11 +1476,12 @@ export interface CompanionPairing {
 
 // ─── auth tokens (invites + password resets) ────────────────────────
 
-export type AuthTokenKind = "invite" | "password_reset";
+export type AuthTokenKind = "invite" | "password_reset" | "email_verify";
 
 export const ALL_AUTH_TOKEN_KINDS: readonly AuthTokenKind[] = [
   "invite",
   "password_reset",
+  "email_verify",
 ] as const;
 
 export interface AuthToken {

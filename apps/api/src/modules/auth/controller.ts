@@ -45,6 +45,12 @@ import {
   mintToken,
   redeemToken,
 } from "../../lib/tokens.js";
+import {
+  configuredFreeDomains,
+  newSelfSignupUser,
+  resolveSignupGate,
+  sendVerificationEmail,
+} from "./signup-policy.js";
 import { logger } from "../../lib/logger.js";
 import {
   buildProvisioningUri,
@@ -1536,16 +1542,27 @@ export async function signupHandler(
       signupSchema.parse(req.body);
 
     const now = new Date();
-    const orgs = await getOrgsCollection();
-    const org = await orgs.findOne({
-      signupCodes: {
-        $elemMatch: {
-          code: signupCode,
-          disabledAt: null,
-          $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
-        },
-      },
+    const gate = resolveSignupGate({
+      email,
+      signupCode,
+      freeDomains: configuredFreeDomains(),
     });
+    const orgs = await getOrgsCollection();
+    // Free-domain signups join the deployment's org (single-org, same
+    // assumption as the invite flow); everyone else is placed by the
+    // org whose live signup code they supplied.
+    const org =
+      gate.kind === "free"
+        ? await orgs.findOne({}, { sort: { createdAt: 1 } })
+        : await orgs.findOne({
+            signupCodes: {
+              $elemMatch: {
+                code: gate.code,
+                disabledAt: null,
+                $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
+              },
+            },
+          });
     if (!org) {
       throw new HttpError(
         400,
@@ -1565,53 +1582,21 @@ export async function signupHandler(
     }
 
     const passwordHash = await hashPassword(password);
-    const userDoc: User = {
-      _id: undefined as unknown as ObjectId, // assigned by Mongo on insert
+    const userDoc = newSelfSignupUser({
       orgId: org._id,
       email,
       passwordHash,
-      // Legacy single-role field needs a value (until the migration
-      // drops it). "member" is the lowest-privilege known role and
-      // confers no hub access on its own — admin assigns real role(s)
-      // during approval.
-      role: "member",
-      roles: null,
-      status: "pending_admin",
-      totpSecret: null,
-      totpEnrolledAt: null,
-      zohoEmployeeId: null,
-      managerId: null,
-      level: null,
-      hireDate: null,
       displayName,
-      createdAt: now,
-      updatedAt: now,
-      invitedBy: null,
-      invitedAt: null,
-      lastLoginAt: now,
-      failedLoginAttempts: 0,
-      lockedUntil: null,
-      // Hub access is empty — AuthGuard will trap them at the
-      // /waiting-approval screen after they finish TOTP + onboarding.
-      allowedHubs: [],
-      primaryHub: null,
-      // Onboarding NOT yet complete — guard routes them through
-      // /totp-setup → /onboarding → /waiting-approval.
-      onboardingCompletedAt: null,
-      employeeId: null,
-      department: null,
-      engagement: null,
-    };
+      now,
+    }) as User;
 
     let insertedId: ObjectId;
     try {
       const result = await users.insertOne(userDoc);
       insertedId = result.insertedId;
     } catch (err) {
-      // Race: another signup landed the same email a millisecond
-      // before us, or the email had a leading-zero unique-index
-      // conflict. Surface as "email_taken" to match the explicit
-      // pre-check above so we never reveal the timing.
+      // Race: another signup landed the same email first. Same generic
+      // answer as the pre-check so timing reveals nothing.
       if (err && typeof err === "object" && "code" in err && err.code === 11000) {
         throw new HttpError(
           400,
@@ -1622,15 +1607,17 @@ export async function signupHandler(
       throw err;
     }
 
-    // Bump the code's usedCount so admins see traction on each code.
-    await orgs.updateOne(
-      { _id: org._id, "signupCodes.code": signupCode },
-      { $inc: { "signupCodes.$.usedCount": 1 }, $set: { updatedAt: now } },
-    );
+    if (gate.kind === "code") {
+      // Bump the code's usedCount so admins see traction on each code.
+      await orgs.updateOne(
+        { _id: org._id, "signupCodes.code": gate.code },
+        { $inc: { "signupCodes.$.usedCount": 1 }, $set: { updatedAt: now } },
+      );
+    }
 
-    // Mint a session. totpVerified=true because there's nothing to
-    // verify yet (no enrolment); totpEnrolled=false trips the
-    // /totp-setup gate downstream.
+    // Session: nothing to TOTP-verify yet (totpEnrolled=false trips
+    // /totp-setup later); emailVerified=false keeps every route except
+    // me / logout / resend-verification closed until the link is opened.
     const meta = networkMeta(req);
     const { sessionId } = await mintSession({
       userId: insertedId,
@@ -1641,8 +1628,26 @@ export async function signupHandler(
       userAgent: meta.ua,
       totpVerified: true,
       totpEnrolled: false,
+      emailVerified: false,
     });
     setSessionCookie(res, sessionId);
+
+    const sent = await sendVerificationEmail(
+      {
+        mintToken,
+        send: (m) => emailService.send(m),
+        appUrl: appOrigin(),
+        orgName: org.name,
+      },
+      { _id: insertedId, orgId: org._id, email, displayName },
+      meta,
+    );
+    if (!sent.ok) {
+      logger.warn(
+        { email, reason: sent.reason },
+        "[auth.signup] verification email failed — user can resend from the inbox screen",
+      );
+    }
 
     await writeAudit({
       orgId: org._id,
@@ -1651,7 +1656,12 @@ export async function signupHandler(
       action: "user.signup",
       targetType: "user",
       targetId: insertedId.toHexString(),
-      after: { email, signupCodeUsed: signupCode },
+      after: {
+        email,
+        freeDomain: gate.kind === "free",
+        ...(gate.kind === "code" ? { signupCodeUsed: gate.code } : {}),
+        verificationEmailSent: sent.ok,
+      },
       ...meta,
     });
 

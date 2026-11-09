@@ -99,7 +99,9 @@ export const signupSchema = z.object({
   email,
   password: newPassword,
   displayName,
-  signupCode: z.string().min(4).max(64),
+  // Optional: free-domain emails (SIGNUP_FREE_DOMAINS) sign up without
+  // one; everyone else still needs it (signup_code_required).
+  signupCode: z.string().max(64).optional(),
 });
 export type SignupInput = z.infer<typeof signupSchema>;
 

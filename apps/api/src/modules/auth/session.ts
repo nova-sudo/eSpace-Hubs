@@ -67,6 +67,7 @@ export interface MintSessionInput {
    * controller passes an explicit value.
    */
   totpEnrolled?: boolean;
+  emailVerified?: boolean;
 }
 
 /** Mint a new session and return the cookie-bound id. */
@@ -91,6 +92,7 @@ export async function mintSession(input: MintSessionInput): Promise<{
     userAgent: input.userAgent,
     totpVerified: input.totpVerified ?? true,
     totpEnrolled: input.totpEnrolled ?? true,
+    emailVerified: input.emailVerified ?? true,
   };
 
   const col = await getSessionsCollection();
