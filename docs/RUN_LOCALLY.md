@@ -229,6 +229,51 @@ seeing slow rebuilds, double-check that `.dockerignore` excludes
 
 ---
 
+## Seeding a demo account
+
+The scripts in `apps/api/scripts/` build a showcase account. Each one is
+scoped to one user (by email), reads `MONGO_URI` / `MONGO_DB_NAME`, and
+can be re-run. Run them in this order:
+
+```bash
+export MONGO_URI=mongodb://localhost:27017 MONGO_DB_NAME=devhub-dev
+
+# 1. Start clean (writes an EJSON backup of everything it deletes)
+node apps/api/scripts/wipe-user-data.mjs you@espace.com backup.json
+# 2. Every widget kind, with sample entries
+node apps/api/scripts/seed-demo-account.mjs you@espace.com
+# 3. Label / ticket / query-template goals (dry run without --apply)
+node apps/api/scripts/seed-label-goals-demo.mjs you@espace.com --apply
+# 4. A shared goal with two demo assignees (dry run without --apply)
+node apps/api/scripts/seed-shared-goals-demo.mjs you@espace.com --apply
+# 5. The GitHub-links layer: real issues in a throwaway repo
+GITHUB_TOKEN=... node apps/api/scripts/seed-github-demo.mjs you@espace.com \
+  --repo you/espace-demo [--manager your-manager@espace.com] [--dry-run]
+```
+
+`seed-github-demo.mjs` adds an L1 `DEMO-GH` with two approved composed
+trackers. It publishes one of them to `--repo` as real issues (closed,
+open and overdue, not planned), merges a PR that closes period 0, and
+writes the matching `github_links` rows, readings and a starred PR, so
+the correlation report shows `closed_no_evidence`, `open_past_deadline`
+and `evidence_no_issue`. The other tracker is left unpublished so you
+can press Publish during the demo. With `--manager` (it must be the
+user's `managerId`) it also adds a shared 1:1 note and a grade, posts
+both as issue comments, and creates a shared goal that asks for GitHub
+issues.
+
+- **Token:** a classic PAT with `repo`, or a fine-grained token on that
+  repo with Issues, Pull requests and Contents set to read and write.
+  `GITHUB_MANAGER_TOKEN` (optional) posts the manager's comments as a
+  different GitHub user.
+- **Repo:** use a throwaway one. The script commits a file and merges a
+  PR into the side branch `espace-demo/base`, never the default branch.
+- **`--dry-run`** does everything except the GitHub calls, using
+  made-up issue numbers. Those links point nowhere, so the hourly sync
+  marks them missing. Set `GITHUB_LINKS_SYNC=false` to keep them.
+
+---
+
 ## When to stop using this
 
 If/when Crealogix IT exposes their internal GitLab via a public
