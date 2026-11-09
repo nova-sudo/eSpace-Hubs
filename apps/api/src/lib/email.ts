@@ -1,11 +1,12 @@
 /**
  * Email transport for the API.
  *
- * Two modes, picked at module-load time based on env:
+ * Three modes, picked at module-load time based on env (first match wins):
  *
- *   1. log        — RESEND_API_KEY unset. Renders the email to the
- *                   structured log and returns ok. Default for fresh
- *                   dev checkouts that don't have a Resend account.
+ *   1. smtp       — SMTP_HOST + SMTP_USER + SMTP_PASS set. Sends via
+ *                   nodemailer. With Gmail: SMTP_HOST=smtp.gmail.com and
+ *                   SMTP_PASS = a Google App Password
+ *                   (https://myaccount.google.com/apppasswords).
  *
  *   2. resend     — RESEND_API_KEY set. Sends via Resend. Within this
  *                   mode RESEND_DOMAIN_MODE picks the From identity:
@@ -15,6 +16,10 @@
  *                     - verified → RESEND_FROM_EMAIL on an MX/DKIM-
  *                                  verified domain. Production path.
  *
+ *   3. log        — neither configured. Renders the email to the
+ *                   structured log and returns ok. Default for fresh
+ *                   dev checkouts.
+ *
  * Failures are surfaced via the return value, not thrown. Auth flows
  * (invite, password reset) call this in best-effort mode — the user
  * sees "request received" regardless, and ops sees the failure in
@@ -23,6 +28,7 @@
  * look the same to the caller).
  */
 
+import nodemailer, { type Transporter } from "nodemailer";
 import { Resend } from "resend";
 import { logger } from "./logger.js";
 
@@ -56,10 +62,80 @@ class LogEmailService implements EmailService {
         subject: msg.subject,
         textPreview: msg.text.slice(0, 500),
       },
-      "[email] dev-mode would send (RESEND_API_KEY not set)",
+      "[email] dev-mode would send (no SMTP_* or RESEND_API_KEY set)",
     );
     return { ok: true as const };
   }
+}
+
+// ─── SMTP transport (nodemailer) ──────────────────────────────────────
+
+interface SmtpConfig {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
+  from: string;
+}
+
+class SmtpEmailService implements EmailService {
+  private transporter: Transporter;
+  private from: string;
+
+  constructor(cfg: SmtpConfig) {
+    this.transporter = nodemailer.createTransport({
+      host: cfg.host,
+      port: cfg.port,
+      secure: cfg.secure,
+      auth: { user: cfg.user, pass: cfg.pass },
+    });
+    this.from = cfg.from;
+  }
+
+  async send(msg: EmailMessage): Promise<EmailResult> {
+    try {
+      const info = await this.transporter.sendMail({
+        from: this.from,
+        to: msg.to,
+        subject: msg.subject,
+        text: msg.text,
+        ...(msg.html ? { html: msg.html } : {}),
+        ...(msg.replyTo ? { replyTo: msg.replyTo } : {}),
+      });
+      logger.info(
+        { mode: "smtp", to: msg.to, subject: msg.subject, id: info.messageId },
+        "[email] sent",
+      );
+      return { ok: true, ...(info.messageId ? { id: info.messageId } : {}) };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(
+        { mode: "smtp", to: msg.to, subject: msg.subject, message },
+        "[email] smtp send threw",
+      );
+      return { ok: false, reason: message };
+    }
+  }
+}
+
+function buildSmtpService(): EmailService | null {
+  const host = process.env.SMTP_HOST?.trim();
+  const user = process.env.SMTP_USER?.trim();
+  // Google shows App Passwords as "abcd efgh ijkl mnop" — strip the spaces.
+  const pass = process.env.SMTP_PASS?.replace(/\s+/g, "");
+  if (!host || !user || !pass) return null;
+  const port = Number(process.env.SMTP_PORT?.trim() || 465);
+  const secureEnv = process.env.SMTP_SECURE?.trim().toLowerCase();
+  const secure = secureEnv ? secureEnv === "true" : port === 465;
+  const fromName =
+    process.env.SMTP_FROM_NAME?.trim() ||
+    process.env.RESEND_FROM_NAME?.trim() ||
+    "eSpace Dev Hub";
+  const fromEmail = process.env.SMTP_FROM_EMAIL?.trim() || user;
+  const from = `${fromName} <${fromEmail}>`;
+  logger.info({ mode: "smtp", host, port, secure, from }, "[email] initialising SMTP transport");
+  return new SmtpEmailService({ host, port, secure, user, pass, from });
 }
 
 // ─── Resend transport ─────────────────────────────────────────────────
@@ -134,6 +210,8 @@ class ResendEmailService implements EmailService {
 // ─── module factory ───────────────────────────────────────────────────
 
 function buildEmailService(): EmailService {
+  const smtp = buildSmtpService();
+  if (smtp) return smtp;
   const apiKey = process.env.RESEND_API_KEY?.trim();
   if (!apiKey) {
     return new LogEmailService();
