@@ -26,6 +26,10 @@
     "./github-links": {
       "types": "./src/github-links/index.d.ts",
       "default": "./src/github-links/index.js"
+    },
+    "./auth": {
+      "types": "./src/auth/index.d.ts",
+      "default": "./src/auth/index.js"
     }
   },
   "files": [
@@ -33,7 +37,7 @@
   ],
   "scripts": {
     "build": "echo 'pure-source package; no build step' && exit 0",
-    "test": "node --test src/goal-specs/cycle.test.js src/goal-specs/periods.test.js src/goal-specs/period-detail.test.js src/goal-specs/query-templates.test.js src/goal-specs/assigned-status.test.js src/goal-specs/approval.test.js src/goal-specs/windows.test.js src/hubs/registry.test.js src/goal-specs/recurring-period.test.js src/goal-specs/goal-status.test.js src/github-links/github-links.test.js src/goal-specs/ladders.test.js src/goal-specs/unique-ids.test.js"
+    "test": "node --test src/goal-specs/cycle.test.js src/goal-specs/periods.test.js src/goal-specs/period-detail.test.js src/goal-specs/query-templates.test.js src/goal-specs/assigned-status.test.js src/goal-specs/approval.test.js src/goal-specs/windows.test.js src/hubs/registry.test.js src/goal-specs/recurring-period.test.js src/goal-specs/goal-status.test.js src/github-links/github-links.test.js src/goal-specs/ladders.test.js src/goal-specs/unique-ids.test.js src/auth/signup-domain.test.js"
   },
   "dependencies": {},
   "devDependencies": {}
