@@ -26,10 +26,14 @@ function LoginInner() {
   // back 401 mid-session — the form explains the bounce instead of
   // dropping the user on a bare sign-in screen.
   const expired = params.get("reason") === "expired";
+  // `?verified=1` — arrived from the email-verification link on a
+  // browser with no session.
+  const verified = params.get("verified") === "1";
 
   return (
     <LoginForm
       expired={expired}
+      verified={verified}
       onSuccess={() => {
         // Hard-replace so the address bar reflects the destination.
         router.replace(next);

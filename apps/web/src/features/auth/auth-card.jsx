@@ -2,7 +2,7 @@
 
 /**
  * Shared shell for every auth screen (login, signup, invite, reset,
- * TOTP, waiting-approval): a centered white card on the app canvas.
+ * TOTP, verify email): a centered white card on the app canvas.
  * Local to features/auth — not a components/ui primitive, since it's
  * auth-specific chrome (design-system-v2.md section 7).
  */

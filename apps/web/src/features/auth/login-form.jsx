@@ -28,7 +28,7 @@ import { AuthCard, AuthError } from "./auth-card.jsx";
 import { useSession } from "./use-session.js";
 import { markBackupCodeLogin, moveTwoFactorHref } from "./backup-login-marker.js";
 
-export function LoginForm({ onSuccess, expired = false }) {
+export function LoginForm({ onSuccess, expired = false, verified = false }) {
   const { user, needsTotp, error, login, verifyTotp, logout, loading } =
     useSession();
   const [email, setEmail] = useState("");
@@ -95,7 +95,13 @@ export function LoginForm({ onSuccess, expired = false }) {
   const errorMessage = error ? humanizeError(error) : null;
   // A session-expiry bounce (`/login?reason=expired`) reads as a notice,
   // not a failure — it clears the moment a real auth error arrives.
-  const notice = !errorMessage && expired ? "Your session expired — sign in to continue." : null;
+  const notice = errorMessage
+    ? null
+    : expired
+      ? "Your session expired — sign in to continue."
+      : verified
+        ? "Email confirmed — sign in to continue."
+        : null;
 
   if (needsTotp) {
     return (

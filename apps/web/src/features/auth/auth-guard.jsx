@@ -35,6 +35,7 @@
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Loading } from "@/components/ui";
+import { guardTarget } from "./guard-target.js";
 import { useSession } from "./use-session.js";
 
 // Fail CLOSED: auth is required unless the flag is EXPLICITLY "false".
@@ -54,115 +55,22 @@ if (
   );
 }
 
-const TOTP_SETUP_PATH = "/totp-setup";
-const ONBOARDING_PATH = "/onboarding";
-const WAITING_APPROVAL_PATH = "/waiting-approval";
-
 export function AuthGuard({ children, fallback = null }) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, loading, needsTotp } = useSession();
 
-  const needsLoginRedirect =
-    AUTH_REQUIRED && !loading && (!user || needsTotp);
-
-  // 2FA gate: authenticated but the user has no TOTP secret on file →
-  // trap them at /totp-setup. The session is fully verified at the
-  // server level (totpVerified: true was set at login because there
-  // was nothing to verify), but app access still requires enrolment
-  // by policy. Skip when we're ALREADY on /totp-setup to avoid a
-  // redirect loop.
-  const needsTotpSetupRedirect =
-    AUTH_REQUIRED &&
-    !loading &&
-    !!user &&
-    !needsTotp &&
-    !user.totpEnrolled &&
-    pathname !== TOTP_SETUP_PATH;
-
-  // M-OB gate: authenticated, TOTP enrolled, but onboarding never
-  // completed → route to /onboarding. Skip when we're ALREADY on
-  // /onboarding. The TOTP gate above takes precedence so a user
-  // who's not enrolled gets bounced to /totp-setup first.
-  const needsOnboardingRedirect =
-    AUTH_REQUIRED &&
-    !loading &&
-    !!user &&
-    !needsTotp &&
-    !!user.totpEnrolled &&
-    !user.onboardingCompletedAt &&
-    pathname !== ONBOARDING_PATH;
-
-  // Self-signup gate: TOTP done + onboarding done, but admin hasn't
-  // promoted the user to "active" yet. Trap them at /waiting-approval
-  // regardless of which URL they typed. AuthGuard order matters: this
-  // runs LAST so the user has fully set up their account before we
-  // tell them to wait. Active users skip this branch entirely.
-  const needsApprovalRedirect =
-    AUTH_REQUIRED &&
-    !loading &&
-    !!user &&
-    !needsTotp &&
-    !!user.totpEnrolled &&
-    !!user.onboardingCompletedAt &&
-    user.status === "pending_admin" &&
-    pathname !== WAITING_APPROVAL_PATH;
-
-  // Inverse of the 2FA gate: a user who already has TOTP enrolled has
-  // nothing to do on /totp-setup (the enrol call would just 409 with
-  // totp_already_enrolled and the old copy told them to "refresh the
-  // page", which looped). Send them on to wherever the rest of the
-  // chain says they belong.
-  const needsLeaveTotpSetup =
-    AUTH_REQUIRED &&
-    !loading &&
-    !!user &&
-    !needsTotp &&
-    !!user.totpEnrolled &&
-    pathname === TOTP_SETUP_PATH;
+  // The whole redirect chain (login → verify email → 2FA setup →
+  // onboarding) lives in guard-target.js so it is testable.
+  const target =
+    AUTH_REQUIRED && !loading ? guardTarget({ user, needsTotp, pathname }) : null;
 
   useEffect(() => {
-    if (needsLoginRedirect) {
-      const target = `/login${
-        pathname && pathname !== "/login"
-          ? `?next=${encodeURIComponent(pathname)}`
-          : ""
-      }`;
-      router.replace(target);
-      return;
-    }
-    if (needsTotpSetupRedirect) {
-      router.replace(TOTP_SETUP_PATH);
-      return;
-    }
-    if (needsOnboardingRedirect) {
-      router.replace(ONBOARDING_PATH);
-      return;
-    }
-    if (needsApprovalRedirect) {
-      router.replace(WAITING_APPROVAL_PATH);
-      return;
-    }
-    if (needsLeaveTotpSetup) {
-      router.replace("/");
-    }
-  }, [
-    needsLoginRedirect,
-    needsTotpSetupRedirect,
-    needsOnboardingRedirect,
-    needsApprovalRedirect,
-    needsLeaveTotpSetup,
-    pathname,
-    router,
-  ]);
+    if (target) router.replace(target);
+  }, [target, router]);
 
   if (!AUTH_REQUIRED) return children;
-  if (loading) return fallback ?? <AuthLoading />;
-  if (!user || needsTotp) return fallback ?? <AuthLoading />;
-  if (needsTotpSetupRedirect) return fallback ?? <AuthLoading />;
-  if (needsOnboardingRedirect) return fallback ?? <AuthLoading />;
-  if (needsApprovalRedirect) return fallback ?? <AuthLoading />;
-  if (needsLeaveTotpSetup) return fallback ?? <AuthLoading />;
+  if (loading || target) return fallback ?? <AuthLoading />;
   return children;
 }
 

@@ -5,8 +5,8 @@
  *
  * On success the SignupForm pushes the new user into the session
  * store, so when we navigate away the AuthGuard sees an authenticated
- * user and walks them through /totp-setup → /onboarding →
- * /waiting-approval (status="pending_admin").
+ * user and walks them through /verify-email-pending → (link) →
+ * /totp-setup → /onboarding → their hub.
  */
 
 import { useRouter } from "next/navigation";
@@ -18,7 +18,7 @@ export default function SignupPage() {
     <SignupForm
       onSuccess={() => {
         // AuthGuard on the destination will route them through
-        // /totp-setup → /onboarding → /waiting-approval. Land on
+        // /verify-email-pending → /totp-setup → /onboarding. Land on
         // the dashboard root so that chain has a starting point.
         router.replace("/");
       }}

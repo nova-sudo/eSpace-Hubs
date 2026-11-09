@@ -3,16 +3,16 @@
 /**
  * Self-serve signup form.
  *
- *   email + password + display name + org signup code
+ *   email + password + display name (+ signup code for other domains)
  *     → POST /api/v1/auth/signup
- *     → server creates user with status="pending_admin", mints session
- *     → useSession() refresh picks up the new user
- *     → AuthGuard routes them through /totp-setup → /onboarding →
- *       /waiting-approval
+ *     → server creates a `pending_email` user, mints a session and
+ *       sends a verification link
+ *     → AuthGuard routes them to /verify-email-pending, then (after
+ *       the link) /totp-setup → /onboarding → their hub
  *
- * The signup code is the abuse-control gate. Admins distribute it
- * over secure channels — Slack/DM, not a public URL. The code lookup
- * is a single Mongo round-trip on the org doc.
+ * Free-domain emails (SIGNUP_FREE_DOMAINS, espace.com.eg) never see
+ * the code field; any other domain needs a code from an admin. The
+ * field also appears if the server answers `signup_code_required`.
  */
 
 import { useState } from "react";
@@ -22,6 +22,7 @@ import { Button, Field, Input } from "@/components/ui";
 import { AuthCard, AuthError } from "./auth-card.jsx";
 import { setSession } from "./session-store.js";
 import { clearAllUserScopedStorage } from "./clear-user-storage.js";
+import { needsSignupCode } from "./free-domains.js";
 
 // Matches accept-invite / password-reset and the API's newPassword rule.
 const MIN_PASSWORD_LENGTH = 12;
@@ -33,6 +34,8 @@ export function SignupForm({ onSuccess }) {
   const [signupCode, setSignupCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [serverWantsCode, setServerWantsCode] = useState(false);
+  const showCode = serverWantsCode || needsSignupCode(email);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -49,10 +52,11 @@ export function SignupForm({ onSuccess }) {
       email,
       password,
       displayName,
-      signupCode: signupCode.trim(),
+      ...(showCode && signupCode.trim() ? { signupCode: signupCode.trim() } : {}),
     });
     setSubmitting(false);
     if (!result.ok) {
+      if (result.error?.code === "signup_code_required") setServerWantsCode(true);
       setError(result.error);
       return;
     }
@@ -80,18 +84,18 @@ export function SignupForm({ onSuccess }) {
     !displayName.trim() && "display name",
     !email.trim() && "email",
     !password && "password",
-    !signupCode.trim() && "signup code",
+    showCode && !signupCode.trim() && "signup code",
   ].filter(Boolean);
   const canSubmit = !submitting && missing.length === 0;
 
   return (
     <AuthCard
       title="Create account"
-      lead="Map your goals, connect your sources, and build review-ready evidence. You'll need a signup code from your admin."
+      lead="Map your goals, connect your sources, and build review-ready evidence. Use your eSpace email — we'll send you a link to confirm it."
     >
       <p className="-mt-4 mb-6 text-[12.5px] leading-[1.5] text-muted-fg">
-        Next: set up two-factor authentication, fill in a short profile, then
-        an admin approves your account and picks your hub.
+        Next: open the link we email you, set up two-factor authentication,
+        and fill in a short profile. That&apos;s it — no waiting for approval.
       </p>
       <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
         <Field label="Display name">
@@ -119,7 +123,7 @@ export function SignupForm({ onSuccess }) {
           />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className={showCode ? "grid grid-cols-2 gap-3" : "flex flex-col"}>
           <Field label="Password" hint={`${MIN_PASSWORD_LENGTH}+ characters`}>
             <Input
               type="password"
@@ -132,17 +136,19 @@ export function SignupForm({ onSuccess }) {
               maxLength={256}
             />
           </Field>
-          <Field label="Signup code">
-            <Input
-              type="text"
-              value={signupCode}
-              onChange={(e) => setSignupCode(e.target.value)}
-              disabled={submitting}
-              required
-              minLength={4}
-              maxLength={64}
-            />
-          </Field>
+          {showCode ? (
+            <Field label="Signup code" hint="Not an eSpace email? Ask your admin">
+              <Input
+                type="text"
+                value={signupCode}
+                onChange={(e) => setSignupCode(e.target.value)}
+                disabled={submitting}
+                required
+                minLength={4}
+                maxLength={64}
+              />
+            </Field>
+          ) : null}
         </div>
 
         <AuthError>{errorMessage}</AuthError>
@@ -181,6 +187,8 @@ function listPhrase(items) {
 function humanizeError(error) {
   if (!error) return null;
   switch (error.code) {
+    case "signup_code_required":
+      return "This email isn't an eSpace address, so it needs a signup code from your admin.";
     case "invalid_signup_code":
       return "Signup code is invalid or expired. Ask your admin for a current one.";
     case "email_taken":

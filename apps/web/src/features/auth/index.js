@@ -12,6 +12,8 @@
  *   <RegenerateBackupCodesDialog> — Settings → Account "Generate new codes"
  *   <MoveTwoFactorDialog>        — Settings → Account "Move to a new phone"
  *   MOVE_2FA_ACTION              — `?action=` value that opens that dialog
+ *   <VerifyEmailPending>         — "check your inbox" screen (pending_email)
+ *   <VerifyEmailView>            — /verify-email?token=… link redemption
  *   <AuthGuard>                  — wraps protected page contents
  *   <SignInGate>                 — soft gate: sign-in link with ?next=, no redirect
  *   <UserChip>                   — header chip showing the session user + logout
@@ -37,7 +39,8 @@ export { MoveTwoFactorDialog } from "./move-two-factor-dialog.jsx";
 export { TotpSecretPanel } from "./totp-secret-panel.jsx";
 export { MOVE_2FA_ACTION } from "./backup-login-marker.js";
 export { SignupForm } from "./signup-form.jsx";
-export { WaitingApproval } from "./waiting-approval.jsx";
+export { VerifyEmailPending } from "./verify-email-pending.jsx";
+export { VerifyEmailView } from "./verify-email-view.jsx";
 export { AuthGuard } from "./auth-guard.jsx";
 export { SignInGate } from "./sign-in-gate.jsx";
 export { UserChip } from "./user-chip.jsx";

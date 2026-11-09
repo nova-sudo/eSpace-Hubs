@@ -147,13 +147,11 @@ export function OnboardingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [step, setStep] = useState("profile"); // "profile" | "companion"
   const requiresCompanion = user?.engagement === "crealogix";
-  const needsApproval = user?.status === "pending_admin";
 
   const steps = [
     "Security",
     "Profile",
     ...(requiresCompanion ? ["Companion"] : []),
-    ...(needsApproval ? ["Approval"] : []),
   ];
   const currentStep = step === "companion" ? 2 : 1;
 
