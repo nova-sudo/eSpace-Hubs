@@ -12,7 +12,8 @@ import { useIntegrations } from "@/features/integrations";
  *     packets — apps/api/src/modules/manager/routes.ts, gated by the
  *     MANAGER_TEAM_VIEW capability and the managerId link.
  *   - Snapshots, goals, readings and grades are server-side per account.
- *   - The only cookie is the eSpace Hubs session cookie.
+ *   - First-party cookies only: the session cookie, plus a "trusted
+ *     browser" cookie if the user ticked "Trust this browser".
  */
 const HONEST_LIST = [
   [
@@ -28,8 +29,8 @@ const HONEST_LIST = [
     "We don't track which tiles you look at, which tickets you hover, or when you open the app. Server logs record request outcomes for debugging, never your goal text.",
   ],
   [
-    "One cookie.",
-    "The only cookie we set is your eSpace Hubs session cookie. There are no third-party or advertising cookies; the GitHub sign-in uses a short-lived, browser-only state value.",
+    "Two cookies at most.",
+    "We set your eSpace Hubs session cookie and, if you ticked “Trust this browser”, a random token that skips the two-factor code here for 30 days (Settings → Account → Forget all removes it). There are no third-party or advertising cookies; the GitHub sign-in uses a short-lived, browser-only state value.",
   ],
 ];
 

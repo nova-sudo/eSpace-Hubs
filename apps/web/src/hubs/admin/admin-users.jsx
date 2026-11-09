@@ -60,7 +60,12 @@ import {
   formatDate,
   formatRelative,
 } from "./admin-lib";
-import { patchUser, resetTotp, wipeDashboardData } from "./admin-user-actions";
+import {
+  patchUser,
+  resendVerification,
+  resetTotp,
+  wipeDashboardData,
+} from "./admin-user-actions";
 import {
   EmptyState,
   FilterPill,
@@ -71,7 +76,6 @@ import {
 import { InviteDialog } from "./admin-invite-dialog";
 import { UserPanel } from "./admin-user-panel";
 import { ReassignReportsDialog } from "./admin-reassign-dialog";
-import { AdminApproveDialog } from "./admin-approve-dialog";
 import { useUsersView } from "./admin-users-view-store";
 
 const PAGE_SIZE = 50;
@@ -112,7 +116,6 @@ export function AdminUsers() {
   const [activeUserId, setActiveUserId] = useState(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [reassign, setReassign] = useState(null); // { manager, disabling }
-  const [approving, setApproving] = useState(null); // a pending_admin member
   const [busy, setBusy] = useState(false);
   const generation = useRef(0);
 
@@ -395,10 +398,10 @@ export function AdminUsers() {
     const isSelf = u.id === sessionUser?.id;
     return [
       { label: "Edit access", onSelect: () => openUser(u.id) },
-      u.status === "pending_admin"
+      u.status === "pending_email"
         ? {
-            label: "Approve…",
-            onSelect: () => setApproving(u),
+            label: "Resend verification link",
+            onSelect: () => void resendVerification(u),
           }
         : null,
       u.hasTotp && !isSelf
@@ -663,25 +666,6 @@ export function AdminUsers() {
         </div>
       ) : null}
 
-      {approving ? (
-        <AdminApproveDialog
-          user={approving}
-          directory={directory}
-          onClose={() => setApproving(null)}
-          onApproved={(updated) => {
-            setApproving(null);
-            applyUpdate(updated);
-            toast.success(`Approved ${updated.displayName}.`, {
-              description: updated.managerId
-                ? `They report to ${usersById.get(updated.managerId)?.displayName ?? "their manager"}.`
-                : "No manager — their approvals go to admins.",
-            });
-            // The filter chips' counts come from the server — re-read them
-            // (and the directory, for report counts).
-            refreshAll();
-          }}
-        />
-      ) : null}
 
       {reassign ? (
         <ReassignReportsDialog

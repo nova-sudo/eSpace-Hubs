@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { Button, Field, Input } from "@/components/ui";
 import { AuthCard, AuthError } from "./auth-card.jsx";
 import { useSession } from "./use-session.js";
+import { TrustBrowserToggle } from "./trust-browser-toggle.jsx";
 import { markBackupCodeLogin, moveTwoFactorHref } from "./backup-login-marker.js";
 
 export function LoginForm({ onSuccess, expired = false, verified = false }) {
@@ -36,6 +37,7 @@ export function LoginForm({ onSuccess, expired = false, verified = false }) {
   const [code, setCode] = useState("");
   const [backupMode, setBackupMode] = useState(false);
   const [backupCode, setBackupCode] = useState("");
+  const [trustDevice, setTrustDevice] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   // If already logged in OR step-2 completed, bubble up — from an effect,
@@ -62,7 +64,7 @@ export function LoginForm({ onSuccess, expired = false, verified = false }) {
     setSubmitting(true);
     const result = backupMode
       ? await verifyTotp({ backupCode: backupCode.trim() })
-      : await verifyTotp({ code });
+      : await verifyTotp({ code, trustDevice });
     setSubmitting(false);
     if (result.ok) {
       if (result.usedBackupCode) {
@@ -149,6 +151,13 @@ export function LoginForm({ onSuccess, expired = false, verified = false }) {
                 className="text-center font-mono text-[22px] tracking-[0.3em]"
               />
             </Field>
+          )}
+          {backupMode ? null : (
+            <TrustBrowserToggle
+              checked={trustDevice}
+              onChange={setTrustDevice}
+              disabled={submitting || loading}
+            />
           )}
           <AuthError>{errorMessage}</AuthError>
           <Button

@@ -20,7 +20,7 @@
  */
 export const ALL_ROLES = ["admin", "dev", "qa", "manager", "hr", "po", "member"];
 
-export const ALL_STATUSES = ["invited", "pending_admin", "active", "disabled"];
+export const ALL_STATUSES = ["invited", "pending_email", "active", "disabled"];
 
 export const ALL_ENGAGEMENTS = [
   { value: "espace", label: "eSpace" },
@@ -29,13 +29,14 @@ export const ALL_ENGAGEMENTS = [
 
 /**
  * Human phrasing for the four account states, following Okta's
- * vocabulary — an admin reads "Pending approval", never the raw
- * `pending_admin` enum value.
+ * vocabulary — an admin reads "Unverified", never the raw
+ * `pending_email` enum value. (Account approval is retired; a
+ * self-signup is active once they open the emailed link.)
  */
 const STATUS_META = {
   active: { label: "Active", tone: "mint" },
   invited: { label: "Invite sent", tone: "sky" },
-  pending_admin: { label: "Pending approval", tone: "lemon" },
+  pending_email: { label: "Unverified", tone: "lemon" },
   disabled: { label: "Disabled", tone: "peach" },
 };
 
@@ -53,7 +54,7 @@ export const STATUS_FILTERS = [
   { value: "all", label: "All" },
   { value: "active", label: "Active" },
   { value: "invited", label: "Invited" },
-  { value: "pending_admin", label: "Pending approval" },
+  { value: "pending_email", label: "Unverified" },
   { value: "disabled", label: "Disabled" },
 ];
 

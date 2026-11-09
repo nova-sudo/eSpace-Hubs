@@ -82,3 +82,21 @@ export async function wipeDashboardData(user) {
   }
   return true;
 }
+
+/**
+ * Re-send the email-verification link to a self-signup who never
+ * opened it (status `pending_email`).
+ */
+export async function resendVerification(user) {
+  const r = await apiPost(`/admin/users/${user.id}/resend-verification`, {});
+  if (!r.ok) {
+    toast.error(r.error?.message || "Couldn't resend the link.");
+    return false;
+  }
+  if (r.data?.sent === false) {
+    toast.error("The email didn't go out — check the mail settings.");
+    return false;
+  }
+  toast.success(`Sent a new link to ${user.email}.`);
+  return true;
+}

@@ -42,7 +42,7 @@ import {
   waitedFor,
 } from "./admin-lib";
 import { toast } from "sonner";
-import { AdminApproveDialog } from "./admin-approve-dialog";
+import { resendVerification } from "./admin-user-actions";
 import { EmptyState } from "./admin-ui";
 
 const TODAY_LIMIT = 200;
@@ -99,7 +99,7 @@ export function AdminDashboard() {
       total: users.total ?? 0,
       active: users.byStatus?.active ?? 0,
       invited: users.byStatus?.invited ?? 0,
-      pendingCount: users.byStatus?.pending_admin ?? pending.length,
+      pendingCount: users.byStatus?.pending_email ?? pending.length,
       pending,
       oldestPending: pending[0] ?? null,
       noTotp: users.noTotp ?? 0,
@@ -127,31 +127,13 @@ export function AdminDashboard() {
           ),
         ).length;
 
-  // Approving opens the same dialog as Members (manager + roles + home
-  // hub in one step) — a bare status flip left new members manager-less.
-  const [approving, setApproving] = useState(null);
-  function approve(user) {
-    return () => setApproving(user);
-  }
-  function onApproved(updated) {
-    setApproving(null);
-    toast.success(`Approved ${updated.displayName}.`);
-    if (!state.users) return;
-    setState((prev) => {
-      const summary = prev.users;
-      if (!summary) return prev;
-      const by = { ...(summary.byStatus ?? {}) };
-      by.pending_admin = Math.max(0, (by.pending_admin ?? 1) - 1);
-      by.active = (by.active ?? 0) + 1;
-      return {
-        ...prev,
-        users: {
-          ...summary,
-          byStatus: by,
-          pending: (summary.pending ?? []).filter((u) => u.id !== updated.id),
-        },
-      };
-    });
+  // Self-signups who never opened the verification link — the only
+  // thing an admin can do is send them a fresh one.
+  const [resending, setResending] = useState(null);
+  async function resend(user) {
+    setResending(user.id);
+    await resendVerification(user);
+    setResending(null);
   }
 
   return (
@@ -179,11 +161,11 @@ export function AdminDashboard() {
               }
             />
             <StatTile
-              label="Pending approval"
+              label="Unverified signups"
               value={stats ? stats.pendingCount : null}
               badge={
                 !stats ? null : stats.pendingCount === 0 ? (
-                  <Badge tone="mint">nobody waiting</Badge>
+                  <Badge tone="mint">everyone confirmed</Badge>
                 ) : (
                   <Badge tone="lemon">
                     {waitedFor(stats.oldestPending?.createdAt)}
@@ -260,23 +242,24 @@ export function AdminDashboard() {
               {(stats?.pendingCount ?? 0) + disabledHubs.length === 0 ? (
                 <EmptyState
                   title="Nothing waiting."
-                  body="No one is queued for approval and every hub is visible to the org."
+                  body="Every signup has confirmed their email and every hub is visible to the org."
                 />
               ) : (
                 <div>
                   {stats?.pending.map((u) => (
                     <DecisionRow
                       key={u.id}
-                      title={`${u.displayName} asked to join`}
+                      title={`${u.displayName} hasn't confirmed their email`}
                       sub={`${u.email} · ${waitedFor(u.createdAt)}`}
                       action={
                         <Button
                           type="button"
                           variant="soft"
                           size="sm"
-                          onClick={approve(u)}
+                          onClick={() => resend(u)}
+                          disabled={resending === u.id}
                         >
-                          Approve
+                          {resending === u.id ? "Sending…" : "Resend link"}
                         </Button>
                       }
                     />
@@ -344,13 +327,6 @@ export function AdminDashboard() {
           ) : null}
         </>
       )}
-      {approving ? (
-        <AdminApproveDialog
-          user={approving}
-          onClose={() => setApproving(null)}
-          onApproved={onApproved}
-        />
-      ) : null}
     </AdminShell>
   );
 }

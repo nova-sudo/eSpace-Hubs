@@ -174,11 +174,12 @@ export function useSession() {
   // Step 2 of login: either a 6-digit authenticator `code` or a
   // single-use `backupCode`. The server answers with how many backup
   // codes are left so the form can warn when they run low.
-  const verifyTotp = useCallback(async ({ code, backupCode }) => {
+  const verifyTotp = useCallback(async ({ code, backupCode, trustDevice = false }) => {
     setSession({ loading: true, error: null });
     const result = await apiPost(
       "/auth/totp/verify",
-      backupCode ? { backupCode } : { code },
+      // Backup codes never earn a trusted browser (server enforces too).
+      backupCode ? { backupCode } : { code, trustDevice: !!trustDevice },
     );
     if (!result.ok) {
       setSession((prev) => prev); // no-op; re-emit

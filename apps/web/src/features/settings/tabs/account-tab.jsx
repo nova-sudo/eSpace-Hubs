@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import { ArrowRight } from "lucide-react";
 import { Badge, Button, Card, Field, Input, Section, Select } from "@/components/ui";
 import { apiPatch } from "@/lib/api-client";
+import { useTrustedBrowsers } from "./use-trusted-browsers.js";
 import {
   MOVE_2FA_ACTION,
   MoveTwoFactorDialog,
@@ -55,7 +56,7 @@ function subscribeReviewDate(cb) {
 
 const STATUS_LABELS = {
   active: "Active",
-  pending_admin: "Waiting for admin approval",
+  pending_email: "Email not verified",
   invited: "Invited",
   disabled: "Disabled",
 };
@@ -80,6 +81,13 @@ export function AccountTab() {
   const [regenOpen, setRegenOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const backupLeft = user?.backupCodesRemaining ?? 0;
+  const trusted = useTrustedBrowsers(!!user?.totpEnrolled);
+
+  async function forgetTrustedBrowsers() {
+    const r = await trusted.forgetAll();
+    if (r.ok) toast.success("Trusted browsers cleared. You'll be asked for a code next time.");
+    else toast.error(r.error?.message || "Couldn't clear trusted browsers.");
+  }
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -234,7 +242,8 @@ export function AccountTab() {
               user?.totpEnrolled ? (
                 <>
                   Enabled — a 6-digit code from your authenticator app is
-                  required at every sign-in.{" "}
+                  required at sign-in, except on browsers you chose to trust
+                  for 30 days.{" "}
                   <span className={backupLeft <= 2 ? "font-bold text-fg" : undefined}>
                     {backupLeft === 1
                       ? "1 backup code left."
@@ -274,6 +283,31 @@ export function AccountTab() {
               ) : null
             }
           />
+          {user?.totpEnrolled ? (
+            <SecurityRow
+              label="Trusted browsers"
+              value={
+                trusted.count === null
+                  ? "Loading…"
+                  : trusted.count === 0
+                    ? "None — every sign-in asks for a code."
+                    : `${trusted.count} browser${trusted.count === 1 ? "" : "s"} skip the code for up to 30 days after you trusted them.`
+              }
+              action={
+                trusted.count ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="soft"
+                    onClick={forgetTrustedBrowsers}
+                    disabled={trusted.forgetting}
+                  >
+                    {trusted.forgetting ? "Forgetting…" : "Forget all"}
+                  </Button>
+                ) : null
+              }
+            />
+          ) : null}
           <RegenerateBackupCodesDialog
             open={regenOpen}
             onClose={() => setRegenOpen(false)}

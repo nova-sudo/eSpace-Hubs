@@ -43,6 +43,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { apiPost } from "@/lib/api-client";
 import { Button, Card, Field, Input, Label, Loading } from "@/components/ui";
+import { TrustBrowserToggle } from "./trust-browser-toggle.jsx";
 import { AuthCard, AuthError } from "./auth-card.jsx";
 import { BackupCodesPanel } from "./backup-codes-panel.jsx";
 import { TotpSecretPanel, formatTotpSecret } from "./totp-secret-panel.jsx";
@@ -60,6 +61,7 @@ export function TotpSetupForm() {
   const [secret, setSecret] = useState("");
   const [otpauthUrl, setOtpauthUrl] = useState("");
   const [code, setCode] = useState("");
+  const [trustDevice, setTrustDevice] = useState(true);
   const [backupCodes, setBackupCodes] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -103,7 +105,7 @@ export function TotpSetupForm() {
       return;
     }
     setSubmitting(true);
-    const r = await apiPost("/auth/totp/verify-enrolment", { code });
+    const r = await apiPost("/auth/totp/verify-enrolment", { code, trustDevice });
     setSubmitting(false);
     if (!r.ok) {
       if (r.error?.code === "invalid_state") {
@@ -192,6 +194,12 @@ export function TotpSetupForm() {
                 className="text-center font-mono text-[22px] tracking-[0.3em]"
               />
             </Field>
+
+            <TrustBrowserToggle
+              checked={trustDevice}
+              onChange={setTrustDevice}
+              disabled={submitting}
+            />
 
             <AuthError>{error}</AuthError>
 
