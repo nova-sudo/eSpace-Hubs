@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { X, ArrowRight } from "lucide-react";
+import { X } from "lucide-react";
 import { Button, IconButton, Select, Field, Label, Badge, useFocusTrap } from "@/components/ui";
 import { ComposeWidgetModal, GoalWidgetsGrid, useGoalWidgetItems } from "@/features/goal-widgets";
 import { useHubLink } from "@/features/hubs";
@@ -11,6 +11,7 @@ import { AnalysisStream } from "./analysis-stream";
 import { ReviewPane } from "./review-pane";
 import { useClassifyGoals, flattenGoalsForClassification } from "./use-classify-goals";
 import { AnalystChatMode } from "./analyst-chat-mode";
+import { GoalPicker } from "./goal-picker";
 import { AI_PROVIDERS, useAiProvider } from "./use-ai-provider";
 import { useGoals } from "@/features/goals";
 
@@ -116,18 +117,20 @@ export function AnalystPage() {
     });
   }
 
-  function handleAnalyzeRemaining() {
-    const subset = unclassifiedGoals.map((g) => ({
-      id: g.id,
-      title: g.title,
-      description: g.rubric || "",
-      parentL1Title: g.parentL1Title,
-      kind: g.kind,
-    }));
+  // Run on exactly the goals the user picked. Same rich input shape as
+  // "Analyze all"; classified goals in the pick get new proposals in
+  // Review and keep their current tracker until one is saved.
+  function handleAnalyzeIds(ids) {
+    const want = new Set(ids);
+    const subset = flattenGoalsForClassification(goals).filter((g) => want.has(g.id));
     if (subset.length === 0) return;
     reset();
     setMode(ANALYST_MODES.ANALYSIS);
     start(subset);
+  }
+
+  function handleAnalyzeRemaining() {
+    handleAnalyzeIds(unclassifiedGoals.map((g) => g.id));
   }
 
   const total = items.length + unclassifiedGoals.length;
@@ -244,8 +247,10 @@ export function AnalystPage() {
                 hasGoals={hasGoals}
                 hasSpecs={hasSpecs}
                 unclassifiedGoals={unclassifiedGoals}
+                pickableGoals={flattenGoalsForClassification(goals)}
+                inProgress={inProgress}
                 onAnalyzeAll={handleAnalyzeAll}
-                onAnalyzeRemaining={handleAnalyzeRemaining}
+                onAnalyzeIds={handleAnalyzeIds}
                 onReAnalyzeGoal={handleReAnalyzeGoal}
               />
             )}
@@ -356,8 +361,10 @@ function WidgetsMode({
   hasGoals,
   hasSpecs,
   unclassifiedGoals,
+  pickableGoals,
+  inProgress,
   onAnalyzeAll,
-  onAnalyzeRemaining,
+  onAnalyzeIds,
   onReAnalyzeGoal,
 }) {
   // A goal the user picked "Build my own" for — bypasses the classifier
@@ -377,6 +384,21 @@ function WidgetsMode({
     />
   );
 
+  // The picker lists the classifier's own L2 shape; "Build my own" wants
+  // the full goal row the compose modal was always handed.
+  const classifiedIds = new Set(items.map((it) => it.goal.id));
+  const invalidIds = new Set(unclassifiedGoals.filter((g) => g.invalidSpec).map((g) => g.id));
+  const picker = (
+    <GoalPicker
+      goals={pickableGoals}
+      classifiedIds={classifiedIds}
+      invalidIds={invalidIds}
+      disabled={inProgress}
+      onAnalyze={onAnalyzeIds}
+      onBuildOwn={(g) => setComposeGoal(unclassifiedGoals.find((u) => u.id === g.id) || g)}
+    />
+  );
+
   if (!hasGoals) {
     return (
       <Launch
@@ -392,14 +414,12 @@ function WidgetsMode({
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto">
         <Launch
           title="Classify your goals"
-          body="The analyst reads every L1 and L2 goal and assigns each a tracker — automatic where your code hosts can measure it, manual where you self-report. You review everything before it lands. Already have a plan for one of these? Skip straight to Build my own below instead of waiting on the classifier."
+          body="The analyst reads your L2 goals and assigns each a tracker — automatic where your code hosts can measure it, manual where you self-report. You review everything before it lands. Only want some of them analyzed? Pick them below. Already have a plan for one? Use Build my own instead of waiting on the classifier."
           ctaLabel="Analyze my goals"
           onCta={onAnalyzeAll}
           showSteps
         />
-        {unclassifiedGoals.length > 0 ? (
-          <UnclassifiedGoals goals={unclassifiedGoals} onBuildOwn={setComposeGoal} />
-        ) : null}
+        {picker}
         {composeModal}
       </div>
     );
@@ -410,69 +430,11 @@ function WidgetsMode({
   }));
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3.5">
-      {unclassifiedGoals.length > 0 ? (
-        <UnclassifiedGoals
-          goals={unclassifiedGoals}
-          onAnalyzeRemaining={onAnalyzeRemaining}
-          onBuildOwn={setComposeGoal}
-        />
-      ) : null}
+      {picker}
       <div className="min-h-0 flex-1">
         <GoalWidgetsGrid items={annotatedItems} />
       </div>
       {composeModal}
-    </div>
-  );
-}
-
-/**
- * Every not-yet-classified goal, one row each, with two ways forward:
- * the bulk "Analyze remaining" (when provided — omitted pre-first-run,
- * where the hero's own CTA already covers it) and a per-goal "Build my
- * own", for a goal the user already has their own plan for and doesn't
- * want the analyst to guess at. Picking it skips classification entirely —
- * the goal never gets an AI-assigned spec, just the one the user composes.
- */
-function UnclassifiedGoals({ goals, onAnalyzeRemaining, onBuildOwn }) {
-  return (
-    <div className="flex flex-col rounded-[var(--radius-lg)] bg-card-alt">
-      <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
-        <Label>
-          {goals.length} goal{goals.length === 1 ? "" : "s"} not yet classified
-        </Label>
-        {onAnalyzeRemaining ? (
-          <Button variant="ink" size="sm" onClick={onAnalyzeRemaining}>
-            Analyze remaining
-          </Button>
-        ) : null}
-      </div>
-      <div className="flex max-h-[280px] flex-col overflow-y-auto">
-        {goals.map((g) => (
-          <div
-            key={g.id}
-            className="flex min-w-0 items-center justify-between gap-3 border-t border-line px-4 py-3 first:border-t-0"
-          >
-            <div className="min-w-0">
-              {g.parentL1Title ? (
-                <div className="truncate text-[12px] text-muted-fg" title={g.parentL1Title}>
-                  {g.parentL1Title}
-                </div>
-              ) : null}
-              <div className="truncate text-[13.5px] text-fg" title={g.title}>
-                {g.title || "(untitled)"}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => onBuildOwn(g)}
-              className="inline-flex shrink-0 items-center gap-1 text-[12.5px] font-bold text-fg"
-              title="Already know how you want to track this? Skip the classifier and describe your own tracker."
-            >
-              Build my own <ArrowRight size={13} />
-            </button>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
