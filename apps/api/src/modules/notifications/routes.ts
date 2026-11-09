@@ -10,6 +10,7 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/require-auth.js";
 import {
+  getNotificationHandler,
   getPreferencesHandler,
   listNotificationsHandler,
   putPreferencesHandler,
@@ -24,3 +25,5 @@ notificationsRouter.get("/preferences", requireAuth(), getPreferencesHandler);
 notificationsRouter.put("/preferences", requireAuth(), putPreferencesHandler);
 notificationsRouter.post("/read-all", requireAuth(), markAllReadHandler);
 notificationsRouter.post("/:id/read", requireAuth(), markReadHandler);
+// After /preferences so that literal path isn't read as an :id.
+notificationsRouter.get("/:id", requireAuth(), getNotificationHandler);
