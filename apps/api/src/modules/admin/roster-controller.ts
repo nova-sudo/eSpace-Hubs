@@ -86,11 +86,11 @@ const NEEDS_MANAGER_CLAUSE: Filter<User> = {
 
 /**
  * Query: ?limit=1..200 (50) &cursor= &q= (name/email substring)
- *        &status=all|active|invited|pending_admin|disabled
+ *        &status=all|active|invited|pending_email|disabled
  *        &flag=no_manager|disabled_manager &managerId=<hex>
  *
  * → { users: PublicUser[] (+ managerName / managerStatus),
- *     hasMore, nextCursor, counts: { all, active, invited, pending_admin,
+ *     hasMore, nextCursor, counts: { all, active, invited, pending_email,
  *     disabled } }  — counts honour q/flag/managerId but not status, so
  *     the status pills can show what each would return.
  */
@@ -181,7 +181,7 @@ export async function listUsersHandler(
       all: 0,
       active: 0,
       invited: 0,
-      pending_admin: 0,
+      pending_email: 0,
       disabled: 0,
     };
     for (const g of grouped) {
@@ -241,7 +241,7 @@ export async function usersSummaryHandler(
       }),
       col
         .find(
-          { orgId: session.orgId, status: "pending_admin" },
+          { orgId: session.orgId, status: "pending_email" },
           { projection: { displayName: 1, email: 1, createdAt: 1 } },
         )
         .sort({ createdAt: 1 })
@@ -252,7 +252,7 @@ export async function usersSummaryHandler(
     const byStatus: Record<string, number> = {
       active: 0,
       invited: 0,
-      pending_admin: 0,
+      pending_email: 0,
       disabled: 0,
     };
     let total = 0;

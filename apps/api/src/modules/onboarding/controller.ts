@@ -63,6 +63,10 @@ export async function submitOnboardingHandler(
 
     const now = new Date();
     const users = await getUsersCollection();
+    const before = await users.findOne(
+      { _id: session.userId },
+      { projection: { onboardingCompletedAt: 1 } },
+    );
     const result = await users.findOneAndUpdate(
       { _id: session.userId },
       {
@@ -81,14 +85,16 @@ export async function submitOnboardingHandler(
       throw new HttpError(401, "unauthenticated", "User no longer exists.");
     }
 
-    // Only ping admins the first time this user finishes onboarding while
-    // still unassigned — re-submission (an already-active user editing
-    // their department/employeeId) shouldn't re-notify anyone.
-    if (result.status === "pending_admin") {
+    // Self-signups are active (with dev access) as soon as they verify
+    // their email — no approval step. Tell admins once, the first time
+    // such a user finishes onboarding, so they can set a manager / roles.
+    // Invited users were placed by an admin already; re-submissions
+    // (editing department later) never re-notify.
+    if (!before?.onboardingCompletedAt && !result.invitedBy) {
       void notifyOrgAdmins({
         orgId: session.orgId,
-        title: "A new signup needs a role and hub",
-        body: `${result.displayName} (${result.email}) finished onboarding and is waiting for a role and hub assignment.`,
+        title: "New teammate joined",
+        body: `${result.displayName} (${result.email}) signed up and finished onboarding. Set their manager and roles if needed.`,
         data: { userId: result._id.toHexString() },
       });
     }

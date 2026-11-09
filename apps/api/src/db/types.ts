@@ -101,12 +101,14 @@ export const ALL_USER_ROLES: readonly UserRole[] = [
 ] as const;
 
 /**
- * `pending_admin` is the self-signup status — the user proved email
- * ownership by knowing the org's signup code, set a password, and (per
- * policy) completed TOTP enrolment + the onboarding form, but admin
- * still hasn't assigned them a role / hub. Login works for these
- * users; they just land on /waiting-approval until admin promotes
- * them to `active`.
+ * `pending_email` is the self-signup status: password set, dev access
+ * granted, but the emailed verification link not opened yet. Login
+ * works; the session's `emailVerified=false` keeps every route except
+ * me / logout / resend-verification closed.
+ *
+ * `pending_admin` is RETIRED (account approval was removed, 2026-11).
+ * Kept only so old rows validate; a boot migration promotes any to
+ * `active` and nothing assigns it.
  */
 export type UserStatus =
   | "invited"

@@ -171,16 +171,13 @@ export async function loginHandler(
       ? await verifyPassword(password, user.passwordHash)
       : await verifyPassword(password, DUMMY_HASH); // burn time anyway
 
-    // Self-sign-up users land with status="pending_admin" — they need
-    // to be able to log in so they can complete TOTP + onboarding and
-    // then sit on the waiting-approval screen. AuthGuard handles the
-    // actual hub-access gating, so accepting them here is safe.
+    // Unverified self-signups (`pending_email`) can log in: their
+    // session carries emailVerified=false, so requireAuth only admits
+    // me / logout / resend-verification until the link is opened.
     const validCredentials =
       !!user &&
       !lockedOut &&
-      (user.status === "active" ||
-        user.status === "pending_admin" ||
-        user.status === "pending_email") &&
+      (user.status === "active" || user.status === "pending_email") &&
       !!user.passwordHash &&
       passwordOk;
 
@@ -526,7 +523,7 @@ export { type ObjectId };
  * Set APP_URL (or NEXT_PUBLIC_APP_URL as a fallback) in production.
  * Defaults to localhost:3000 for dev.
  */
-function appOrigin(): string {
+export function appOrigin(): string {
   const raw =
     process.env.APP_URL?.trim() ||
     process.env.NEXT_PUBLIC_APP_URL?.trim() ||
@@ -801,13 +798,12 @@ export async function passwordResetRequestHandler(
 
     // Only mint if the user exists AND can actually reset (not
     // disabled, has set up a password). Either way, return ok.
-    // pending_admin users count — they HAVE a password, they just
-    // don't have a role/hub yet; locking them out of reset would
-    // leave them stranded if they forget the password before admin
-    // approves them.
+    // pending_email users count — they HAVE a password; locking them
+    // out of reset would strand them if they forget it before opening
+    // the verification link.
     if (
       user &&
-      (user.status === "active" || user.status === "pending_admin") &&
+      (user.status === "active" || user.status === "pending_email") &&
       user.passwordHash !== null
     ) {
       const meta = networkMeta(req);
@@ -1518,24 +1514,17 @@ export async function totpDisableHandler(
 // ─── POST /api/v1/auth/signup (public) ───────────────────────────────
 
 /**
- * Self-serve signup. The user proves they belong to the org by
- * supplying a signup code an admin distributed; we create a fresh
- * user row with `status="pending_admin"`, mint a session, and let
- * them proceed through TOTP setup + onboarding. They land on
- * /waiting-approval until admin promotes them to "active".
+ * Self-serve signup. Two gates (signup-policy.ts):
+ *   - free domain (SIGNUP_FREE_DOMAINS, default espace.com.eg): no
+ *     code — the emailed verification link proves ownership;
+ *   - any other domain: a live org signup code, as before.
+ * Either way the user starts `pending_email` with dev access, gets a
+ * verification email, and a session that only reaches me / logout /
+ * resend-verification until the link is opened. Then TOTP setup →
+ * onboarding → dev hub. No admin approval.
  *
- * Security model:
- *   - The code is the gate. No code, no signup.
- *   - Codes can be disabled or expire; both branches are checked.
- *   - One Mongo round-trip finds both the org AND the matching code
- *     via $elemMatch on the embedded array.
- *   - Email uniqueness is enforced at the unique index level — a
- *     duplicate-key error from Mongo becomes the same generic
- *     "email_taken" response to the client (no enumeration about
- *     whether the user is invited / active / pending).
- *   - role + roles + allowedHubs are intentionally left empty / null
- *     on the new doc. Admin assigns them via the approval queue.
- *     Until then the user has zero hub access.
+ * Email uniqueness is enforced at the unique index — a duplicate-key
+ * race becomes the same generic "email_taken" answer as the pre-check.
  */
 export async function signupHandler(
   req: Request,

@@ -872,6 +872,23 @@ async function runMigrations(): Promise<void> {
     );
   }
 
+  // Account approval is retired — promote any rows still waiting in
+  // `pending_admin` (frictionless signup, 2026-11).
+  try {
+    const { migratePendingAdminToActive } = await import(
+      "./migrations/pending-admin-to-active.js"
+    );
+    const result = await migratePendingAdminToActive(await getUsersCollection());
+    if (result.updated > 0) {
+      logger.info(result, "[migrate.pending-admin] promoted waiting users to active");
+    }
+  } catch (err) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "[migrate] pending-admin step failed — retries on next boot",
+    );
+  }
+
   // Backfill session.totpEnrolled for sessions minted before the
   // field existed. Independent of the M-CAP step — wrapping both in
   // one try would swallow either failure under the other's banner.

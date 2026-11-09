@@ -1,7 +1,7 @@
 /**
  * Notify every active admin in an org — in-app inbox + email, both
- * best-effort. Callers: onboarding-submit (a self-signup user finishing
- * their profile while still `status: "pending_admin"`), and the BYO
+ * best-effort. Callers: onboarding-submit (a self-signup finishing
+ * onboarding for the first time — "New teammate joined"), and the BYO
  * approval gate when the submitter has no active manager (the approval
  * goes pending to the org's admins — hub-audit §1.3). Muted kinds and
  * an admin's email opt-out are honoured.

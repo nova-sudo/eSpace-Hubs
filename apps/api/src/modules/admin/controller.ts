@@ -52,6 +52,10 @@ import { logger } from "../../lib/logger.js";
 import { createNotification } from "../../lib/notifications.js";
 import { effectiveRoles, primaryRole } from "../../lib/user-roles.js";
 import { syncSessionRolesForUser } from "../auth/session.js";
+import { appOrigin } from "../auth/controller.js";
+import { sendVerificationEmail } from "../auth/signup-policy.js";
+import { emailService } from "../../lib/email.js";
+import { mintToken } from "../../lib/tokens.js";
 import { HttpError } from "../../middleware/error-handler.js";
 import {
   createSignupCodeSchema,
@@ -686,6 +690,61 @@ export async function resetUserTotpHandler(
 //
 // Idempotent + admin-only + cross-org-safe (every filter pins orgId).
 // Audited.
+
+// ─── POST /admin/users/:id/resend-verification ───────────────────────
+
+/**
+ * Re-send the verification link to a self-signup who never opened it
+ * (status `pending_email`). 409 for anyone already verified.
+ */
+export async function resendUserVerificationHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const session = req.session;
+    if (!session) {
+      throw new HttpError(401, "unauthenticated", "Login required.");
+    }
+    const targetId = requireUserId(req);
+    const target = await (await getUsersCollection()).findOne({
+      _id: targetId,
+      orgId: session.orgId,
+    });
+    if (!target) {
+      throw new HttpError(404, "not_found", "User not found in this org.");
+    }
+    if (target.status !== "pending_email") {
+      throw new HttpError(409, "already_verified", "This user's email is already verified.");
+    }
+    const org = await (await getOrgsCollection()).findOne({ _id: session.orgId });
+    const meta = networkMeta(req);
+    const sent = await sendVerificationEmail(
+      {
+        mintToken,
+        send: (m) => emailService.send(m),
+        appUrl: appOrigin(),
+        orgName: org?.name ?? "eSpace",
+      },
+      target,
+      meta,
+    );
+    await writeAudit({
+      orgId: session.orgId,
+      actorUserId: session.userId,
+      actorRole: session.role,
+      action: "user.verification_resent",
+      targetType: "user",
+      targetId: targetId.toHexString(),
+      after: { email: target.email, sent: sent.ok },
+      ...meta,
+    });
+    res.json({ ok: true, sent: sent.ok });
+  } catch (err) {
+    next(err);
+  }
+}
 
 export async function resetUserPersonalDataHandler(
   req: Request,

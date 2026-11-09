@@ -43,6 +43,7 @@ import {
   createSignupCodeHandler,
   listAuditHandler,
   listSignupCodesHandler,
+  resendUserVerificationHandler,
   resetUserPersonalDataHandler,
   resetUserTotpHandler,
   updateSignupCodeHandler,
@@ -91,6 +92,12 @@ adminRouter.post(
   requireAuth(),
   usersManage,
   resetUserTotpHandler,
+);
+adminRouter.post(
+  "/users/:id/resend-verification",
+  requireAuth(),
+  usersManage,
+  resendUserVerificationHandler,
 );
 // Wipes the user's dashboard data (goals + snapshots + verdicts +
 // specs + context + inputs) across the collections that were polluted
